@@ -1,0 +1,250 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\damage.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\damage.js"
+index a4b2742..8896808 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\damage.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\damage.js"
+@@ -6,12 +6,15 @@
+ //   → × source dmgDealtMul (× phys/artsDealtMul) × target dmgTakenMul (not for 元素伤害) × type-taken mul × dmg.mul
+ //   → 限伤 (leaders in boss / hidden battles: a hit of ceil(final) ≥ BOSS_HIT_LIMIT is cancelled, see leaderHitCancelled)
+ //   → shields (hit-negating barriers first, then HP shields; a typed one — buff `shieldType` — only its damage type)
+ //   → 'hpDamage' hook (what passed the shields; handlers may only lower `amount`: the 伤判效果 that act after a
+ //   barrier — 煌's 紧急除颤 HP floor, 左乐's 庇护 re-applied after his 行险 barrier) → HP loss (boss pool routing)
+ //   → 'damaged' hook → SP-on-hurt / TAKE_DAMAGE trigger → fatal/kill.
++// `applyHpLoss` (the single HP-loss funnel, 流失 included) runs one more hook FIRST: 'hpLoss' — the last word before HP
++// is removed, so it also covers `battle.loseHp` (流失), which never enters dealDamage. Same contract as 'hpDamage'
++// (handlers may only lower `amount`); opt-in, so content that listens to 'hpDamage' alone is unaffected (幽魂, §29.24).
+ // Damage-dealt stats (the source's `stats.dmg`, the player's `damageDealt`) count only HP removed from the other side:
+ // self and friendly damage (a 源石溶剂 drain, an operator's own 流失) is the target's `taken` and keeps the kill credit.
+ // Phys: max(A − max(0, D×(1−defIgnorePct) − defIgnoreFlat), 5 %·A); Arts: max(A×(1 − R′/100), 5 %·A) with
+ // R′ = max(0, R×(1−resIgnorePct) − resIgnoreFlat); True: A; Elemental (元素伤害): max(A×(1 − 元素抗性/100), 5 %·A)
+ // (PRTS 游戏数据基础 DMG_e; 元素抗性 = the target's data `epDamageResistance`: 0 on every enemy in data/enemies.json).
+ // Element damage ('element' type + element, 元素损伤) fills a gauge instead of HP (1000; enemy leaders 2000):
+@@ -161,12 +164,31 @@ export function redirectShare(amount, own, cuts) {
+   if (!(amount > 0) || !(o > 0) || !(sum > 0)) return 0;
+   const keep = 1 - sum;
+   if (keep > 1e-12) return amount / keep * o;
+   return amount * (o / sum);
+ }
+ 
++/**
++ * The tags / markers of a damage instance that is itself a RETALIATION — an answer to being hit, rather than a hit:
++ * `counter` (an ally's 反击), `reflect` (玛恩纳 无动于衷), `springCounter` (the Spring Shield's return blow,
++ * content/bosses.js hitIn) and 坚守盟约's `steadThorn` / `steadShare` markers.
++ *
++ * "受到伤害时" content must skip these (DESIGN: "another counter / reflection is no ping-pong"). Two retaliation sources
++ * that answer each other's answers never settle: the engine's hook-depth limit (32) aborts the chain and logs
++ * `hookDepth`, silently dropping the rest of that tick. That is not hypothetical — a counter answering the Spring
++ * Shield's blow (泡泡 / 刺玫 ↔ 弹簧护盾) and one answering 余音's pulse reproduced on the pre-hextech roster.
++ */
++const RETALIATION_TAGS = Object.freeze(['counter', 'reflect', 'springCounter']);
++
++/** Whether `dmg` is a retaliation — see RETALIATION_TAGS. */
++export function isRetaliation(dmg) {
++  if (!dmg) return false;
++  if (dmg.steadThorn || dmg.steadShare) return true;
++  return Array.isArray(dmg.tags) && dmg.tags.some((t) => RETALIATION_TAGS.includes(t));
++}
++
+ /** 沉睡 (ba.sleep "无敌且无法行动"): only attackers whose profile has `hitSleep` (or `ignoreSleep` damage) reach a sleeper. */
+ function sleepBlocks(target, source, dmg) {
+   return !!target.s.flags.sleep && !dmg.ignoreSleep && !(source && source.profile && source.profile.hitSleep);
+ }
+ 
+ /**
+@@ -260,67 +282,12 @@ export function absorbShields(battle, target, amount, type = null) {
+     }
+   }
+   if (changed) target.markDirty();
+   return rest;
+ }
+ 
+-/**
+- * Official red-number test (PRTS 作战机制 「伤害红字（暴击）」, https://prts.wiki/w/作战机制).
+- * A red integer is shown when 最终伤害 ≥ 期望伤害 × 1.5. `1e-9` only absorbs a binary rounding crumb.
+- * 0 ≥ 0 × 1.5 is red: an invulnerable hit still shows red 0 in the official client. This function reports that;
+- * `dealDamage` does not emit a new event for it (a new `dmg` tuple would change golden counts and play an impact).
+- * @returns {'r'|null}
+- */
+-export function officialDamageMark(finalAmount, expectedAmount) {
+-  const fin = Number.isFinite(finalAmount) ? Math.max(0, finalAmount) : 0;
+-  const exp = Number.isFinite(expectedAmount) ? Math.max(0, expectedAmount) : 0;
+-  return fin + 1e-9 >= exp * 1.5 ? 'r' : null;
+-}
+-
+-/**
+- * Expected damage for the red-number test. Same mitigation as the hit, without DEF/RES penetration and without
+- * the multipliers applied after mitigation (source dmgDealtMul / phys/artsDealtMul, target dmgTakenMul and the
+- * type-taken multipliers, shields, hpDamage rewrites, hit-count replacement).
+- * [ASSUMED] `dmg.amount` is already the attack's stated ATK × 攻击倍率 — callers bake `atkScaleMul` in, and this
+- * does not divide it back out. `dmg.mul` stays on both sides (the instance's own scale, including a skill-hit
+- * fraction). Cached-ATK expected damage (raw ATK only), forced red, blue numbers and yellow BLOCK have no
+- * DamageInfo flag here and are not applied.
+- */
+-function officialExpectedAmount(dmg, type, ts, target) {
+-  const base = mitigate(dmg.amount, type, ts, {
+-    defIgnorePct: 0, defIgnoreFlat: 0, resIgnorePct: 0, resIgnoreFlat: 0,
+-    elementalRes: type === 'elemental' ? (target.def?.epDamageResistance ?? 0) : 0,
+-  });
+-  const mul = Number.isFinite(dmg.mul) ? dmg.mul : 1;
+-  const exp = base * mul;
+-  return Number.isFinite(exp) && exp > 0 ? exp : 0;
+-}
+-
+-/** Pre-shield damage after mitigation and the post-mitigation multipliers. Identical to the inline formula it replaced. */
+-function landedPreShield(dmg, type, ts, ss, target) {
+-  let final = mitigate(dmg.amount, type, ts, {
+-    defIgnorePct: dmg.defIgnorePct + (ss ? ss.defIgnorePct : 0),
+-    defIgnoreFlat: dmg.defIgnoreFlat + (ss ? ss.defIgnoreFlat : 0),
+-    resIgnorePct: dmg.resIgnorePct + (ss ? ss.resIgnorePct : 0),
+-    resIgnoreFlat: dmg.resIgnoreFlat + (ss ? ss.resIgnoreFlat : 0),
+-    elementalRes: type === 'elemental' ? (target.def?.epDamageResistance ?? 0) : 0,
+-  });
+-  let mul = dmg.mul * (type === 'elemental' ? 1 : ts.dmgTakenMul);
+-  if (ss) mul *= ss.dmgDealtMul * (type === 'phys' ? ss.physDealtMul : type === 'arts' ? ss.artsDealtMul : 1);
+-  mul *= type === 'phys' ? ts.physTakenMul : type === 'arts' ? ts.artsTakenMul : type === 'elemental' ? ts.elementalTakenMul : ts.trueTakenMul;
+-  final *= mul;
+-  if (!(final > 0) || !Number.isFinite(final)) final = 0;
+-  return final;
+-}
+-
+-/** Source stats for a display-only dodge classification. Reading `source.s` while dirty rescales HP (units.js). */
+-function peekStats(unit) {
+-  if (!unit) return null;
+-  return unit._dirty ? (unit._s || null) : unit.s;
+-}
+-
+ /**
+  * Full damage pipeline. Returns the HP actually removed (0 when dodged/cancelled/absorbed).
+  */
+ export function dealDamage(battle, source, target, dmgIn) {
+   if (!target || !target.alive || target.removed || target.hidden || !target.deployed) return 0;
+   const dmg = dmgIn && dmgIn._norm ? dmgIn : makeDamageInfo(dmgIn);
+@@ -336,80 +303,90 @@ export function dealDamage(battle, source, target, dmgIn) {
+     if (dmg.cancel || !target.alive || !target.deployed) return 0;
+     if (dmg.type === 'element') return applyElement(battle, source, target, dmg);
+     ts = target.s; // handlers may have changed the target's buffs (fragile, invulnerable, dodge…): never use stale stats
+     if (ts.flags.invulnerable || sleepBlocks(target, hs, dmg)) return 0;
+   }
+   const type = dmg.type;
+-  // dodge. The yellow MISS (PRTS: a hit that would have been red, dodged) is classified after the existing roll
+-  // and does not roll again. Source stats are peeked so a dirty attacker is not refreshed just to label the dodge.
++  // dodge
+   if (dmg.canDodge && (type === 'phys' || type === 'arts')) {
+     const p = type === 'phys' ? ts.dodgePhys : ts.dodgeArts;
+     if (p > 0 && battle.rng() < p) {
+-      const peeked = !dmg.sourceless ? peekStats(source) : null;
+-      const red = officialDamageMark(landedPreShield(dmg, type, ts, peeked, target), officialExpectedAmount(dmg, type, ts, target)) === 'r';
+-      battle.fx('dodge', red
+-        ? { x: target.x, y: target.y, id: target.id, num: 'm' }
+-        : { x: target.x, y: target.y, id: target.id });
++      battle.fx('dodge', { x: target.x, y: target.y, id: target.id });
+       if (battle._hooks.dodge) battle.emit('dodge', { source, target, dmg });
+       return 0;
+     }
+   }
+   // 频次 units (flags hitCount / hitCountArts): every damage instance removes exactly 1 HP (maxHp = hits needed);
+   // hitCountArts ignores physical instances. The instance keeps its own DamageInfo, so `damaged` handlers still
+   // recognise their own (tagged) damage — never re-create such a loss with a fresh loseHp.
+-  // The red test compares that 1 (or 0) with the ordinary expected damage: 特殊生命值机制均不考虑 on the expected side.
+   if (ts.flags.hitCount || ts.flags.hitCountArts) {
+     const counts = !(ts.flags.hitCountArts && !ts.flags.hitCount && type === 'phys');
+-    const instance = counts ? 1 : 0;
+-    const mark = officialDamageMark(instance, officialExpectedAmount(dmg, type, ts, target));
+-    return applyHpLoss(battle, source, target, absorbShields(battle, target, instance, type), dmg, mark);
++    return applyHpLoss(battle, source, target, absorbShields(battle, target, counts ? 1 : 0, type), dmg);
+   }
+   // 无来源 damage (element bursts) takes nothing from its source's stats; the source still gets the credit below
+   const ss = source && source.s && !dmg.sourceless ? source.s : null;
+-  let final = landedPreShield(dmg, type, ts, ss, target);
+-  // The 1.5× test uses this pre-shield total. The integer on the dmg event is whatever remains after shields and
+-  // hpDamage (PRTS can show a number that differs from the HP delta; [ASSUMED] the shown value stays that integer).
+-  const mark = officialDamageMark(final, officialExpectedAmount(dmg, type, ts, target));
++  let final = mitigate(dmg.amount, type, ts, {
++    defIgnorePct: dmg.defIgnorePct + (ss ? ss.defIgnorePct : 0),
++    defIgnoreFlat: dmg.defIgnoreFlat + (ss ? ss.defIgnoreFlat : 0),
++    resIgnorePct: dmg.resIgnorePct + (ss ? ss.resIgnorePct : 0),
++    resIgnoreFlat: dmg.resIgnoreFlat + (ss ? ss.resIgnoreFlat : 0),
++    elementalRes: type === 'elemental' ? (target.def?.epDamageResistance ?? 0) : 0,
++  });
++  // 脆弱 / "受到的伤害±" (dmgTakenMul) scale 物理、法术、真实 only; 元素伤害 takes 元素脆弱 alone (header)
++  let mul = dmg.mul * (type === 'elemental' ? 1 : ts.dmgTakenMul);
++  if (ss) mul *= ss.dmgDealtMul * (type === 'phys' ? ss.physDealtMul : type === 'arts' ? ss.artsDealtMul : 1);
++  mul *= type === 'phys' ? ts.physTakenMul : type === 'arts' ? ts.artsTakenMul : type === 'elemental' ? ts.elementalTakenMul : ts.trueTakenMul;
++  final *= mul;
++  if (!(final > 0) || !Number.isFinite(final)) final = 0;
+   // 限伤: a leader's hit of ≥ BOSS_HIT_LIMIT in a boss / hidden battle is cancelled before it reaches shields / HP — what
+   // ran before it (the attack, its SP, `hit` hook effects, separate element 损伤) stays; nothing after it happens
+   if (final > 0 && leaderHitCancelled(battle, target, final)) return 0;
+   final = absorbShields(battle, target, final, type);
+   // 伤判效果 after the barriers (header): a handler may lower what reaches the HP — never raise it (a 流失 skips this)
+   if (final > 0 && battle._hooks.hpDamage) {
+     const hctx = { source: hs, target, amount: final, dmg, credit: source };
+     battle.emit('hpDamage', hctx);
+     if (Number.isFinite(hctx.amount)) final = Math.max(0, Math.min(final, hctx.amount));
+   }
+-  return applyHpLoss(battle, source, target, final, dmg, mark);
++  return applyHpLoss(battle, source, target, final, dmg);
+ }
+ 
+ /**
+  * Remove HP (after mitigation) and run damaged/fatal/kill bookkeeping. Also used by `battle.loseHp` (流失).
+  */
+-export function applyHpLoss(battle, source, target, amount, dmg, mark) {
++export function applyHpLoss(battle, source, target, amount, dmg) {
+   if (!target.alive) return 0;
++  let amt = amount;
++  // 'hpLoss': the last word before HP is removed — this function is the single funnel for every HP loss, so a handler
++  // here also covers `battle.loseHp` (流失), which never enters dealDamage ('hpDamage' explicitly skips it). Same
++  // contract as hpDamage: a handler may only LOWER `amount`. Opt-in: nothing existing listens to this name.
++  if (amt > 0 && battle._hooks.hpLoss) {
++    const lctx = { source: dmg && dmg.sourceless ? null : source, target, amount: amt, dmg, credit: source };
++    battle.emit('hpLoss', lctx);
++    if (Number.isFinite(lctx.amount)) amt = Math.max(0, Math.min(amt, lctx.amount));
++  }
+   let dealt = 0;
+   const hs = dmg && dmg.sourceless ? null : source; // the source hooks see (无来源: none; `credit` keeps it)
+   if (target.bossPool) {
+     const pool = target.bossPool;
+     const before = pool.hp;
+     const pid = source && source.side === 'ally' ? source.ownerId : null;
+-    if (amount > 0) {
+-      try { pool.damage(pid, amount); } catch (e) { battle._internalError('bossPool.damage', e); pool.hp = Math.max(0, pool.hp - amount); }
++    if (amt > 0) {
++      try { pool.damage(pid, amt); } catch (e) { battle._internalError('bossPool.damage', e); pool.hp = Math.max(0, pool.hp - amt); }
+     }
+     dealt = Math.max(0, before - pool.hp);
+     if (!Number.isFinite(dealt)) dealt = 0; // a misbehaving pool (NaN hp) must not poison damage stats
+     if (pid != null) { const pp = battle._pp(pid); if (pp) pp.bossDamage += dealt; }
+     battle._syncBossHp(target);
+   } else {
+     const before = target.hp;
+-    target.hp -= amount;
++    target.hp -= amt;
+     if (target.hp <= 0) {
+       target.hp = 0;
+       if (battle._hooks.fatal) {
+-        const fctx = { unit: target, source: hs, credit: source, dmg, amount, prevented: false };
++        const fctx = { unit: target, source: hs, credit: source, dmg, amount: amt, prevented: false };
+         battle.emit('fatal', fctx);
+         if (fctx.prevented && target.alive) { if (target.hp < 1) target.hp = Math.min(1, target.s.maxHp); }
+       }
+     }
+     dealt = Math.max(0, before - Math.max(0, target.hp));
+   }
+@@ -420,16 +397,13 @@ export function applyHpLoss(battle, source, target, amount, dmg, mark) {
+     if (source.side === 'ally' && source.ownerId != null) { const pp = battle._pp(source.ownerId); if (pp) pp.damageDealt += dealt; }
+   }
+   target.stats.taken += dealt;
+   target.lastHitAt = battle.time;
+   if (dmg && !dmg.silent && amount >= 0.5) {
+     const shown = dmg.type === 'element' ? dmg.element : dmg.type === 'elemental' ? (dmg.element || 'true') : dmg.type;
+-    // 'r' is display-only (official red number). Absent on every other hit, so the tuple stays four elements.
+-    const ev = ['dmg', target.id, Math.round(amount), shown];
+-    if (mark === 'r') ev.push('r');
+-    battle._ev(ev);
++    battle._ev(['dmg', target.id, Math.round(amount), shown]);
+   }
+   if (battle._hooks.damaged) battle.emit('damaged', { source: hs, target, amount, type: dmg ? dmg.type : 'true', dmg, credit: source });
+   if (target.side === 'ally' && target.skill && dmg && !dmg.noSp && dmg.type !== 'element') battle._skills.onDamaged(target);
+   const dead = target.bossPool ? target.bossPool.hp <= 0 : target.hp <= 0;
+   if (dead && target.alive) battle.kill(target, source);
+   return dealt;

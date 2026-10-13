@@ -1,0 +1,19 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\unite.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\unite.js"
+index 270689d..87f1737 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\unite.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\unite.js"
+@@ -136,13 +136,13 @@ export function uniteBattleOpts(m, plan, timeLimit) {
+       // a summon: its SP only ("召唤物仅修改技力"); one off the field at the end enters fresh [ASSUMED]
+       if (summonUids.has(u.uid)) { if (u.alive) carry.set(u.uid, { sp }); continue; }
+       // knocked out at the end of its own combat: 强制退场 right after the deployment (see header)
+       if (!u.alive) { carry.set(u.uid, { down: true }); continue; }
+       // HP ratio and SP only: a skill still running at the end is not carried (unitsEnd `skillActive` stays unused —
+       // community report #34, GitHub #82)
+-      carry.set(u.uid, { hpPct: Number.isFinite(u.hpPct) ? Math.max(0.01, Math.min(1, u.hpPct)) : 1, sp });
++      carry.set(u.uid, { hpPct: Number.isFinite(u.hpPct) ? Math.max(0, Math.min(1, u.hpPct)) : 1, sp });
+     }
+     // 2 helpers: the first one meets the enemies first on the right-hand field (escaped_multi enters at col 18)
+     const colOffset = plan.helpers.length > 1 && i === 0 ? 8 : 0;
+     // the layers its own combat reached (bondsView, the round's pending gains; PRTS "以其阵地当前的状态") — see header
+     const input = ps.battleInput({ side: 'L', colOffset, carry, reached: true });
+     const ev = { input, kind: 'unite', round: m.round, spawns: wave.spawns };

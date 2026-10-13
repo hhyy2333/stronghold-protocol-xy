@@ -1,0 +1,12 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\skills.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\skills.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\skills.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\skills.js"
+index bcc6477..f558aad 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\skills.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\skills.js"
+@@ -495,0 +496,5 @@ export class SkillRuntime {
++    if (!this.healSkill && u.profile?.fortress) {
++      // The branch's own-tile melee range also satisfies the basic cast condition for unblockable fragments.
++      const here = [u.tileR * COLS + u.tileC];
++      if (b.enemiesInKeys(here, u, u.profile).length > 0 || this._allyTargetIn(here)) return true;
++    }

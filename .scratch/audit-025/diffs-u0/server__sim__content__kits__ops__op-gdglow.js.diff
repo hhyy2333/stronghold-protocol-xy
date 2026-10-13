@@ -1,0 +1,9 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\kits\ops\op-gdglow.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\content\kits\ops\op-gdglow.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-gdglow.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-gdglow.js"
+index c7e0f90..4647de8 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-gdglow.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-gdglow.js"
+@@ -20 +20 @@
+-//   max_atk_scale): the engine's funnel profile (professions.js: her normal attack = one drone hit at init → +delta per hit on
++//   max_atk_scale): the engine's funnel profile (professions.js: her normal attack = a body hit plus one drone addition at init → +delta per hit on

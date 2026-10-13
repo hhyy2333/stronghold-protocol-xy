@@ -1,0 +1,21 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\package.json', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\package.json" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\package.json"
+index d89721e..44a3832 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\package.json"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\package.json"
+@@ -3 +3,2 @@
+-  "version": "0.2.4",
++  "version": "0.3.0",
++  "release": "0.3.0-0.2.3",
+@@ -32,0 +34,4 @@
++    "build-hextech": "node tools/build-hextech.mjs",
++    "hextech:import": "node tools/hextech-import.mjs",
++    "hextech:tier": "node tools/hextech-tier-import.mjs",
++    "hextech:item": "node tools/hextech-item-import.mjs",
+@@ -43 +48,2 @@
+-    "package:lite": "node tools/package.mjs --lite"
++    "package:lite": "node tools/package.mjs --lite",
++    "update-notes": "node tools/update-notes.mjs"
+@@ -57,0 +64 @@
++    "acorn": "^8.18.0",

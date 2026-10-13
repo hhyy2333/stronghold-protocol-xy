@@ -1,0 +1,107 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\screens\\loadout.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\screens\\loadout.js"
+index fff787a..be3cedb 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\screens\\loadout.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\screens\\loadout.js"
+@@ -204,13 +204,13 @@ export function RosterRow({ m, chess, golden, entries, ops = {}, selected, onPic
+   const slots = [0, 1, 2].map((i) => opt.skillOptions[i] || null);
+   const standInNote = notOwned ? t('未持有（干员持有）：由替补干员上场，替补干员没有潜能与练度') : null;
+   return html`<div role="listitem" data-chess=${chess.chessId} data-variant=${elite ? 'elite' : 'normal'}
+       class=${cx('lo-card', `lo-card--t${chess.tier}`, selected && 'is-sel', changed && 'is-changed', notOwned && 'is-standin')}>
+     <button type="button" class="lo-card__pick" aria-pressed=${selected ? 'true' : 'false'} title=${chess.name} onClick=${() => onPick(chess.chessId)}>
+       <span class="lo-card__art">
+-        <${Img} src=${chessAvatarUrl(m, chess)} fallback=${html`<span class="lo-card__glyph">${[...(chess.name || '?')][0]}</span>`} />
++        <${Img} src=${chessAvatarUrl(m, chess, data.get('local'))} fallback=${html`<span class="lo-card__glyph">${[...(chess.name || '?')][0]}</span>`} />
+         <${TierChip} tier=${chess.tier} size="sm" class="lo-card__tier" />
+       </span>
+       <span class="lo-card__id">
+         <span class="lo-card__name">${chess.name}</span>
+         <span class="lo-card__bonds">${(chess.bonds || []).map((b) => html`<${Img} key=${b} src=${bondIconUrl(m, b)} class="lo-card__bond"
+           alt=${data.lookup('bonds', b)?.name || b} fallback=${html`<i class="lo-bond__dot" title=${data.lookup('bonds', b)?.name || b}></i>`} />`)}</span>
+@@ -302,13 +302,12 @@ export function ModuleInfo({ m, golden, opt, potential = null }) {
+   </div>`;
+ }
+ 
+ /** The name of a chess's 补位 stand-in (data/backups.json), or null. */
+ const standInName = (chess) => data.get('backups')?.units?.[chess?.backup?.charId]?.name ?? null;
+ 
+-
+ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset, locked, level = 'normal', onLevel, notOwned = false }) {
+   const [statLevel, setStatLevel] = useState('elite'); // 局内数值: the 精锐 shows the chosen module's effect
+   const setLevel = onLevel;
+   const bodyRef = useRef(null);
+   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [chess?.chessId]);
+   if (!chess) return html`<aside class="lo-detail lo-detail--empty"><p class="t-dim">${t('没有符合条件的干员')}</p></aside>`;
+@@ -317,13 +316,13 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
+   const changed = choice.changed || opsOf(ops, chess.charId).changed;
+   const modOpt = opt.moduleOptions.find((x) => x.id === choice.module) || null;
+   const lv = (c) => c?.status?.skillLevel ?? '—';
+   return html`<aside class="lo-detail" aria-label=${t('{name} 调配', { name: chess.name })}>
+     <div class="lo-dhead">
+       <div class=${cx('lo-dhead__art', `lo-dhead__art--t${chess.tier}`)}>
+-        <${Img} src=${chessPortraitUrl(m, golden || chess)} fallback=${html`<${UnitThumb} kind="chess" id=${chess.chessId} size="lg" />`} />
++        <${Img} src=${chessPortraitUrl(m, golden || chess, data.get('local'))} fallback=${html`<${UnitThumb} kind="chess" id=${chess.chessId} size="lg" />`} />
+       </div>
+       <div class="lo-dhead__info">
+         <div class="lo-dhead__chips"><${TierChip} tier=${chess.tier} size="md" />
+           ${changed ? html`<span class="lo-badge lo-badge--changed">${t('已调整')}</span>` : html`<span class="lo-badge lo-badge--plain">${t('默认配置')}</span>`}</div>
+         <h2 class="lo-dhead__name">${chess.name}</h2>
+         <span class="lo-dhead__en">${chess.appellation || ''}</span>
+@@ -448,26 +447,12 @@ export function missingGameData(tab, status = data.status) {
+ export function importRefusal(kind, ready, status = data.status) {
+   if (!ready) return { text: t('干员数据仍在载入，请稍候再导入'), tone: 'warn' };
+   if (missingGameData(kind, status).length) return { text: t('导入失败：游戏数据没有载入，未做任何改动。请刷新页面；仍不行时，请检查广告拦截插件和网络'), tone: 'error' };
+   return null;
+ }
+ 
+-/**
+- * A loadout payload that carries `ops` (including empty `ops`) replaces 潜能 / 练度. 自选 operators are in that list
+- * and only backups.json names them, so the refusal is the 自选编队 one: chess.json and backups.json both loaded.
+- * Null when the payload has no `ops` (an older file leaves the current 练度 alone) or that data is ready (GitHub #538).
+- * @param {Record<string, any> | null | undefined} ops
+- * @param {boolean} ready
+- * @param {(name: string) => string} [status]
+- * @returns {{ text: string, tone: 'warn'|'error' } | null}
+- */
+-export function loadoutOpsImportRefusal(ops, ready, status = data.status) {
+-  if (ops == null) return null;
+-  return importRefusal('diy', ready, status);
+-}
+-
+ /** In place of a tab whose game data did not load (missingGameData): which files, and what to try (GitHub #173). */
+ export function DataMissing({ files }) {
+   const urls = files.map((name) => `/data/${DATA_FILES[name] || `${name}.json`}`);
+   return html`<div class="lo-loading lo-missing" role="alert" data-testid="loadout-data-missing">
+     <${Icon} name="warn" />
+     <b>${t('游戏数据没有载入')}</b>
+@@ -597,16 +582,12 @@ function LoadoutScreen({ st }) {
+       toast(applied ? (dropped ? t('已导入：{applied} 名干员未持有（另有 {dropped} 项无效，未导入）', { applied, dropped }) : t('已导入：{applied} 名干员未持有', { applied }))
+         : t('已导入：全部持有'), dropped ? 'warn' : 'success');
+       return;
+     }
+     const res = parseImport(ioText);
+     if (!res.ok) { toast(t('导入失败：{error}', { error: res.error }), 'error'); return; }
+-    // ops replaces 潜能 / 练度, including 自选 operators that only backups.json names. Missing data used to drop
+-    // them and still save, clearing a 练度 the file did not mean to erase (GitHub #538).
+-    const opsRefused = loadoutOpsImportRefusal(res.ops, ready);
+-    if (opsRefused) { toast(opsRefused.text, opsRefused.tone); return; }
+     // 0.2.2: a payload with `ops` replaces the 潜能 / 练度 too (an older export leaves them alone)
+     const opIds = res.ops ? cultivationCharIds(data.get('chess'), data.get('backups')) : null;
+     const r = applyLoadoutEntries(res.entries, getChess, res.ops ? { ops: res.ops, isOperator: (id) => opIds.has(id) } : {});
+     const { applied, dropped } = r;
+     const nOps = r.ops ?? 0;
+     // nothing survived sanitising (unknown chess, or every choice already the default): keep the current loadout
+@@ -690,13 +671,13 @@ function LoadoutScreen({ st }) {
+         <${Button} variant="ghost" size="sm" data-testid="ownership-import" disabled=${!ready} onClick=${openImport} title=${t('导入干员持有（粘贴或选择文件）')}>${t('导入')}<//>
+         <${Button} variant="secondary" size="sm" icon="refresh" data-testid="ownership-reset" disabled=${!nNotOwned} onClick=${ownAll}>${t('全部持有')}<//>
+       </div>` : html`<div class="lo-top__right">
+         ${inMatch && hasDeadline(infoDeadline) ? html`<${Countdown} deadline=${infoDeadline} size="sm" gauge=${false} label=${t('调配截止')} class="lo-deadline" />` : null}
+         ${syncText ? html`<span class=${cx('lo-sync', syncCls)} role="status">${t(syncText)}</span>` : null}
+         <span class="lo-count">${t('已调整')} <b class="num">${nChanged}</b><span class="num t-dim">/${roster.length}</span></span>
+-        <${Button} variant="ghost" size="sm" data-testid="loadout-export" disabled=${!nChanged && !Object.keys(st.ops || {}).length} onClick=${openExport} title=${t('导出当前调配（可复制或下载）')}>${t('导出')}<//>
++        <${Button} variant="ghost" size="sm" data-testid="loadout-export" disabled=${!nChanged} onClick=${openExport} title=${t('导出当前调配（可复制或下载）')}>${t('导出')}<//>
+         <${Button} variant="ghost" size="sm" data-testid="loadout-import" disabled=${!ready} onClick=${openImport} title=${t('导入调配（粘贴或选择文件）')}>${t('导入')}<//>
+         <${Button} variant="secondary" size="sm" icon="refresh" disabled=${!nChanged} onClick=${resetAll}>${t('全部恢复默认')}<//>
+       </div>`}
+     </header>
+     ${tab === 'diy'
+       ? html`<p class=${cx('lo-note', ownLocked && 'is-locked')}><${Icon} name="info" />${diyText}</p>`

@@ -1,0 +1,96 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\tools\local-extract\extract.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\tools\local-extract\extract.py', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\tools\\local-extract\\extract.py" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\tools\\local-extract\\extract.py"
+index f3e8110..129d18e 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\tools\\local-extract\\extract.py"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\tools\\local-extract\\extract.py"
+@@ -31,3 +31,4 @@ aklz4.py registers a decoder for it. This script pulls the art the web sources l
+-  - derived PBR maps for three.js (DERIVED): Unity stores the theme's normal map as two channels (BC5: RG = XY, B = 0)
+-    and metallic/gloss with the smoothness in A; the board renderer needs an RGB normal map (Z rebuilt) and a
+-    roughness map in G (1 − smoothness; metalness B = 0), written next to the source as <name>_rgb.png / _rough.png
++  - derived PBR maps for three.js (DERIVED): Unity stores the theme's normal map as two channels (BC5: RG = XY, B = 0;
++    DXT5nm in an older bundle: AG = XY, R = 1) and metallic/gloss with the smoothness in A; the board renderer needs
++    an RGB normal map (Z rebuilt) and a roughness map in G (1 − smoothness; metalness B = 0), written next to the
++    source as <name>_rgb.png / _rough.png
+@@ -35,0 +37,4 @@ aklz4.py registers a decoder for it. This script pulls the art the web sources l
++  - the official battlefield scenes (scenes.py SCENES: one prebuilt scene per 卫戍协议 battlefield) → scene/<stageId>/
++    scene.json + scene.bin + lightmap pages and scene/tex/ (the materials' albedo textures). The scene bundles ship
++    only while the season runs: they are read from the client when it has them, else from --scenes <dir> (default
++    .cache/official-scenes/*, filled by tools/local-extract/fetch_scenes.py)
+@@ -42,0 +48 @@ Usage:
++  .venv/bin/python tools/local-extract/extract.py --only scene [--scenes <dir of in-season bundles>]
+@@ -56,0 +63 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
++import scenes  # noqa: E402  (the battlefield scene table and exporter; imports UnityPy only when it runs)
+@@ -151,2 +158,2 @@ TOKEN_SPINE_SUB = 'spine/token'
+-# (BC5) normal map into an RGB tangent-space map; 'rough_from_gloss' turns Unity's metallic/gloss map (smoothness in
+-# A) into a roughness (G) / metalness (B) map. Written after the job that exported the source texture.
++# (BC5 or DXT5nm) normal map into an RGB tangent-space map; 'rough_from_gloss' turns Unity's metallic/gloss map
++# (smoothness in A) into a roughness (G) / metalness (B) map. Written after the job that exported the source texture.
+@@ -403,4 +410,7 @@ def derive_normal_rg(img):
+-    """RGB tangent-space normal map from a two-channel (BC5: R = X, G = Y, B unused) one: Z rebuilt per pixel."""
+-    from PIL import Image
+-    rgb = img.convert('RGB')
+-    r, g, _ = rgb.split()
++    """RGB tangent-space normal map from Unity's two-channel one: Z rebuilt per pixel. X and Y are read the way Unity's
++    shaders unpack them (UnityCG.cginc UnpackNormalmapRGorAG: x = R · A, y = G), which covers both layouts a client
++    build holds: BC5 (R = X, G = Y, B unused, no alpha → A = 1) and DXT5nm (R = 1, G = Y, A = X — the map_autochess
++    bundle before the client update of 2026-10)."""
++    from PIL import Image, ImageChops
++    r, g, _, a = img.convert('RGBA').split()
++    x = ImageChops.multiply(r, a)  # exact when either factor is 255
+@@ -408,2 +418,2 @@ def derive_normal_rg(img):
+-    z = bytes(table[(x << 8) | y] for x, y in zip(r.tobytes(), g.tobytes()))
+-    return Image.merge('RGB', (r, g, Image.frombytes('L', rgb.size, z)))
++    z = bytes(table[(xb << 8) | yb] for xb, yb in zip(x.tobytes(), g.tobytes()))
++    return Image.merge('RGB', (x, g, Image.frombytes('L', img.size, z)))
+@@ -720,0 +731,33 @@ def write_spine(objects, sda, sub, name, out_root, manifest, log):
++def scene_ids(only):
++    """The stage ids of scenes.SCENES that run under --only (all with no prefix, `scene` or a parent of it)."""
++    return spine_ids(only, scenes.SCENE_SUB, [sid for sid, _deps in scenes.SCENES])
++
++
++def scene_roots(ab_root, extra):
++    """AB roots searched for the scene bundles, in order: the client, --scenes dirs, then every version kept under
++    .cache/official-scenes (newest name first)."""
++    kept = ROOT / '.cache' / 'official-scenes'
++    cached = sorted((p for p in kept.iterdir() if p.is_dir()), reverse=True) if kept.is_dir() else []
++    return [Path(ab_root), *[Path(p) for p in extra], *cached]
++
++
++def export_scenes(ab_root, out_root, manifest, log, ids, roots):
++    """scenes.SCENES (the ids in `ids`) → scene/<stageId>/ (scenes.export_scene); a stage without a scene bundle in
++    any root is skipped."""
++    root = Path(ab_root)
++    shader_deps = dep_bundles(root, {'Material'})
++    n = 0
++    for sid, deps in scenes.SCENES:
++        if sid not in ids:
++            continue
++        src = scenes.find_scene(sid, roots)
++        if src is None:
++            log(f'skip (no scene bundle: off-season client, see --scenes) {scenes.scene_bundle(sid)}')
++            continue
++        try:
++            n += scenes.export_scene(sid, deps, src, root, out_root, manifest, log, material_info, shader_deps)
++        except Exception as e:  # one broken scene must not stop the others
++            log(f'FAIL scene {sid}: {e}')
++    return n
++
++
+@@ -800,0 +844,3 @@ def main():
++    ap.add_argument('--scenes', action='append', default=[], metavar='DIR',
++                    help='an AB root holding the battlefield scene bundles of an in-season version (repeatable; '
++                         'searched after --game and before .cache/official-scenes/*)')
+@@ -815 +861,4 @@ def main():
+-                          'tokenSpines': {'bundles': TOKEN_PACKS, 'sub': TOKEN_SPINE_SUB, 'ids': TOKEN_SPINES}},
++                          'tokenSpines': {'bundles': TOKEN_PACKS, 'sub': TOKEN_SPINE_SUB, 'ids': TOKEN_SPINES},
++                          'scenes': {'sub': scenes.SCENE_SUB, 'tex': scenes.TEX_SUB,
++                                     'stages': [{'id': sid, 'bundle': scenes.scene_bundle(sid), 'deps': deps}
++                                                for sid, deps in scenes.SCENES]}},
+@@ -828 +877,2 @@ def main():
+-    if not jobs and not enemy_ids and not token_ids:
++    stage_ids = scene_ids(args.only)
++    if not jobs and not enemy_ids and not token_ids and not stage_ids:
+@@ -840,0 +891,2 @@ def main():
++    if stage_ids:
++        total += export_scenes(ab_root, out_root, manifest, print, stage_ids, scene_roots(ab_root, args.scenes))

@@ -1,0 +1,511 @@
+{
+ "centroids": [
+  [
+   147.62903554317907,
+   171.92073940934992,
+   175.3478028585965
+  ],
+  [
+   200.87754763961536,
+   177.56595390057316,
+   142.64362077261492
+  ],
+  [
+   222.92733360973037,
+   190.43796395446574,
+   234.58861999799845
+  ]
+ ],
+ "colourway_names": [
+  "silver",
+  "gold",
+  "prismatic"
+ ],
+ "mod_icon_counts": {
+  "prismatic": 138,
+  "silver": 113,
+  "gold": 157
+ },
+ "mismatched": [
+  {
+   "group": "enemyHexes",
+   "rarity": "silver",
+   "name": "补给充盈",
+   "icon": "breadSandwichRune",
+   "looks": "prismatic",
+   "rgb": [
+    224,
+    192,
+    239
+   ],
+   "margin": 95.1,
+   "twin": "byproductRune",
+   "sim": 0.996
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "精锐预兆",
+   "icon": "upgradeRune",
+   "looks": "prismatic",
+   "rgb": [
+    230,
+    196,
+    230
+   ],
+   "margin": 83.8,
+   "twin": "brokenGoldenCrownRune",
+   "sim": 0.998
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "坚壁",
+   "icon": "tanksShieldRune",
+   "looks": "gold",
+   "rgb": [
+    202,
+    178,
+    144
+   ],
+   "margin": 61.1,
+   "twin": "attackDefenseUnityRune",
+   "sim": 0.999
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "击倒馈赠",
+   "icon": "deathHarvestRune",
+   "looks": "gold",
+   "rgb": [
+    206,
+    184,
+    150
+   ],
+   "margin": 52.8,
+   "twin": "bodySlamUpgradeRune",
+   "sim": 0.996
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "战损回收",
+   "icon": "beginningAndEndRune",
+   "looks": "gold",
+   "rgb": [
+    206,
+    184,
+    151
+   ],
+   "margin": 52.6,
+   "twin": "searingAttackRune",
+   "sim": 0.998
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "不屈余烬",
+   "icon": "rekindleRune",
+   "looks": "gold",
+   "rgb": [
+    206,
+    184,
+    151
+   ],
+   "margin": 52.6,
+   "twin": "searingAttackRune",
+   "sim": 0.998
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "精准穿透",
+   "icon": "piercingThreadRune",
+   "looks": "gold",
+   "rgb": [
+    207,
+    184,
+    151
+   ],
+   "margin": 52.3,
+   "twin": "juggernautUpgradeRune",
+   "sim": 0.999
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "层数转移",
+   "icon": "overflowRune",
+   "looks": "gold",
+   "rgb": [
+    218,
+    194,
+    160
+   ],
+   "margin": 43.7,
+   "twin": "soulCallingRune",
+   "sim": 1.0
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "传承",
+   "icon": "bigHammerRune",
+   "looks": "gold",
+   "rgb": [
+    176,
+    151,
+    118
+   ],
+   "margin": 24.2,
+   "twin": "carefulSelectionRune",
+   "sim": 0.998
+  },
+  {
+   "group": "enemyHexes",
+   "rarity": "silver",
+   "name": "疾行",
+   "icon": "extremeSpeedRune",
+   "looks": "prismatic",
+   "rgb": [
+    219,
+    195,
+    234
+   ],
+   "margin": 89.8,
+   "twin": null,
+   "sim": 0.843
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "盟约回响",
+   "icon": "echoRune",
+   "looks": "prismatic",
+   "rgb": [
+    222,
+    174,
+    252
+   ],
+   "margin": 83.3,
+   "twin": null,
+   "sim": 0.836
+  },
+  {
+   "group": "enemyHexes",
+   "rarity": "silver",
+   "name": "尖牙",
+   "icon": "venomousBladeRune",
+   "looks": "prismatic",
+   "rgb": [
+    214,
+    172,
+    252
+   ],
+   "margin": 75.4,
+   "twin": null,
+   "sim": 0.785
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "免费刷新",
+   "icon": "ultimateRefreshRune",
+   "looks": "prismatic",
+   "rgb": [
+    224,
+    200,
+    221
+   ],
+   "margin": 69.3,
+   "twin": null,
+   "sim": 0.809
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "源石红利",
+   "icon": "ancientWineRune",
+   "looks": "gold",
+   "rgb": [
+    217,
+    194,
+    160
+   ],
+   "margin": 44.5,
+   "twin": null,
+   "sim": 0.867
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "技能层涌",
+   "icon": "chargeUpRune",
+   "looks": "gold",
+   "rgb": [
+    218,
+    195,
+    160
+   ],
+   "margin": 43.4,
+   "twin": null,
+   "sim": 0.8
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "silver",
+   "name": "战备津贴",
+   "icon": "piggyBankRune",
+   "looks": "gold",
+   "rgb": [
+    176,
+    151,
+    117
+   ],
+   "margin": 23.5,
+   "twin": null,
+   "sim": 0.839
+  },
+  {
+   "group": "enemyHexes",
+   "rarity": "gold",
+   "name": "狂攻",
+   "icon": "berserkRune",
+   "looks": "silver",
+   "rgb": [
+    148,
+    172,
+    175
+   ],
+   "margin": 61.8,
+   "twin": "corpseExplosionRune",
+   "sim": 0.999
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "gold",
+   "name": "量产线",
+   "icon": "automationUpgradeRune",
+   "looks": "silver",
+   "rgb": [
+    145,
+    169,
+    173
+   ],
+   "margin": 60.0,
+   "twin": "borrowedTimeUpgradeRune",
+   "sim": 1.0
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "gold",
+   "name": "精锐训练",
+   "icon": "heavyHitterRune",
+   "looks": "silver",
+   "rgb": [
+    149,
+    173,
+    177
+   ],
+   "margin": 59.3,
+   "twin": "getExcitedRune",
+   "sim": 1.0
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "gold",
+   "name": "反击装甲",
+   "icon": "adamantRune",
+   "looks": "silver",
+   "rgb": [
+    139,
+    165,
+    168
+   ],
+   "margin": 55.0,
+   "twin": "twilightVeilRune",
+   "sim": 0.997
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "gold",
+   "name": "特质扩散",
+   "icon": "doubleExistenceRune",
+   "looks": "prismatic",
+   "rgb": [
+    219,
+    172,
+    249
+   ],
+   "margin": 79.8,
+   "twin": null,
+   "sim": 0.837
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "gold",
+   "name": "先锋之势",
+   "icon": "arcanePunchRune",
+   "looks": "prismatic",
+   "rgb": [
+    214,
+    172,
+    252
+   ],
+   "margin": 76.1,
+   "twin": null,
+   "sim": 0.831
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "gold",
+   "name": "装甲破坏",
+   "icon": "boneBreakUpgradeRune",
+   "looks": "silver",
+   "rgb": [
+    148,
+    172,
+    175
+   ],
+   "margin": 61.5,
+   "twin": null,
+   "sim": 0.878
+  },
+  {
+   "group": "enemyHexes",
+   "rarity": "gold",
+   "name": "虫群",
+   "icon": "badgeBrothersRune",
+   "looks": "silver",
+   "rgb": [
+    153,
+    176,
+    180
+   ],
+   "margin": 51.7,
+   "twin": null,
+   "sim": 0.81
+  },
+  {
+   "group": "enemyHexes",
+   "rarity": "gold",
+   "name": "攻城训练",
+   "icon": "thornmailRune",
+   "looks": "silver",
+   "rgb": [
+    132,
+    158,
+    161
+   ],
+   "margin": 48.9,
+   "twin": null,
+   "sim": 0.862
+  },
+  {
+   "group": "enemyHexes",
+   "rarity": "gold",
+   "name": "血怒",
+   "icon": "bloodPactRune",
+   "looks": "silver",
+   "rgb": [
+    155,
+    179,
+    182
+   ],
+   "margin": 47.1,
+   "twin": null,
+   "sim": 0.828
+  },
+  {
+   "group": "enemyHexes",
+   "rarity": "prismatic",
+   "name": "深渊灌注",
+   "icon": "doomsdayRune",
+   "looks": "gold",
+   "rgb": [
+    201,
+    178,
+    145
+   ],
+   "margin": 58.9,
+   "twin": "quantumComputingRune",
+   "sim": 1.0
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "prismatic",
+   "name": "盟约裂变",
+   "icon": "omegaRune",
+   "looks": "gold",
+   "rgb": [
+    202,
+    179,
+    146
+   ],
+   "margin": 58.1,
+   "twin": "quantumComputingRune",
+   "sim": 0.998
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "prismatic",
+   "name": "盟约共鸣",
+   "icon": "trinityRune",
+   "looks": "gold",
+   "rgb": [
+    196,
+    172,
+    138
+   ],
+   "margin": 53.7,
+   "twin": "queenHex",
+   "sim": 0.999
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "prismatic",
+   "name": "二次抽取",
+   "icon": "astralBodyRune",
+   "looks": "gold",
+   "rgb": [
+    206,
+    181,
+    146
+   ],
+   "margin": 58.1,
+   "twin": null,
+   "sim": 0.855
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "prismatic",
+   "name": "共鸣协议",
+   "icon": "allForYouRune",
+   "looks": "gold",
+   "rgb": [
+    207,
+    183,
+    149
+   ],
+   "margin": 54.7,
+   "twin": null,
+   "sim": 0.856
+  },
+  {
+   "group": "playerHexes",
+   "rarity": "prismatic",
+   "name": "不灭壁垒",
+   "icon": "undyingUpgradeRune",
+   "looks": "silver",
+   "rgb": [
+    154,
+    178,
+    181
+   ],
+   "margin": 49.4,
+   "twin": null,
+   "sim": 0.819
+  }
+ ]
+}

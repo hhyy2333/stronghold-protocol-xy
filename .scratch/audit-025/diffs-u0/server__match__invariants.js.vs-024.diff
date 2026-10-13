@@ -1,0 +1,13 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\match\invariants.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\server\match\invariants.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\invariants.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\invariants.js"
+index 026d094..562a2fb 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\invariants.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\invariants.js"
+@@ -6,2 +6 @@
+-//   pool     raw balance ≤ cap and raw balance + Σ copies held by pieces == cap (public availability is clamped at zero) per base chess; non-pool chess hold 0 copies;
+-//            every capped shop item is held by at most its cap (normal occupies 1, upgraded 2; effect-only items have no cap)
++//   pool     0 ≤ left ≤ cap and left + Σ copies held by pieces == cap per base chess; non-pool chess hold 0 copies;
+@@ -102 +101 @@ export function collectViolations(m, { limit = 25 } = {}) {
+-        if (!Array.isArray(p.items) || p.items.length > gd.equipPerChess) fail(`${id}: ${p.id} carries ${p.items && p.items.length} items`);
++        if (!Array.isArray(p.items) || p.items.length > (typeof ps.equipCap === 'function' ? ps.equipCap() : gd.equipPerChess)) fail(`${id}: ${p.id} carries ${p.items && p.items.length} items`);

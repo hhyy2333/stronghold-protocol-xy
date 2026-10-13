@@ -1,0 +1,118 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\shared\protocol.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\shared\protocol.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\shared\\protocol.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\shared\\protocol.js"
+index 8cd9967..cbf0881 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\shared\\protocol.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\shared\\protocol.js"
+@@ -4 +4 @@
+-import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, EMOTES, GEO } from './constants.js';
++import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, EMOTES, GEO, isRoomVisibility } from './constants.js';
+@@ -6,0 +7,2 @@ import { diySlotIds, validateDiyPicks } from './diy.js';
++import { HEX_MAX_OFFER } from './hextech.js';
++import { MOD_IDS, isModId } from './mods.js';
+@@ -263,0 +266,11 @@ export function checkNotOwned(list, getChess) {
++// ---- 内容 mod (shared/mods.js): the room's switches -------------------------------------------------------------
++
++/**
++ * A mod list on the wire (`room.create.mods` / `room.setMods.mods` / `room.state.mods`): registered ids only, no
++ * duplicates, at most one entry per registered mod. An unknown id is refused here, not silently dropped, so a typo
++ * reaches the player as BAD_MSG instead of quietly leaving a mod on. An absent list means "the defaults" (every mod on)
++ * and is expressed by `$optional` on `room.create`.
++ */
++export const isModList = (v) => Array.isArray(v) && v.length <= MOD_IDS.length
++  && v.every(isModId) && new Set(v).size === v.length;
++
+@@ -370,0 +384,3 @@ const isDir = (v) => DIRS.includes(v);
++/** Longest `room.chat.text` accepted (UTF-16 units; the lobby strips control characters and cuts to this too). */
++export const CHAT_MAX_LEN = 80;
++
+@@ -384 +400,5 @@ export const C2S = {
+-  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v) },
++  // `test` (测试场, the owner's request of 2026-10-11): create the room as a TEST FIELD — a room flag like `mods`, chosen by
++  // the host at creation and fixed for its lifetime (server/lobby.js Room.test). In a test field the 协议源石 draft never
++  // runs and the host may grant themselves any 协议源石 and any amount of funds from the in-match test panel
++  // (`g.testHex` / `g.testHexClear` / `g.testFunds`). Absent = a normal room (every existing behaviour).
++  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v), mods: isModList, test: isBool, $optional: ['mods', 'test'] },
+@@ -386,0 +407,18 @@ export const C2S = {
++  // 房间一览 / 多人匹配 (lobby room browser — a remake feature, DESIGN §30). The visibility rule of the whole feature:
++  // `room.create` above deliberately has NO visibility field, so a new room is ALWAYS 私密 (shared/constants.js
++  // DEFAULT_ROOM_VISIBILITY) and is listed nowhere until its host flips it here. `room.setVisibility` is host-only,
++  // refused once the match started (ROOM_STARTED, like every other room option), and the switch is immediate: the lobby
++  // answers with room.state AND pushes the recomputed list to every connected client (lobby.stats), so a room appears /
++  // disappears in everyone's 房间一览 without a refresh.
++  'room.setVisibility': { visibility: (v) => isRoomVisibility(v) },
++  // room.list {}: the 房间一览 snapshot for the requester — the PUBLIC co-op rooms only (a 私密 room is never in here,
++  // whatever the asker's id), plus the online / room / match counters of the whole server. The reply is `room.list`;
++  // the same shape arrives unprompted as the `lobby.stats` push whenever the set changes (see S2C below).
++  'room.list': {},
++  // 多人匹配 (the lobby's 「匹配在线博士」 button): put me in a co-op room of this difficulty NOW — an existing LISTED room
++  // with a free seat first (the fullest one wins: the seats fill), else a fresh PUBLIC room this player hosts. 私密 rooms
++  // are invisible to it (they are not listed), while the room it creates is public because the player explicitly asked
++  // to be matched with strangers — that request IS the consent the private default exists to require
++  // (shared/constants.js ROOM_VISIBILITY). Refused while the player's own room is in a match (ROOM_STARTED), like
++  // room.create; leaving their current LOBBY room is implicit, exactly as room.create / room.join do it.
++  'room.quickmatch': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v) },
+@@ -388,0 +427,3 @@ export const C2S = {
++  // 内容 mod (shared/mods.js): the host switches a room's optional content on / off. Sends the whole list (the enabled
++  // ids); every player of the room then plays the same content. Refused once the match started (ROOM_STARTED).
++  'room.setMods': { mods: isModList },
+@@ -413,0 +455,4 @@ export const C2S = {
++  // free-text room chat (in the lobby and during a match): one message per second per session, the text is stripped of
++  // control characters and cut to 80 chars by the lobby (server/lobby.js chat), so the schema only bounds the wire
++  // (a longer text is refused here, not truncated); a spectator seat may chat too
++  'room.chat': { text: (v) => isStr(v, CHAT_MAX_LEN) && v.trim().length > 0 },
+@@ -435,0 +481 @@ export const C2S = {
++  // 教鞭 (0.2.2): the personal 战术特训 choice carries its offer id; absent ⇒ the public draft (g.choice)
+@@ -436,0 +483,32 @@ export const C2S = {
++  // 海克斯 (DESIGN §29): the player's pick among their own offered hexes, and the one reroll of that offer. A parallel
++  // draft — everyone is offered their three at the same time, so unlike g.choice there is no shared pool, no turn order
++  // and no `SOLD_OUT`. The index is bounded by HEX_MAX_OFFER (the largest `format.offer` a draft may configure), NOT by 2:
++  // this schema is static and carries no match data, so pinning it to the default 3 would refuse a configured 4th card
++  // before the match could see it. `MatchHexDraft.pickHex` is the real bound (`idx >= offer.length` → BAD_TARGET).
++  'g.hex': { idx: (v) => isInt(v, 0, HEX_MAX_OFFER - 1) },
++  'g.hexReroll': {},
++  // 测试场 (the owner's request of 2026-10-11): the in-match test panel of a room created with `room.create.test`. The
++  // intents below are every one refused outside a test field (ERR.WRONG_PHASE) and only for the requesting player:
++  //   g.testFunds { amount }    add that many funds (1…1,000,000; the panel buttons send 10 / 100 / 1000)
++  //   g.testHex { hexId }       grant one player 协议源石 of data/hextech.json `playerHexes` (repeatable: the immediate
++  //                             `onPick` part runs every time, the persistent EffectRef is deduplicated)
++  //   g.testHexClear {}         drop every 协议源石 the requestER owns (`hex:<id>` EffectRefs)
++  //   g.testEnemyHex { hexId }  add one ENEMY 协议源石 of `enemyHexes` to `Match.enemyHexes` — the match-global enemy side
++  //                             every field then fights with (the `mods` half rides the spawn list, the `verb` scripts
++  //                             ride `flags.enemyHexIds`). The enemy side is shared state, so this is accepted in a room
++  //                             with exactly one human seat (a solo test field, which is the only shape the lobby creates)
++  //   g.testEnemyHexClear {}    drop every enemy 协议源石 (the enemy fights unmodified again)
++  'g.testFunds': { amount: (v) => isInt(v, 1, 1e6) },
++  'g.testHex': { hexId: isId },
++  'g.testHexClear': {},
++  'g.testEnemyHex': { hexId: isId },
++  'g.testEnemyHexClear': {},
++  // 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12; the reference mod 休整期切换技能模组mod): change ONE
++  // operator's equipped skill / elite module between rounds. Unlike room.loadout (a whole-roster replacement, INFO_CHECK
++  // only) this is a per-operator increment applied on top of the seat's current 配发, so one click never clears another
++  // operator's choice — and it covers 自选编队 pieces too (the reference mod's whole point: upstream only allowed it for
++  // ordinary chess), which the server turns into an update of that slot's pick (player/diy.js setDiyPick).
++  //   entries = { [baseChessId]: { skill?: skillIndex, module?: uniEquipId | 'none' } } — 1…8 operators
++  // Accepted only in PREP, before that player is 已准备 (server/match/match/platform.js setPrepLoadout; anything else is
++  // WRONG_PHASE). A prototype 自选 piece carries a fixed skill / module and is refused (BAD_TARGET).
++  'g.loadout': { entries: isLoadoutEntries },
+@@ -473,0 +552,19 @@ export const S2C = [
++  // room.chat { playerId, name, seat, isSpectator, text, at } — both in the lobby and during a match, sender included
++  'room.chat',
++  // 房间一览 / 在线人数 (DESIGN §30): the answer to room.list AND the push every connected session gets when the set of
++  // listed rooms or the counters change — `{ t:'lobby.stats', online, rooms, matches, listedTotal, rooms:[RoomSummary] }`.
++  // `RoomSummary` = { code, mode, difficulty, visibility:'public', hostName, humans, seats, spectators, inMatch, test,
++  // mods, createdAt } — a PUBLIC room only: a 私密 room is in no frame of this type, for anyone. The push is the reason
++  // the 房间一览 and the 在线人数 badge are live without a page refresh.
++  'lobby.stats',
++  // `match.status { status:'idle'|'searching'|'found', mode, difficulty, elapsed, matched, target, roomCode? }` — the
++  // answer to room.quickmatch: `searching`… while the search runs (the reply itself is the `ok`, the progress is this
++  // push), `found { roomCode }` the moment the player is seated. Sent to the searching session only.
++  'match.status',
++  // announce { id, text, at, seq } — the 全体公告 (shared/announce.js): ONE operator-authored line pushed to EVERY
++  // connected session, the lobby and a running match alike (server/lobby.js `announce` sends it over the session
++  // registry, never a room). PERSISTENT: the current line is stored (server/announceStore.js) and replayed to every
++  // session that connects afterwards, so a late arrival still sees it. `text: ''` is the operator WITHDRAWING the
++  // announcement (the line comes down everywhere). A client that does not know the type ignores the frame
++  // (public/js/net.js emits by `t`), so this is backward compatible with an older page.
++  'announce',

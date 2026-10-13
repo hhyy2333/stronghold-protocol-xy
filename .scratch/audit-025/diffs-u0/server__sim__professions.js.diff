@@ -1,0 +1,27 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\professions.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\professions.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\professions.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\professions.js"
+index 4544581..14187e3 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\professions.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\professions.js"
+@@ -23,0 +24,3 @@
++//   funnelMul(battle, unit, target) → number (drone ramp, separate from the caster's attack multiplier)
++//   funnelBodyHits n (body hits kept beside that ramp. Omit it for one. 0: drone-only, ramp folded into the hits,
++//                     no body — 荒芜拉普兰德 S2. >0: that many body hits — 至简 S2. Not keyed off the skill flag)
+@@ -388,2 +391,11 @@ const installFunnel = (battle, unit) => {
+-  unit.trait.funnelTarget = null;
+-  unit.trait.funnelScale = unit.profile.funnel?.init ?? 0.2;
++  // PRTS 分支特性信息 驭械术师: changing the target, or redeploying, resets the drone ramp at once, even against the
++  // same living enemy. The per-target map (耶拉 / 至简) resets with it. A free move (moveRedeploy, the same carry as a
++  // 秘术师's stored energy and 乌尔比安 S3) keeps the ramp. An in-flight drone still applies the ramp it computes on
++  // impact, so a shot launched before the reset can step the new ramp.
++  const reset = () => {
++    unit.trait.funnelTarget = null;
++    unit.trait.funnelScale = unit.profile.funnel?.init ?? 0.2;
++    unit.trait.funnelMap?.clear();
++  };
++  reset();
++  battle.on('deploy', (ctx) => { if (ctx.unit === unit && !ctx.move) reset(); }, { owner: unit });
+@@ -511 +523 @@ export const SUB = Object.freeze({
+-    dmgMul: (battle, unit, target) => {
++    funnelMul: (battle, unit, target) => {

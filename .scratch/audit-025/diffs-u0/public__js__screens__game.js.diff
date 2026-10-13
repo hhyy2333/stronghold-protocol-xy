@@ -1,0 +1,29 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\screens\game.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\js\screens\game.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\screens\\game.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\screens\\game.js"
+index 165eb51..4e1bdae 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\screens\\game.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\screens\\game.js"
+@@ -87 +87 @@ import { openGuide } from '../ui/guide.js';
+-import { actions } from '../ui/gameActions.js';
++import { actions, onRefreshBusy } from '../ui/gameActions.js';
+@@ -185,0 +186,4 @@ function MatchScreen() {
++  // GitHub #501: a g.refresh is still waiting for its reply — the shop's 刷新 button dims while it is (gameActions.js
++  // single-flights the intent; the R hotkey is dropped by the same guard)
++  const [refreshBusy, setRefreshBusy] = useState(false);
++  useEffect(() => onRefreshBusy(setRefreshBusy), []);
+@@ -430,0 +435 @@ function MatchScreen() {
++        audio.stopBondCue('battle');
+@@ -762 +767,2 @@ function MatchScreen() {
+-    if (activeBonds > prevActive.current && phase === PHASE.PREP) audio.sfx('bondUp', { volume: 0.7 });
++    // a layer gain of the same update already started the cue (audio.bondCueRecent): keep it, don't restart it
++    if (activeBonds > prevActive.current && phase === PHASE.PREP && !audio.bondCueRecent('prep')) audio.sfx('bondUp', { volume: 0.7, scope: 'prep' });
+@@ -1001 +1007 @@ function MatchScreen() {
+-        if (e.unitId != null || e.unit) { setDetail({ kind: 'unit', unit: e.unit || null, unitId: e.unitId, uid: e.uid }); return; }
++        if (e.unitId != null || e.unit) { setDetail({ kind: 'unit', unit: e.unit || null, unitId: e.unitId, uid: e.uid, prepMapChar: e.prepMapChar === true }); return; }
+@@ -1401 +1407 @@ function MatchScreen() {
+-  // an own board piece in prep (its loadout / stand-in record, its facing); in battle or on a scouted board an ally
++  // an own board piece or read-only prepared map character in prep; in battle or on a scouted board an ally
+@@ -1471 +1477 @@ function MatchScreen() {
+-      ${showShop ? html`<${ShopBar} priv=${priv} editable=${editable} collapsed=${collapsed} onCollapse=${setCollapsed}
++      ${showShop ? html`<${ShopBar} priv=${priv} editable=${editable} collapsed=${collapsed} refreshBusy=${refreshBusy} onCollapse=${setCollapsed}

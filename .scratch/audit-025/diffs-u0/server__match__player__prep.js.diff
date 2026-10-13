@@ -1,0 +1,19 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\match\player\prep.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\match\player\prep.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\player\\prep.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\player\\prep.js"
+index 3728515..f794eb5 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\player\\prep.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\player\\prep.js"
+@@ -36 +36 @@ export class PlayerPrep {
+-    } else {
++    } else if (slot.kind === 'chess') {
+@@ -39,4 +39,2 @@ export class PlayerPrep {
+-      const base = this.gd.baseIdOf(slot.id);
+-      const need = rec.isGolden ? this.gd.goldenCopies : 1;
+-      const pool = this.poolOf(base); // the shared pool, or this player's 自选 stock
+-      if (pool.has(base) && pool.left(base) < need) return fail(ERR.SOLD_OUT);
++      // Owner decision 2026-10-11 (#498): already displayed operator rewards survive stock exhaustion.
++      // acquireChess records the deficit. Item rewards above still require itemPool.canGain.
+@@ -44 +42 @@ export class PlayerPrep {
+-    }
++    } else return fail(ERR.BAD_TARGET);

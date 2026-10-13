@@ -1,0 +1,19 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\shared\\protocol.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\shared\\protocol.js"
+index 8cd9967..9f48e6f 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\shared\\protocol.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\shared\\protocol.js"
+@@ -469,12 +469,14 @@ export const C2S = {
+ 
+ // Server → client message types (documentation + client dispatch table keys).
+ export const S2C = [
+   'welcome', 'ok', 'error', 'pong',
+   'room.state', 'room.closed',
+   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
++  // m.layer { playerId, bondId, add } — own live prep layer gain; ephemeral, never replayed on resync.
++  'm.layer',
+   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)
+   'm.unitStats',
+   // client-side combat (DESIGN §14): b.start { battleId, fieldId, kind, spec, authoritative, startAt, serverNow, elapsed,
+   // speed, watch? } · b.pool { hp, max, teamLp, acked: { [fieldId]: cumulative boss damage counted } } ·
+   // b.end { battleId, fieldId, reason }
+   'b.start', 'b.pool', 'b.end',

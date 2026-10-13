@@ -1,0 +1,13 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\i18n\zh-TW.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\i18n\zh-TW.json', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\i18n\\zh-TW.json" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\i18n\\zh-TW.json"
+index 88ed42d..26ea8df 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\i18n\\zh-TW.json"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\i18n\\zh-TW.json"
+@@ -147,0 +148 @@
++  "项目仓库": "專案儲存庫",
+@@ -161,0 +163,2 @@
++  "官方伤害数字": "官方傷害數字",
++  "只显示达到官方暴击条件的红色数字。关闭时仍显示每一次命中。": "只顯示達到官方暴擊條件的紅色數字。關閉時仍顯示每一次命中。",
+@@ -708,0 +712 @@
++  "正在刷新…": "正在更新…",

@@ -1,0 +1,32 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\items\battle.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\content\items\battle.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\items\\battle.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\items\\battle.js"
+index a6daf97..6c5dd94 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\items\\battle.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\items\\battle.js"
+@@ -36 +36 @@
+-// Proc damage dealt by items carries the tag 'item' and never re-triggers item procs.
++// Proc damage dealt by items carries the tag 'item'; damage-producing item riders exclude it to avoid recursion.
+@@ -391,0 +392,9 @@ function onAttackEnemies(S, u, fn) {
++/** Actual carrier damage to enemies, including DoT/skill/splash. Element gauge fill and HP loss are not damage. */
++function onDamageEnemies(S, u, fn) {
++  S.on('damaged', (c) => {
++    if (c.source !== u || c.type === 'element' || isHpLoss(c.dmg) || !(c.amount > 0)
++      || !c.target || c.target.side !== 'enemy' || !hasHp(c.target)) return;
++    fn(c.target, c);
++  });
++}
++
+@@ -639 +648,2 @@ const BY_ITEM = {
+-  // 催泪瓦斯: on attack prob ⇒ 1 麻痹 stack
++  // PRTS 盟约记录 corrects both items' "攻击时" to "造成伤害时" (#489); no attack event is required.
++  // 催泪瓦斯: on damage prob ⇒ 1 麻痹 stack
+@@ -643 +653 @@ const BY_ITEM = {
+-    if (pr > 0) onAttackEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'palsy', { value: 1, source: u }); });
++    if (pr > 0) onDamageEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'palsy', { value: 1, source: u }); });
+@@ -645 +655 @@ const BY_ITEM = {
+-  // 谢拉格不融冰: on attack prob ⇒ 寒冷 `cold` s
++  // 谢拉格不融冰: on damage prob ⇒ 寒冷 `cold` s
+@@ -650 +660 @@ const BY_ITEM = {
+-    if (pr > 0 && d > 0) onAttackEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'cold', { duration: d, source: u }); });
++    if (pr > 0 && d > 0) onDamageEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'cold', { duration: d, source: u }); });

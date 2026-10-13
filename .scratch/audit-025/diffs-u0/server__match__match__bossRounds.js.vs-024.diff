@@ -1,0 +1,33 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\match\match\bossRounds.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\server\match\match\bossRounds.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\bossRounds.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\match\\bossRounds.js"
+index e0bc924..2ac74f3 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\bossRounds.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\match\\bossRounds.js"
+@@ -10,0 +11 @@ import { buildBossWave, bountySpawns } from '../waves.js';
++import { applyEnemyHexes, enemyHexMods, bountyMultiplier } from '../hextech.js';
+@@ -74,2 +75,4 @@ export class MatchBoss {
+-      // one spawn list per field, shared by the field's players' onBattleStart handlers (edit it in place)
+-      const spawns = wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined }));
++      // one spawn list per field, shared by the field's players' onBattleStart handlers (edit it in place); the enemy
++      // side's 海克斯 multipliers fold in here (DESIGN §29 — the leader's own HP stays the pool)
++      const hexMods = enemyHexMods(this);
++      const spawns = applyEnemyHexes(wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined })), hexMods);
+@@ -102,2 +105,3 @@ export class MatchBoss {
+-        // the round's enemy effects for the leaders' mid-fight summons (server/sim/content/bosses.js summonMods)
+-        flags: { layerGainsEnabled: false, ...this.gd.dp, enemyScale: this.gd.enemyScale(this.round) },
++        // the round's enemy effects for the leaders' mid-fight summons (server/sim/content/bosses.js summonMods), plus
++        // the persisted enemy 海克斯 multipliers (DESIGN §29)
++        flags: { layerGainsEnabled: false, ...this.gd.dp, enemyScale: this.gd.enemyScale(this.round), enemyMods: hexMods },
+@@ -416,2 +420,5 @@ export class MatchBoss {
+-    let coins = Math.max(0, Math.trunc(Number(pp.coins) || 0));
+-    if (perfect) for (const b of ps.bounties) if (b.card.payout === 'perfect') coins += b.card.coin;
++    // kill-bounty coins and — when `perfect` — the coins of every perfect-payout bounty (战术特训); the whole bounty
++    // channel is then ×悬赏倍增 (DESIGN §29 third batch), exactly as SETTLE does for normal rounds
++    let bounty = Math.max(0, Math.trunc(Number(pp.coins) || 0));
++    if (perfect) for (const b of ps.bounties) if (b.card.payout === 'perfect') bounty += b.card.coin;
++    const coins = bounty * bountyMultiplier(ps);
+@@ -526 +533,2 @@ export class MatchBoss {
+-          ps.dirty(); // m.private.stats
++          ps._addCumStats(pp); // 本局累计伤害统计 (round.js)
++          ps.dirty(); // m.private.stats / m.private.cumStats

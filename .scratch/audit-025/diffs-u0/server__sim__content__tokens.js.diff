@@ -1,0 +1,17 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\tokens.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\content\tokens.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\tokens.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\tokens.js"
+index 442bea2..bab6d48 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\tokens.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\tokens.js"
+@@ -1569 +1569,3 @@ function touchKit(bb, raw, def) {
+- * player's half (data/stages.json `mapChars`; `_multi_only` positions only with a partner). Returns the unit or null.
++ * player's half (data/stages.json `mapChars`; `_multi_only` positions only with a partner). A prepared character may
++ * supply `preBattleAggroSeq` so its targeting order precedes the ordinary battle-start deployment. Returns the unit
++ * or null.
+@@ -1571 +1573 @@ function touchKit(bb, raw, def) {
+-export function spawnMapChar(battle, playerId, tokenId, { alias = null } = {}) {
++export function spawnMapChar(battle, playerId, tokenId, { alias = null, preBattleAggroSeq = null } = {}) {
+@@ -1588 +1590 @@ export function spawnMapChar(battle, playerId, tokenId, { alias = null } = {}) {
+-    const u = battle.spawnToken(playerId, tokenId, m.pos[0], m.pos[1], { dir: normDir(m.dir) });
++    const u = battle.spawnToken(playerId, tokenId, m.pos[0], m.pos[1], { dir: normDir(m.dir), preBattleAggroSeq });

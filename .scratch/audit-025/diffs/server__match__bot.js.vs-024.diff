@@ -1,0 +1,30 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\match\bot.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\server\match\bot.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\bot.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\bot.js"
+index 2caa40e..981662f 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\bot.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\bot.js"
+@@ -87,0 +88 @@ import { withBounties, isFlyKey } from './waves.js';
++import { applyEnemyHexes, enemyHexMods } from './hextech.js';
+@@ -1094 +1095 @@ export function* createRehearsalSteps(m, ps, chosen, plans) {
+-      const spawns = withBounties(m.gd, m.round, wave, ps.bounties, ps.playerId).map((sp) => ({ ...sp, ownerPlayerId: ps.playerId }));
++      const spawns = applyEnemyHexes(withBounties(m.gd, m.round, wave, ps.bounties, ps.playerId).map((sp) => ({ ...sp, ownerPlayerId: ps.playerId })), enemyHexMods(m));
+@@ -1407,0 +1409,18 @@ export function botPrep(m, ps) {
++/**
++ * 恶魔形态's takeover (the owner's list of 2026-10-12, §29.23): the AI plays the round's SPENDING only — 调度中心
++ * upgrades first, then operators (with refreshes) until the funds run out, then whatever is left into the level again.
++ * Placement, equipment and Ready stay the player's own actions, so nothing else about the round changes. Reached
++ * through `Match.botSpendOnly` / the hex ctx's `demonTakeover` (server/match/effectsMeta.js). Returns an action count
++ * for tests and diagnostics.
++ * @param {import('./Match.js').Match} m @param {import('./PlayerState.js').PlayerState} ps
++ */
++export function botSpendOnly(m, ps) {
++  if (!m || !ps || !ps.alive) return 0;
++  const key = () => ps.shop.level * 1e6 + ps.stats.buys * 1e3 + ps.stats.refreshes;
++  const before = key();
++  levelUp(m, ps);
++  runSteps(buyLoopSteps(m, ps, { fillOnly: false, maxRefreshes: MAX_REFRESHES }));
++  levelUp(m, ps, { spare: true });
++  return key() - before;
++}
++

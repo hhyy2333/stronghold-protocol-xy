@@ -1,0 +1,19 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\css\\screens\\game.css" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\css\\screens\\game.css"
+index 190970d..515bb2e 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\css\\screens\\game.css"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\css\\screens\\game.css"
+@@ -678,12 +678,14 @@
+ .ff-unit__bars i.sp { height: 3px; background: #ffd23a; }
+ .ff-float { position: absolute; z-index: 5; transform: translate(-50%, 0); font-family: var(--font-num); font-weight: 700; font-size: .2rem; pointer-events: none; text-shadow: 0 1px 2px #000, 0 0 4px #000; animation: float-up 900ms var(--ease-out) forwards; }
+ .ff-float--phys { color: #ffd7a8; }
+ .ff-float--arts { color: #d59cff; }
+ .ff-float--true { color: #fff; }
+ .ff-float--heal { color: #6dff9c; }
++.ff-float--crit { color: #ff2a2a; }
++.ff-float--miss { color: #ff9000; }
+ @keyframes float-up { to { transform: translate(-50%, -.4rem); opacity: 0; } }
+ .ff-badge { position: absolute; left: 50%; bottom: .08rem; transform: translateX(-50%); font-family: var(--font-display); font-size: .1rem; letter-spacing: .3em; color: var(--text-dim); opacity: .5; pointer-events: none; }
+ .gm--combat .ff-badge { display: none; }
+ 
+ /* ---- small screens (1280×720 → root ≈ 66px) ------------------------------------------------------------------------ */
+ @media (max-aspect-ratio: 16/10) {

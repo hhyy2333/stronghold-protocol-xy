@@ -1,0 +1,23 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\infra.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\infra.js"
+index 660fe34..1a92fbb 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\infra.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\infra.js"
+@@ -85,14 +85,17 @@ export class MatchInfra {
+    */
+   bondLive(bondId) {
+     return !this.gd.modeInactiveBonds.has(bondId) && this.bondInPool(bondId);
+   }
+   humans() { return this.order.filter((p) => !p.isBot && !p.left); }
+ 
++  /** [ASSUMED] Touch's initial, match-long team grant survives its holder's elimination/quit; focus alone grants none. */
++  teamMedicGranted() { return this.order.some(p => p.bandId === 'band_amedic'); }
++
+   /**
+-   * The boss-round group of a player (`bossWaves`: the seat pairs of finalAssault.js pairPlayers, planned in startRound
++   * The boss-round group of a player (`bossWaves`: the per-match random pairs, planned in startRound
+    * before the players' round start) and its side — 'L', or 'R' for the second player of a pair (the mirrored right
+    * half) — or null outside a boss round / for a player without a field.
+    * @returns {{ wave: object, players: string[], side: 'L'|'R' } | null}
+    */
+   bossGroupOf(ps) {
+     if (!ps || !Array.isArray(this.bossWaves)) return null;

@@ -1,0 +1,9 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\bonds\core.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\server\sim\content\bonds\core.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\bonds\\core.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\content\\bonds\\core.js"
+index a2892f4..4dc9979 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\bonds\\core.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\content\\bonds\\core.js"
+@@ -443,0 +444,2 @@ function devour(battle, pid, bb, members) {
++    // 海克斯 深度吞噬 (DESIGN §29): the markers / the devoured units are handed to any content that rides on the devour
++    if (battle.hasHook('devourGain')) battle.emit('devourGain', { marker: m, targets: mine });

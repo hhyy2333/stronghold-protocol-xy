@@ -1,0 +1,81 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\PlayerState.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\PlayerState.js"
+index 1445a49..eda7be5 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\PlayerState.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\PlayerState.js"
+@@ -23,14 +23,13 @@
+ //     overflow temp; summons back onto their stack) — see _evictIllegal.
+ //   * Shop: per-level chess slots + item slot, copy-weighted rolls from the SHARED pool (pool.js); refresh 1 (free
+ //     refreshes first), one toggle freezes all unsold slots until the next round start (a manual refresh while frozen
+ //     rerolls everything and the new slots stay frozen), level-up price = base − rounds elapsed (floor 0).
+ //   * Merge: 3 normal copies (风丸 2) on board/hand/temp → 1 elite; equipment returns to the hand; a
+ //     reward offer of 3 different free chess of tier min(level+1, 6) is queued (never one operator twice — user
+-//     playtest #6 item 19; a short tier tops up from the tier below; the player's stocked 自选 of that tier joins,
+-//     §30.23; pick 1, expires at prep end; an offer earned
++//     playtest #6 item 19; a short tier tops up from the tier below; pick 1, expires at prep end; an offer earned
+ //     after the prep — SETTLE / Final Assault effects — is kept for the next prep). Where the elite goes (PRTS
+ //     卫戍协议/帮助 "发送1名【精锐】状态的该干员至手牌区（若消耗已部署至作战区的干员，则发送至作战区对应位置）", user
+ //     playtest #6 follow-up): when a consumed copy stood on the board, onto that copy's tile with its facing (of several,
+ //     the one that deploys first — board.js mergeTile, [ASSUMED]); it replaces a deployed copy, so the deploy count
+ //     never grows, and it gets its own summon stack (grantTokensFor). Otherwise to the hand, overflow temp — also
+ //     outside PREP (a SETTLE merge's elite waits in temp for the next prep).
+@@ -114,13 +113,13 @@
+ //   items.js      g.equip, g.art, g.destroy
+ //   prep.js       the prep-intent gate, g.reward, Ready, the temp resolution
+ //   round.js      the round lifecycle the match calls (startRound, endPrep, eliminate, recompute, bond views) and
+ //                 battleInput
+ //   views.js      pieceView, effectsView, m.private (privateView)
+ //   diy.js        自选编队: the picks (setDiy), the player's data view, the DIY stock (initDiyStock, poolOf), the shop's
+-//                 DIY draws (diyRollEntries) and the reward / grant draws (diyStockEntries), the pick of a piece (diyPickOf)
++//                 DIY draws (diyRollEntries), the pick of a piece (diyPickOf)
+ //   common.js     HAND_SIZE, TEMP_SIZE, MAX_OFFER_SLOTS, OK, fail
+ 
+ import { FIELD } from './board.js';
+ import { computeBonds } from './bondsMeta.js';
+ import { HAND_SIZE, TEMP_SIZE } from './player/common.js';
+ import { PlayerBasics } from './player/basics.js';
+@@ -196,12 +195,18 @@ export class PlayerState {
+     /** @type {Map<string, any>} 'r,c' → piece */
+     this.board = new Map();
+     /** persistent bond layers */
+     this.layers = {};
+     /** computed bond states */
+     this.bonds = {};
++    /**
++     * The bond ids in data order. `this.bonds` is an object, so a tie in 盟约裂变's "most layers wins" rule (DESIGN §29)
++     * would otherwise resolve by insertion order — unreadable and not guaranteed to match the battle side's own order.
++     * The shared rule (shared/hextech.js fissionBondIds) takes this explicitly.
++     */
++    this.bondOrder = Array.isArray(this.gd?.bondIds) ? this.gd.bondIds : null;
+     /**
+      * this round's IN_BATTLE layer gains of the finished normal battle ({ [bondId]: n }, Match._finishCombat) until
+      * settle() makes them persistent — the views add them (bondsView, DESIGN §20.15); null otherwise
+      */
+     this.pendingLayerGains = null;
+     /** optional per-bond count bonus written by effects */
+@@ -226,12 +231,26 @@ export class PlayerState {
+     this.deviceOverrides = {};
+     this.tileOverrides = {};
+     this.stats = {
+       dmgDealt: 0, kills: 0, leaks: 0, gold: 0, refreshes: 0, merges: 0, itemMerges: 0, itemsEquipped: 0,
+       bossDamage: 0, lpLost: 0, buys: 0, sells: 0, perfectRounds: 0, fundsGained: 0, healing: 0,
+     };
++    /**
++     * 本局累计伤害统计 (the in-battle DAMAGE REPORT panel's 修整期 view): what each of this player's operators has done
++     * over every battle of the match so far, keyed by the operator's BASE chess id (`gd.baseIdOf`) — `{ dmg, taken,
++     * heal, kills }`, floats summed and rounded on the way out (PlayerViews.cumStatsView).
++     *
++     * Keyed by the base chess id, not by board uid or the fielded id: a merge and a 升华 promotion both build a NEW piece
++     * with a new uid and the ELITE id (`chess_x_a` → `chess_x_b`), and the panel must read one row per 干员, not one per
++     * piece or per copy. Two copies of the same operator on the board therefore share a row — [ASSUMED] the official
++     * panel is per 干员 and nothing says how it splits duplicates. Accumulated in `_addCumStats` from every battle result
++     * the match accepts (`lastResults`), the 联防 field's own results included, and never reset: it survives rounds, and a
++     * piece sold and re-bought keeps counting.
++     * @type {Map<string, { dmg: number, taken: number, heal: number, kills: number }>}
++     */
++    this.cumStats = new Map();
+     this.eliminatedRound = null;
+     this.lpAtFinal = null;
+     /** last combat result for this player (unite carry state, bounties) */
+     this.lastResult = null;
+     this._deployMap = null;
+     /** the deploy field of `_deployMap` ('normal' | 'bossL' | 'bossR', Match.deployFieldOf) */

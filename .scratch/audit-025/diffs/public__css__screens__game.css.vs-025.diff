@@ -1,0 +1,131 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\css\\screens\\game.css" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\css\\screens\\game.css"
+index 515bb2e..ad97208 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\css\\screens\\game.css"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\css\\screens\\game.css"
+@@ -368,12 +368,23 @@
+   background: rgba(8, 11, 10, .85); border: 1px solid var(--line-2);
+ }
+ .effect img { width: 86%; height: 86%; object-fit: contain; }
+ .effect .icon { width: .28rem; height: .28rem; color: var(--mint-500); }
+ .effect--band { border-color: var(--mint-800); }
+ .effect--team { border-color: rgba(78, 216, 175, .6); }
++/* 协议源石 (DESIGN §29): the effect's card face — its tier's 阶位 art (hextech/tier, the same image the draft card
++   shows). Border tint per tier matches the draft's chip (1 阶 silver / 2 阶 gold / 3 阶 prismatic). The source art is
++   landscape ~1.26 and its numeral is centred inside ~23%..77% of the width, so `cover` in the square tile grows the
++   numeral instead of shrinking it and still crops only the empty panel margin. */
++.effect--hex { border-color: rgba(242, 189, 62, .7); }
++.effect--hex img { width: 78%; height: 78%; }
++.effect--hextier img { width: 100%; height: 100%; object-fit: cover; }
++.effect--hextier { padding: 0; overflow: hidden; background: #0b0f11; }
++.effect--tier1 { border-color: #c9d4dd; }
++.effect--tier2 { border-color: var(--gold); }
++.effect--tier3 { border-color: #b07ce8; }
+ .effect__n { position: absolute; right: -.05rem; bottom: -.05rem; min-width: .2rem; font-size: .12rem; line-height: 1.4; text-align: center; background: var(--gold); color: #1d1400; padding: 0 .03rem; }
+ .efftip { display: flex; flex-direction: column; gap: .04rem; max-width: 3.6rem; }
+ .efftip b { font-size: .17rem; color: var(--mint-400); }
+ .efftip__kind { font-size: .12rem; color: var(--text-dim); }
+ .efftip p { font-size: .15rem; line-height: 1.55; color: var(--text-md); }
+ 
+@@ -517,15 +528,12 @@
+ 
+ /* ---- settings modal ------------------------------------------------------------------------------------------------ */
+ /* the 设置 trigger of the lobby and the room (ui/settings.js SettingsButton, GitHub #238): the 玩法说明 button's twin; its gear sits
+    inside the label, so the label lays glyph and text out like the button itself */
+ .settings-btn .btn__label { display: inline-flex; align-items: center; gap: .1rem; }
+ .settings-btn .btn__icon { color: var(--mint-500); }
+-/* square (the lobby's gear alone): the label box drops out so the gear sizes and centres against the button, like an `icon` */
+-.settings-btn.btn--square .btn__label { display: contents; }
+-.settings-btn.btn--square .btn__icon { width: 62%; height: 62%; } /* the gear glyph is drawn smaller in its box than the book */
+ .set-list { display: flex; flex-direction: column; gap: .16rem; padding-top: .06rem; }
+ .set-row { display: grid; grid-template-columns: minmax(0, 3.3rem) minmax(0, 1fr) auto; align-items: center; gap: .18rem; min-height: .44rem; }
+ /* The label column may shrink (the label wraps) instead of pushing its control out of the modal: at 设置 →「文字大小」
+    大 / 特大 a phone's label (a Chinese name plus its Latin micro label) is wider than 3.3rem at 1rem = 40 px. */
+ .set-row__label { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem; font-size: calc(.18 * var(--t)); color: var(--text-hi); }
+ .set-row__label .icon { width: .2rem; height: .2rem; color: var(--mint-500); }
+@@ -678,14 +686,12 @@
+ .ff-unit__bars i.sp { height: 3px; background: #ffd23a; }
+ .ff-float { position: absolute; z-index: 5; transform: translate(-50%, 0); font-family: var(--font-num); font-weight: 700; font-size: .2rem; pointer-events: none; text-shadow: 0 1px 2px #000, 0 0 4px #000; animation: float-up 900ms var(--ease-out) forwards; }
+ .ff-float--phys { color: #ffd7a8; }
+ .ff-float--arts { color: #d59cff; }
+ .ff-float--true { color: #fff; }
+ .ff-float--heal { color: #6dff9c; }
+-.ff-float--crit { color: #ff2a2a; }
+-.ff-float--miss { color: #ff9000; }
+ @keyframes float-up { to { transform: translate(-50%, -.4rem); opacity: 0; } }
+ .ff-badge { position: absolute; left: 50%; bottom: .08rem; transform: translateX(-50%); font-family: var(--font-display); font-size: .1rem; letter-spacing: .3em; color: var(--text-dim); opacity: .5; pointer-events: none; }
+ .gm--combat .ff-badge { display: none; }
+ 
+ /* ---- small screens (1280×720 → root ≈ 66px) ------------------------------------------------------------------------ */
+ @media (max-aspect-ratio: 16/10) {
+@@ -715,6 +721,71 @@
+   background: rgba(20, 22, 22, .9); background: var(--pause-plate, linear-gradient(90deg, transparent, rgba(12, 14, 14, .95) 18%, rgba(12, 14, 14, .95) 82%, transparent)) center / 100% 100% no-repeat;
+ }
+ .pauseov__micro { font-family: var(--font-num); font-size: calc(.16 * var(--t)); letter-spacing: .5em; color: var(--mint-400); }
+ .pauseov__plate h2 { font-size: calc(.5 * var(--t)); font-weight: 900; letter-spacing: .3em; color: #fff; text-shadow: 0 0 .2rem rgba(0, 0, 0, .8); }
+ .pauseov__note { font-size: calc(.17 * var(--t)); color: var(--text-md); text-shadow: 0 1px 2px #000; }
+ .pauseov__btns { display: flex; gap: .2rem; }
++
++/* ---- free-text room chat (ui/chatBox.js; room.chat) ------------------------------------------------------------ */
++/* Shared by the room screen (.room-chat, css/screens/room.css anchors it) and the match screen (.gm__chatlog, raised
++   above the corner row). The panel takes no pointer while the log is closed, so a press passes through to the board. */
++.chatpanel {
++  position: absolute; left: .24rem; bottom: 1.0rem; z-index: 6; width: 4.2rem;
++  display: flex; flex-direction: column; gap: .08rem; pointer-events: none;
++}
++.chatpanel__log {
++  display: flex; flex-direction: column; gap: .04rem; max-height: 2.2rem; overflow-y: auto;
++  padding: .06rem .1rem; background: rgba(8, 11, 10, .62); border-left: 2px solid var(--mint-700);
++  pointer-events: auto; scrollbar-width: thin;
++}
++.chatpanel:not(.is-active) .chatpanel__log { opacity: .7; }
++.chatpanel.is-active .chatpanel__log, .chatpanel:hover .chatpanel__log { opacity: 1; }
++.chat-msg { margin: 0; font-size: calc(.15 * var(--t)); line-height: 1.35; word-break: break-word; }
++.chat-msg__who { font-weight: 700; color: var(--text-md); margin-right: .06rem; }
++.chat-msg__text { color: var(--text-hi); }
++/* the seat hues of ui/components.js SEAT_HUES (162 / 196 / 38 / 280), the muted one for a spectator seat */
++.chat-msg--s0 .chat-msg__who { color: hsl(162 70% 68%); }
++.chat-msg--s1 .chat-msg__who { color: hsl(196 75% 70%); }
++.chat-msg--s2 .chat-msg__who { color: hsl(38 85% 62%); }
++.chat-msg--s3 .chat-msg__who { color: hsl(280 65% 76%); }
++.chat-msg--spec .chat-msg__who { color: var(--text-lo); }
++.chatpanel__empty { margin: 0; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
++.chatpanel__form { display: flex; gap: .06rem; pointer-events: auto; }
++.chatpanel__input {
++  flex: 1; min-width: 0; height: .44rem; padding: 0 .12rem; background: rgba(8, 11, 10, .95);
++  border: 1px solid var(--line-2); color: var(--text-hi); font-family: inherit; font-size: calc(.16 * var(--t));
++}
++.chatpanel__input:focus { outline: none; border-color: var(--mint-500); }
++.chatpanel__input::placeholder { color: var(--text-dim); }
++.chatpanel__send {
++  flex: none; height: .44rem; padding: 0 .16rem; background: rgba(23, 249, 183, .16); border: 1px solid var(--mint-700);
++  color: var(--mint-400); font-family: inherit; font-size: calc(.16 * var(--t)); font-weight: 700; letter-spacing: .08em; cursor: pointer;
++  transition: background-color var(--t-fast), color var(--t-fast);
++}
++.chatpanel__send:hover:not(:disabled) { background: rgba(23, 249, 183, .28); color: #fff; }
++.chatpanel__send:disabled { opacity: .45; cursor: default; }
++.chatpanel__trigger {
++  pointer-events: auto; display: flex; align-items: center; gap: .08rem; height: .56rem; padding: 0 .18rem;
++  background: rgba(8, 11, 10, .85); border: 1px solid var(--line-2); color: var(--text-md);
++  font-family: inherit; font-size: calc(.18 * var(--t)); font-weight: 700; letter-spacing: .1em; cursor: pointer;
++  transition: color var(--t-fast), border-color var(--t-fast);
++}
++.chatpanel__trigger:hover { color: var(--mint-400); border-color: var(--mint-700); }
++.chatpanel__icon { font-size: calc(.24 * var(--t)); line-height: 1; }
++/* the match corner's 💬 opens the same panel: the log grows upward from the corner row. `--gm-corner-h` is the
++   corner's MEASURED height (screens/game.js), because on a narrow phone the row wraps to two or three rows of
++   buttons (css/devices.css) — the old fixed `max(.56rem, 34px)` assumed the desktop single row and the panel then
++   covered ⚙ / 📖 / ⛶ and ate their 44 px tap areas. */
++.gm__chatlog { left: .24rem; bottom: calc(.24rem + var(--gm-corner-h, max(.56rem, 34px)) + .1rem); }
++/* .gm__hud > * turns the pointer back on for the HUD's children and outranks the panel's own `none`: the closed panel
++   must let presses through to the board, only its log / input take them (the rules above) */
++.gm__hud > .chatpanel { pointer-events: none; }
++.gm__chatlog .chatpanel__log { background: rgba(8, 11, 10, .82); }
++.gm__corner .gm__chat > span { font-size: max(.28rem, 17px); line-height: 1; }
++.gm__corner .gm__chat.is-on { color: var(--mint-400); border-color: var(--mint-700); }
++
++/* Narrow viewports: the panel keeps clear of the folded shop's corner and the detail card's slot (the same breakpoint
++   as the corner's own rules in css/devices.css). */
++@media (max-width: 767px) {
++  .chatpanel, .gm__chatlog { width: max(2.6rem, 240px); }
++  .chatpanel__log { max-height: max(1.4rem, 110px); }
++}

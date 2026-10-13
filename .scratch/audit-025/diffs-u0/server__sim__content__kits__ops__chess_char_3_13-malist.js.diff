@@ -1,0 +1,12 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\kits\ops\chess_char_3_13-malist.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\content\kits\ops\chess_char_3_13-malist.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\chess_char_3_13-malist.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\chess_char_3_13-malist.js"
+index 97d0962..db2539f 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\chess_char_3_13-malist.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\chess_char_3_13-malist.js"
+@@ -15 +15 @@ export default {
+-      trait: { dmgMul: (battle, unit, target) => funnelMap(battle, unit, target) * insight(battle) },
++      trait: { funnelMul: funnelMap, dmgMul: insight },
+@@ -18 +18 @@ export default {
+-        attack: { atkScale: num(bb.atk_scale, 1), hits, dmgType: 'arts', dmgMul: (battle) => insight(battle) },
++        attack: { atkScale: num(bb.atk_scale, 1), hits, funnelBodyHits: hits, dmgType: 'arts', dmgMul: insight },

@@ -1,0 +1,128 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\css\components.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\public\css\components.css', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\css\\components.css" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\css\\components.css"
+index a1f8d4f..cd292ee 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\css\\components.css"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\css\\components.css"
+@@ -994,0 +995,89 @@
++/* ---- 全体公告 banner (js/ui/announce.js, shared/announce.js) ------------------------------------------ */
++/* ONE operator-authored line from /admin/, pushed to every connected session AND replayed to every session that
++   connects afterwards, so it is shown across the top of EVERY route until it is replaced or withdrawn. The strip is
++   fixed to the top edge; while it shows, html.sp-announce (set by the component) pushes the screen chrome down by
++   --announce-h, so it never covers the top bar's buttons or the in-match round capsule — the announcement sits ABOVE
++   the layout instead of on top of it. Constant-speed marquee: one pass takes --announce-dur, which the component
++   derives from the text length, so a long line scrolls longer rather than faster. It LOOPS (no `forwards`): a standing
++   notice stays on screen for as long as the server keeps it current, instead of scrolling away into an empty strip. */
++:root { --announce-h: .46rem; }
++.announce-bar {
++  position: fixed;
++  left: 0;
++  right: 0;
++  top: 0;
++  z-index: var(--z-announce);
++  display: flex;
++  align-items: center;
++  gap: .12rem;
++  height: calc(var(--announce-h) + var(--sa-t, 0px));
++  padding: var(--sa-t, 0px) .3rem 0 .3rem;
++  background: linear-gradient(180deg, rgba(6, 20, 16, .97), rgba(8, 26, 21, .93));
++  border-bottom: 1px solid var(--mint-600);
++  box-shadow: 0 .06rem .3rem rgba(0, 0, 0, .55), inset 0 -1px 0 rgba(78, 216, 175, .25);
++  animation: announce-in var(--t-med) var(--ease-out);
++}
++@keyframes announce-in { from { opacity: 0; transform: translateY(-100%); } }
++.announce-bar__tag {
++  flex: none;
++  padding: .02rem .1rem;
++  background: var(--mint-a20);
++  border: 1px solid var(--mint-600);
++  border-radius: .04rem;
++  color: var(--mint-400);
++  font-family: var(--font-num);
++  font-size: calc(.15 * var(--t));
++  font-weight: 700;
++  letter-spacing: .04em;
++  white-space: nowrap;
++}
++/* the viewport the track scrolls through; min-width: 0 lets it shrink inside the flex row */
++.announce-bar__view { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; overflow: hidden; }
++.announce-bar__track {
++  position: absolute;
++  top: 0;
++  left: 0;
++  height: 100%;
++  display: flex;
++  align-items: center;
++  white-space: nowrap;
++  will-change: transform;
++  /* from fully off the right edge to fully off the left: 100% of the viewport plus the text's own width */
++  animation: announce-scroll var(--announce-dur, 12s) linear infinite;
++}
++.announce-bar__text {
++  color: var(--text-hi);
++  font-size: calc(.19 * var(--t));
++  font-weight: 500;
++  letter-spacing: .01em;
++  text-shadow: 0 1px 2px rgba(0, 0, 0, .8);
++}
++@keyframes announce-scroll {
++  from { transform: translateX(100%); }
++  to { transform: translateX(calc(-1 * var(--announce-text-w, 100%))); }
++}
++.announce-bar__close {
++  flex: none;
++  display: grid;
++  place-items: center;
++  width: .3rem;
++  height: .3rem;
++  padding: 0;
++  background: transparent;
++  border: 1px solid transparent;
++  border-radius: .04rem;
++  color: var(--text-lo);
++  cursor: pointer;
++  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
++}
++.announce-bar__close:hover { color: var(--mint-400); border-color: var(--mint-700); background: var(--mint-a20); }
++.announce-bar__close .icon { width: .18rem; height: .18rem; }
++/* reduced motion: no marquee at all — a static, wrapped line, readable at a glance */
++.announce-bar.is-static { height: auto; min-height: calc(var(--announce-h) + var(--sa-t, 0px)); }
++.announce-bar.is-static .announce-bar__view { overflow: visible; height: auto; }
++.announce-bar.is-static .announce-bar__track { position: static; height: auto; white-space: normal; animation: none; }
++.announce-bar.is-static .announce-bar__text { line-height: 1.35; }
++/* the announcement is ABOVE the layout: shift the screen chrome down while it shows (no :has(), see the conn banner) */
++.sp-announce .screen:not(.gm) { top: calc(var(--sa-t, 0px) + var(--announce-h)); }
++.sp-announce .gm__hud { top: calc(var(--sa-t, 0px) + var(--announce-h)); }
++
+@@ -1033,6 +1121,0 @@
+-/* the lobby's ⚙ / 📖 / install squares: a size up from `sm` and spaced apart; on touch screens at least 40 px each with
+-   a 10 px gap, so their 44 px hit areas (css/devices.css) never overlap and a tap lands on the intended one */
+-.topbar__tools { display: flex; align-items: center; gap: .14rem; }
+-.topbar__tools .btn--square.btn--sm { --sq: .46rem; height: var(--sq); min-width: var(--sq); }
+-.sp-coarse .topbar__tools { gap: max(.16rem, 10px); }
+-.sp-coarse .topbar__tools .btn--square.btn--sm { --sq: max(.56rem, 40px); }
+@@ -1041,14 +1123,0 @@
+-/* Optional resume/install controls and translated XL titles must share actual space instead of overlapping the
+-   centered 1fr/auto/1fr title. On narrow displays the title has its own row; the controls stay in their two groups. */
+-.lobby-screen .topbar { grid-template-columns: auto minmax(0, 1fr) auto; height: auto; min-height: 1.1rem; padding-block: .12rem; }
+-.lobby-screen .topbar__center { min-width: 0; }
+-.lobby-screen .topbar__center .micro { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+-.lobby-screen .topbar__title { justify-content: center; overflow-wrap: anywhere; }
+-@media (max-width: 1000px) {
+-  .lobby-screen .topbar { grid-template-columns: minmax(0, 1fr) auto; gap: .1rem .2rem; }
+-  .lobby-screen .topbar__center { grid-column: 1 / -1; grid-row: 2; }
+-  .lobby-screen .topbar__center .micro { display: none; }
+-  .lobby-screen .topbar__right { grid-column: 2; grid-row: 1; }
+-  .lobby-screen .me-chip__name { max-width: 1.5rem; }
+-}
+-
+@@ -1061,9 +1129,0 @@
+-/* the lobby's chip doubles as the 统计数据 entry */
+-.me-chip--btn {
+-  font: inherit; color: inherit; text-align: left; cursor: pointer;
+-  transition: border-color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out);
+-}
+-.me-chip--btn:hover { border-color: var(--mint-700); background: rgba(34, 42, 38, .6); }
+-.me-chip--btn:active { transform: translateY(1px); }
+-.me-chip__stats { flex: none; width: .2rem; height: .2rem; margin-left: .04rem; color: var(--mint-500); opacity: .7; }
+-.me-chip--btn:hover .me-chip__stats { opacity: 1; }

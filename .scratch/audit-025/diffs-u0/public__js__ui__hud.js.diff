@@ -1,0 +1,26 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\ui\hud.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\js\ui\hud.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\hud.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\ui\\hud.js"
+index f72e72e..59ffb71 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\hud.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\ui\\hud.js"
+@@ -15,2 +15,3 @@
+-// Normal rounds (user playtest #3 item 2): the LP tower drops live as the own battle's enemies enter the blue gate —
+-// lp − min(lpCapPerRound, counted leaks) in red with a −N tick, 联防中 while a 联防 may still save part of it (liveLp;
++// Normal rounds (user playtest #3 item 2): the LP tower marks the own battle's leaks live as its enemies enter the blue
++// gate — the settled lp stays until settlement, in red with a −min(lpCapPerRound, counted leaks) tick (GitHub #479: the
++// official keeps the current value until settlement), 联防中 while a 联防 may still save part of it (liveLp;
+@@ -21 +22 @@
+-// replica's runner state().uniteLeft, else m.public players[].uniteLeft); the LP tower shows lp − min(lpCapPerRound, N).
++// replica's runner state().uniteLeft, else m.public players[].uniteLeft); the LP tower marks lp with −min(lpCapPerRound, N).
+@@ -186,3 +187,4 @@ export function uniteRemaining(local, server) {
+- * The own LP while a normal round's battle runs: the loss its counted leaks will cost is shown at once (red, −N)
+- * instead of only at settlement. `base` — kept by the caller between renders — is the settled m.private state the
+- * pending loss applies to: { round, lp, statsLeaks } as first seen in the round's COMBAT / 联防. The pending part is
++ * The own LP while a normal round's battle runs: the loss its counted leaks will cost is marked at once (red, −N) instead
++ * of only at settlement — the number itself keeps the settled LP until settlement (GitHub #479: the official shows the
++ * current value, not the deduction, until the round settles). `base` — kept by the caller between renders — is the
++ * settled m.private state the pending loss applies to: { round, lp, statsLeaks } as first seen in the round's COMBAT / 联防. The pending part is
+@@ -355 +357 @@ export function PauseButton({ paused, busy = false, onToggle }) {
+- *   live: the own battle's pending LP loss (liveLp): the tower shows lp − pending in red with a −N tick, 联防中 during 联防;
++ *   live: the own battle's pending LP loss (liveLp): the tower keeps the settled lp and adds a red −N tick, 联防中 during 联防;

@@ -1,0 +1,26 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\detmath.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\detmath.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\detmath.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\detmath.js"
+index 1aed159..2b14c25 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\detmath.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\detmath.js"
+@@ -12,0 +13 @@
++//   roundHalfEven(x)    nearest integer, ties to even (四舍六入五成双); Math.round and Math.floor, never −0
+@@ -48,0 +50,11 @@ export function hypot(x, y) {
++/**
++ * x rounded to an integer, ties to even (2.5 → 2, 3.5 → 4, −2.5 → −2): the rule PRTS 作战机制 gives for the tile of a
++ * target — 受击方坐标经round函数取整(四舍六入五成双)得到其所属格坐标. Math.round rounds ties up (2.5 → 3). Exact; never −0.
++ * @param {number} x
++ */
++export function roundHalfEven(x) {
++  const f = Math.floor(x);
++  if (x - f !== 0.5) return Math.round(x) + 0;
++  return (f % 2 === 0 ? f : f + 1) + 0;
++}
++
+@@ -70 +82,2 @@ function mul2(ah, al, bh, bl, out) {
+- * base falls back to Math.pow.
++ * base falls back to Math.pow. A zero base takes Math.pow's exact results: an odd power keeps the sign of −0, which
++ * the double-double sum would lose ((−0)¹ = −0, (−0)⁻¹ = −∞).
+@@ -76,0 +90 @@ export function powi(x, n) {
++  if (x === 0) { const odd = n % 2 !== 0; return n === 0 ? 1 : n > 0 ? (odd ? x : 0) : (odd ? 1 / x : Infinity); }

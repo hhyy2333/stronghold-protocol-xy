@@ -1,0 +1,65 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\detmath.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\detmath.js"
+index 2b14c25..1aed159 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\detmath.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\detmath.js"
+@@ -7,13 +7,12 @@
+ // integer power by repeated squaring. + − × ÷ and Math.sqrt are correctly rounded IEEE 754 operations, and the language
+ // fuses nothing (no FMA, no extended precision), so code built only from them is reproducible bit for bit. That is
+ // what these functions are. The sim must not call the approximated Math functions (eslint.config.js, and
+ // test/sim/detmath.test.js scans server/sim/).
+ //
+ //   hypot(x, y)         √(x² + y²) as Math.sqrt(x*x + y*y), rescaled by exact powers of two outside 2^±500
+-//   roundHalfEven(x)    nearest integer, ties to even (四舍六入五成双); Math.round and Math.floor, never −0
+ //   powi(x, n)          xⁿ for an integer n: square-and-multiply in double-double, one final rounding
+ //   sin(x), cos(x)      fdlibm 5.3 (__kernel_sin / __kernel_cos / __ieee754_rem_pio2)
+ //   atan2(y, x)         fdlibm (FreeBSD msun e_atan2.c / s_atan.c)
+ //
+ // sin / cos / atan2 are the algorithms V8 runs in Node, so they return what the server always computed (its golden
+ // digests stay); hypot and powi are at least as accurate as V8's. ±∞ / NaN arguments take the exactly specified
+@@ -44,23 +43,12 @@ export function hypot(x, y) {
+   const m = Math.max(Math.abs(x), Math.abs(y));
+   if (m > P500) { const a = x * PM600, b = y * PM600; return Math.sqrt(a * a + b * b) * P600; }
+   if (m < PM500 && m !== 0) { const a = x * P600, b = y * P600; return Math.sqrt(a * a + b * b) * PM600; }
+   return Math.sqrt(x * x + y * y);
+ }
+ 
+-/**
+- * x rounded to an integer, ties to even (2.5 → 2, 3.5 → 4, −2.5 → −2): the rule PRTS 作战机制 gives for the tile of a
+- * target — 受击方坐标经round函数取整(四舍六入五成双)得到其所属格坐标. Math.round rounds ties up (2.5 → 3). Exact; never −0.
+- * @param {number} x
+- */
+-export function roundHalfEven(x) {
+-  const f = Math.floor(x);
+-  if (x - f !== 0.5) return Math.round(x) + 0;
+-  return (f % 2 === 0 ? f : f + 1) + 0;
+-}
+-
+ // ---- integer powers ----------------------------------------------------------------------------------------------
+ 
+ const SPLIT = 134217729; // 2^27 + 1 (Dekker)
+ const ACC = [0, 0];
+ const BASE = [0, 0];
+ /** (ah + al)·(bh + bl) in double-double, into out (TwoProduct by Dekker's split: no FMA) */
+@@ -76,21 +64,19 @@ function mul2(ah, al, bh, bl, out) {
+   out[1] = e - (s - p);
+ }
+ 
+ /**
+  * xⁿ for an integer n (the sim's powers are stack counts, chain bounces …). The square-and-multiply runs in
+  * double-double and rounds once, so the result is correctly rounded in practice; a non-integer exponent or a huge
+- * base falls back to Math.pow. A zero base takes Math.pow's exact results: an odd power keeps the sign of −0, which
+- * the double-double sum would lose ((−0)¹ = −0, (−0)⁻¹ = −∞).
++ * base falls back to Math.pow.
+  * @param {number} x
+  * @param {number} n
+  */
+ export function powi(x, n) {
+   // eslint-disable-next-line no-restricted-properties -- outside the integer domain only (never in the sim)
+   if (!Number.isInteger(n) || !Number.isFinite(x) || Math.abs(x) > P500) return Math.pow(x, n);
+-  if (x === 0) { const odd = n % 2 !== 0; return n === 0 ? 1 : n > 0 ? (odd ? x : 0) : (odd ? 1 / x : Infinity); }
+   if (n < 0) return 1 / powi(x, -n);
+   ACC[0] = 1; ACC[1] = 0; BASE[0] = x; BASE[1] = 0;
+   let k = n;
+   while (k > 0) {
+     if (k % 2 === 1) mul2(ACC[0], ACC[1], BASE[0], BASE[1], ACC);
+     k = Math.floor(k / 2);

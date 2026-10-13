@@ -1,0 +1,22 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\screens\game\range.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\js\screens\game\range.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\screens\\game\\range.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\screens\\game\\range.js"
+index 969d528..f0b80b6 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\screens\\game\\range.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\screens\\game\\range.js"
+@@ -16 +16 @@ export function inspectRange({ target, detail, pieces, showPrep = false, field,
+-  } else if (target?.kind === 'unit' && !showPrep) {
++  } else if (target?.kind === 'unit' && (!showPrep || target.prepMapChar === true)) {
+@@ -19,0 +20,3 @@ export function inspectRange({ target, detail, pieces, showPrep = false, field,
++    // A prepared map character is a read-only view, not a simulated unit yet. Its board-space coordinates come from
++    // m.private.prepMapChars and must not be read from a previous battle's snapshot or transformed twice on boss R.
++    if (showPrep && (unit.kind !== 'token' || detail.type !== 'token' || detail.token?.kind !== 'mapChar')) return null;
+@@ -21,4 +24,4 @@ export function inspectRange({ target, detail, pieces, showPrep = false, field,
+-    if (!field?.prep && (!snapshot || snapshot[3] <= 0)) return null;
+-    row = Math.round(snapshot ? snapshot[2] : unit.y);
+-    col = Math.round(snapshot ? snapshot[1] : unit.x);
+-    dir = normDir(live?.dir, null) || normDir(unit.dir, null) || (unit.facing === -1 ? 'LEFT' : 'RIGHT');
++    if (!showPrep && !field?.prep && (!snapshot || snapshot[3] <= 0)) return null;
++    row = Math.round(!showPrep && snapshot ? snapshot[2] : unit.y);
++    col = Math.round(!showPrep && snapshot ? snapshot[1] : unit.x);
++    dir = (!showPrep && normDir(live?.dir, null)) || normDir(unit.dir, null) || (unit.facing === -1 ? 'LEFT' : 'RIGHT');

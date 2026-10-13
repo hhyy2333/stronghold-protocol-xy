@@ -1,0 +1,39 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\tokens.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\content\\tokens.js"
+index bab6d48..442bea2 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\tokens.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\content\\tokens.js"
+@@ -1563,17 +1563,15 @@ function touchKit(bb, raw, def) {
+   if (sk.rangeGrid && sk.rangeGrid.length) g.skill.trigger = { rule: 'ACTIVE_RANGE', grid: sk.rangeGrid };
+   return { talents: mapCharTalents(def), skill: g.skill, install: g.install };
+ }
+ 
+ /**
+  * Spawn a band map character (char_605_cmedic 预备干员-医疗 / char_613_acmedc Touch) at its stage position on the
+- * player's half (data/stages.json `mapChars`; `_multi_only` positions only with a partner). A prepared character may
+- * supply `preBattleAggroSeq` so its targeting order precedes the ordinary battle-start deployment. Returns the unit
+- * or null.
++ * player's half (data/stages.json `mapChars`; `_multi_only` positions only with a partner). Returns the unit or null.
+  */
+-export function spawnMapChar(battle, playerId, tokenId, { alias = null, preBattleAggroSeq = null } = {}) {
++export function spawnMapChar(battle, playerId, tokenId, { alias = null } = {}) {
+   const list = battle.stage?.raw?.mapChars ?? battle.stage?.mapChars ?? [];
+   const ps = battle.getPlayer(playerId);
+   const multi = battle.players.length > 1;
+   const cands = list.filter((m) => m && m.key === tokenId && Array.isArray(m.pos) && (alias == null || m.alias === alias)
+     && (multi || !/multi_only/.test(String(m.alias))) && battle.grid.inRect(m.pos[0], m.pos[1]));
+   // the player's own board columns on this field (board cols 2–10 mapped: unite R = 10–18, boss R mirrored 18–10)
+@@ -1584,13 +1582,13 @@ export function spawnMapChar(battle, playerId, tokenId, { alias = null, preBattl
+   }
+   const halfOk = (m) => !ps || battle.players.length < 2 || (span ? m.pos[1] >= span[0] && m.pos[1] <= span[1] : (ps.half === 'R' ? m.pos[1] >= 11 : m.pos[1] <= 10));
+   cands.sort((a, b) => (halfOk(b) ? 1 : 0) - (halfOk(a) ? 1 : 0) || (/multi_only/.test(String(a.alias)) ? 1 : 0) - (/multi_only/.test(String(b.alias)) ? 1 : 0));
+   for (const m of cands) {
+     if (!tileFree(battle, m.pos[0], m.pos[1])) continue;
+     // stage positions are field tiles: their direction is taken as it is (default RIGHT)
+-    const u = battle.spawnToken(playerId, tokenId, m.pos[0], m.pos[1], { dir: normDir(m.dir), preBattleAggroSeq });
++    const u = battle.spawnToken(playerId, tokenId, m.pos[0], m.pos[1], { dir: normDir(m.dir) });
+     if (u) return u;
+   }
+   return null;
+ }
+ 
+ // ---------------------------------------------------------------------------------------------------------------

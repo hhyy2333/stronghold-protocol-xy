@@ -1,0 +1,11 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\render\fx\simfx.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\js\render\fx\simfx.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\render\\fx\\simfx.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\render\\fx\\simfx.js"
+index 4319e8d..01fdca4 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\render\\fx\\simfx.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\render\\fx\\simfx.js"
+@@ -260,0 +261,4 @@ export class FxSim {
++        // num:'m' — the sim already decided this dodge would have been a red number (PRTS yellow MISS, #ff9000).
++        if (ex.num === 'm' && at.v && this.ctx.settings?.damageNumbers !== false && this.ctx.settings?.officialDamageNumbers) {
++          this.officialNumber(at.v, 0, 'miss');
++        }

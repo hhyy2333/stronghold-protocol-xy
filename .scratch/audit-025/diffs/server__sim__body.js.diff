@@ -1,0 +1,79 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\body.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\body.js"
+index 6e65f3d..3c2a638 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\body.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\body.js"
+@@ -1,11 +1,12 @@
+ // server/sim/body.js — where a unit can be hit: the ONE helper behind every range test that targets enemies (user
+ // playtest #5 item 10: "大体型的关底boss实际受击判定范围很小…原版是很大的一片区域").
+ //
+-// Regular units are a point: in a grid range when the tile containing their position (round(y), round(x)) is a range
+-// tile, in a radius when their position is (DESIGN §3). Huge units (巨型单位 — enemy data `hitArea`, tools/build-data.mjs
++// Regular units are a point: in a grid range when the tile containing their position is a range tile — the position
++// rounded half to even (detmath roundHalfEven; PRTS 作战机制 "受击方坐标经round函数取整(四舍六入五成双)得到其所属格
++// 坐标") —, in a radius when their position is (DESIGN §3). Huge units (巨型单位 — enemy data `hitArea`, tools/build-data.mjs
+ // HIT_AREAS, from PRTS "巨型单位：受击判定区域为长4.95、宽2.95的长方形，向上偏移1.0") are hit anywhere on a rectangle
+ // `w` tiles along the columns × `h` along the rows, centred on their position moved `dx` columns right and `dy` rows
+ // up:
+ //   * grid ranges / tile rules: the unit occupies every tile its rectangle overlaps (PRTS 作战机制 "巨型BOSS单位的每一个
+ //     占据的格子都可以让其本身通过格子判定"; an operator's range — 1×1 tile squares — touches the rectangle exactly then):
+ //     a 4.95 × 2.95 area centred on a tile covers that 5 × 3 block;
+@@ -21,13 +22,13 @@
+ // enemy's tile, tile-entry tracking (雪境 tiles), placement heuristics and distance-scaled numbers, and the range keys
+ // taken from blocked enemies (a huge unit is never blocked).
+ // Pure functions of (x, y, hitArea); no battle state — also used for the client's picking (render/pick.js mirrors
+ // `hitRect`).
+ 
+ import { ROWS, COLS } from './constants.js';
+-import { hypot } from './detmath.js';
++import { hypot, roundHalfEven } from './detmath.js';
+ 
+ /**
+  * Validated hit area of a data record (`{ w, h, dx, dy }`, tiles) or null for a regular (point) unit.
+  * @param {any} a
+  */
+ export function normHitArea(a) {
+@@ -44,13 +45,13 @@ export function hitRect(u) {
+   const cx = u.x + a.dx, cy = u.y + a.dy;
+   return { x0: cx - a.w / 2, x1: cx + a.w / 2, y0: cy - a.h / 2, y1: cy + a.h / 2 };
+ }
+ 
+ /** Tile key of a unit's position (-1 off the grid). */
+ function posKey(u) {
+-  const r = Math.round(u.y), c = Math.round(u.x);
++  const r = roundHalfEven(u.y), c = roundHalfEven(u.x);
+   return r < 0 || r >= ROWS || c < 0 || c >= COLS ? -1 : r * COLS + c;
+ }
+ 
+ /**
+  * Tile keys (row × COLS + col) the unit occupies: a point unit the tile of its position ([] off the grid), a huge unit
+  * every tile its rectangle overlaps (open intervals: a tile only touched along an edge is not overlapped).
+@@ -65,13 +66,13 @@ export function bodyKeys(u) {
+   return out;
+ }
+ 
+ /** Does the unit occupy tile (r, c)? */
+ export function bodyOnTile(u, r, c) {
+   const R = hitRect(u);
+-  if (!R) return Math.round(u.y) === r && Math.round(u.x) === c;
++  if (!R) return roundHalfEven(u.y) === r && roundHalfEven(u.x) === c;
+   return c + 0.5 > R.x0 + 1e-9 && c - 0.5 < R.x1 - 1e-9 && r + 0.5 > R.y0 + 1e-9 && r - 0.5 < R.y1 - 1e-9;
+ }
+ 
+ /** Does the unit occupy any tile of `keys` (tile keys: a Set / Map — anything with `has` — or an array)? */
+ export function bodyInKeys(u, keys) {
+   if (!u || !keys) return false;
+@@ -97,13 +98,13 @@ export function bodyInRadius(u, x, y, r) {
+ 
+ /**
+  * Chebyshev reach in tiles from tile (r, c) to the unit's body (0 = it occupies that tile; 1 = one of the 8 tiles
+  * around it; …): "周围八格"-style square areas centred on a tile.
+  */
+ export function bodyTileReach(u, r, c) {
+-  if (!u.hitArea) return Math.max(Math.abs(Math.round(u.y) - r), Math.abs(Math.round(u.x) - c));
++  if (!u.hitArea) return Math.max(Math.abs(roundHalfEven(u.y) - r), Math.abs(roundHalfEven(u.x) - c));
+   let best = Infinity;
+   for (const k of bodyKeys(u)) {
+     const kr = Math.floor(k / COLS), kc = k % COLS;
+     const d = Math.max(Math.abs(kr - r), Math.abs(kc - c));
+     if (d < best) best = d;
+   }

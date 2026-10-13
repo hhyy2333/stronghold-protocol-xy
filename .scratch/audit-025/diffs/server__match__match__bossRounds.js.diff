@@ -1,0 +1,35 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\bossRounds.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\bossRounds.js"
+index e0bc924..bb5d12e 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\bossRounds.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\bossRounds.js"
+@@ -3,13 +3,13 @@
+ // the field clock, cumulative credits, handovers, the boss clock, the end: pool 0 → victory, team LP 0 → defeat);
+ // b.pool; the merged team LP and its shares; the overtime drain; bounties after a boss field; then the Hidden Core or
+ // RESULT.
+ // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
+ 
+ import { PHASE, GEO } from '../../../shared/constants.js';
+-import { deriveSeed } from '../../sim/rng.js';
++import { createRng, deriveSeed } from '../../sim/rng.js';
+ import { buildBossWave, bountySpawns } from '../waves.js';
+ import { pairPlayers, bossPoolHp, SharedBossPool, CreditPool, hiddenEligible, BOSS_HIT_STEPS } from '../finalAssault.js';
+ import { FieldRunner, HeadlessPacer, syntheticResult, BOSS_SILENCE_MS, CATCHUP_TICKS_PER_INTERVAL } from '../fields.js';
+ import { FLOW_TICKER_PRIORITY, BOSS_CLOCK_MS, DELAYS } from './common.js';
+ 
+ /** b.pool broadcasts at most this often (ms). */
+@@ -63,13 +63,14 @@ export class MatchBoss {
+           hitSteps.set(pid, reached);
+           this.tickerFor('BOSS_HIT', [ps.name], { playerId: pid, param: String(BOSS_HIT_STEPS[reached - 1]) });
+         }
+       },
+     });
+     this.bossPool = pool;
+-    const groups = pairPlayers(alive);
++    const groups = pairPlayers(alive, createRng(deriveSeed(this.seed, 'boss-pairs')), this.bossPairs);
++    this.bossPairs = groups.map(g => g.map(p => p.playerId));
+     const reuse = this.bossWaves && this.bossWaves.length === groups.length && this.bossWaves.every((w, i) => w.players.join() === groups[i].map((p) => p.playerId).join());
+     this.fields = groups.map((g, i) => {
+       const solo = this.isSolo || g.length === 1;
+       const wave = reuse ? this.bossWaves[i].wave : buildBossWave(this.gd, this.rngWaves, this.factions, this.round, { bossId, solo });
+       // one spawn list per field, shared by the field's players' onBattleStart handlers (edit it in place)
+       const spawns = wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined }));

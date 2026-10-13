@@ -1,0 +1,93 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\audit.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\audit.js"
+index 602ceae..30ea7bb 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\audit.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\audit.js"
+@@ -27,13 +27,13 @@
+ //                 maps consistent, 6 (co-op) / 3 (solo) cards
+ //   联防          decided after the COMBAT_END pause from the players still in: runs iff co-op with ≥ 1 leaker and
+ //                 ≥ 1 perfect player; helpers = unite.js helperOrder (PRTS: units > active bond > layers > standing
+ //                 units > seat, research 08 §5); leakers = players with counted leaks
+ //   settle        no unite ⇒ loss = min(cap, counted leaks); after 联防 a leaker loses ≤ cap (its leaked enemies'
+ //                 offspring count too), everybody else ≤ min(cap, own counted leaks); LP ≤ 0 ⇔ eliminated
+-//   final assault fields follow the saved per-match pairs, team LP = Σ alive LP, boss pool = bossPoolHp(); hidden core only
++//   final assault fields pair alive players by seat, team LP = Σ alive LP, boss pool = bossPoolHp(); hidden core only
+ //                 after a win when hiddenEligible() holds
+ //   result        each title ≤ once, ≤ 1 title per player, onlyOnWin titles only on a win, roundsPassed per player,
+ //                 Σ alive players' LP = the merged team LP after the Final Assault
+ //   deadlines     every timed phase's m.public deadline equals its configured duration × timerScale; the co-op
+ //                 strategy draft has one countdown: the deadline is the current turn's (Match.BAND_TURN_SECONDS). A match
+ //                 with a single human (solo, or a 同盟 room with AI teammates only: Match.soloUntimed) times nothing
+@@ -41,14 +41,15 @@
+ //                 silent (deadline 0)
+ // Checks never throw into the match: an exception inside a check is itself recorded as a violation.
+ 
+ import { PHASE } from '../../shared/constants.js';
+ import { collectViolations } from './invariants.js';
+ import { mergeTile, pieceDir, canPlace, placeClass } from './board.js';
+-import { bossPoolHp, hiddenEligible } from './finalAssault.js';
++import { pairPlayers, bossPoolHp, hiddenEligible } from './finalAssault.js';
+ import { helperOrder } from './unite.js';
++import { firstLeakFree } from './hextech.js';
+ import { BAND_TURN_SECONDS } from './Match.js';
+ 
+ /**
+  * @param {import('./Match.js').Match} m
+  * @param {{ invariants?: boolean, limit?: number }} [opts] invariants: also run collectViolations at phase changes
+  */
+@@ -423,20 +424,22 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
+     check('settle', () => {
+       const cap = gd.lpCapPerRound;
+       const uniteRan = !!(plan && uniteResult && !uniteResult.synthetic);
+       for (const [ps, lp0] of before) {
+         const r = m.lastResults.get(ps.playerId) || { leaked: [] };
+         const counted = (r.leaked || []).filter((l) => l && l.counted !== false).length;
++        // 海克斯 不灭壁垒 (DESIGN §29): the round's first leak is free, so settle charges one less
++        const charged = Math.max(0, counted - (firstLeakFree(ps) ? 1 : 0));
+         // after 联防 a leaker pays for every surviving enemy of its source — enemies spawned by its leaked enemies
+         // (splitters, summoners) included — so only the cap bounds it; everybody else never exceeds own leaks
+-        const max = uniteRan && plan.leakers.includes(ps) ? cap : Math.min(cap, counted);
++        const max = uniteRan && plan.leakers.includes(ps) ? cap : Math.min(cap, charged);
+         if (ps.alive) {
+           const loss = lp0 - ps.lp;
+           if (loss < 0) fail(`${ps.playerId}: LP rose in settle ${lp0} → ${ps.lp}`);
+           if (loss > max) fail(`${ps.playerId}: lost ${loss} LP with ${counted} counted leaks (cap ${cap})`);
+-          if (!uniteRan && loss !== max) fail(`${ps.playerId}: lost ${loss} LP, expected min(${cap}, ${counted})`);
++          if (!uniteRan && loss !== max) fail(`${ps.playerId}: lost ${loss} LP, expected min(${cap}, ${charged})`);
+           if (ps.lp <= 0) fail(`${ps.playerId}: alive with LP ${ps.lp}`);
+         } else {
+           // eliminated: LP is clamped to 0, so the loss was ≥ lp0 and still ≤ min(cap, counted)
+           if (lp0 > max) fail(`${ps.playerId}: eliminated from ${lp0} LP with only ${counted} counted leaks`);
+           if (ps.eliminatedRound !== m.round) fail(`${ps.playerId}: eliminated round ${ps.eliminatedRound} != ${m.round}`);
+           if (ps.lp !== 0) fail(`${ps.playerId}: eliminated with LP ${ps.lp}`);
+@@ -446,29 +449,21 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
+     });
+     runInvariants();
+     return res;
+   });
+   wrap(m, 'startFinalAssault', function (orig, hidden) {
+     const alive = m.alivePlayers();
+-    const before = m.bossPairs?.map(g => g.slice()) ?? null;
+     const lpSum = alive.reduce((s, p) => s + Math.max(0, p.lp), 0);
+     const teamLp0 = m.teamLp;
+     const res = orig(hidden);
+     runInvariants();
+     check('final assault', () => {
+       if (!alive.length) return;
+-      const pairs = m.bossPairs || [];
+-      const memberIds = pairs.flat();
+-      if (pairs.length !== Math.ceil(alive.length / 2) || pairs.some(g => g.length < 1 || g.length > 2)
+-        || new Set(memberIds).size !== memberIds.length
+-        || JSON.stringify([...memberIds].sort()) !== JSON.stringify(alive.map(p => p.playerId).sort())) fail('boss pairing does not cover every alive player once');
+-      if (before && before.flat().every(id => alive.some(p => p.playerId === id)) && before.flat().length === alive.length
+-        && JSON.stringify(before) !== JSON.stringify(pairs)) fail('boss pairing changed after preparation');
+-      const groups = pairs.map(g => g.join(','));
++      const groups = pairPlayers(alive).map((g) => g.map((p) => p.playerId).join(','));
+       const fields = m.fields.map((f) => f.players.join(','));
+-      if (JSON.stringify(groups) !== JSON.stringify(fields)) fail(`boss fields ${fields.join(' | ')} != saved pairs ${groups.join(' | ')}`);
++      if (JSON.stringify(groups) !== JSON.stringify(fields)) fail(`boss fields ${fields.join(' | ')} != seat pairs ${groups.join(' | ')}`);
+       m.fields.forEach((f, i) => { if (f.fieldId !== `b${i + 1}`) fail(`boss field id ${f.fieldId}`); });
+       if (!hidden && m.teamLp !== lpSum) fail(`team LP ${m.teamLp} != Σ alive LP ${lpSum}`);
+       if (hidden && m.teamLp !== teamLp0) fail(`hidden core changed team LP ${teamLp0} → ${m.teamLp}`);
+       const want = bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length);
+       if (!m.bossPool || m.bossPool.maxHp !== want) fail(`boss pool ${m.bossPool && m.bossPool.maxHp} != ${want}`);
+       if (hidden && !hiddenEligible(gd, { layerSum: m.hiddenLayerSum, teamLp: m.teamLp })) fail('hidden core entered while not eligible');

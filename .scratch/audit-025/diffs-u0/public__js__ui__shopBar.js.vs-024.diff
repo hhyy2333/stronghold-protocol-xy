@@ -1,0 +1,9 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\ui\shopBar.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\public\js\ui\shopBar.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\shopBar.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\ui\\shopBar.js"
+index 9c15481..71fb6b0 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\shopBar.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\ui\\shopBar.js"
+@@ -103 +103 @@ export function ChessCard({ slot, idx, priv, frozen = false, reason = null, free
+-    <${Img} src=${chessPortraitUrl(m, c)} class="scard__art" />
++    <${Img} src=${chessPortraitUrl(m, c, data.get('local'))} class="scard__art" />

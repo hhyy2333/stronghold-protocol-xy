@@ -1,0 +1,45 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\ai.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\ai.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\ai.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\ai.js"
+index 5ef660f..7317828 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\ai.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\ai.js"
+@@ -173,0 +174,10 @@ export function acquireTargets(b, u, prof) {
++  // Fortress has an extra melee tile even against enemies it cannot block (PRTS branch / 号角). Its ordinary
++  // ranged targets still take priority; this does not fill the other tiles in its ranged blind spot.
++  if (prof.fortress && !cands.length && !extra?.length) {
++    const here = [u.tileR * COLS + u.tileC];
++    const near = b.enemiesInKeys(here, u, prof);
++    if (!near.length && b._allyTargets?.size) near.push(...b.allyTargetsInKeys(here, u));
++    prof._fortressMelee = near.length > 0;
++    sortEnemyTargets(b, u, near, prof.priority);
++    return near.slice(0, 1);
++  }
+@@ -228 +238,2 @@ export function performAttack(b, u, prof, targets, opts = null) {
+-    const info = { isSkill, index: i, attackId, energy: i === 0 ? energy : 0 };
++    // Target acquisition mutates the fortress profile. Keep this shot's mode while its shell is in flight.
++    const info = { isSkill, index: i, attackId, fortressMelee: !!prof._fortressMelee, energy: i === 0 ? energy : 0 };
+@@ -309,0 +321,8 @@ export function resolveHit(b, u, prof, target, info, x, y) {
++    const funnelMul = prof.funnelMul ? prof.funnelMul(b, u, target) : 1;
++    // Unreleased drones are additional damage on the caster's attack (PRTS 驭械术师), including a skill that only
++    // buffs or retargets that attack. `info.isSkill` is set for every attack or targeting override, so it must not
++    // decide this. `funnelBodyHits === 0` is the drone-only opt-out (the ramp stays inside the hits, no body).
++    // A volley shares one talent roll and attackId; extra drones never duplicate the body.
++    // [ASSUMED] Body instances precede additions at the existing projectile impact; a multi-hit volley keeps one ramp.
++    const attachedFunnel = !!prof.funnelMul && prof.funnelBodyHits !== 0;
++    if (!attachedFunnel) mulT *= funnelMul;
+@@ -314,0 +334,7 @@ export function resolveHit(b, u, prof, target, info, x, y) {
++    if (attachedFunnel && info.index === 0) {
++      const bodyHits = Math.max(1, prof.funnelBodyHits > 0 ? prof.funnelBodyHits : 1);
++      for (let h = 0; h < bodyHits && target.alive; h++) {
++        dealtMain += b.dealDamage(u, target, { amount: atk * scale * mulT, type: baseType,
++          isAttack: true, isSkill: info.isSkill, tags: prof.tags || [], attackId });
++      }
++    }
+@@ -316 +342,2 @@ export function resolveHit(b, u, prof, target, info, x, y) {
+-      const d = { amount: atk * scale * mulT, type: baseType, isAttack: true, isSkill: info.isSkill, tags: prof.tags || [], attackId };
++      const d = { amount: atk * scale * mulT * (attachedFunnel ? funnelMul : 1), type: baseType,
++        isAttack: !attachedFunnel, isSkill: info.isSkill, tags: attachedFunnel ? [...(prof.tags || []), 'addition', 'funnel'] : (prof.tags || []), attackId };
+@@ -326 +353 @@ export function resolveHit(b, u, prof, target, info, x, y) {
+-  if (prof.splashRadius > 0) {
++  if (prof.splashRadius > 0 && (!info.fortressMelee || prof.fortressMeleeSplash)) {

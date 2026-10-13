@@ -1,0 +1,71 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\items\\battle.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\items\\battle.js"
+index a6daf97..6c5dd94 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\items\\battle.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\items\\battle.js"
+@@ -30,13 +30,13 @@
+ // `death` hook at PRIO_RESPAWN 13, then 埃芒加德 12 (PRIO_BAND_REVIVE), ahead of 阿戈尔 5's first-knock-out revive (11)
+ // and 不屈 (10) — reviveNow. A 不死 prevents the knock-out, so the lock always comes first whatever the equip order (player
+ // report F1 after 0.1.0: with the 茧甲 equipped first the revive ran first and the first lethal hit showed no lock). Until
+ // 0.2.0 both revived in place (`fatal` savers at −101 / −110): no 被击倒时 / 部署时 effect fired (community report
+ // 「像砾和瑕光这种死亡和部署的叠层效果，如果有艾芒加德的3次复活似乎是无法触发」).
+ // 骑士戒律's free in-skill undying runs early (20). Flat damage reduction 'hit' −10 (after the other damage modifiers).
+-// Proc damage dealt by items carries the tag 'item' and never re-triggers item procs.
++// Proc damage dealt by items carries the tag 'item'; damage-producing item riders exclude it to avoid recursion.
+ //
+ // 蒸汽之心 (Victoria carrier) — LIVE model: the hammer types (灼燃/坚固/加速/战栗维式重锤) carried by the owner's operators
+ // that are on the field right now (cached ≤ 0.5 s, dropped whenever an operator deploys or leaves) are granted to the
+ // carrier; a hammer the carrier carries itself counts twice ("效果变为2倍"). Implemented as one shared hammer runtime
+ // per unit whose multiplier
+ // m = own copies of that hammer + (1 if 蒸汽之心 applies and the type is on the field): burn ×m of arts damage,
+@@ -386,12 +386,21 @@ function onAttackEnemies(S, u, fn) {
+     if (c.attacker !== u) return;
+     const ts = c.targets;
+     for (let i = 0; i < ts.length; i++) { const t = ts[i]; if (t && t.side === 'enemy' && t.alive) fn(t, c); }
+   });
+ }
+ 
++/** Actual carrier damage to enemies, including DoT/skill/splash. Element gauge fill and HP loss are not damage. */
++function onDamageEnemies(S, u, fn) {
++  S.on('damaged', (c) => {
++    if (c.source !== u || c.type === 'element' || isHpLoss(c.dmg) || !(c.amount > 0)
++      || !c.target || c.target.side !== 'enemy' || !hasHp(c.target)) return;
++    fn(c.target, c);
++  });
++}
++
+ /** Generic buff-key behaviours (shared by several items). */
+ const BY_BUFF = {
+   // 源石溶剂: the text's "每秒流失 damage 点生命值" is officially 每秒受到 damage 点真实伤害 (PRTS 盟约记录 修正 "并非流失", 备注
+   // "造成无来源真实持续环境伤害"; the `periodic_damage` template — also 狂暴宿主 "自身每秒受到N无来源真实伤害"): a damage instance,
+   // not a 流失 — shields, damage-taken modifiers and the target-side `hit` effects apply, and it is a "受到伤害" for 受击回复
+   // SP, the 重装 TAKE_DAMAGE trigger and 信仰搅拌机 S3's counters (player report D1). 无来源: hooks see no source; the carrier
+@@ -633,24 +642,25 @@ const BY_ITEM = {
+     S.on('death', (c) => {
+       if (c.unit !== u || used >= max || !reviveNow(battle, c, 'item')) return;
+       used++;
+       fxOn(battle, 'revive', u, 'item:chess_item_4_12_e', rec.id, { left: max - used });
+     }, PRIO_RESPAWN); // a knock-out: after every 不死 (the hammer's lock), whatever the equip order (header)
+   },
+-  // 催泪瓦斯: on attack prob ⇒ 1 麻痹 stack
++  // PRTS 盟约记录 corrects both items' "攻击时" to "造成伤害时" (#489); no attack event is required.
++  // 催泪瓦斯: on damage prob ⇒ 1 麻痹 stack
+   chess_item_5_01_e(battle, u, rec, S) {
+     const p = bp(rec, 'act1autochess_equip_acarm058_global_buff');
+     const pr = p ? num(p.prob) : 0;
+-    if (pr > 0) onAttackEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'palsy', { value: 1, source: u }); });
++    if (pr > 0) onDamageEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'palsy', { value: 1, source: u }); });
+   },
+-  // 谢拉格不融冰: on attack prob ⇒ 寒冷 `cold` s
++  // 谢拉格不融冰: on damage prob ⇒ 寒冷 `cold` s
+   chess_item_5_02_e(battle, u, rec, S) {
+     const p = bp(rec, 'act1vautochess_equip_acarm003_global_buff');
+     if (!p) return;
+     const pr = num(p.prob), d = num(p.cold);
+-    if (pr > 0 && d > 0) onAttackEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'cold', { duration: d, source: u }); });
++    if (pr > 0 && d > 0) onDamageEnemies(S, u, (t) => { if (chance(battle, pr)) battle.applyStatus(t, 'cold', { duration: d, source: u }); });
+   },
+   // 双模机械臂: physical/arts damage becomes 弱点伤害 (whichever type the target resists less)
+   chess_item_5_03_e(battle, u, rec, S) {
+     S.on('hit', (c) => { if (c.source === u) weaknessRetype(c.dmg, u, c.target); }, 5);
+   },
+   // 天马之盔: with 天马之枪 ⇒ regen hp_recovery_per_sec_by_max_hp_ratio × max HP per second

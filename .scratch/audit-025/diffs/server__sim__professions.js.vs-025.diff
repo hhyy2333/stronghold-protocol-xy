@@ -1,0 +1,61 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\professions.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\professions.js"
+index 14187e3..4544581 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\professions.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\professions.js"
+@@ -18,15 +18,12 @@
+ //   splashOthersOnly bool     groundOnly bool            hits n (damage instances per attack)
+ //   chain {count, falloff, radius, sluggish}              heal {mode:'single'|'multi'|'chain', count, falloff, farMul, elementHealRatio}
+ //   priority 'fly'|'lowDef'|'ranged'|'lowestHp'|'highestHp'|'nearest'|'farthest'|'notBurst'|null
+ //   noAttack bool (never attacks)   noAttackUnlessSkill bool (attacks only while its skill is active)
+ //   noHeal bool (cannot be healed by others)   blockFly bool   onHitStatus {key, duration, value}
+ //   dmgMul(battle, unit, target) → number      afterHit(battle, unit, target, {dealt,x,y})
+-//   funnelMul(battle, unit, target) → number (drone ramp, separate from the caster's attack multiplier)
+-//   funnelBodyHits n (body hits kept beside that ramp. Omit it for one. 0: drone-only, ramp folded into the hits,
+-//                     no body — 荒芜拉普兰德 S2. >0: that many body hits — 至简 S2. Not keyed off the skill flag)
+ //   canAttack(battle, unit) → bool             afterAttack(battle, unit, targets)
+ //   skipEnemy(enemy) → bool (an enemy the unit never selects — targeting.js canTargetEnemy; 嵯峨 "不攻击重伤单位")
+ //   healThrough(healer, ally) → bool (a healer that selects and heals that ally through its 禁疗 — Battle
+ //                             injuredAlliesInKeys, damage.js heal; 凯尔希 on her Mon3tr)
+ //   hitsFn(battle, unit, info) → n (info: the hit's { isSkill, index, attackId, energy })
+ //   hitDmgMul n (伤害倍率 of each of the `hits` instances on the main target: DamageInfo `mul`, applied after DEF / RES
+@@ -385,23 +382,14 @@ const installTactician = (battle, unit) => {
+     });
+   };
+   battle.on('deploy', (ctx) => { if (ctx.unit === unit) spawn(); }, { owner: unit });
+ };
+ 
+ const installFunnel = (battle, unit) => {
+-  // PRTS 分支特性信息 驭械术师: changing the target, or redeploying, resets the drone ramp at once, even against the
+-  // same living enemy. The per-target map (耶拉 / 至简) resets with it. A free move (moveRedeploy, the same carry as a
+-  // 秘术师's stored energy and 乌尔比安 S3) keeps the ramp. An in-flight drone still applies the ramp it computes on
+-  // impact, so a shot launched before the reset can step the new ramp.
+-  const reset = () => {
+-    unit.trait.funnelTarget = null;
+-    unit.trait.funnelScale = unit.profile.funnel?.init ?? 0.2;
+-    unit.trait.funnelMap?.clear();
+-  };
+-  reset();
+-  battle.on('deploy', (ctx) => { if (ctx.unit === unit && !ctx.move) reset(); }, { owner: unit });
++  unit.trait.funnelTarget = null;
++  unit.trait.funnelScale = unit.profile.funnel?.init ?? 0.2;
+ };
+ 
+ /**
+  * 秘术师 (mystic) trait "攻击造成法术伤害，在找不到攻击目标时可以将攻击能量储存起来之后一齐发射（最多3个）" (bb times; 深靛's
+  * MSC-X 4) with the branch rules of PRTS 分支特性信息 秘术师: "能量储存与攻击占用相同的攻击间隔：在进行攻击判定时，若范围内存在
+  * 有效目标，则进行普通攻击；若无有效目标且能量储存数未满，则改为储存一份攻击能量（属于攻击行为）；仅没有有效目标，且能量储存数已满的
+@@ -517,13 +505,13 @@ export const SUB = Object.freeze({
+   // PRTS 伊芙利特 S2); for the 阵法术师: Terra Wiki, Phalanx Caster (secondary) and PRTS 林 S3 备注. PRTS 溅射半径一览
+   // documents no splash radius for either (supporting only: it omits the 撼地者 too)
+   splashcaster: P({ splashRadius: 1.1 }),
+   blastcaster: P({ rangeAoe: true }),
+   chain: P({ chain: { count: 3, falloff: 0.15, radius: CHAIN_RADIUS, sluggish: 0.5 } }),
+   funnel: P({ projectile: 'drone', install: installFunnel,
+-    funnelMul: (battle, unit, target) => {
++    dmgMul: (battle, unit, target) => {
+       const f = unit.profile.funnel || { init: 0.2, delta: 0.15, max: 1.1 };
+       if (unit.trait.funnelTarget === target.id) unit.trait.funnelScale = Math.min(f.max, (unit.trait.funnelScale ?? f.init) + f.delta);
+       else { unit.trait.funnelTarget = target.id; unit.trait.funnelScale = f.init; }
+       return unit.trait.funnelScale;
+     } }),
+   mystic: P({ install: installMystic,

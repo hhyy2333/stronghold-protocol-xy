@@ -1,0 +1,185 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\views.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\match\\views.js"
+index 6539f41..f2a0679 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\views.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\match\\views.js"
+@@ -5,13 +5,15 @@
+ // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
+ 
+ import { PHASE, GEO } from '../../../shared/constants.js';
+ import { boardOrder, pieceDir } from '../board.js';
+ import { bondList, offBondCounts } from '../bondsMeta.js';
+ import { cardView } from '../choices.js';
++import { hexIdsOf, hexView, enemyHexView, firstLeakFree } from '../hextech.js';
+ import { bountySpawns, previewOf } from '../waves.js';
++import { applyEnemyHexes, enemyHexMods } from '../hextech.js';
+ import { timelineAt } from '../fields.js';
+ import { bossFieldPlacement } from '../finalAssault.js';
+ import { battleProgress } from '../../sim/spec.js';
+ 
+ /** A reported capsule numerator clamped to its denominator, else null (unknown — never a fabricated 0). */
+ const finiteOrNull = (v, cap = Infinity) => {
+@@ -41,12 +43,16 @@ export class MatchViews {
+       case PHASE.BAND_DRAFT:
+         if (this.draft && this.draft.picks[ps.playerId]) return 'ready';
+         return this.draft && this.draftTurn() === ps.playerId ? 'deciding' : 'acting';
+       case PHASE.SP_DRAFT:
+         if (this.sp && this.sp.picks[ps.playerId] != null) return 'ready';
+         return this.sp && this.spTurn() === ps.playerId ? 'deciding' : 'acting';
++      // 海克斯 (DESIGN §29) is a parallel draft: everyone decides at once, so there is no 'acting'
++      case PHASE.HEX_DRAFT:
++        if (this.hex && this.hex.picks[ps.playerId] != null) return 'ready';
++        return 'deciding';
+       case PHASE.PREP: return ps.ready ? 'ready' : 'acting';
+       case PHASE.COMBAT: case PHASE.FINAL_ASSAULT: case PHASE.HIDDEN_CORE: {
+         const f = this.fields.find((x) => x.players.includes(ps.playerId));
+         return f && f.live ? 'combat' : 'done';
+       }
+       case PHASE.UNITE: return this.unitePlan && this.unitePlan.helpers.includes(ps) ? 'helping' : 'done';
+@@ -83,27 +89,33 @@ export class MatchViews {
+       drawnDisabledBonds: this.disabledBonds.slice(),
+       bannedChess: this.bannedChess.slice(),
+       bossId: this.bossId,
+       hiddenBossId: this.hiddenBossId,
+       bossRound: this.gd.bossRound,
+       hiddenRound: this.gd.hiddenRound,
+-      bossPairs: this.bossWaves ? this.bossWaves.map(w => w.players.slice()) : this.bossPairs ? this.bossPairs.map(ids => ids.slice()) : null,
+       spRound: this.gd.spRounds().includes(this.round),
+       // DESIGN §14: 'client' = battles are simulated by the browsers (b.start specs), 'server' = legacy streaming
+       combatMode: this.clientCombat ? 'client' : 'server',
++      // 测试场 (opts.test, the owner's request of 2026-10-11): the room is a test field, so the client offers the test panel
++      // (funds / every 协议源石 / clear) and expects no 协议源石 draft. Omitted in a normal match, so its frames are unchanged.
++      ...(this.isTestField() ? { test: true } : {}),
+       // solo pause (g.pause, DESIGN §14): the battle, its field clock and every deadline are frozen while true
+       paused: !!this.paused,
+       players: this.order.map((ps) => ({
+         playerId: ps.playerId,
+         seat: ps.seat,
+         name: ps.name,
+         isBot: ps.isBot,
+         connected: ps.isBot || (ps.connected && !ps.left),
+         alive: ps.alive,
+         lp: Math.max(0, ps.lp),
+         bandId: ps.bandId,
++        hexes: ps.alive ? hexIdsOf(ps) : [],
++        // 海克斯 不灭壁垒 (DESIGN §29): settlement forgives this player's first leak — while a row's loss is derived from a
++        // LOCAL count (the 联防 replica, `pendingLp` below is already adjusted) the reader subtracts this. Omitted when false.
++        ...(ps.alive && firstLeakFree(ps) ? { freeLeak: true } : {}),
+         shopLevel: ps.shop.level,
+         boardCount: ps.deployCount,
+         ready: this.phase === PHASE.INFO_CHECK ? ps.infoReady : ps.ready,
+         // the strip of a teammate watching this player (DESIGN §20.15): every bond with members, layers or an active tier
+         // (= the player's own m.private list without thresholds / countsHand — the client reads those from bonds.json),
+         // this round's in-battle gains included once the COMBAT phase ended (PlayerState.bondsView); [] once eliminated —
+@@ -142,12 +154,34 @@ export class MatchViews {
+         family: s.family, name: s.name, desc: s.desc, eventId: s.eventId,
+         cards: s.cards.map(c => ({ ...cardView(c), soldOut: c.kind === 'item' && !this.itemPool.canGain(c.id) })), order: s.order.slice(),
+         turn: this.spTurn(), picks: { ...s.picks }, taken: { ...s.taken }, untimed: !!s.untimed,
+       };
+     }
+     if (this.phase === PHASE.UNITE && this.unitePlan) v.unite = { helpers: this.unitePlan.helpers.map((p) => p.playerId), leakers: this.unitePlan.leakers.map((p) => p.playerId) };
++    // 海克斯 (DESIGN §29): the enemy side's hexes persist to the end of the match, so every phase carries them (the round
++    // frame and the enemy drawer show them); the draft's own offers exist only while HEX_DRAFT runs
++    if (Array.isArray(this.enemyHexes) && this.enemyHexes.length) {
++      v.enemyHexes = this.enemyHexes
++        .map((e) => { const h = this.gd.hex(e && e.id ? e.id : e); return h ? enemyHexView(h, e && e.round != null ? e.round : null) : null; })
++        .filter(Boolean);
++    }
++    if (this.phase === PHASE.HEX_DRAFT && this.hex) {
++      const s = this.hex;
++      const offers = {};
++      for (const [pid, ids] of Object.entries(s.offers || {})) {
++        offers[pid] = (ids || []).map((id, idx) => { const h = this.gd.hex(id); return h ? hexView(h, idx) : null; }).filter(Boolean);
++      }
++      v.hex = {
++        offers,
++        picks: { ...s.picks },
++        rerollsLeft: { ...s.rerolls },
++        untimed: !!s.untimed,
++        turnDeadline: s.turnDeadline || 0,
++        timerSec: s.untimed ? 0 : (this.gd.hexTimer() || 0),
++      };
++    }
+     // SETTLE after a 联防: its outcome as data (settle.js uniteResultView; GitHub #235, PR #112) — { through, helpers,
+     // leakers, losses: { playerId: the LP settlement charged this round } } — the client's result box reads the viewer's
+     // own charge from it; absent when no 联防 resolved (the client then shows the round's own battle result)
+     if (this.phase === PHASE.SETTLE && this.uniteResultView) {
+       const ur = this.uniteResultView;
+       v.uniteResult = { through: ur.through, helpers: ur.helpers.slice(), leakers: ur.leakers.slice(), losses: { ...ur.losses } };
+@@ -199,60 +233,69 @@ export class MatchViews {
+   /**
+    * LP a player's own battle of this normal round will cost at settlement so far — settle()'s min(lpCapPerRound,
+    * counted leaks) — for the teammates' live LP (m.public players[].pendingLp, user playtest #3 item 2; the own client
+    * counts its local battle itself). COMBAT: the recorded result once every field is done, else the field's result, else
+    * the authority's b.progress leaks (a server-run field reports none before its result is released); 联防: a leaker's
+    * enemies still standing on the 联防 field (_uniteLeft, uncapped in `uniteLeft`, user playtest #6 item 7), anyone
+-   * else's own battle count (0: they were perfect). Omitted when 0 and in every other phase (boss rounds charge the
+-   * merged team LP live).
++   * else's own battle count (0: they were perfect). **不灭壁垒 (DESIGN §29 third batch) frees the round's first leak**, so
++   * settle() charges `counted − 1` / `survivors − 1` — the preview must subtract the same one or the LP tower shows a
++   * loss settlement never takes (user report: 「显示 −3，结算只扣 −2」); `firstLeakFree` is the hex's own predicate.
++   * Omitted when 0 and in every other phase (boss rounds charge the merged team LP live).
+    * @returns {{ pendingLp?: number, uniteLeft?: number }}
+    */
+   _pendingLpView(ps) {
+     if (!ps || !ps.alive || (this.phase !== PHASE.COMBAT && this.phase !== PHASE.UNITE)) return {};
+     const counted = (r) => (r && Array.isArray(r.leaked) ? r.leaked.filter((l) => l && l.counted !== false).length : 0);
++    // settle()'s own allowance: the round's first leak is free while the player owns 不灭壁垒
++    const free = firstLeakFree(ps) ? 1 : 0;
+     // 联防: a leaker's enemies still standing on the 联防 field (uncapped), the loss capped like settle()
+     const left = this._uniteLeft(ps);
+     if (left != null) {
+-      const loss = Math.min(this.gd.lpCapPerRound, left);
++      const loss = Math.min(this.gd.lpCapPerRound, Math.max(0, left - free));
+       return loss > 0 ? { uniteLeft: left, pendingLp: loss } : { uniteLeft: left };
+     }
+     let n = 0;
+     if (this.lastResults.has(ps.playerId)) n = counted(this.lastResults.get(ps.playerId));
+     else if (this.phase === PHASE.COMBAT) {
+       const f = this.fields.find((x) => x && x.kind === 'normal' && Array.isArray(x.players) && x.players.includes(ps.playerId));
+       if (f && f.cc) n = f.done && f.result ? counted(f.result.perPlayer && f.result.perPlayer[ps.playerId]) : Number(f.progress && f.progress.leaks) || 0;
+       else if (f && f.battle) { try { n = battleProgress(f.battle).leaks; } catch { n = 0; } }
+     }
+-    const loss = Math.min(this.gd.lpCapPerRound, Math.max(0, Math.trunc(Number(n) || 0)));
++    const loss = Math.min(this.gd.lpCapPerRound, Math.max(0, Math.trunc(Number(n) || 0) - free));
+     return loss > 0 ? { pendingLp: loss } : {};
+   }
+ 
+-  /** nextEnemies preview for m.private. */
++  /**
++   * nextEnemies preview for m.private. The enemy hexes are folded in exactly like the battle's spawn list
++   * (`applyEnemyHexes`), so 虫群's `countAdd` shows up in the prep preview / enemy pen too — the preview never
++   * under-reports the round.
++   */
+   nextEnemiesFor(ps) {
+     if (!ps.alive) return [];
++    const fold = (list) => applyEnemyHexes(list, enemyHexMods(this));
+     if (this.bossWaves) {
+       const g = this.bossGroupOf(ps);
+       if (!g) return [];
+-      return previewOf([...g.wave.spawns, ...bountySpawns(this.gd, this.round, g.wave, ps.bounties, ps.playerId, { solo: this.isSolo, side: g.side })]);
++      return previewOf(fold([...g.wave.spawns, ...bountySpawns(this.gd, this.round, g.wave, ps.bounties, ps.playerId, { solo: this.isSolo, side: g.side })]));
+     }
+     if (!this.wave) return [];
+     const bounty = bountySpawns(this.gd, this.round, this.wave, ps.bounties, ps.playerId, { solo: this.isSolo });
+-    return previewOf([...this.wave.spawns, ...bounty]);
++    return previewOf(fold([...this.wave.spawns, ...bounty]));
+   }
+ 
+   /** A 自选 piece's pick (like the sim's UnitInfo.diy): a scout's card composes the operator from it (shared/diy.js). */
+   _diyInfo(ps, piece) {
+     const p = piece.kind === 'chess' && typeof ps.diyPickOf === 'function' ? ps.diyPickOf(piece.id) : null;
+     return p ? { charId: p.charId, skillIndex: p.skillIndex, uniEquipId: p.uniEquipId } : undefined;
+   }
+ 
+   /** The 外勤医疗 reserve medic already standing on each player's field in preparation. Touch replaces it only at
+    * battleStart, so the prep view always uses the reserve medic, regardless of the current elite count. The stage's
+    * normal-board slot is transformed to the correct half of a boss field by _onBossHalf / the client prep camera. */
+   prepMapChars(ps) {
+-    if (!ps?.alive || this.phase !== PHASE.PREP || !this.teamMedicGranted()) return [];
++    if (!ps?.alive || this.phase !== PHASE.PREP || !this.order.some((p) => p.alive && p.bandId === 'band_amedic')) return [];
+     const id = 'char_605_cmedic';
+     const slot = this.stage?.mapChars?.find((m) => m?.key === id && Array.isArray(m.pos) && m.pos[0] >= 9 && m.pos[0] <= 12
+       && m.pos[1] >= 0 && m.pos[1] <= 10 && !/multi_only/.test(String(m.alias)));
+     const rec = this.gd.token(id);
+     if (!slot || !rec) return [];
+     const dir = slot.dir || 'RIGHT';

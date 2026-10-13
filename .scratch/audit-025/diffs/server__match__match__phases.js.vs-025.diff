@@ -1,0 +1,83 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\phases.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\match\\phases.js"
+index 172cb81..96ceac8 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\phases.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\match\\phases.js"
+@@ -4,14 +4,14 @@
+ // round start).
+ // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
+ 
+ import { PHASE, ERR } from '../../../shared/constants.js';
+ import { buildNormalWave, buildBossWave } from '../waves.js';
+ import { pairPlayers } from '../finalAssault.js';
+-import { createRng, deriveSeed } from '../../sim/rng.js';
+ import { botPickBand } from '../bot.js';
++import { resolveMirrorCopies } from '../hextech.js';
+ import { OK, fail, DELAYS, BAND_TURN_SECONDS } from './common.js';
+ 
+ export class MatchPhases {
+   enterInfoCheck() {
+     this.phase = PHASE.INFO_CHECK;
+     for (const ps of this.order) if (ps.botControlled) ps.infoReady = true;
+@@ -258,12 +258,13 @@ export class MatchPhases {
+     this.round = r;
+     this.fields = [];
+     this.watchers.clear();
+     this.unitePlan = null;
+     this.uniteResultView = null;
+     this.sp = null;
++    this.hex = null;
+     this.wave = null;
+     this.bossWaves = null;
+     const alive = this.alivePlayers();
+     // the round's enemies (shared composition, generated now so the prep preview is exact). Planned BEFORE the players'
+     // round start: its recompute() checks the board on the field the player deploys on this round (deployFieldOf reads
+     // the boss pairing), so R14 → R15 never re-checks a boss-field board against the normal field (user playtest #5
+@@ -279,31 +280,42 @@ export class MatchPhases {
+     // an eliminated player's pending 信标 gift still goes to its teammate (effects flagged afterElimination; GitHub #86)
+     for (const ps of this.order) {
+       if (ps.alive) continue;
+       try { this.dispatcher.dispatchEliminated(ps, 'onRoundStart', { round: r }); } catch (e) { this.reportError('dispatch onRoundStart (eliminated)', e); }
+     }
+     for (const ps of alive) ps.recompute();
++    // 镜像协议 (owner report 2026-10-12): an armed copy is retried at every round start, so a teammate that gained a
++    // card AFTER the parallel draft (a later pick, a grant) still pays the picker out. Runs before the round's deadline
++    // is armed and after every onRoundStart handler, so a card granted by one of those is copyable in the same round.
++    try { resolveMirrorCopies(this); } catch (e) { this.reportError('resolveMirrorCopies', e); }
+     this.setDeadline(DELAYS.ROUND_START / 1000, () => this.afterRoundStart(), { silent: this.soloUntimed });
+     this.markPublic();
+     // eliminated humans and spectator seats scout the board of the player they follow through the round's prep, not
+     // their own empty board (community report of 2026-10-06, item 56; MatchWatch._followScout)
+     for (const ps of this._viewers()) this._followScout(ps);
+   }
+ 
+-  /** Stable per-match pairs and their templates, generated before the prep preview / board validation. */
++  /** The boss round's fields (seat pairs of the alive players) and their templates, generated for the prep preview. */
+   _planBossWaves() {
+     const r = this.round;
+     const bossId = r === this.gd.hiddenRound && r !== this.gd.bossRound ? this.hiddenBossId : this.bossId;
+-    // Pairing uses an independent seeded draw, consuming no shop, wave, draft or battle randomness.
+-    const groups = pairPlayers(this.alivePlayers(), createRng(deriveSeed(this.seed, 'boss-pairs')), this.bossPairs);
+-    this.bossPairs = groups.map(g => g.map(p => p.playerId));
+-    this.bossWaves = groups.map((g) => ({
++    this.bossWaves = pairPlayers(this.alivePlayers()).map((g) => ({
+       players: g.map((p) => p.playerId),
+       wave: buildBossWave(this.gd, this.rngWaves, this.factions, r, { bossId, solo: this.isSolo || g.length === 1 }),
+     }));
+   }
+ 
+   afterRoundStart() {
+-    if (this.gd.spRounds().includes(this.round)) this.enterSpDraft();
++    // 海克斯 first (DESIGN §29): the draws of data/hextech.json format.rounds (1 / 6 / 11) happen before the prep phase,
++    // so the round's enemy hex is already known when the players shop for it. enterHexDraft continues the round itself
++    // (afterHexDraft → 机变 or prep) even when it has no pool to offer, so a data set whose hexes are empty still reaches
++    // that round's 机变 — skipping straight to prep here would silently swallow it (test/match/harness.js withoutHextech).
++    //
++    // 测试场 (opts.test, the owner's request of 2026-10-11): the draft never runs — the tester picks their 协议源石 from
++    // the test panel instead (MatchTestField) — but the round still has to reach a same-round 机变, exactly as the
++    // empty-pool path above does. So the branch falls through to the 机变 / prep choice rather than skipping the draft's
++    // own continuation: `afterHexDraft` without a draft is precisely `机变 ? enterSpDraft() : enterPrep()`.
++    if (!this.isTestField() && this.gd.hexRounds().includes(this.round)) this.enterHexDraft();
++    else if (this.gd.spRounds().includes(this.round)) this.enterSpDraft();
+     else this.enterPrep();
+   }
+ }

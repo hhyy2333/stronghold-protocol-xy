@@ -1,0 +1,97 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\player\\acquire.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\player\\acquire.js"
+index e4b458f..f350df2 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\player\\acquire.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\player\\acquire.js"
+@@ -110,13 +110,13 @@ export class PlayerAcquire {
+     let where = tile ? toTile(tile) : this.stow(elite, { allowTemp: true });
+     // hand and temp full and no deployed tile legal for it (a terrain change not re-checked yet): it stays on the first
+     // deployed copy's tile rather than being lost, like a piece _evictIllegal finds no room for
+     if (!where && deployed.length) where = toTile(mergeTile(deployed));
+     for (const it of items) {
+       if (this.stow(it, { allowTemp: true })) continue;
+-      if (where && elite.items.length < this.gd.equipPerChess) { elite.items.push(it); continue; }
++      if (where && elite.items.length < this.equipCap()) { elite.items.push(it); continue; }
+       this.m.log.warn?.(`[match ${this.m.roomCode}] ${this.playerId}: returned item ${it.id} destroyed (no space)`);
+     }
+     // the returned equipment follows the auto-merge rule like any other gain ("已拥有2件同一初始装备时…自动合并")
+     this.checkItemMerges();
+     // deployed like any operator placed by hand: its manually deployable summons join the hand (after the returned
+     // equipment, which would be lost in temp — a summon stack removed there comes back at the next round start)
+@@ -186,20 +186,21 @@ export class PlayerAcquire {
+     const left = items.filter((it) => !this.stow(it, { allowTemp: true }));
+     this.checkItemMerges();
+     // 获得一名…干员: gained like any other gained operator
+     const np = this.acquireChess(newId, { source: 'transform' });
+     for (const it of left) {
+       if (this.stow(it, { allowTemp: true })) continue;
+-      if (np && this.find(np.uid) && np.items.length < this.gd.equipPerChess) { np.items.push(it); continue; }
++      if (np && this.find(np.uid) && np.items.length < this.equipCap()) { np.items.push(it); continue; }
+       this.m.log.warn?.(`[match ${this.m.roomCode}] ${this.playerId}: returned item ${it.id} destroyed (no space)`);
+     }
+     if (left.length) this.checkItemMerges();
+     this.recompute();
+     return np;
+   }
+ 
++  /** Normal item → golden version in place (整备). */
+   /** Normal item → golden version in place (整备). A golden occupies two shared copies and this piece
+    * already occupies one, so the upgrade waits when no second copy is free. The caller keeps its charge. */
+   upgradeItem(piece) {
+     const rec = this.gd.item(piece.id);
+     if (!rec || rec.isGolden) return false;
+     const gid = rec.upgradeChessId || rec.goldenId;
+@@ -212,29 +213,26 @@ export class PlayerAcquire {
+ 
+   /**
+    * Queue a reward offer: `count` DIFFERENT chess of tier min(level + offset, maxTier) at price 0 (pick 1). Each is a
+    * copy-weighted roll from the shared pool excluding the ones already drawn; a tier left without another chess tops
+    * up from the tier below (user playtest #6 item 19: the official promotion reward never offers one operator twice —
+    * the user's first-hand report; the normal shop's slots may repeat). The offer reserves no copies (the pick takes one).
+-   * The player's slotted 自选 pieces of the reward tier join the draw (player/diy.js diyStockEntries: copies left, then
+-   * the roll's tier — not the ordinary shop's shopLevel gate). 卫戍协议/帮助 干员晋升 names one temporary refresh one tier
+-   * above the 调度中心 and no separate pool; the owner decided on 2026-10-12 that the refresh includes 自选 of the newly
+-   * reached tier. 0.2.0 had [ASSUMED] the shop-level gate on this refresh too (DESIGN §25); §30.23 reverses that.
+-   * An offer built from explicit `ids` does not roll.
++   * The player's slotted 自选 pieces join the draw like in its shop (player/diy.js diyRollEntries: once the 调度中心 is at
++   * the slot's level) — the reward is a temporary refresh of the shop ("临时刷新3名…干员") [ASSUMED].
+    */
+   pushRewardOffer(source = 'merge', { tier = null, ids = null, label = null } = {}) {
+     const ro = this.gd.rewardOffer();
+     const t = Number.isInteger(tier) ? tier : Math.min(this.shop.level + ro.tierOffset, ro.maxTier);
+     // an offer never shows one operator twice, whoever built the list (user playtest #6 item 19)
+     let list = Array.isArray(ids) ? [...new Set(ids)].filter((id) => this.gd.chess(id)) : null;
+     if (!list) {
+       list = [];
+       const fresh = (id) => !list.includes(id);
+       for (let i = 0; i < ro.count; i++) {
+         let id = null;
+-        for (let tt = t; tt >= 1 && !id; tt--) id = this.m.pool.roll(this.m.rngShop, { tier: tt, filter: fresh, extra: this.diyStockEntries() });
++        for (let tt = t; tt >= 1 && !id; tt--) id = this.m.pool.roll(this.m.rngShop, { tier: tt, filter: fresh, extra: this.diyRollEntries() });
+         if (id) list.push(id);
+       }
+     }
+     if (!list.length) return null;
+     const offer = { tier: t, source, label: typeof label === 'string' && label ? label : null, slots: list.slice(0, MAX_OFFER_SLOTS).map((id) => ({ kind: 'chess', id, price: ro.price, sold: false })) };
+     this.offers.push(offer);
+@@ -285,19 +283,16 @@ export class PlayerAcquire {
+    * golden item (to the hand). Returns the owned piece or null.
+    * `deferMerge` (effectsMeta, while onPrepEnd is on the stack): stow it — hand, else temp — and do not merge in this
+    * call, even when an identical normal copy is already owned. The next prep's start runs checkItemMerges. Nothing
+    * already equipped is taken off for the fight about to start. Hand and temp both full keeps the 「整备区已满，获得的装备已销毁」
+    * outcome. [ASSUMED] every item granted at 休整期结束, not only 维多利亚's 战栗维式重锤 (owner's decision 2026-10-04).
+    */
+-  acquireItem(itemId, { source = 'grant', toTemp = false, silent = false, deferMerge = false, requirePool = true } = {}) {
++  acquireItem(itemId, { source = 'grant', toTemp = false, silent = false, deferMerge = false } = {}) {
+     const rec = this.gd.item(itemId);
+     if (!rec) return null;
+-    // Only the fixed operator-gift families can overdraw. Several unrelated strategy grants also pass
+-    // requirePool:false; they must retain their stock limit (for example commercial packaging).
+-    const unlimitedGift = !requirePool && this.gd.isUnlimitedGiftItem(itemId);
+-    if (!unlimitedGift && !this.m.itemPool.canGain(itemId)) {
++    if (!this.m.itemPool.canGain(itemId)) {
+       this.m.toast(this, 'warn', '装备库存不足，未获得该装备');
+       return null;
+     }
+     let piece = this.newPiece('item', itemId);
+     // A prep-end grant may sit beside an identical copy until the next prep. The invariant counts only copies
+     // without this mark, so the fight that is about to start is not reported as a missed merge.

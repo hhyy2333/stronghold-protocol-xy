@@ -1,0 +1,33 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\views.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\views.js"
+index 8016655..6539f41 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\match\\views.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\match\\views.js"
+@@ -83,12 +83,13 @@ export class MatchViews {
+       drawnDisabledBonds: this.disabledBonds.slice(),
+       bannedChess: this.bannedChess.slice(),
+       bossId: this.bossId,
+       hiddenBossId: this.hiddenBossId,
+       bossRound: this.gd.bossRound,
+       hiddenRound: this.gd.hiddenRound,
++      bossPairs: this.bossWaves ? this.bossWaves.map(w => w.players.slice()) : this.bossPairs ? this.bossPairs.map(ids => ids.slice()) : null,
+       spRound: this.gd.spRounds().includes(this.round),
+       // DESIGN §14: 'client' = battles are simulated by the browsers (b.start specs), 'server' = legacy streaming
+       combatMode: this.clientCombat ? 'client' : 'server',
+       // solo pause (g.pause, DESIGN §14): the battle, its field clock and every deadline are frozen while true
+       paused: !!this.paused,
+       players: this.order.map((ps) => ({
+@@ -245,13 +246,13 @@ export class MatchViews {
+   }
+ 
+   /** The 外勤医疗 reserve medic already standing on each player's field in preparation. Touch replaces it only at
+    * battleStart, so the prep view always uses the reserve medic, regardless of the current elite count. The stage's
+    * normal-board slot is transformed to the correct half of a boss field by _onBossHalf / the client prep camera. */
+   prepMapChars(ps) {
+-    if (!ps?.alive || this.phase !== PHASE.PREP || !this.order.some((p) => p.alive && p.bandId === 'band_amedic')) return [];
++    if (!ps?.alive || this.phase !== PHASE.PREP || !this.teamMedicGranted()) return [];
+     const id = 'char_605_cmedic';
+     const slot = this.stage?.mapChars?.find((m) => m?.key === id && Array.isArray(m.pos) && m.pos[0] >= 9 && m.pos[0] <= 12
+       && m.pos[1] >= 0 && m.pos[1] <= 10 && !/multi_only/.test(String(m.alias)));
+     const rec = this.gd.token(id);
+     if (!slot || !rec) return [];
+     const dir = slot.dir || 'RIGHT';

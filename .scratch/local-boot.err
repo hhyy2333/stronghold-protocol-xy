@@ -1,0 +1,1 @@
+[admin] ADMIN_SECRET is not set — the admin API is disabled and every /api/admin/* request answers 404. To enable it, generate a long random value and restart with it in the environment, e.g. node -e "console.log(require('crypto').randomBytes(24).toString('hex'))" then ADMIN_SECRET=<that value> npm start. 未设置 ADMIN_SECRET：管理接口未启用。

@@ -1,0 +1,24 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\package.json', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\package.json" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\package.json"
+index d89721e..1a8f02e 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\package.json"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\package.json"
+@@ -3 +3 @@
+-  "version": "0.2.4",
++  "version": "0.2.5",
+@@ -28,3 +27,0 @@
+-    "test": "node --test",
+-    "golden": "node tools/golden.mjs",
+-    "golden:update": "node tools/golden.mjs --update",
+@@ -32 +28,0 @@
+-    "build-data": "node tools/build-data.mjs",
+@@ -37,7 +33 @@
+-    "launch": "node scripts/launch.mjs",
+-    "lint": "eslint .",
+-    "typecheck": "tsc --noEmit --checkJs -p jsconfig.json",
+-    "check:imports": "node tools/check-imports.mjs",
+-    "ci": "node tools/ci.mjs",
+-    "package": "node tools/package.mjs",
+-    "package:lite": "node tools/package.mjs --lite"
++    "launch": "node scripts/launch.mjs"

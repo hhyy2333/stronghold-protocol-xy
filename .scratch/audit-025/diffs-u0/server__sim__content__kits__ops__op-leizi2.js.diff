@@ -1,0 +1,18 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\kits\ops\op-leizi2.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\content\kits\ops\op-leizi2.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-leizi2.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-leizi2.js"
+index c77c42b..6a0ea52 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-leizi2.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-leizi2.js"
+@@ -296,0 +297,11 @@ export default {
++        if (id === S2) {
++          // The owner's larger-range auto-cast rule also covers this terrain-dependent range (no static rangeId).
++          // Keep SEARCH when the actual running area does not strictly contain her initial range.
++          unit.skill.addTriggerRange(() => {
++            const extend = unit.s.baseRangeExtend || 0;
++            const keys = absoluteRangeKeys(floodGrid(battle, unit), unit.tileR, unit.tileC, unit.dir, extend);
++            const initial = absoluteRangeKeys(unit.def.rangeGrid, unit.tileR, unit.tileC, unit.dir, extend);
++            const set = new Set(keys);
++            return set.size > initial.length && initial.every(k => set.has(k)) ? [{ keys, profile: AIR }] : [];
++          });
++        }

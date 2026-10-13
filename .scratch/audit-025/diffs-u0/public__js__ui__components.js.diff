@@ -1,0 +1,66 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\ui\components.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\js\ui\components.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\components.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\ui\\components.js"
+index ec4d57a..9c425f5 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\components.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\ui\\components.js"
+@@ -537 +537 @@ export function DialogHost() {
+-let tipState = null; // { id, content, rect, placement }
++let tipState = null; // { id, content, aside, rect, placement }
+@@ -544 +544,2 @@ const setTip = (s) => { tipState = s; for (const fn of [...tipListeners]) fn();
+- * @param {{ text: any, placement?: 'top'|'bottom', delay?: number, block?: boolean, class?: string, children?: any }} props
++ * `aside`: a second section in the same clamped, scrollable box; stacked on narrow screens.
++ * @param {{ text: any, aside?: any, placement?: 'top'|'bottom', delay?: number, block?: boolean, class?: string, children?: any }} props
+@@ -548 +549 @@ const TOUCH_TIP_MS = 450;
+-export function Tooltip({ text, placement = 'top', delay = 120, block = false, class: cls, children }) {
++export function Tooltip({ text, aside = null, placement = 'top', delay = 120, block = false, class: cls, children }) {
+@@ -552,0 +554 @@ export function Tooltip({ text, placement = 'top', delay = 120, block = false, c
++  const asideRef = useRef(aside);
+@@ -554,0 +557 @@ export function Tooltip({ text, placement = 'top', delay = 120, block = false, c
++  asideRef.current = aside;
+@@ -563 +566,2 @@ export function Tooltip({ text, placement = 'top', delay = 120, block = false, c
+-      setTip({ id: idRef.current, content, rect: el.getBoundingClientRect(), placement });
++      setTip({ id: idRef.current, content, aside: asideRef.current, rect: el.getBoundingClientRect(), placement,
++        hold: () => clearTimeout(timer.current), hide });
+@@ -573 +577 @@ export function Tooltip({ text, placement = 'top', delay = 120, block = false, c
+-  // (≥ 450 ms) does, and it goes away shortly after the finger lifts.
++  // (≥ 450 ms) does. Ordinary tips expire after release; compound lists stay open for scrolling until dismissed.
+@@ -589 +593 @@ export function Tooltip({ text, placement = 'top', delay = 120, block = false, c
+-    if (tipState?.id === idRef.current) { clearTimeout(timer.current); timer.current = setTimeout(hide, 1600); }
++    if (tipState?.id === idRef.current && !asideRef.current) { clearTimeout(timer.current); timer.current = setTimeout(hide, 1600); }
+@@ -593 +597,7 @@ export function Tooltip({ text, placement = 'top', delay = 120, block = false, c
+-  const onLeave = () => { pressed.current = false; if (Date.now() - touchAt.current > 900) hide(); };
++  const onLeave = () => {
++    pressed.current = false;
++    if (Date.now() - touchAt.current > 900) {
++      if (asideRef.current) { clearTimeout(timer.current); timer.current = setTimeout(hide, 250); }
++      else hide();
++    }
++  };
+@@ -599,2 +609,2 @@ export function Tooltip({ text, placement = 'top', delay = 120, block = false, c
+-    else setTip({ ...tipState, content: text });
+-  }, [text]);
++    else setTip({ ...tipState, content: text, aside: asideRef.current });
++  }, [text, aside]);
+@@ -615 +625,6 @@ export function TooltipLayer() {
+-    return () => tipListeners.delete(force);
++    const outside = (e) => { if (tipState?.aside && !e.target?.closest?.('.tooltip')) tipState.hide?.(); };
++    const escape = (e) => { if (e.key === 'Escape') tipState?.hide?.(); };
++    document.addEventListener('pointerdown', outside);
++    document.addEventListener('keydown', escape);
++    window.addEventListener('resize', force);
++    return () => { tipListeners.delete(force); document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); window.removeEventListener('resize', force); };
+@@ -630,0 +646 @@ export function TooltipLayer() {
++    top = Math.max(m, Math.min(vh - b.height - m, top));
+@@ -636,2 +652,9 @@ export function TooltipLayer() {
+-  return html`<div ref=${boxRef} class=${cx('tooltip', ready && 'is-shown', ready && `tooltip--${pos.place}`)} role="tooltip"
+-    style=${ready ? `top:${pos.top}px;left:${pos.left}px` : 'top:-9999px;left:-9999px'}>${tipState.content}</div>`;
++  const hasAside = tipState.aside != null && tipState.aside !== '';
++  const off = 'top:-9999px;left:-9999px';
++  return html`<div ref=${boxRef} class=${cx('tooltip', hasAside && 'tooltip--compound', ready && 'is-shown', ready && `tooltip--${pos.place}`)} role="tooltip"
++    tabIndex=${hasAside ? 0 : undefined} onMouseEnter=${() => tipState?.hold?.()} onMouseLeave=${() => tipState?.hide?.()}
++    onFocusIn=${() => tipState?.hold?.()} onPointerDown=${() => tipState?.hold?.()}
++    onFocusOut=${(e) => { if (!e.currentTarget.contains(e.relatedTarget)) tipState?.hide?.(); }}
++    style=${ready ? `top:${pos.top}px;left:${pos.left}px` : off}>
++    ${hasAside ? html`<div class="tooltip__main">${tipState.content}</div><div class="tooltip--aside">${tipState.aside}</div>` : tipState.content}
++  </div>`;

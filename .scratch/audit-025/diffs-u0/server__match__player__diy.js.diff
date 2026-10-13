@@ -1,0 +1,34 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\match\player\diy.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\match\player\diy.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\player\\diy.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\player\\diy.js"
+index 3fbc410..c5acc99 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\player\\diy.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\player\\diy.js"
+@@ -24,5 +24,10 @@
+-//   * the shop's draws (diyRollEntries): the stock of each slotted slot joins this player's copy-weighted rolls — the
+-//     shop's chess slots and the reward offers' temporary refreshes [ASSUMED] — weighted like any chess of its tier, once
+-//     the 调度中心 has reached the slot's shopLevel (activity_table shopLevelDisplayDataDict lists the tier-5 slots at
+-//     level 5 and the tier-6 slots at level 6; PRTS 帮助 "仅在调度中心等级 ≥ 干员所在等阶"). The price is the slot's (any
+-//     chess of its tier: 4).
++//   * the shop's draws (diyRollEntries): the stock of each slotted slot joins this player's copy-weighted shop rolls,
++//     weighted like any chess of its tier, once the 调度中心 has reached the slot's shopLevel (activity_table
++//     shopLevelDisplayDataDict lists the tier-5 slots at level 5 and the tier-6 slots at level 6; PRTS 帮助 "仅在调度中心
++//     等级 ≥ 干员所在等阶" is that persistent shop). The price is the slot's (any chess of its tier: 4).
++//   * the promotion reward (pushRewardOffer with no explicit ids) draws diyStockEntries() under the reward tier
++//     min(shopLevel + 1, 6): a tier-5 自选 piece can appear when the 调度中心 reaches 4, a tier-6 piece when it reaches
++//     5, one shop level before the ordinary shop. 卫戍协议/帮助 干员晋升 names that refresh and no second pool; the owner
++//     decided on 2026-10-12 that it includes 自选 of the newly reached tier. 0.2.0 had [ASSUMED] the shop-level gate
++//     for this refresh too (DESIGN §25); §30.23 reverses it. A piece is not guaranteed. Banned slots and `left <= 0`
++//     stay out. Explicit-id offers do not use this draw.
+@@ -209,2 +214,3 @@ export class PlayerDiy {
+-   * The stock entries this player's shop draws from now ([baseId, entry] with copies left and the 调度中心 at the slot's
+-   * shopLevel), or null (none — the shared pool's roll alone, exactly as without picks).
++   * The stock entries this player's ordinary shop draws from now ([baseId, entry] with copies left and the 调度中心 at
++   * the slot's shopLevel), or null (none — the shared pool's roll alone, exactly as without picks). The promotion
++   * reward does not use this gate (`diyStockEntries`).
+@@ -221,2 +227,3 @@ export class PlayerDiy {
+-   * The stock entries a random grant of this player draws besides the shared pool (see the header): every slotted piece
+-   * with copies left, whatever the 调度中心 level (the roll's own tier rules apply), or null (none).
++   * The stock entries a random grant, and the promotion reward's temporary refresh, draw besides the shared pool
++   * (see the header): every slotted piece with copies left, whatever the 调度中心 level (the roll's own tier rules
++   * apply), or null (none).

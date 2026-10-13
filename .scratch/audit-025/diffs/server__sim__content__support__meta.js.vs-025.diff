@@ -1,0 +1,49 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\support\\meta.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\content\\support\\meta.js"
+index 879c400..3f4aefb 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\support\\meta.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\sim\\content\\support\\meta.js"
+@@ -3,13 +3,13 @@
+ // registerSupportMeta(registry) is called once from bonds.js → registerMeta. It installs
+ //   global:contentb_info   onBattleStart: writes `ev.input.contentInfo` (read in battles with support.contentInfo()):
+ //     { round, kind, shopLevel, funds,
+ //       handUnits  pieces in the 整备区 (hand, 10 slots; operators, items and summon stacks),
+ //       handChess  operators in the hand,
+ //       roundStats { refreshes, buys, sells, spent, gainedChess, arts }   (this round's prep, ps.round),
+-//       matchBands band ids of every alive player (this player first), plus a retained Touch team grant,
++//       matchBands band ids of every alive player (this player first),
+ //       teammates  [{ playerId, bandId }] of the other alive players }
+ // Global handlers run first in every dispatch, so band / bond / garrison / item handlers of the same onBattleStart can
+ // read or extend `ev.input.contentInfo`.
+ //
+ // Meta helpers (pure functions of a handler ctx):
+ //   metaBonds(ctx, pieceView)   bonds of a piece incl. 变形同构体 grants
+@@ -23,28 +23,24 @@ export function registerSupportMeta(registry) {
+   registry.global('contentb_info', {
+     onBattleStart(ctx, ev) {
+       if (!ev || !ev.input || typeof ev.input !== 'object') return;
+       const hand = ctx.hand();
+       const rs = ctx.roundStats();
+       const mates = ctx.teammates();
+-      const matchBands = [ctx.bandId(), ...mates.map(t => t.bandId())].filter(Boolean);
+-      // [ASSUMED] 外勤医疗 is a team grant for this match, not an aura revoked when its holder is eliminated.
+-      // Other team strategies and the teammate contexts still require a living player.
+-      if (ctx.teamMedicGranted?.() && !matchBands.includes('band_amedic')) matchBands.push('band_amedic');
+       ev.input.contentInfo = {
+         round: ctx.round,
+         kind: ev.kind ?? null,
+         shopLevel: ctx.shopLevel(),
+         funds: ctx.funds(),
+         handUnits: hand.filter(Boolean).length,
+         handChess: hand.filter((p) => p && p.kind === 'chess').length,
+         roundStats: {
+           refreshes: rs.refreshes | 0, buys: rs.buys | 0, sells: rs.sells | 0, spent: rs.spent | 0,
+           gainedChess: rs.gainedChess | 0, arts: rs.arts | 0,
+         },
+-        matchBands,
++        matchBands: [ctx.bandId(), ...mates.map((t) => t.bandId())].filter(Boolean),
+         teammates: mates.map((t) => ({ playerId: t.playerId, bandId: t.bandId() })),
+       };
+     },
+   });
+ }
+ 

@@ -1,0 +1,19 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\audio.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\public\js\audio.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\audio.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\audio.js"
+index 99f6f30..cfc40ce 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\audio.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\audio.js"
+@@ -873,0 +874,12 @@ export class AudioManager {
++  /**
++   * Play an explicit URL: a local-client cue no manifest lists (the 海克斯 draft's own pick / reroll sounds, `hextech/
++   * audio` via ui/hexOverlay.js hexSfxUrl, DESIGN §29). A null / empty URL is a no-op, so the caller keeps its named sfx.
++   * @param {string|null} url
++   * @param {{ volume?: number }} [o]
++   */
++  playUrl(url, o = {}) {
++    try {
++      if (typeof url === 'string' && url) this._play(url, { volume: o.volume ?? 0.9 });
++    } catch { /* ignore */ }
++  }
++

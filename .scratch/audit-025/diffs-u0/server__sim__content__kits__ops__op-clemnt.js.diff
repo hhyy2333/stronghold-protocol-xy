@@ -1,0 +1,9 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\kits\ops\op-clemnt.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\content\kits\ops\op-clemnt.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-clemnt.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-clemnt.js"
+index 52932e9..9535c08 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-clemnt.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-clemnt.js"
+@@ -225 +225 @@ export default {
+-          if (element !== 'erosion' || !up(unit) || !unit.skill?.active || unit.skill.id !== S3
++          if (element !== 'erosion' || target?.side !== 'enemy' || !up(unit) || !unit.skill?.active || unit.skill.id !== S3

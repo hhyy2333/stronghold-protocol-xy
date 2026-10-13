@@ -1,0 +1,17 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\match\audit.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\server\match\audit.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\audit.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\audit.js"
+index 7b3dd45..30ea7bb 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\audit.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\audit.js"
+@@ -48,0 +49 @@ import { helperOrder } from './unite.js';
++import { firstLeakFree } from './hextech.js';
+@@ -428,0 +430,2 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
++        // 海克斯 不灭壁垒 (DESIGN §29): the round's first leak is free, so settle charges one less
++        const charged = Math.max(0, counted - (firstLeakFree(ps) ? 1 : 0));
+@@ -431 +434 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
+-        const max = uniteRan && plan.leakers.includes(ps) ? cap : Math.min(cap, counted);
++        const max = uniteRan && plan.leakers.includes(ps) ? cap : Math.min(cap, charged);
+@@ -436 +439 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
+-          if (!uniteRan && loss !== max) fail(`${ps.playerId}: lost ${loss} LP, expected min(${cap}, ${counted})`);
++          if (!uniteRan && loss !== max) fail(`${ps.playerId}: lost ${loss} LP, expected min(${cap}, ${charged})`);

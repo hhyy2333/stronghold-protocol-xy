@@ -1,0 +1,129 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\Match.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\Match.js"
+index 3e12fc2..26447a2 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\Match.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\Match.js"
+@@ -12,12 +12,16 @@
+ //   opts.mode        'solo' | 'coop'
+ //   opts.difficulty  'FUNNY'|'NORMAL'|'HARD'|'ABYSS'
+ //   opts.modeId      string                     modeIdFor(mode, difficulty), e.g. 'mode_multi_hard'
+ //   opts.aiPicksLast boolean (optional)         the co-op room option 「AI 队友最后选择」 (room.setAiPicksLast, GitHub #338):
+ //                                              the strategy and 机变 drafts put every human seat before every AI seat
+ //                                              (MatchPhases.humansFirst); only `true` turns it on; ignored in solo
++//   opts.test        boolean (optional)         the room is a 测试场 (room.create.test): the 协议源石 draft never runs, and
++//                                              the test panel's `g.testFunds` / `g.testHex` / `g.testHexClear` are accepted
++//                                              (server/match/match/testField.js). Only `true` turns it on; absent = a
++//                                              normal match, byte for byte.
+ //   opts.seats       Array<{ seat: 0..3, playerId: string, name: string, isBot: boolean, connected: boolean,
+ //                            loadout?: { [baseChessId]: { skill: index, module: uniEquipId|'none'|null } } | null,
+ //                            ops?: { [charId]: { potential: 1–6, cultivate: 0–3 } } | null,
+ //                            notOwned?: string[] | null,
+ //                            diy?: { [slotBaseId]: { charId, skillIndex, uniEquipId } } | null }>
+ //                    sorted by seat, 1–4 entries, ≥ 1 human; solo ⇒ exactly 1 human and no bots.
+@@ -157,12 +161,13 @@
+ //                    scout's m.field
+ //   watch.js         spectator seats, g.watch, who is shown which field, resend on reconnect, prep-scout pushes
+ //   intents.js       the g.* / b.* router, emotes, AI 托管, g.unitStats
+ //   pause.js         the solo pause
+ //   phases.js        INFO_CHECK, BAND_DRAFT (the strategy draft), BATTLE_CHECK, ROUND_START
+ //   spDraft.js       SP_DRAFT (机变) and the rolls the meta effects ask for (bounties, item ids, pools)
++//   testField.js     the 测试场 panel's own intents (g.testFunds / g.testHex / g.testHexClear; opts.test only)
+ //   prep.js          PREP: its start, the AI seats' sliced preps, Ready, the deadline, its end
+ //   combat.js        battle construction, COMBAT (both modes), the per-field results, then 联防 or SETTLE
+ //   clientCombat.js  client-side combat bookkeeping: field records, the field clock, authority, b.start, result
+ //                    deadlines and releases, server runs, field completion
+ //   reports.js       b.progress / b.result (validation, held boss results), SP_VERIFY
+ //   unitePhase.js    联防 (UNITE) in both modes and the leakers' live counts
+@@ -190,12 +195,14 @@ import { MatchViews } from './match/views.js';
+ import { MatchWatch } from './match/watch.js';
+ import { MatchIntents } from './match/intents.js';
+ import { MatchPause } from './match/pause.js';
+ import { MatchPhases } from './match/phases.js';
+ import { MatchSetupVote } from './match/setupVote.js';
+ import { MatchSpDraft } from './match/spDraft.js';
++import { MatchHexDraft } from './match/hexDraft.js';
++import { MatchTestField } from './match/testField.js';
+ import { MatchPrep } from './match/prep.js';
+ import { MatchCombat } from './match/combat.js';
+ import { MatchClientCombat } from './match/clientCombat.js';
+ import { MatchReports } from './match/reports.js';
+ import { MatchUnite } from './match/unitePhase.js';
+ import { MatchBoss } from './match/bossRounds.js';
+@@ -244,12 +251,19 @@ export class Match {
+     this.data = opts.data && typeof opts.data === 'object' ? opts.data : {};
+     this.gd = new GameData(this.data, this.modeId);
+     if (!this.difficulty) this.difficulty = this.gd.difficulty;
+     this.isSolo = this.mode === 'solo' || this.gd.isSolo;
+     /** 「AI 队友最后选择」 (opts.aiPicksLast, GitHub #338): humans draft before AI seats (MatchPhases.humansFirst) */
+     this.aiPicksLast = !this.isSolo && opts.aiPicksLast === true;
++    /**
++     * 测试场 (opts.test, the owner's request of 2026-10-11; server/lobby.js Room.test): a room the host created as a test
++     * field. Two differences from a normal match, both gated on this flag alone so a normal match is byte for byte what
++     * it was: the 协议源石 draft never runs (MatchPhases.afterRoundStart), and the test panel's own intents are accepted
++     * (MatchTestField). Set from the lobby, never in-match.
++     */
++    this.test = opts.test === true;
+     this.ownsScheduler = !opts.scheduler;
+     this.sched = opts.scheduler || new RealScheduler({ now: opts.now || Date.now, onError: (e) => this.reportError('timer', e) });
+     this.registry = opts.registry || getDefaultRegistry();
+     this.dispatcher = new EffectDispatcher(this, this.registry);
+     this.BattleClass = typeof opts.BattleClass === 'function' ? opts.BattleClass : Battle;
+     this.battleContent = opts.battleContent || 'full';
+@@ -290,12 +304,14 @@ export class Match {
+ 
+     const rng = (name) => createRng(deriveSeed(this.seed, name));
+     this.rngSetup = rng('setup');
+     this.rngShop = rng('shop');
+     this.rngWaves = rng('waves');
+     this.rngDraft = rng('draft');
++    // 海克斯 (DESIGN §29): its own stream, so the six above keep their draw order
++    this.rngHex = rng('hex');
+     this.rngBots = rng('bots');
+     this.rngMeta = rng('meta');
+ 
+     /** @type {Map<string, PlayerState>} */
+     this.players = new Map();
+     const seen = new Set();
+@@ -368,15 +384,27 @@ export class Match {
+     /** @type {Map<string, { label: string, who: string, message: string, stack: string|null, battles: number, count: number }>} */
+     this.simErrorLog = new Map();
+     this._prepEndQueued = false;
+ 
+     this.draft = null;
+     this.sp = null;
++    /** 海克斯 (DESIGN §29): the current draft ({ offers, picks, rerolls, untimed, turnDeadline }), null outside it. */
++    this.hex = null;
++    /** The enemy hexes drawn so far — [{ id, round }] — they persist to the end of the match (format.enemyPersist). */
++    this.enemyHexes = [];
++    /**
++     * Armed 镜像协议 copies (DESIGN §29, owner report 2026-10-12): `[{ pickerId, hexId, owned }]`, where a pick is
++     * waiting for a teammate to own something copyable — the draft is PARALLEL, so the first seat to answer sees an
++     * empty ally pool. Paid out by server/match/hextech.js `resolveMirrorCopies` after every gain and at each round
++     * start; an entry that is paid out (or whose picker left) is removed.
++     */
++    this.pendingMirror = [];
++    /** The round the last enemy hex was drawn on (the client shows it). */
++    this.hexDrawRound = 0;
+     this.wave = null;
+     this.bossWaves = null;
+-    this.bossPairs = null; // drawn once per match; the hidden round retains partners and sides
+     this.fields = [];
+     this.runner = null;
+     /** playerId → fieldId */
+     this.watchers = new Map();
+     /**
+      * Watch preference (community report of 2026-10-06, item 56; the idea of PR #189): viewer playerId → the player it
+@@ -399,13 +427,13 @@ export class Match {
+     this.outcome = null;
+     this._turnToken = 0;
+   }
+ }
+ 
+ // the method modules, in this order (a name defined twice is an error, never a silent override)
+-for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSetupVote, MatchSpDraft, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
++for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSpDraft, MatchSetupVote, MatchHexDraft, MatchTestField, MatchPrep, MatchCombat, MatchClientCombat, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
+   for (const key of Reflect.ownKeys(part.prototype)) {
+     if (key === 'constructor') continue;
+     if (Object.prototype.hasOwnProperty.call(Match.prototype, key)) throw new Error(`Match.${String(key)} is defined twice`);
+     Object.defineProperty(Match.prototype, key, Object.getOwnPropertyDescriptor(part.prototype, key));
+   }
+ }

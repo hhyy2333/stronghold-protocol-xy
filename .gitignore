@@ -1,0 +1,39 @@
+# ============================================================
+# 本文件由 DSH 生成，用于让 git add . 在这棵 2.5 GB 的目录树上
+# 能在插件的 30 秒执行预算内跑完（此前因此超时被 kill，
+# 留下 .git/index.lock 死锁，导致「创建失败」）。
+# 需要提交某一行时，直接删掉对应规则即可。
+# ============================================================
+
+# --- 机密：管理面板令牌（会由 开始游戏-0.3.0-管理后台.bat 现场生成）---
+admin-secret.local.txt
+
+# --- 临时 / 本机产物 ---
+_gh-dl/
+_probe/
+_fix-backup-*/
+_recover-src/
+_port-0.2.4-to-0.3.0/
+
+# --- 大体量：下载的工具、部署/构建产物、历史副本（勿进仓库）---
+ffmpeg-*/
+03-工具/
+05-部署/
+Stronghold-Protocol-0.2.1-fusion/
+Stronghold-Protocol-v0.2.4/
+
+# --- 嵌套仓库：它自己有 origin，按普通目录提交会变成 gitlink ---
+Stronghold-Protocol-repo/
+# 游戏仓库的链接工作树（Stronghold-Protocol-repo/.git/worktrees/_head-check），
+# 是别的工具临时 checkout 出来的，不能当普通目录提交
+_head-check/
+
+# --- 通用 ---
+node_modules/
+.env
+.env.*
+*.msi
+*.log
+*.tmp
+Thumbs.db
+desktop.ini

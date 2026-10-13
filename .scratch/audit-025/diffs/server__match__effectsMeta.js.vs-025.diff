@@ -1,0 +1,166 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\effectsMeta.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\effectsMeta.js"
+index ed646c9..ee21d0e 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\effectsMeta.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\server\\match\\effectsMeta.js"
+@@ -45,13 +45,13 @@ import { registerAllMeta } from '../sim/content/index.js';
+ import { registerBuiltins } from './builtinMeta.js';
+ import { msg, dn } from '../../shared/i18n.js';
+ import { onGiftTicker } from './botEmotes.js';
+ 
+ export const HOOKS = Object.freeze([
+   'onRoundStart', 'onIncome', 'onPrepStart', 'onPrepEnd', 'onGain', 'onSold', 'onRefresh', 'onPrice', 'onBuy',
+-  'onSpend', 'onMerge', 'onLevelUp', 'onBattleStart', 'onBattleResult', 'onChoicePick', 'onEquip', 'onArt',
++  'onSpend', 'onMerge', 'onLevelUp', 'onBattleStart', 'onBattleResult', 'onChoicePick', 'onHexPick', 'onEquip', 'onArt',
+   'onDestroy', 'onLayers',
+ ]);
+ /** Non-hook members a handler object may carry. */
+ const HANDLER_EXTRAS = new Set(['run', 'garrisonHooks']);
+ 
+ /** Garrison eventType → dispatcher hook. */
+@@ -61,13 +61,13 @@ export const GARRISON_HOOK = Object.freeze({
+   SERVER_PREP_FIN: 'onPrepEnd',
+   SERVER_CHESS_SOLD: 'onSold',
+   SERVER_PRICE: 'onPrice',
+   SERVER_REFRESH_SHOP: 'onRefresh',
+ });
+ 
+-const KEY_RE = /^(garrison|band|bond|item|choice|effect|global):[A-Za-z0-9_\-.:#]+$/;
++const KEY_RE = /^(garrison|band|bond|item|choice|hex|effect|global):[A-Za-z0-9_\-.:#]+$/;
+ export const MAX_DEPTH = 6;
+ 
+ export class MetaRegistry {
+   constructor() {
+     /** @type {Map<string, object>} */
+     this._h = new Map();
+@@ -101,12 +101,13 @@ export class MetaRegistry {
+   // sugar
+   garrison(effectKey, h) { return this.register(`garrison:${effectKey}`, h); }
+   band(bandId, h) { return this.register(`band:${bandId}`, h); }
+   bond(bondId, h) { return this.register(`bond:${bondId}`, h); }
+   item(key, h) { return this.register(`item:${itemKey(key)}`, h); }
+   choice(effectId, h) { return this.register(`choice:${effectId}`, h); }
++  hex(hexId, h) { return this.register(`hex:${hexId}`, h); }
+   effect(id, h) { return this.register(`effect:${id}`, h); }
+   global(name, h) { return this.register(`global:${name}`, h); }
+ 
+   globals() {
+     const out = [];
+     for (const [k, h] of this._h) if (k.startsWith('global:')) out.push([k, h]);
+@@ -477,13 +478,12 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+ 
+     // ---- reads
+     funds: () => ps.funds,
+     lp: () => ps.lp,
+     alive: () => ps.alive,
+     bandId: () => ps.bandId,
+-    teamMedicGranted: () => m.teamMedicGranted(),
+     shopLevel: () => ps.shop.level,
+     bond: (id) => (ps.bonds[id] ? { ...ps.bonds[id] } : null),
+     bonds: () => Object.fromEntries(Object.entries(ps.bonds).map(([k, v]) => [k, { ...v }])),
+     bondActive: (id) => !!(ps.bonds[id] && ps.bonds[id].active),
+     bondCount: (id) => (ps.bonds[id] ? ps.bonds[id].count : 0),
+     layers: (id) => ps.layers[id] || 0,
+@@ -513,12 +513,19 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+       if (!rec || !Array.isArray(rec.garrisonIds)) return [];
+       return rec.garrisonIds.map((gid) => gd.garrison(gid)).filter(Boolean)
+         .map((g) => ({ garrisonId: g.garrisonId, effectKey: g.effectKey, eventType: g.eventType, bb: g.bb || {}, bbStr: g.bbStr || {}, desc: g.desc || '' }));
+     },
+     stats: () => ({ ...ps.stats }),
+     roundStats: () => ({ ...ps.round }),
++    /** 海克斯 (DESIGN §29): whether this player owns a hex — the ownership-only mechanics read it. */
++    hexOwned: (id) => typeof id === 'string' && (ps.effects || []).some((e) => e && e.data && e.data.hexId === id),
++    /**
++     * The dispatcher event of the hook being run ({ round } / { piece, gain } / { result, lpLoss, perfect } / { amount } …),
++     * or null. Read-only: onPrice writes through modifyPrice / setPrice.
++     */
++    event: () => (ev && typeof ev === 'object' ? ev : null),
+     shopSlots: () => ps.shop.slots.map((s) => (s ? { kind: s.kind, id: s.id, basePrice: s.basePrice, sold: !!s.sold, frozen: !!s.frozen } : null)),
+ 
+     // ---- counters (player scope, persistent)
+     counter: (k) => (Number.isFinite(ps.counters[k]) ? ps.counters[k] : 0),
+     setCounter: (k, v) => { if (typeof k === 'string' && Number.isFinite(v)) ps.counters[k] = v; return ps.counters[k] ?? 0; },
+     incCounter: (k, n = 1) => { if (typeof k !== 'string' || !Number.isFinite(n)) return 0; ps.counters[k] = (Number.isFinite(ps.counters[k]) ? ps.counters[k] : 0) + n; return ps.counters[k]; },
+@@ -526,15 +533,54 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+      *  PlayerState.pieceRoundCount). */
+     pieceCounter: (uid, k) => { const l = ps.find(uid); return l ? ps.pieceRoundCount(l.piece, k) : 0; },
+     incPieceCounter: (uid, k, n = 1) => { const l = ps.find(uid); return l ? ps.bumpPieceRoundCount(l.piece, k, n) : 0; },
+ 
+     // ---- economy
+     addFunds: (n, reason = '') => ps.addFunds(finiteInt(n), { reason }),
++    /**
++     * 海克斯 远见透支 (DESIGN §29): pay `n` target life. Never lethal — the floor is 1, because an alive player at 0 LP
++     * outside SETTLE is an invariant violation (server/match/invariants.js) and elimination is not what the card means.
++     */
++    spendLp: (n) => {
++      const v = finiteInt(n);
++      if (!(v > 0)) return ps.lp;
++      ps.lp = Math.max(1, ps.lp - v);
++      ps.dirty();
++      return ps.lp;
++    },
+     addPendingFunds: (n) => { const v = finiteInt(n); if (v > 0) { ps.pendingFunds += v; ps.dirty(); } return v > 0 ? v : 0; },
+     spendFunds: (n) => { const v = finiteInt(n); if (!ps.spend(v)) return false; ps._afterSpend(v, 'effect'); return true; },
+     grantFreeRefresh: (n = 1) => { const v = finiteInt(n); if (v > 0) { ps.shop.freeRefreshes += v; ps.dirty(); } return ps.shop.freeRefreshes; },
++    /**
++     * 海克斯 虚空形态 (§29.23): the pick empties the purse. Not a spend — no `stats.gold`, no onSpend, no onPrice — it
++     * is the card taking the gold away, so the round's spend bookkeeping stays honest.
++     */
++    zeroFunds: () => {
++      const had = ps.funds;
++      if (had > 0) { ps.funds = 0; ps.dirty(); }
++      return had;
++    },
++    /**
++     * 海克斯 天人形态 (§29.23): one FREE 调度中心 level. The CARD pays: its price is granted as hex income and the
++     * ordinary paid path then runs, so the audit's exact-price check (`f0 − funds === price`) still holds and the
++     * level-up announces itself exactly like a bought one. False at the cap (or when the ordinary path refuses).
++     */
++    levelUpFree: () => {
++      if (ps.shop.level >= gd.maxShopLevel) return false;
++      const price = Math.max(0, finiteInt(ps.shop.upgradePrice));
++      ps.addFunds(price, { reason: 'hex' });
++      const res = ps.levelUp();
++      if (!(res && res.ok)) { ps.addFunds(-price, { reason: 'hex' }); return false; }
++      return true;
++    },
++    /**
++     * 海克斯 恶魔形态 (§29.23): the AI takes over this round's SPENDING — 调度中心 upgrades first, then buys and
++     * refreshes until the funds are gone. It never places units or equips items, so the player's own board work is
++     * untouched. Returns how many actions it took (0 when the mode refuses to run a bot prep).
++     */
++    demonTakeover: () => (typeof m.botSpendOnly === 'function' ? m.botSpendOnly(ps) : 0),
+ 
+     // ---- prices (onPrice only; the same as writing ev.price)
+     modifyPrice: (delta) => { if (hook === 'onPrice' && ev && Number.isFinite(delta)) ev.price = Math.max(0, (Number(ev.price) || 0) + delta); return ev ? ev.price : null; },
+     setPrice: (v) => { if (hook === 'onPrice' && ev && Number.isFinite(v)) ev.price = Math.max(0, v); return ev ? ev.price : null; },
+ 
+     // ---- layers
+@@ -567,13 +613,12 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+     grantItem: (itemId, opts = {}) => {
+       if (!ps.alive || !gd.item(itemId)) return null;
+       const p = ps.acquireItem(itemId, {
+         source: opts.source || source.key || 'effect',
+         toTemp: !!opts.toTemp,
+         deferMerge: ps._deferItemMerge > 0,
+-        requirePool: opts.requirePool !== false,
+       });
+       return p ? view(p) : null;
+     },
+     /**
+      * Random chess id from the shared pool (copy-weighted) — and the player's own 自选 stock (player/diy.js
+      * diyStockEntries, 0.2.0: 「自选干员放入后模拟中的补给池随机范围也将被相应扩大」). opts: { maxTier, tier, bond, filter(id) };
+@@ -585,12 +630,14 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+         return typeof opts.filter === 'function' ? !!opts.filter(id) : true;
+       };
+       const extra = typeof ps.diyStockEntries === 'function' ? ps.diyStockEntries() : null;
+       return m.pool.roll(m.rngMeta, { maxTier: Number.isInteger(opts.maxTier) ? opts.maxTier : 6, tier: Number.isInteger(opts.tier) ? opts.tier : null, filter: f, extra, ignoreCounts: opts.ignoreCounts === true });
+     },
+     rollItem: (opts = {}) => m.rollItemId(opts),
++    /** A GOLDEN (进阶) item id of that tier, from the shared stock (后勤整备 — `m.rollGoldenItemId`). */
++    rollGoldenItem: (opts = {}) => m.rollGoldenItemId(opts),
+     /**
+      * Roll a choices.json pool: equip pools → { kind: 'item', id }; chess pools (items / weighted / shopEligible with
+      * tier, minTier, bond, golden) → { kind: 'chess', id, golden } (a pool chess needs a free copy). null when empty.
+      */
+     rollPool: (poolId, opts = {}) => m.rollPool(poolId, {
+       shopLevel: ps.shop.level,

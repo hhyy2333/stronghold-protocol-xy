@@ -1,0 +1,51 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\finalAssault.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\finalAssault.js"
+index 7b9e04a..4369b76 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\finalAssault.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\finalAssault.js"
+@@ -1,12 +1,13 @@
+ // server/match/finalAssault.js — 最终攻势 (R14 / solo FUNNY R9) and 隐秘核心 (R15) helpers (DESIGN §6.1, research
+ // 00-INDEX §5, 06 §10).
+ //
+ //   * Merged LP: teamLp = Σ LP of the alive players at the start of the Final Assault (no cap); the Hidden Core
+ //     continues with what is left.
+-//   * Pairing: alive players by seat → (1,2), (3,4); an odd player is alone on its own field with the `_s` template
++//   * Pairing: shuffled once per match before Final Assault prep; Hidden Core keeps those pairs. If players leave,
++//     intact pairs stay together and the remaining single players pair up. An odd player uses the `_s` template
+ //     (solo modes always use `_s`). Field ids 'b1', 'b2'. In a pair the first player is the LEFT side, the second the
+ //     RIGHT side (the sim mirrors the right side: board col c → field col 20 − c with the piece direction RIGHT ↔
+ //     LEFT, UP / DOWN unchanged (DESIGN §3, research 09 §1.2 ConvertChessPositionInfoToBossMap); board rows 9–12 →
+ //     boss rows 2–5, sim/constants BOSS_ROW_OFFSET). `bossFieldPlacement` gives that mapping for UIs / tools.
+ //   * Shared boss HP pool (DESIGN §20.10, §25.13.4, gamedata.js bossPoolShareOf): one pool shared by every boss field
+ //     (official tip "所有人将一起对敌方领袖造成伤害"; notice 5114's "敌方领袖的总生命值不变" is about the mirrored copies of
+@@ -52,17 +53,28 @@ export const BOSS_HIT_STEPS = [0.2, 0.5, 0.8];
+ export function bossFieldPlacement(side, row, col, dir = 'RIGHT') {
+   const d = normDir(dir);
+   const r = row >= 7 ? row + BOSS_ROW_OFFSET : row;
+   return side === 'R' ? { row: r, col: COLS - 1 - col, dir: mirrorDir(d) } : { row: r, col, dir: d };
+ }
+ 
+-/** Pair alive players by seat: [[a, b], [c, d]] / [[a, b], [c]] / [[a]]. */
+-export function pairPlayers(alive) {
++/** Seeded initial pairing; `previous` carries player-id pairs through prep, combat and Hidden Core. */
++export function pairPlayers(alive, rng, previous = null) {
+   const sorted = alive.slice().sort((a, b) => a.seat - b.seat);
+   const groups = [];
+-  for (let i = 0; i < sorted.length; i += 2) groups.push(sorted.slice(i, i + 2));
++  let singles;
++  if (Array.isArray(previous)) {
++    const remaining = new Map(sorted.map(p => [p.playerId, p]));
++    singles = [];
++    for (const ids of previous) {
++      const group = [];
++      for (const id of ids) if (remaining.has(id)) { group.push(remaining.get(id)); remaining.delete(id); }
++      if (group.length === 2) groups.push(group); else singles.push(...group);
++    }
++    singles.push(...remaining.values());
++  } else singles = sorted.length > 1 ? rng.shuffle(sorted) : sorted;
++  for (let i = 0; i < singles.length; i += 2) groups.push(singles.slice(i, i + 2));
+   return groups;
+ }
+ 
+ /** Shared boss HP for a boss id with `aliveCount` alive players (GameData.bossPoolShare / bossPoolShareOf; omitted ⇒ a full team). */
+ export function bossPoolHp(gd, bossId, aliveCount) {
+   const boss = gd.boss(bossId);

@@ -1,0 +1,14 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\screens\loadout.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\public\js\screens\loadout.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\screens\\loadout.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\screens\\loadout.js"
+index be44e06..be3cedb 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\screens\\loadout.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\screens\\loadout.js"
+@@ -210 +210 @@ export function RosterRow({ m, chess, golden, entries, ops = {}, selected, onPic
+-        <${Img} src=${chessAvatarUrl(m, chess)} fallback=${html`<span class="lo-card__glyph">${[...(chess.name || '?')][0]}</span>`} />
++        <${Img} src=${chessAvatarUrl(m, chess, data.get('local'))} fallback=${html`<span class="lo-card__glyph">${[...(chess.name || '?')][0]}</span>`} />
+@@ -308 +307,0 @@ const standInName = (chess) => data.get('backups')?.units?.[chess?.backup?.charI
+-
+@@ -323 +322 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
+-        <${Img} src=${chessPortraitUrl(m, golden || chess)} fallback=${html`<${UnitThumb} kind="chess" id=${chess.chessId} size="lg" />`} />
++        <${Img} src=${chessPortraitUrl(m, golden || chess, data.get('local'))} fallback=${html`<${UnitThumb} kind="chess" id=${chess.chessId} size="lg" />`} />

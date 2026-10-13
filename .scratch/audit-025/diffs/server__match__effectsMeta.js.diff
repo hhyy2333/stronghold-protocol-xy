@@ -1,0 +1,32 @@
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\effectsMeta.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\effectsMeta.js"
+index c26e39c..ed646c9 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\effectsMeta.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\effectsMeta.js"
+@@ -477,12 +477,13 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+ 
+     // ---- reads
+     funds: () => ps.funds,
+     lp: () => ps.lp,
+     alive: () => ps.alive,
+     bandId: () => ps.bandId,
++    teamMedicGranted: () => m.teamMedicGranted(),
+     shopLevel: () => ps.shop.level,
+     bond: (id) => (ps.bonds[id] ? { ...ps.bonds[id] } : null),
+     bonds: () => Object.fromEntries(Object.entries(ps.bonds).map(([k, v]) => [k, { ...v }])),
+     bondActive: (id) => !!(ps.bonds[id] && ps.bonds[id].active),
+     bondCount: (id) => (ps.bonds[id] ? ps.bonds[id].count : 0),
+     layers: (id) => ps.layers[id] || 0,
+@@ -566,12 +567,13 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+     grantItem: (itemId, opts = {}) => {
+       if (!ps.alive || !gd.item(itemId)) return null;
+       const p = ps.acquireItem(itemId, {
+         source: opts.source || source.key || 'effect',
+         toTemp: !!opts.toTemp,
+         deferMerge: ps._deferItemMerge > 0,
++        requirePool: opts.requirePool !== false,
+       });
+       return p ? view(p) : null;
+     },
+     /**
+      * Random chess id from the shared pool (copy-weighted) — and the player's own 自选 stock (player/diy.js
+      * diyStockEntries, 0.2.0: 「自选干员放入后模拟中的补给池随机范围也将被相应扩大」). opts: { maxTier, tier, bond, filter(id) };

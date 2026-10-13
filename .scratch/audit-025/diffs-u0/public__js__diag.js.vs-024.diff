@@ -1,0 +1,66 @@
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\diag.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\public\js\diag.js', LF will be replaced by CRLF the next time Git touches it
+diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\diag.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\diag.js"
+index 4a0c526..71432a8 100644
+--- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\diag.js"
++++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\public\\js\\diag.js"
+@@ -1 +1 @@
+-// public/js/diag.js — the client's error log and the diagnostics a player copies into a bug report (设置 → 问题反馈).
++// public/js/diag.js — the client's error log and the diagnostics a player sends in a bug report (设置 → 问题反馈).
+@@ -3,3 +3,5 @@
+-// Nothing leaves the browser. The log is kept in memory (the last LOG_MAX entries, an identical error in a row counted
+-// on its entry); the report is plain text the player copies and pastes into a GitHub issue, with the player names,
+-// the room code and the reconnect token replaced and the page's host cut from every URL. A secret is a whole token in
++// The log is kept in memory (the last LOG_MAX entries, an identical error in a row counted on its entry); the report
++// is plain text, either uploaded to this server's own 反馈存盘 (POST /api/feedback, server/feedback.js) or, where a
++// build still offers it, copied by hand. The player names and the reconnect token are replaced and the page's host is
++// cut from every URL. The ROOM CODE is deliberately KEPT (the server owner asked for it): knowing which room a report
++// came from is what makes it actionable, and a room code is not an account credential. A secret is a whole token in
+@@ -16,0 +19 @@
++//   diagnosticsPayload({ state, description, settings, attachBattle })  the POST /api/feedback body
+@@ -149 +152,5 @@ export function redactValues(value, pairs) {
+-/** [value, placeholder] pairs of what a report must not show: player names, the room code, the reconnect token. */
++/**
++ * [value, placeholder] pairs of what a report must not show: the player names and the reconnect token.
++ * The room code is NOT here on purpose — it identifies the match a report is about, and it is not a credential
++ * (see the header: the owner asked for it to be kept).
++ */
+@@ -162 +168,0 @@ export function secretsOf(state) {
+-  if (state?.room?.code) pairs.push([String(state.room.code), '<room>']);
+@@ -199 +205,6 @@ export function buildDiagnostics(input) {
+-  lines.push(`where: ${join(pub?.phase ? `phase ${pub.phase}` : room ? 'room' : state.session?.entered ? 'lobby' : 'title',
++  // The room code is printed whenever there is one (never redacted): a report is much easier to act on when the owner
++  // knows which room it came from. Player names and the token stay replaced (secretsOf). In a match the phase takes
++  // the first slot, so the code is added as its own component.
++  const roomLabel = room ? (room.code ? `room ${room.code}` : 'room') : null;
++  lines.push(`where: ${join(pub?.phase ? `phase ${pub.phase}` : roomLabel || (state.session?.entered ? 'lobby' : 'title'),
++    pub?.phase && room?.code ? `room ${room.code}` : null,
+@@ -269,0 +281,28 @@ export function diagnosticsText({ state, settings = null, attachBattle = false }
++
++/**
++ * The body of POST /api/feedback (设置 → 问题反馈): what the player typed plus this page's diagnostics.
++ *
++ * `meta` carries only the handful of scalars the server's store keeps (server/feedback.js META_KEYS) — absent fields
++ * are omitted rather than sent as null. The room code goes in BOTH the report text and `meta.room`, because the owner
++ * asked for it: it is what ties a report to one match. Nothing here is a credential.
++ * @param {{ state: any, description?: string, settings?: any, attachBattle?: boolean }} opts
++ */
++export function diagnosticsPayload({ state, description = '', settings = null, attachBattle = false }) {
++  const env = browserEnv();
++  const battle = attachBattle ? currentBattle() : null;
++  const report = buildDiagnostics({ state, settings, env, battle });
++  const pub = state?.match?.public || null;
++  const room = state?.room || null;
++  const meta = {
++    version: APP_VERSION,
++    phase: typeof pub?.phase === 'string' ? pub.phase : null,
++    round: Number.isFinite(pub?.round) ? String(pub.round) : null,
++    mode: typeof room?.mode === 'string' ? room.mode : null,
++    difficulty: typeof room?.difficulty === 'string' ? room.difficulty : null,
++    room: room?.code ? String(room.code) : null,
++    uiLang: env.uiLang || null,
++    battleKind: battle?.kind ?? null,
++  };
++  for (const k of Object.keys(meta)) if (meta[k] == null) delete meta[k];
++  return { description: String(description ?? '').slice(0, 500), report, meta };
++}
