@@ -176,6 +176,11 @@ export function GameScreen() {
 /** A card of a unit of the battle on screen: a unit's, or a crate's / turret's (a device card with its `unitId`, #228). */
 const inBattleCard = (d) => d?.kind === 'unit' || (d?.kind === 'device' && d.device?.unitId != null);
 
+/** `?debug=prep`: log every prep-camera key change with the m.public fields that decided it (配对/半场问题的现场). */
+const debugPrep = (() => {
+  try { return new URLSearchParams(globalThis.location?.search || '').get('debug') === 'prep'; } catch { return false; }
+})();
+
 function MatchScreen() {
   useDocClass('sp-in-match');
   const pub = useStore((s) => s.match.public);
@@ -365,7 +370,11 @@ function MatchScreen() {
   // (research 09 §1.2: the right-hand player's board mirrored; gameLogic prepCamera). The DOM fallback view keeps the
   // own board's layout there (every coordinate the UI handles is a board coordinate either way) and draws the tiles of
   // that half (ui/fallbackField.js: the legal fence tiles are floor, not the normal field's walls; user playtest #5 item 7).
-  const prepCam = prepCamera(pub, myId, stageLayout);
+  // 最近一次确定的最终攻势半场：boss 回合里配对一时缺失（m.public 那一帧还没有 bossPairs、或刚有人退出正在重配）
+  // 时沿用它，绝不退回道中取景 —— 那等于整块棋盘跳 7 行（业主 2026-10-18 的录像，>4 人的房）。
+  const bossSideRef = useRef(null);
+  const prepCam = prepCamera(pub, myId, stageLayout, alive ? bossSideRef.current : null);
+  if (prepCam.kind === 'bossPrep') bossSideRef.current = prepCam.opts.side;
   const prepCamKey = `${prepCam.kind}:${prepCam.opts.side}`;
   const prepCamSeen = useRef(prepCamKey);                // the prep camera last requested
   const camRef = useRef({ kind: 'prep', opts: { rect: mapRectOf(stageLayout, 'prep'), side: 'L' } });
@@ -523,7 +532,7 @@ function MatchScreen() {
         // the battle we just left (or whatever was stored before mount) must not be re-entered next combat;
         // an m.field that arrives during prep (the upcoming battle) is a new object and will be entered
         staleFieldRef.current = field;
-        const pc = prepCameraFor(pub, myId, shopFolded, stageLayout);
+        const pc = prepCameraFor(pub, myId, shopFolded, stageLayout, alive ? bossSideRef.current : null);
         setCam(pc.kind, pc.opts);
         prepCamSeen.current = prepCamKey;
         viewModeRef.current = 'prep';
@@ -545,7 +554,7 @@ function MatchScreen() {
         // 松手后本 effect 会再跑一次。
         if (!drag && !facing) {
           const pf = typeof view.prepField === 'function' ? view.prepField() : null;
-          const want = prepCameraFor(pub, myId, shopFolded, stageLayout);
+          const want = prepCameraFor(pub, myId, shopFolded, stageLayout, alive ? bossSideRef.current : null);
           // 纠正也走「瞬时」：棋子已经按新映射重画，镜头再飞过去只会让人看清那一下跳。
           if (prepFieldMismatch(pf, want)) setCam(want.kind, { ...want.opts, instant: true });
         }
@@ -729,11 +738,12 @@ function MatchScreen() {
   // the next camera of the own board (the direction wheel sits on a board tile — it closes first)
   useEffect(() => {
     if (prepCamSeen.current === prepCamKey) return;
+    if (debugPrep) console.warn('[prep] camera key', prepCamSeen.current, '->', prepCamKey, 'round', pub?.round, 'bossRound', pub?.bossRound, 'bossPairs', JSON.stringify(pub?.bossPairs), 'alive', alive);
     prepCamSeen.current = prepCamKey;
     if (!view || viewModeRef.current !== 'prep' || !showPrep) return;
     if (live.current.facing) cancelFacingRef.current();
     setSel(null);
-    const pc = prepCameraFor(pub, myId, shopFolded, stageLayout);
+    const pc = prepCameraFor(pub, myId, shopFolded, stageLayout, alive ? bossSideRef.current : null);
     setCam(pc.kind, pc.opts);
   }, [view, prepCamKey, showPrep]);
 
@@ -747,7 +757,7 @@ function MatchScreen() {
   // wheel's whole duration, and the fold / unfold choice below restores the player's own shop state when it ends.
   useEffect(() => {
     if (deployFold) {
-      const want = prepCameraFor(pub, myId, true);
+      const want = prepCameraFor(pub, myId, true, stageLayout, alive ? bossSideRef.current : null);
       const cur = camRef.current;
       // the fold zoom flies with the short FOLD_CAMERA_MS, not a generic camera flight (render/app/tune.js)
       if (cur.kind !== want.kind || cur.opts?.shop !== false) setCam(want.kind, { ...want.opts, ms: FOLD_CAMERA_MS });

@@ -8,8 +8,9 @@ import { int, isObj } from './shared.js';
 function prepPair(pub, myId) {
   const alive = (Array.isArray(pub?.players) ? pub.players : []).filter(p => isObj(p) && p.alive !== false);
   if (!alive.some(p => p.playerId === myId)) return [];
-  if (pub.bossPairs !== undefined) {
-    return (Array.isArray(pub.bossPairs) ? pub.bossPairs : []).find(g => Array.isArray(g) && g.includes(myId)) || [];
+  // `null` 是「服务端这一帧还没带上配对」（不是「没有配对」）：退回按座位的推断，别当成空。
+  if (Array.isArray(pub.bossPairs)) {
+    return pub.bossPairs.find(g => Array.isArray(g) && g.includes(myId)) || [];
   }
   const ids = alive.sort((a, b) => int(a.seat, 99) - int(b.seat, 99)).map(p => p.playerId);
   const i = ids.indexOf(myId);
@@ -35,12 +36,17 @@ function prepPair(pub, myId) {
  * @param {any} [layout] the map's own layout (`layoutOf(stage)`); omitted → the official one
  * @returns {{ kind: 'prep'|'bossPrep', opts: { rect?: object, side: 'L'|'R' } }}
  */
-export function prepCamera(pub, myId, layout = null) {
+export function prepCamera(pub, myId, layout = null, fallbackSide = null) {
   const normal = { kind: 'prep', opts: { rect: mapRectOf(layout, 'prep'), side: 'L' } };
   const r = pub?.round;
   if (!Number.isInteger(r) || r <= 0 || !(r === pub.bossRound || r === pub.hiddenRound)) return normal;
   const idx = prepPair(pub, myId).indexOf(myId);
-  if (idx < 0) return normal; // eliminated / unknown: no board of its own on the boss field
+  if (idx < 0) {
+    // 被淘汰 / 这一帧还不认识这个座位：以前一律退回道中取景。但 boss 回合里棋子本来就只能站在 boss 场上，
+    // 退回道中 = 整块棋盘跳 7 行（业主 2026-10-18 的录像，>4 人的房）。给了 fallbackSide 就沿用它上一次的半场。
+    if (fallbackSide === 'L' || fallbackSide === 'R') return { kind: 'bossPrep', opts: { side: fallbackSide } };
+    return normal;
+  }
   return { kind: 'bossPrep', opts: { side: idx % 2 === 1 ? 'R' : 'L' } };
 }
 
@@ -81,8 +87,8 @@ export function teamFrameIds(pub, myId) {
  * and folded (an eliminated player's board, which shows no bar, keeps the shop camera).
  * @returns {{ kind: 'prep'|'bossPrep', opts: { rect?: object, side: 'L'|'R', shop: boolean } }}
  */
-export function prepCameraFor(pub, myId, folded = false, layout = null) {
-  const c = prepCamera(pub, myId, layout);
+export function prepCameraFor(pub, myId, folded = false, layout = null, fallbackSide = null) {
+  const c = prepCamera(pub, myId, layout, fallbackSide);
   return { kind: c.kind, opts: { ...c.opts, shop: !folded } };
 }
 

@@ -9,7 +9,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { prepFieldMismatch } from '../../public/js/ui/gameLogic.js';
+import { prepFieldMismatch, prepCamera } from '../../public/js/ui/gameLogic.js';
+
+const pl = (playerId, seat) => ({ playerId, seat, alive: true });
 
 const boss = (side) => ({ kind: 'bossPrep', opts: { side, shop: true } });
 const normal = () => ({ kind: 'prep', opts: { rect: { r0: 7, r1: 12, c0: 0, c1: 10 }, side: 'L', shop: true } });
@@ -51,7 +53,7 @@ test('接线：休整期分支拿 view.prepField() 与 prepCameraFor 比对，�
   assert.match(src, /if \(!drag && !facing\)/, 'deferred while a piece is dragged or its direction is chosen (as foldCamera does)');
   // 延后的那次必须真的会再跑：拖拽/方向轮结束要重新触发这个 effect，否则兜底只在选中时生效
   assert.match(src, /holdSeq, !!drag, !!facing\]\),?/, 'the effect re-runs when the drag or the wheel ends');
-  assert.match(src, /const want = prepCameraFor\(pub, myId, shopFolded, stageLayout\)/, 'the wanted camera is the same one the entry path asks for');
+  assert.ok(src.includes('const want = prepCameraFor(pub, myId, shopFolded, stageLayout, alive ? bossSideRef.current : null);'), 'the wanted camera is the same one the entry path asks for (and keeps the last boss half)');
 });
 
 test('接线：取景换了一套时镜头必须瞬时到位（否则就是「棋子瞬移 + 镜头被拉过去」）', () => {
@@ -60,4 +62,20 @@ test('接线：取景换了一套时镜头必须瞬时到位（否则就是「�
   assert.ok(src.includes('prepXf !== prepBefore'), '取景变了要能看出来');
   assert.ok(src.includes("prepish(prevView) && prepish(vk)"), '只对休整期之间（道中 ↔ 最终攻势半场）的切换强制瞬时');
   assert.ok(src.includes('{ ...o, instant: true }'), '镜头瞬时到位，不飞');
+});
+
+test('boss 回合里 m.public 的 bossPairs 是 null（还没下发）：不能当成「没有配对」退回道中', () => {
+  const pub = { round: 14, bossRound: 14, hiddenRound: 15, bossPairs: null, players: [pl('a', 0), pl('b', 1)] };
+  assert.deepEqual(prepCamera(pub, 'b'), { kind: 'bossPrep', opts: { side: 'R' } }, '按座位推断出右半场');
+});
+
+test('boss 回合里一时查不到我的配对：沿用上一次的半场，绝不退回道中（整块棋盘跳 7 行的来源）', () => {
+  const pub = { round: 14, bossRound: 14, hiddenRound: 15, bossPairs: [['a', 'b']], players: [pl('a', 0), pl('b', 1), pl('c', 2)] };
+  assert.deepEqual(prepCamera(pub, 'c', null, 'R'), { kind: 'bossPrep', opts: { side: 'R' } }, '沿用上次的右半场');
+  assert.equal(prepCamera(pub, 'c').kind, 'prep', '没有上次的半场（被淘汰的旁观位）才退回自己的棋盘');
+});
+
+test('非 boss 回合：fallbackSide 不生效（不会把道中棋盘当 boss 场画）', () => {
+  const pub = { round: 6, bossRound: 14, hiddenRound: 15, bossPairs: null, players: [pl('a', 0)] };
+  assert.equal(prepCamera(pub, 'a', null, 'R').kind, 'prep');
 });
