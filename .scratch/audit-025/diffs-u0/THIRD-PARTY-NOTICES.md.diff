@@ -1,9 +1,0 @@
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\THIRD-PARTY-NOTICES.md', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\THIRD-PARTY-NOTICES.md', LF will be replaced by CRLF the next time Git touches it
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\THIRD-PARTY-NOTICES.md" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\THIRD-PARTY-NOTICES.md"
-index 900b5fa..2b49d1b 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\THIRD-PARTY-NOTICES.md"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\THIRD-PARTY-NOTICES.md"
-@@ -21 +21 @@ them (with `node_modules/`, which keeps each package's own licence file).
--| [Node.js](https://nodejs.org/) | v22.23.3 (pinned in `scripts/make-windows-bundle.mjs`) | MIT | the portable `node\node.exe` (**Windows portable package only** — the integration bundle in [Releases](../../releases/latest) ships no `node.exe`) | no (downloaded from nodejs.org at package time, sha256 verified) | **Windows portable package only** (`node\node.exe`, with `node\LICENSE-node.txt`) |
-+| [Node.js](https://nodejs.org/) | v22.23.3 (pinned in `scripts/make-windows-bundle.mjs`) | MIT | the portable `node\node.exe` (**Windows portable package only** — the integration bundle in [Releases](https://github.com/sganggs/Stronghold-Protocol/releases/latest) ships no `node.exe`) | no (downloaded from nodejs.org at package time, sha256 verified) | **Windows portable package only** (`node\node.exe`, with `node\LICENSE-node.txt`) |

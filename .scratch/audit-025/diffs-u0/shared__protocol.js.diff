@@ -1,9 +1,0 @@
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\shared\protocol.js', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\shared\protocol.js', LF will be replaced by CRLF the next time Git touches it
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\shared\\protocol.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\shared\\protocol.js"
-index 8cd9967..9f48e6f 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\shared\\protocol.js"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\shared\\protocol.js"
-@@ -474,0 +475,2 @@ export const S2C = [
-+  // m.layer { playerId, bondId, add } — own live prep layer gain; ephemeral, never replayed on resync.
-+  'm.layer',

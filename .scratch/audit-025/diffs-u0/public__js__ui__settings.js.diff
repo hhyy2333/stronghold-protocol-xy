@@ -1,9 +1,0 @@
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\ui\settings.js', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\js\ui\settings.js', LF will be replaced by CRLF the next time Git touches it
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\settings.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\ui\\settings.js"
-index 313f54e..2009f07 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\ui\\settings.js"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\ui\\settings.js"
-@@ -265,0 +266,2 @@ export function SettingsModal({ open, onClose }) {
-+      <${Toggle} label=${t('官方伤害数字')} micro="OFFICIAL NUMBERS" value=${s.officialDamageNumbers} onChange=${(v) => updateSettings({ officialDamageNumbers: v })} />
-+      <p class="set-hint">${t('只显示达到官方暴击条件的红色数字。关闭时仍显示每一次命中。')}</p>

@@ -1,7 +1,0 @@
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\scripts\\start-windows.bat" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\scripts\\start-windows.bat"
-index 3aa4521..192086e 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\scripts\\start-windows.bat"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\scripts\\start-windows.bat"
-@@ -13 +13 @@ if errorlevel 1 goto :nonode
--node -e "process.exit(Number(process.versions.node.split('.')[0])>=22?0:1)"
-+node -e "process.exit(Math.max(0, Math.sign(22 - parseInt(process.versions.node))))"

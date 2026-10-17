@@ -1,9 +1,0 @@
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\sim\content\kits\ops\op-aglna2.js', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\sim\content\kits\ops\op-aglna2.js', LF will be replaced by CRLF the next time Git touches it
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-aglna2.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-aglna2.js"
-index d153437..51cca44 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\sim\\content\\kits\\ops\\op-aglna2.js"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\sim\\content\\kits\\ops\\op-aglna2.js"
-@@ -231,0 +232,2 @@ export default {
-+          // The skill's initial attack area includes the eight surrounding tiles as well as its 3-9 grid.
-+          trigger: { rule: 'ACTIVE_RANGE', grid: g39x4 },

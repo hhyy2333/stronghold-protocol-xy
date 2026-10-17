@@ -128,6 +128,10 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
   // tinted like the official green; a plain green ring without the local art)
   const team = teamFrameIds(pub, myId);
   const frameArt = team.size ? localAsset('ui/battle', 'bg_team_border') : null;
+  // A big room (this server allows up to 20 seats): rows 9+ already ran under the bottom-left 交流 / 表情 / 设置 row,
+  // and 20 seats cannot fit the column at all. `team--many` keeps the row size and makes the column scroll inside the
+  // space above that corner row; with a handful of players nothing changes (the class is absent, the CSS is inert).
+  const many = players.length > 6;
   const askedRecently = (p) => askedAt.current.id === p?.playerId && Date.now() - askedAt.current.at < AVATAR_CLICK_GAP_MS;
   const noteAsked = (p) => { askedAt.current = { id: p.playerId, at: Date.now() }; };
   const click = (p, self) => {
@@ -155,7 +159,7 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
     noteAsked(p);
     onWatch(p);
   };
-  return html`<aside class=${cx('team', compact && 'team--compact')} aria-label=${t('同盟成员')}>
+  return html`<aside class=${cx('team', compact && 'team--compact', many && 'team--many')} aria-label=${t('同盟成员')}>
     ${players.map((p) => {
       const self = p.playerId === myId;
       const status = p.alive === false ? 'dead' : p.status;

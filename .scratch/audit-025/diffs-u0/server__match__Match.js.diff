@@ -1,8 +1,0 @@
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\server\match\Match.js', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\server\match\Match.js', LF will be replaced by CRLF the next time Git touches it
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\Match.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\Match.js"
-index bbc4971..3e12fc2 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\server\\match\\Match.js"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\server\\match\\Match.js"
-@@ -375,0 +376 @@ export class Match {
-+    this.bossPairs = null; // drawn once per match; the hidden round retains partners and sides

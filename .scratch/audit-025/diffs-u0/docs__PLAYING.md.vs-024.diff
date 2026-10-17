@@ -1,9 +1,0 @@
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\docs\PLAYING.md', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\Stronghold-Protocol-repo\docs\PLAYING.md', LF will be replaced by CRLF the next time Git touches it
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\docs\\PLAYING.md" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\docs\\PLAYING.md"
-index c779af2..91656f7 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\docs\\PLAYING.md"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\Stronghold-Protocol-repo\\docs\\PLAYING.md"
-@@ -181 +181 @@
--遇到报错、卡住或结果不对时，打开「设置」→「问题反馈」，点「复制诊断信息」，再到 [GitHub issue](https://github.com/sganggs/Stronghold-Protocol/issues) 里描述发生了什么并粘贴进去。诊断信息包括游戏版本、浏览器和设备、当前所在的阶段与回合，以及打开页面以来记录到的错误（最多保留最近 40 条）。战斗中复制时，默认附上这场战斗的数据，开发者可以用它重现这场战斗；不想附上可以关掉「附上本场战斗」。诊断信息只在你的浏览器里生成，不会自动上传；你和其他玩家的名字、房间号会被替换成 `<me>`、`<player2>`、`<room>` 这样的占位符。剪贴板不可用时（部分 App 内置浏览器），内容会显示在下方的文本框里，手动全选复制即可。
-+遇到报错、卡住或结果不对时，打开「设置」→「问题反馈」，用一句话写下发生了什么（可留空），点「发送给服主」。反馈会发到**这台服务器**上，服主在 `/admin/` 面板的「玩家反馈」里看，不需要你去注册账号或跳转到别的网站。它包含游戏版本、浏览器和设备、当前所在的阶段与回合，以及打开页面以来记录到的错误（最多保留最近 40 条）。战斗中点发送时，默认附上这场战斗的数据，服主可以用它重现这场战斗；不想附上可以关掉「附上本场战斗」。你和其他玩家的名字会被替换成 `<me>`、`<player2>` 这样的占位符，**房间号会保留**（这样服主知道是哪一局）；诊断信息只发到这台服务器，不会上传到别处。发送失败时（比如服务器正在重启）会提示，并给一个「复制诊断信息」按钮，复制下来用聊天工具发给服主即可。

@@ -296,7 +296,29 @@
 }
 
 /* ---- team panel ------------------------------------------------------------------------------------------- */
-.team { position: absolute; left: .22rem; top: 2.36rem; display: flex; flex-direction: column; gap: .14rem; pointer-events: none; }
+.team {
+  position: absolute; left: max(.22rem, 12px); top: 2.36rem;
+  /* The column ends above the bottom-left corner row (交流 / 表情 / 设置, .84rem tall incl. its inset). Without this
+     bottom edge the 9th row — and every row after it — ran under that row: the reported 「左边头像显示不全」 on a
+     large room was the 交流 button covering the last avatar. A handful of seats still ends where it always did. */
+  bottom: calc(.24rem + max(.56rem, 38px) + .12rem);
+  max-height: calc(100% - 2.36rem - max(.56rem, 38px) - .36rem);
+  display: flex; flex-direction: column; gap: .14rem; pointer-events: none;
+}
+.team--many {
+  gap: .14rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  padding-right: .04rem; padding-bottom: .06rem;
+  /* 大房间（7 席以上）滚动，而不是缩小头像：滚动条是控件，容器自己收 pointer，行本来就收。 */
+  pointer-events: auto;
+}
+.team--many::-webkit-scrollbar { width: .08rem; }
+.team--many::-webkit-scrollbar-track { background: rgba(0, 0, 0, .25); }
+.team--many::-webkit-scrollbar-thumb { background: var(--line-3); }
+.team--many .team__row { touch-action: pan-y; }
+/* 窄屏（竖屏/手机）左下角那排按钮会折成两行，底部留白按两行算 */
+@media (max-width: 767px) {
+  .team { bottom: calc(.24rem + max(1.22rem, 64px) + .12rem); }
+}
 .team__row { position: relative; display: flex; align-items: center; gap: .1rem; pointer-events: auto; }
 .team__btn {
   position: relative; padding: 0; background: none; border: 0;

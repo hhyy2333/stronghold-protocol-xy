@@ -1,9 +1,0 @@
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-024\public\js\render\fx\fonts.js', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'C:\Users\hhyyl\Downloads\Stronghold-Protocol-v0.2.1\.scratch\audit-025\base-025\public\js\render\fx\fonts.js', LF will be replaced by CRLF the next time Git touches it
-diff --git "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\render\\fx\\fonts.js" "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\render\\fx\\fonts.js"
-index fcafa0c..4b615db 100644
---- "a/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-024\\public\\js\\render\\fx\\fonts.js"
-+++ "b/C:\\Users\\hhyyl\\Downloads\\Stronghold-Protocol-v0.2.1\\.scratch\\audit-025\\base-025\\public\\js\\render\\fx\\fonts.js"
-@@ -17 +17 @@ export function ensureDamageFonts() {
--      }, { chars: [['0', '9'], '+-×!'], resolution: 2, padding: 6 });
-+      }, { chars: st.font === 'sp-dmg-miss' ? [['0', '9'], '+-×!', 'MISS'] : [['0', '9'], '+-×!'], resolution: 2, padding: 6 });

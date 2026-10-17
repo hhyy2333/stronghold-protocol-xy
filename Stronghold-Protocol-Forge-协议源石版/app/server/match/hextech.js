@@ -48,12 +48,16 @@ export function applyHex(m, ps, hex, opts = {}) {
   const targets = team ? [ps, ...m.alivePlayers().filter((p) => p !== ps)] : [ps];
   for (const p of targets) {
     const ev = { hex: { ...hex }, picker: ps.playerId, forTeammate: p !== ps };
+    // 潘多拉魔盒 (owner bug report 2026-10-17): the card has to OWN ITSELF while its own onPick runs.
+    // replaceHexes() drops every `hex:` ref — the running card included — and re-grants one card per owned ref, so the
+    // ref must be added BEFORE the handler. With the old order (add after) the card replaced the others and was then
+    // added back on top (「潘多拉不变自己」), and a player who owned nothing but the card got nothing at all.
+    addHexRef(m, p, hex);
     try { m.dispatcher.runKey(p, `hex:${hex.id}`, 'onHexPick', { kind: 'hex', hex }, ev); } catch (e) { m.reportError(`hex ${hex.id}`, e); }
     // `effect.onPick.lp` reaches EVERY target, not just the picker: a team hex's whole point is that each teammate gets
     // the same thing (DESIGN §29.1 "each target runs the handler through its own ctx"). This used to be gated by
     // `p === ps`, which silently halved 战争机器 — the picker took +5 LP and the teammates none.
     applyHexLp(m, p, hex);
-    addHexRef(m, p, hex);
     // every other source observes the pick (the hex's own key already ran above)
     m.dispatch(p, 'onHexPick', ev, { skipKey: `hex:${hex.id}` });
     p.recompute();
