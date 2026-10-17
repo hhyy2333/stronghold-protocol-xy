@@ -1,0 +1,19 @@
+{
+  "id": "yana-addition",
+  "name": "娅娜 addition（6★ 固定干员）",
+  "version": "1.0.0",
+  "author": "本树自制（Stronghold-Protocol 的 FIXED_CHESS 声明）",
+  "license": "NOASSERTION",
+  "description": "新增 6★ 狙击·炮手干员娅娜（char_9002_yana）及其精英形态 chess_char_3_22_a/_b，含休整期特质 garrison_161_a/b（休整期结束时自身所属盟约 +4 / +8 层）与她的战斗 kit（三技能、两天赋）。数据与 kit 均取自本仓库另一棵树（Stronghold-Protocol-repo）的构建产物，非官方发布物。",
+  "game": ">=0.13.0",
+  "api": ">=1 <2",
+  "layer": "A",
+  "combat": true,
+  "content": [
+    "chess",
+    "garrisons"
+  ],
+  "notices": {
+    "announcement": "notice/announcement.json"
+  }
+}

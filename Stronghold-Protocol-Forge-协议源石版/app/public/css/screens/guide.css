@@ -1,0 +1,249 @@
+/* ==========================================================================================
+   guide.css — 玩法说明 viewer (js/ui/guide.js): the 19 official tutorial pages at 16:9, chapter tabs,
+   ‹ › edge buttons, page dots. Sits above modals (it can be opened from the settings dialog).
+   ========================================================================================== */
+
+.guide {
+  position: fixed; inset: 0; z-index: calc(var(--z-modal) + 4);
+  display: grid; place-items: center;
+  background: radial-gradient(ellipse at 50% 40%, rgba(8, 14, 12, .82), rgba(2, 4, 3, .94));
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  animation: guide-fade 180ms var(--ease-out);
+}
+@keyframes guide-fade { from { opacity: 0; } }
+
+.guide__box {
+  --bk-c: var(--mint-500);
+  position: relative; display: flex; flex-direction: column; gap: .12rem;
+  padding: .16rem .22rem .16rem;
+  background: linear-gradient(180deg, rgba(22, 28, 26, .98), rgba(10, 13, 12, .98));
+  border: 1px solid var(--line-2);
+  box-shadow: 0 .2rem .6rem rgba(0, 0, 0, .7), 0 0 0 1px rgba(78, 216, 175, .06) inset;
+  outline: none;
+  animation: guide-pop 220ms var(--ease-out);
+}
+@keyframes guide-pop { from { opacity: 0; transform: translateY(.12rem) scale(.985); } }
+
+/* header: title | chapter tabs | close */
+.guide__head { display: flex; align-items: center; gap: .3rem; min-height: .62rem; }
+.guide__titles { display: flex; flex-direction: column; gap: .02rem; min-width: 2.4rem; }
+.guide__title { margin: 0; font-size: calc(.3 * var(--t)); font-weight: 900; letter-spacing: .12em; color: var(--text-hi); line-height: 1.1; }
+.guide__chapters { display: flex; gap: .06rem; margin: 0 auto; }
+.guide__chapter {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .01rem;
+  min-width: 1.5rem; height: .56rem; padding: 0 .22rem;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--line); color: var(--text-lo);
+  clip-path: polygon(.12rem 0, 100% 0, calc(100% - .12rem) 100%, 0 100%);
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+}
+.guide__chapter:hover { color: var(--text-hi); background: rgba(78, 216, 175, .06); }
+.guide__chapter.is-on { color: var(--text-on-mint); background: var(--mint-500); border-color: var(--mint-500); }
+.guide__chname { font-size: calc(.19 * var(--t)); font-weight: 700; letter-spacing: .1em; }
+.guide__chmicro { font-family: var(--font-display); font-size: calc(.1 * var(--t)); letter-spacing: .24em; opacity: .75; }
+.guide__close {
+  width: .56rem; height: .56rem; display: grid; place-items: center; flex: none;
+  background: rgba(0, 0, 0, .35); border: 1px solid var(--line-2); color: var(--text-md);
+  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+}
+.guide__close .icon { width: .3rem; height: .3rem; }
+.guide__close:hover { color: var(--text-hi); border-color: var(--red-premium); background: var(--red-a20); }
+
+/* page stage (16:9) with edge buttons */
+.guide__stage { position: relative; }
+.guide__page {
+  position: relative; overflow: hidden;
+  width: min(calc(96vw - .5rem), calc((100vh - 2.3rem) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  background: #050807 repeating-linear-gradient(135deg, rgba(78, 216, 175, .04) 0 .02rem, transparent .02rem .14rem);
+  border: 1px solid var(--line);
+}
+/* the pages are stored squashed to 1024²: stretch back to 16:9 */
+.guide__page img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; user-select: none; opacity: 0; transition: opacity 160ms ease; }
+.guide__page.is-loaded img { opacity: 1; }
+.guide__loading { position: absolute; inset: 0; display: grid; place-items: center; }
+.guide__nav {
+  position: absolute; top: 0; bottom: 0; z-index: 2; width: 1rem; display: grid; place-items: center;
+  color: rgba(242, 242, 242, .7); background: transparent; border: 0;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.guide__nav .icon { width: .52rem; height: .52rem; filter: drop-shadow(0 0 .06rem rgba(0, 0, 0, .9)); }
+.guide__prev { left: 0; background: linear-gradient(90deg, rgba(0, 0, 0, .38), transparent); }
+.guide__next { right: 0; background: linear-gradient(270deg, rgba(0, 0, 0, .38), transparent); }
+.guide__nav:hover { color: var(--mint-400); }
+.guide__prev:hover { background: linear-gradient(90deg, rgba(0, 0, 0, .6), transparent); }
+.guide__next:hover { background: linear-gradient(270deg, rgba(0, 0, 0, .6), transparent); }
+
+/* footer: chapter + title | dots | count */
+.guide__foot { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .3rem; min-height: .44rem; }
+.guide__label { display: flex; align-items: center; gap: .14rem; min-width: 0; }
+.guide__chtag {
+  flex: none; padding: .02rem .12rem; font-size: calc(.14 * var(--t)); font-weight: 700; letter-spacing: .1em;
+  color: var(--mint-400); border: 1px solid var(--mint-800); background: var(--mint-a10);
+}
+.guide__ptitle { font-size: calc(.22 * var(--t)); font-weight: 700; letter-spacing: .06em; color: var(--text-hi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.guide__dots { display: flex; align-items: center; gap: .05rem; }
+.guide__dot {
+  width: .2rem; height: .08rem; padding: 0; border: 0; background: var(--line-2);
+  transition: background var(--t-fast), width var(--t-fast);
+}
+.guide__dot.is-first { margin-left: .14rem; }
+.guide__dot:hover { background: var(--line-3); }
+.guide__dot.is-on { width: .42rem; background: var(--mint-500); box-shadow: 0 0 .08rem rgba(23, 249, 183, .5); }
+.guide__count { justify-self: end; font-size: calc(.24 * var(--t)); color: var(--text-md); letter-spacing: .06em; }
+
+/* text fallback: the official tips when no tutorial page can be shown (none listed, or none of a page's copies loads) */
+.guide__stage--text { width: min(92vw, 10rem); max-height: calc(100vh - 2rem); overflow: auto; padding: .1rem .06rem; }
+.guide__tips ol { margin: .14rem 0 0; padding-left: .34rem; display: flex; flex-direction: column; gap: .08rem; }
+.guide__tips li { font-size: calc(.18 * var(--t)); line-height: 1.6; color: var(--text-md); }
+.guide__tips li::marker { color: var(--mint-500); font-family: var(--font-num); }
+
+/* standard trigger */
+.guide-btn .btn__icon { color: var(--mint-500); }
+
+/* ---- 协议源石图鉴: the 4th tab (ui/guide.js CodexStage) ------------------------------------------------
+   A data tab, not an official page: the roster of data/hextech.json grouped by rarity, the player's side first. The
+   cards are the draft's own (ui/hexOverlay.js HexCard), but NOT as the draft lays them out: `.hxcard.has-tier` makes the
+   阶位 art the card's face and its `aspect-ratio` the card's height, so a long effect text overflowed the tile and was
+   clipped (measured 2026-10-12 in a real browser at 1600×900: 4 cards cut their text, 11 had content taller than the
+   tile, and every line sat directly on the numeral's dot-matrix). Here the card is re-laid-out for READING — the 阶位
+   art becomes a small badge in the head (never cropped, `--hx-tier-ar` keeps its ratio) and the effect text gets a clean
+   dark panel whose height follows its own content. Everything is scoped to `.guide__codex`, so the 三选一 draft and the
+   enemy chip rows are untouched.
+
+   The tab reads as a spec sheet: two sticky side heads (01 / 02) and, under them, one sticky tier head per rarity. Both
+   heads are OPAQUE, and the tier head's `top` is the side head's own `height`, so they abut instead of sliding through
+   each other — the first cut let the tier head ride under the side head's transparent tail and the row behind showed
+   through. Each card carries its roster index in `--i` (ui/guide.js) so the whole tab enters as one staggered sweep. */
+.guide__stage.guide__codex {
+  width: min(96vw, 16.4rem); max-height: calc(100vh - 2rem); overflow: auto; padding: 0 .14rem .2rem;
+}
+.guide__codexbox { display: flex; flex-direction: column; gap: .3rem; }
+/* a thin themed bar instead of the browser's default: the tab is read, so the scrollbar is part of the frame */
+.guide__codex::-webkit-scrollbar { width: .12rem; }
+.guide__codex::-webkit-scrollbar-track { background: rgba(0, 0, 0, .35); }
+.guide__codex::-webkit-scrollbar-thumb { background: var(--line-3); }
+.guide__codex::-webkit-scrollbar-thumb:hover { background: var(--mint-700); }
+
+/* a side: its head (index, name, total), the rule line, then one block per tier. `--guide-ac` is the side's accent and
+   the per-tier default it is re-pointed at on `.guide__group` (silver / gold / prismatic), so a tier reads at a glance. */
+.guide__side { display: flex; flex-direction: column; gap: .22rem; --guide-ac: var(--mint-500); --guide-headh: .44rem; }
+.guide__side--enemy { --guide-ac: var(--gold-2); }
+.guide__sidehead {
+  position: sticky; top: 0; z-index: 4; height: var(--guide-headh); display: flex; align-items: center; gap: .12rem;
+  padding: 0 .02rem; background: #141917; border-bottom: 1px solid var(--line-2);
+}
+.guide__sidehead::after { content: ''; position: absolute; left: 0; bottom: -1px; width: 2.6rem; height: 2px; background: linear-gradient(90deg, var(--guide-ac), transparent); }
+.guide__sideidx { font-family: var(--font-display); font-size: max(calc(.19 * var(--t)), 11px); font-weight: 700; letter-spacing: .16em; color: var(--guide-ac); }
+.guide__sidetitle { margin: 0; font-size: calc(.28 * var(--t)); font-weight: 900; letter-spacing: .1em; color: var(--text-hi); }
+.guide__sidecount { margin-left: auto; font-family: var(--font-display); font-size: max(calc(.19 * var(--t)), 11px); font-weight: 700; letter-spacing: .14em; color: var(--guide-ac); }
+.guide__sidecount::before { content: ''; display: inline-block; width: .18rem; height: 1px; margin-right: .1rem; background: var(--guide-ac); opacity: .55; vertical-align: middle; }
+/* the enemy half is match-global and shares one row with its rule line (the same rule the 敌方情报 tab and the test
+   field print), so the two never disagree about what an enemy card does. */
+.guide__sidenote {
+  margin: 0; padding: .08rem .1rem; border-left: 2px solid var(--guide-ac); background: var(--gold-a20);
+  font-size: max(calc(.14 * var(--t)), 10px); line-height: 1.5; color: var(--text-lo);
+}
+
+/* a tier block: its head sticks directly under the side head (its own height, minus a hairline so they overlap rather
+   than leave a seam), so the tier you are reading is always named */
+.guide__group { display: flex; flex-direction: column; gap: .14rem; --guide-ac: #c9d4dd; }
+.guide__group[data-rarity="gold"] { --guide-ac: var(--gold); }
+.guide__group[data-rarity="prismatic"] { --guide-ac: #b07ce8; }
+.guide__grouphead {
+  position: sticky; top: calc(var(--guide-headh) - 1px); z-index: 3; display: flex; align-items: center; gap: .12rem;
+  height: .4rem; padding: 0 .02rem 0 .1rem; background: #0f1412; border-bottom: 1px solid var(--line);
+}
+.guide__grouphead::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--guide-ac); }
+.guide__grouphead::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: linear-gradient(90deg, var(--guide-ac), var(--line-2) 22%, rgba(62, 75, 69, .1)); opacity: .7; }
+/* the tier's 阶位 art as a stamp — `contain`, so the numeral is never cropped (the draft's chip crops to square) */
+.guide__groupnum { flex: none; width: .5rem; height: .34rem; background-position: center; background-size: contain; background-repeat: no-repeat; filter: drop-shadow(0 0 .05rem rgba(0, 0, 0, .9)); }
+/* an outlined spec label, not the draft's solid chip: at this size a filled block reads as a button */
+.guide__grouptier {
+  padding: .01rem .09rem; font-size: max(calc(.14 * var(--t)), 10px); font-weight: 700; letter-spacing: .14em;
+  color: var(--guide-ac); background: transparent; border: 1px solid var(--guide-ac);
+}
+/* a hairline leader from the tier label out to the count: the head spans the full column width, so without it the count
+   floats in the middle of nowhere and the head reads as half-empty */
+.guide__groupline { flex: 1 1 auto; height: 1px; margin: 0 .02rem; background: linear-gradient(90deg, var(--line-2), rgba(62, 75, 69, .18)); }
+.guide__groupcount { font-family: var(--font-display); font-size: max(calc(.16 * var(--t)), 10px); font-weight: 700; letter-spacing: .16em; color: var(--text-dim); }
+
+/* five columns at the stage's own width: a 21-char effect line breaks into a 2–3 line paragraph that fills the tile
+   instead of a full-width strip with a lake of empty space to its right (4 columns was measured ragged and airy) */
+.guide__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.9rem, 1fr)); gap: .14rem; align-items: stretch; }
+.guide__card { position: relative; display: flex; min-width: 0; animation: codex-in 280ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 6ms); }
+/* bracket corners in the tier's own colour, drawn the way theme.css `.brackets` draws them (absent until hover, so the
+   resting grid stays quiet and the card answers the pointer with a frame rather than a lift alone) */
+.guide__card::before {
+  content: ''; position: absolute; inset: -2px; pointer-events: none; opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-out);
+  background:
+    linear-gradient(var(--guide-ac), var(--guide-ac)) top left / .14rem 1px no-repeat,
+    linear-gradient(var(--guide-ac), var(--guide-ac)) top left / 1px .14rem no-repeat,
+    linear-gradient(var(--guide-ac), var(--guide-ac)) top right / .14rem 1px no-repeat,
+    linear-gradient(var(--guide-ac), var(--guide-ac)) top right / 1px .14rem no-repeat,
+    linear-gradient(var(--guide-ac), var(--guide-ac)) bottom left / .14rem 1px no-repeat,
+    linear-gradient(var(--guide-ac), var(--guide-ac)) bottom left / 1px .14rem no-repeat,
+    linear-gradient(var(--guide-ac), var(--guide-ac)) bottom right / .14rem 1px no-repeat,
+    linear-gradient(var(--guide-ac), var(--guide-ac)) bottom right / 1px .14rem no-repeat;
+}
+.guide__card:hover::before { opacity: .9; }
+@keyframes codex-in { from { opacity: 0; transform: translateY(.1rem); } }
+
+/* ---- the codex card: a reading tile, not the draft's full-bleed 阶位 face ---------------------------------- */
+.guide__codex .hxcard,
+.guide__codex .hxcard.has-tier {
+  width: 100%; height: 100%; align-self: stretch; aspect-ratio: auto; min-height: 1.1rem;
+  align-items: stretch; justify-content: flex-start; gap: .1rem; padding: .13rem .15rem;
+  /* a soft rarity tint at the top over the same near-black the rest of the interface uses */
+  background: linear-gradient(180deg, var(--hx-c-lo), rgba(9, 13, 15, .93) 46%, rgba(7, 10, 12, .97));
+  border: 1px solid var(--line); border-top: .02rem solid var(--hx-c); border-radius: 0;
+  box-shadow: 0 .04rem .14rem rgba(0, 0, 0, .4);
+  transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast), box-shadow var(--t-fast);
+}
+/* name row: the NAME alone. The tier is the group head's job (the grid is grouped BY tier, so a per-card tier badge
+   repeated it 88 times) and HexCard's own rarity chip is hidden for the same reason — `.hxcard__rarity` stays in the DOM,
+   its tier accent survives as the card's top border. `min-width: 0` keeps a long name ellipsising inside the tile. */
+.guide__codex .hxcard__head { flex: none; display: block; width: 100%; min-width: 0; }
+.guide__codex .hxcard__title { display: block; width: 100%; min-width: 0; }
+.guide__codex .hxcard__rarity { display: none; }
+.guide__codex .hxcard__name {
+  display: block; font-size: max(calc(.23 * var(--t)), 15px); font-weight: 900; letter-spacing: .04em; line-height: 1.25;
+  text-shadow: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* the effect text: full text, its own height, over a hairline that separates it from the head. `flex: 1` lets the tile
+   absorb a taller row mate without the panel's bottom edge drifting; the roster index is pinned to that edge. */
+.guide__codex .hxcard__desc {
+  flex: 1 1 auto; display: block; overflow: visible; -webkit-line-clamp: none; -webkit-box-orient: initial;
+  margin-top: .03rem; padding-top: .09rem; border-top: 1px solid var(--line);
+  font-size: max(calc(.17 * var(--t)), 11.5px); line-height: 1.6; color: var(--text-md); text-shadow: none;
+}
+/* the card's own rarity chip is hidden (the group head already names the tier, and 88 repetitions of it is noise), so the
+   side head carries the roster numbering instead: one counter per side, every tile numbered 01..N in its bottom corner. */
+.guide__side { counter-reset: codex; }
+.guide__card { counter-increment: codex; }
+.guide__card::after {
+  content: counter(codex, decimal-leading-zero);
+  position: absolute; right: .15rem; bottom: .13rem; pointer-events: none;
+  font-family: var(--font-num); font-size: max(calc(.13 * var(--t)), 10px); font-weight: 700; letter-spacing: .1em;
+  color: var(--text-dim); transition: color var(--t-fast) var(--ease-out);
+}
+.guide__card:hover::after { color: var(--guide-ac); }
+/* display-only tiles still answer the pointer: the frame brightens in the tier's colour and the tile lifts a hair */
+.guide__codex .guide__card:hover .hxcard {
+  transform: translateY(-.02rem); border-color: var(--hx-c); border-top-color: var(--hx-c);
+  box-shadow: 0 .1rem .26rem rgba(0, 0, 0, .55), 0 0 0 1px var(--hx-c) inset;
+}
+/* without the local 阶位 art HexCard falls back to its drawn plate: keep that fallback tidy in here too */
+.guide__codex .hxcard__plate { width: .44rem; height: .44rem; border-width: 1px; }
+.guide__codex .hxcard__glyph { font-size: calc(.24 * var(--t)); }
+
+.guide__empty { margin: .2rem 0; font-size: calc(.18 * var(--t)); text-align: center; }
+
+@media (max-height: 560px) {
+  .guide__box { padding: .08rem .12rem; gap: .06rem; }
+  .guide__head { min-height: .5rem; }
+  .guide__titles { display: none; }
+  .guide__page { width: min(calc(96vw - .3rem), calc((100vh - 1.5rem) * 16 / 9)); }
+  .guide__stage.guide__codex { max-height: calc(100vh - 1.4rem); }
+  .guide__grid { grid-template-columns: repeat(auto-fill, minmax(2.6rem, 1fr)); }
+}

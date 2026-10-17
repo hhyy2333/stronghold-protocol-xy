@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>卫戍协议 · 服务器管理面板 / Admin</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' fill='%230c0f0e'/%3E%3Cpath fill='%234ed8af' d='M5 3h3v2h2V3h4v2h2V3h3v5l-2 2v7l2 2v2H5v-2l2-2v-7L5 8z'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body class="admin">
+  <!-- A plain static page over the read-only JSON API (GET /api/admin/overview|rooms|logs). It holds NO secret and no
+       capability of its own: the token is typed here and kept in sessionStorage, and the server is the only thing that
+       decides what it may see. There is deliberately no control that changes the server (no broadcast, no drain). -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true">🛡️</span>
+      <div>
+        <h1>STRONGHOLD PROTOCOL</h1>
+        <small data-t="subtitle"></small>
+      </div>
+    </div>
+    <div class="topbar__right">
+      <span id="badge-version" class="badge">—</span>
+      <span id="badge-state" class="badge badge--idle" data-t="connecting"></span>
+      <button id="btn-lang" class="btn btn--ghost" type="button" title="Language / 语言">EN</button>
+      <button id="btn-logout" class="btn btn--ghost" type="button" data-t="logout" hidden></button>
+    </div>
+  </header>
+
+  <div id="login" class="login" hidden>
+    <form id="login-form" class="card card--login">
+      <h2 data-t="loginTitle"></h2>
+      <p class="muted" data-t="loginHint"></p>
+      <label class="field">
+        <span data-t="tokenLabel"></span>
+        <input id="token" type="password" autocomplete="current-password" spellcheck="false" required />
+      </label>
+      <p id="login-error" class="err" hidden data-t="invalidToken"></p>
+      <button class="btn btn--primary" type="submit" data-t="signIn"></button>
+    </form>
+  </div>
+
+  <main id="dashboard" hidden>
+    <section class="cards">
+      <article class="card card--stat">
+        <span class="card__label" data-t="statSockets"></span>
+        <strong class="card__value"><span id="stat-sockets">0</span><small>/<span id="stat-sessions">0</span></small></strong>
+        <span class="card__sub" id="stat-clients"></span>
+      </article>
+      <article class="card card--stat">
+        <span class="card__label" data-t="statRooms"></span>
+        <strong class="card__value"><span id="stat-rooms">0</span><small>/<span id="stat-matches">0</span></small></strong>
+        <span class="card__sub" id="stat-population"></span>
+      </article>
+      <article class="card card--stat">
+        <span class="card__label" data-t="statCpu"></span>
+        <strong class="card__value"><span id="stat-cpu">0%</span></strong>
+        <span class="card__sub" id="stat-load"></span>
+      </article>
+      <article class="card card--stat">
+        <span class="card__label" data-t="statMemory"></span>
+        <strong class="card__value"><span id="stat-rss">0</span><small>MB</small></strong>
+        <span class="card__sub" id="stat-heap"></span>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__head"><span data-t="roomsTitle"></span> <span class="count" id="rooms-count">0</span></h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th data-t="colCode"></th>
+              <th data-t="colHost"></th>
+              <th data-t="colMode"></th>
+              <th data-t="colSeats"></th>
+              <th data-t="colSpectators"></th>
+              <th data-t="colPerf"></th>
+              <th data-t="colMatch"></th>
+            </tr>
+          </thead>
+          <tbody id="rooms-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel panel--announce">
+      <h2 class="panel__head"><span data-t="announceTitle"></span></h2>
+      <p class="muted announce__hint" data-t="announceHint"></p>
+      <form id="announce-form" class="announce__form">
+        <textarea id="announce-text" class="announce__input" rows="2" maxlength="200" required
+                  data-t-placeholder="announcePlaceholder" spellcheck="false"></textarea>
+        <div class="announce__row">
+          <span id="announce-count" class="announce__count num">0/200</span>
+          <span id="announce-status" class="announce__status" role="status" aria-live="polite"></span>
+          <button id="announce-send" class="btn btn--primary" type="submit" data-t="announceSend"></button>
+          <button id="announce-withdraw" class="btn btn--ghost" type="button" data-t="announceWithdraw"></button>
+        </div>
+      </form>
+      <h3 class="announce__sub" data-t="announceHistory"></h3>
+      <ul id="announce-list" class="announce__list"></ul>
+    </section>
+
+    <section class="panel panel--notes">
+      <h2 class="panel__head"><span data-t="notesTitle"></span> <span class="count" id="notes-count">0</span></h2>
+      <p class="muted announce__hint" data-t="notesHint"></p>
+      <div class="notes__meta">
+        <span id="notes-ver" class="notes__ver">—</span>
+        <span id="notes-digest" class="notes__digest"></span>
+      </div>
+      <form id="notes-form" class="announce__form">
+        <textarea id="notes-text" class="announce__input notes__text" rows="12" spellcheck="false"
+                  data-t-placeholder="notesPlaceholder"></textarea>
+        <div class="announce__row">
+          <span id="notes-size" class="announce__count num">0</span>
+          <span id="notes-status" class="announce__status" role="status" aria-live="polite"></span>
+          <button id="notes-save" class="btn btn--primary" type="submit" data-t="notesSave"></button>
+          <button id="notes-reset" class="btn btn--ghost" type="button" data-t="notesReset"></button>
+          <button id="notes-clear" class="btn btn--ghost" type="button" data-t="notesClear"></button>
+        </div>
+      </form>
+      <h3 class="announce__sub" data-t="notesPreview"></h3>
+      <div id="notes-preview" class="notes__preview"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__head"><span data-t="feedbackTitle"></span> <span class="count" id="feedback-count">0</span></h2>
+      <p class="panel__note" data-t="feedbackNote"></p>
+      <div id="feedback-list" class="feedback"></div>
+    </section>
+
+    <section class="panel panel--slots">
+      <h2 class="panel__head"><span data-t="slotsTitle"></span></h2>
+      <p class="muted announce__hint" data-t="slotsHint"></p>
+      <div id="slots-list" class="slots"></div>
+    </section>
+
+    <section class="panel panel--limits">
+      <h2 class="panel__head"><span data-t="limitsTitle"></span></h2>
+      <p class="muted announce__hint" data-t="limitsHint"></p>
+      <div id="limits-body" class="limits">
+        <div class="limits__now">
+          <span class="limits__value" id="limits-value">—</span>
+          <span class="limits__meta muted" id="limits-meta"></span>
+        </div>
+        <form id="limits-form" class="announce__form">
+          <div class="ban__row">
+            <input id="limits-input" class="ban__input ban__input--num" type="number" min="1" step="1"
+                   inputmode="numeric" autocomplete="off" data-t-placeholder="limitsPlaceholder" />
+            <button id="limits-save" class="btn btn--primary" type="submit" data-t="limitsSave"></button>
+            <button id="limits-clear" class="btn btn--ghost" type="button" data-t="limitsClear"></button>
+          </div>
+          <!-- 人机上限（业主 2026-10-16）：全服一个、每房间一个。0 = 不限制，留空 = 跟随启动参数。 -->
+          <div class="ban__row">
+            <input id="bots-input" class="ban__input ban__input--num" type="number" min="0" step="1"
+                   inputmode="numeric" autocomplete="off" data-t-placeholder="botsPlaceholder" />
+            <input id="bots-room-input" class="ban__input ban__input--num" type="number" min="0" step="1"
+                   inputmode="numeric" autocomplete="off" data-t-placeholder="botsRoomPlaceholder" />
+            <button id="bots-save" class="btn btn--primary" type="button" data-t="botsSave"></button>
+          </div>
+          <div class="announce__row">
+            <span id="limits-status" class="announce__status" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="panel panel--bans">
+      <h2 class="panel__head"><span data-t="bansTitle"></span> <span class="count" id="bans-count">0</span></h2>
+      <p class="muted announce__hint" data-t="bansHint"></p>
+      <form id="ban-form" class="announce__form">
+        <div class="ban__row">
+          <input id="ban-rule" class="ban__input" type="text" spellcheck="false" autocomplete="off"
+                 data-t-placeholder="banRulePlaceholder" required />
+          <input id="ban-reason" class="ban__input ban__input--reason" type="text" maxlength="200" spellcheck="false"
+                 autocomplete="off" data-t-placeholder="banReasonPlaceholder" />
+          <input id="ban-minutes" class="ban__input ban__input--num" type="number" min="1" step="1" inputmode="numeric"
+                 data-t-placeholder="banMinutesPlaceholder" />
+          <button id="ban-add" class="btn btn--primary" type="submit" data-t="banAdd"></button>
+        </div>
+        <div class="announce__row">
+          <span id="ban-status" class="announce__status" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+      <ul id="bans-list" class="bans"></ul>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__head"><span data-t="logsTitle"></span></h2>
+      <div id="log-console" class="console" role="log" aria-live="off"></div>
+    </section>
+
+    <footer class="footer">
+      <span data-t="buildLabel"></span> <code id="foot-build">—</code>
+      <span>·</span>
+      <span data-t="nodeLabel"></span> <code id="foot-node">—</code>
+      <span>·</span>
+      <span data-t="pollLabel"></span>
+    </footer>
+  </main>
+
+  <noscript><p class="err">This panel needs JavaScript. 本面板需要启用 JavaScript。</p></noscript>
+  <script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

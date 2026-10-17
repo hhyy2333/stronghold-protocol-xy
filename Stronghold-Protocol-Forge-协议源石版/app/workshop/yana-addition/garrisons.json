@@ -1,0 +1,44 @@
+{
+  "garrison_161_a": {
+    "garrisonId": "garrison_161_a",
+    "desc": "<休整期结束时>使自身所属盟约层数+4",
+    "descRaw": "<休整期结束时>使自身所属盟约层数<@ba.vup>+4</>",
+    "eventType": "SERVER_PREP_FIN",
+    "eventTypeDesc": "持续叠加",
+    "eventTypeIcon": "icon_bond",
+    "effectType": "SERVER_ADD_BOND_CHESS_ALL",
+    "effectKey": "SERVER_ADD_BOND_CHESS_ALL",
+    "battleRuneKey": null,
+    "charLevel": 0,
+    "bb": {
+      "count": 4
+    },
+    "bbStr": {
+      "conditionkey": "character_target_inboard"
+    },
+    "owners": [
+      "chess_char_3_22_a"
+    ]
+  },
+  "garrison_161_b": {
+    "garrisonId": "garrison_161_b",
+    "desc": "<休整期结束时>使自身所属盟约层数+8",
+    "descRaw": "<休整期结束时>使自身所属盟约层数<@ba.vup>+8</>",
+    "eventType": "SERVER_PREP_FIN",
+    "eventTypeDesc": "持续叠加",
+    "eventTypeIcon": "icon_bond",
+    "effectType": "SERVER_ADD_BOND_CHESS_ALL",
+    "effectKey": "SERVER_ADD_BOND_CHESS_ALL",
+    "battleRuneKey": null,
+    "charLevel": 0,
+    "bb": {
+      "count": 8
+    },
+    "bbStr": {
+      "conditionkey": "character_target_inboard"
+    },
+    "owners": [
+      "chess_char_3_22_b"
+    ]
+  }
+}

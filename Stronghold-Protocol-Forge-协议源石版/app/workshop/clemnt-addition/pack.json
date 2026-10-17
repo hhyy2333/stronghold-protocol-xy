@@ -1,0 +1,20 @@
+{
+  "id": "clemnt-addition",
+  "name": "克莱门莎 addition（5星干员 + 驻守特质）",
+  "version": "1.0.0",
+  "author": "jingjiangze（逆向工程复现）",
+  "license": "NOASSERTION",
+  "description": "新增 5 星狙击干员克莱门莎（char_4231_clemnt）及其精英形态，含驻守特质 garrison_4231_a/b：战斗中克莱门莎在场时，所有友方单位击杀合并计数，每累计击败 N 个敌人，其所属已激活盟约【阿戈尔】【迅捷】【不屈】各 +1 层（常态 3 个 / 精英 2 个）。特质不授予其他干员、不增加其他干员所属盟约层数，联防不生效。数据自 weishuxieyi.icu 线上构建（build f638115c25cd-20，app 0.2.1）提取，本地引擎 0.13.0 无此干员。",
+  "game": ">=0.13.0",
+  "api": ">=1 <2",
+  "layer": "A",
+  "combat": true,
+  "content": [
+    "chess",
+    "garrisons"
+  ],
+  "notices": {
+    "announcement": "notice/announcement.json",
+    "credits": "notice/credits.json"
+  }
+}

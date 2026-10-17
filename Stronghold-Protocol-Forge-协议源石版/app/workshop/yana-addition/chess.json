@@ -1,0 +1,890 @@
+{
+  "chess_char_3_22_a": {
+    "chessId": "chess_char_3_22_a",
+    "baseId": "chess_char_3_22_a",
+    "goldenId": "chess_char_3_22_b",
+    "isGolden": false,
+    "tier": 3,
+    "identifier": 266,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": "char_9002_yana",
+      "tmplId": null,
+      "skillIndex": 0,
+      "uniEquipId": null,
+      "potRank": 0
+    },
+    "shopSortId": 22,
+    "charId": "char_9002_yana",
+    "name": "娅娜",
+    "appellation": "Yana",
+    "rarity": 6,
+    "profession": "SNIPER",
+    "subProfessionId": "aoesniper",
+    "subProfessionName": "炮手",
+    "position": "RANGED",
+    "nationId": null,
+    "bonds": [
+      "preciShip"
+    ],
+    "garrisonIds": [
+      "garrison_161_a"
+    ],
+    "price": 3,
+    "sellPrice": 1,
+    "upgradeNum": 3,
+    "upgradeChessId": "chess_char_3_22_b",
+    "status": {
+      "phase": 2,
+      "level": 1,
+      "skillLevel": 4,
+      "equipLevel": 0
+    },
+    "stats": {
+      "maxHp": 1570,
+      "atk": 750,
+      "def": 130,
+      "res": 0,
+      "cost": 24,
+      "blockCnt": 1,
+      "bat": 2.8,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "3-10",
+    "rangeGrid": [
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        1,
+        4
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        0,
+        4
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        1
+      ],
+      [
+        -1,
+        2
+      ],
+      [
+        -1,
+        3
+      ],
+      [
+        -1,
+        4
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "arrow",
+    "canHitFly": true,
+    "targetPriority": null,
+    "trait": {
+      "desc": "攻击造成群体物理伤害",
+      "descRaw": "攻击造成<@ba.kw>群体物理伤害</>",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "skill": {
+      "skillId": "skchr_yana_1",
+      "iconId": "skchr_yana_1",
+      "name": "激光",
+      "level": 4,
+      "desc": "对前方6格内的所有敌人造成相当于攻击力280%的物理伤害，并造成10%攻击力的灼燃损伤",
+      "descRaw": "对前方<@ba.vup>6</>格内的所有敌人造成相当于攻击力<@ba.vup>280%</>的物理伤害，并造成<@ba.vup>10%</>攻击力的<$ba.burn>灼燃损伤</>",
+      "skillType": "AUTO",
+      "durationType": "NONE",
+      "duration": 0,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 10,
+      "initSp": 6,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk_scale": 2.8,
+        "burn_scale": 0.1,
+        "attack@max_target": 6
+      },
+      "bbStr": {},
+      "rangeId": "5-1",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          5
+        ]
+      ],
+      "prefabId": "skchr_yana_1",
+      "trigger": {
+        "rule": "DEFAULT",
+        "rawRule": "DEFAULT",
+        "customRangeGrid": null
+      },
+      "index": 0,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "灼痕",
+        "desc": "技能造成伤害时，额外造成一次相当于攻击力110%的真实伤害",
+        "descRaw": "技能造成伤害时，额外造成一次相当于攻击力<@ba.vup>110%</>的真实伤害",
+        "bb": {
+          "true_scale": 1.1
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 5,
+        "potBelow": {
+          "desc": "技能造成伤害时，额外造成一次相当于攻击力100%的真实伤害",
+          "descRaw": "技能造成伤害时，额外造成一次相当于攻击力<@ba.vup>100%</>的真实伤害",
+          "bb": {
+            "true_scale": 1
+          }
+        }
+      },
+      {
+        "index": 1,
+        "name": "随意开火",
+        "desc": "每3次攻击后，额外射出一枚特殊子弹，随机造成以下四种效果之一，并回复1点技力：\n造成相当于攻击力300%的物理伤害，且爆炸范围扩大至1.5倍\n造成相当于攻击力200%的物理伤害，无视目标50%的防御力\n造成相当于攻击力150%的物理伤害，并额外附加相当于攻击力100%的灼燃损伤\n造成相当于攻击力100%的法术伤害，使命中目标眩晕1.5秒",
+        "descRaw": "每<@ba.vup>3</>次攻击后，额外射出一枚特殊子弹，随机造成以下四种效果之一，并回复<@ba.vup>1</>点技力：\n造成相当于攻击力<@ba.vup>300%</>的物理伤害，且爆炸范围扩大至<@ba.vup>1.5</>倍\n造成相当于攻击力<@ba.vup>200%</>的物理伤害，无视目标<@ba.vup>50%</>的防御力\n造成相当于攻击力<@ba.vup>150%</>的物理伤害，并额外附加相当于攻击力<@ba.vup>100%</>的<$ba.burn>灼燃损伤</>\n造成相当于攻击力<@ba.vup>100%</>的<$ba.kw>法术伤害</>，使命中目标<$ba.stun>眩晕</><@ba.vup>1.5</>秒",
+        "bb": {
+          "interval": 3,
+          "sp": 1,
+          "blast_scale": 3,
+          "blast_radius_mul": 1.5,
+          "pierce_scale": 2,
+          "pierce_def": 0.5,
+          "burn_scale": 1.5,
+          "burn_element": 1,
+          "stun_scale": 1,
+          "stun": 1.5
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      }
+    ],
+    "tokens": [],
+    "module": null,
+    "assets": {
+      "avatar": "char_9002_yana",
+      "portrait": "char_9002_yana_1",
+      "spine": "char_9002_yana",
+      "skillIcon": "skchr_yana_1",
+      "subProfIcon": "sub_aoesniper_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_yana_1",
+        "iconId": "skchr_yana_1",
+        "name": "激光",
+        "level": 4,
+        "desc": "对前方6格内的所有敌人造成相当于攻击力280%的物理伤害，并造成10%攻击力的灼燃损伤",
+        "descRaw": "对前方<@ba.vup>6</>格内的所有敌人造成相当于攻击力<@ba.vup>280%</>的物理伤害，并造成<@ba.vup>10%</>攻击力的<$ba.burn>灼燃损伤</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 10,
+        "initSp": 6,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 2.8,
+          "burn_scale": 0.1,
+          "attack@max_target": 6
+        },
+        "bbStr": {},
+        "rangeId": "5-1",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ],
+          [
+            0,
+            5
+          ]
+        ],
+        "prefabId": "skchr_yana_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": true
+      },
+      {
+        "skillId": "skchr_yana_2",
+        "iconId": "skchr_yana_2",
+        "name": "瞄准射击",
+        "level": 4,
+        "desc": "瞄准一个敌人，连续造成9次相当于攻击力65%的物理伤害",
+        "descRaw": "瞄准一个敌人，连续造成<@ba.vup>9</>次相当于攻击力<@ba.vup>65%</>的物理伤害",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 12,
+        "initSp": 7,
+        "maxChargeTime": 2,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 0.65,
+          "times": 9
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_yana_2",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_yana_3",
+        "iconId": "skchr_yana_3",
+        "name": "三连射",
+        "level": 4,
+        "desc": "攻击力+30%，每次攻击造成三连击，攻击间隔小幅增大，装有10发弹药，打完后技能结束",
+        "descRaw": "攻击力<@ba.vup>+30%</>，每次攻击造成<@ba.vup>三连击</>，攻击间隔<@ba.vup>小幅增大</>，装有<@ba.vup>10</>发弹药，打完后技能结束",
+        "skillType": "MANUAL",
+        "durationType": "AMMO",
+        "duration": -1,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 30,
+        "initSp": 15,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.3,
+          "attack@atk_scale": 0.525,
+          "attack@times": 3,
+          "base_attack_time": 0.4,
+          "ammo": 10
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_yana_3",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 2,
+        "overrideTokenKey": null,
+        "isDefault": false
+      }
+    ],
+    "potDown": {
+      "0": {
+        "stats.cost": 26
+      },
+      "1": {
+        "stats.atk": 700
+      },
+      "2": {
+        "stats.maxHp": 1420
+      },
+      "3": {
+        "stats.atk": 725
+      },
+      "4": {
+        "stats.cost": 25
+      }
+    }
+  },
+  "chess_char_3_22_b": {
+    "chessId": "chess_char_3_22_b",
+    "baseId": "chess_char_3_22_a",
+    "goldenId": "chess_char_3_22_b",
+    "isGolden": true,
+    "tier": 3,
+    "identifier": 267,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": "char_9002_yana",
+      "tmplId": null,
+      "skillIndex": 0,
+      "uniEquipId": null,
+      "potRank": 0
+    },
+    "shopSortId": 22,
+    "charId": "char_9002_yana",
+    "name": "娅娜",
+    "appellation": "Yana",
+    "rarity": 6,
+    "profession": "SNIPER",
+    "subProfessionId": "aoesniper",
+    "subProfessionName": "炮手",
+    "position": "RANGED",
+    "nationId": null,
+    "bonds": [
+      "preciShip"
+    ],
+    "garrisonIds": [
+      "garrison_161_b"
+    ],
+    "price": 3,
+    "sellPrice": 1,
+    "upgradeNum": 0,
+    "upgradeChessId": null,
+    "status": {
+      "phase": 2,
+      "level": 60,
+      "skillLevel": 7,
+      "equipLevel": 1
+    },
+    "stats": {
+      "maxHp": 1888,
+      "atk": 866,
+      "def": 160,
+      "res": 0,
+      "cost": 24,
+      "blockCnt": 1,
+      "bat": 2.8,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "3-10",
+    "rangeGrid": [
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        1,
+        4
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        3
+      ],
+      [
+        0,
+        4
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        1
+      ],
+      [
+        -1,
+        2
+      ],
+      [
+        -1,
+        3
+      ],
+      [
+        -1,
+        4
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "arrow",
+    "canHitFly": true,
+    "targetPriority": null,
+    "trait": {
+      "desc": "攻击造成群体物理伤害",
+      "descRaw": "攻击造成<@ba.kw>群体物理伤害</>",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "skill": {
+      "skillId": "skchr_yana_1",
+      "iconId": "skchr_yana_1",
+      "name": "激光",
+      "level": 7,
+      "desc": "对前方6格内的所有敌人造成相当于攻击力310%的物理伤害，并造成10%攻击力的灼燃损伤",
+      "descRaw": "对前方<@ba.vup>6</>格内的所有敌人造成相当于攻击力<@ba.vup>310%</>的物理伤害，并造成<@ba.vup>10%</>攻击力的<$ba.burn>灼燃损伤</>",
+      "skillType": "AUTO",
+      "durationType": "NONE",
+      "duration": 0,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 10,
+      "initSp": 7,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk_scale": 3.1,
+        "burn_scale": 0.1,
+        "attack@max_target": 6
+      },
+      "bbStr": {},
+      "rangeId": "5-1",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          5
+        ]
+      ],
+      "prefabId": "skchr_yana_1",
+      "trigger": {
+        "rule": "DEFAULT",
+        "rawRule": "DEFAULT",
+        "customRangeGrid": null
+      },
+      "index": 0,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "灼痕",
+        "desc": "技能造成伤害时，额外造成一次相当于攻击力110%的真实伤害",
+        "descRaw": "技能造成伤害时，额外造成一次相当于攻击力<@ba.vup>110%</>的真实伤害",
+        "bb": {
+          "true_scale": 1.1
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 5,
+        "potBelow": {
+          "desc": "技能造成伤害时，额外造成一次相当于攻击力100%的真实伤害",
+          "descRaw": "技能造成伤害时，额外造成一次相当于攻击力<@ba.vup>100%</>的真实伤害",
+          "bb": {
+            "true_scale": 1
+          }
+        }
+      },
+      {
+        "index": 1,
+        "name": "随意开火",
+        "desc": "每3次攻击后，额外射出一枚特殊子弹，随机造成以下四种效果之一，并回复1点技力：\n造成相当于攻击力300%的物理伤害，且爆炸范围扩大至1.5倍\n造成相当于攻击力200%的物理伤害，无视目标50%的防御力\n造成相当于攻击力150%的物理伤害，并额外附加相当于攻击力100%的灼燃损伤\n造成相当于攻击力100%的法术伤害，使命中目标眩晕1.5秒",
+        "descRaw": "每<@ba.vup>3</>次攻击后，额外射出一枚特殊子弹，随机造成以下四种效果之一，并回复<@ba.vup>1</>点技力：\n造成相当于攻击力<@ba.vup>300%</>的物理伤害，且爆炸范围扩大至<@ba.vup>1.5</>倍\n造成相当于攻击力<@ba.vup>200%</>的物理伤害，无视目标<@ba.vup>50%</>的防御力\n造成相当于攻击力<@ba.vup>150%</>的物理伤害，并额外附加相当于攻击力<@ba.vup>100%</>的<$ba.burn>灼燃损伤</>\n造成相当于攻击力<@ba.vup>100%</>的<$ba.kw>法术伤害</>，使命中目标<$ba.stun>眩晕</><@ba.vup>1.5</>秒",
+        "bb": {
+          "interval": 3,
+          "sp": 1,
+          "blast_scale": 3,
+          "blast_radius_mul": 1.5,
+          "pierce_scale": 2,
+          "pierce_def": 0.5,
+          "burn_scale": 1.5,
+          "burn_element": 1,
+          "stun_scale": 1,
+          "stun": 1.5
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      }
+    ],
+    "tokens": [],
+    "module": {
+      "id": null,
+      "name": null,
+      "type": null,
+      "level": 1,
+      "active": false
+    },
+    "assets": {
+      "avatar": "char_9002_yana_2",
+      "portrait": "char_9002_yana_2",
+      "spine": "char_9002_yana",
+      "skillIcon": "skchr_yana_1",
+      "subProfIcon": "sub_aoesniper_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_yana_1",
+        "iconId": "skchr_yana_1",
+        "name": "激光",
+        "level": 7,
+        "desc": "对前方6格内的所有敌人造成相当于攻击力310%的物理伤害，并造成10%攻击力的灼燃损伤",
+        "descRaw": "对前方<@ba.vup>6</>格内的所有敌人造成相当于攻击力<@ba.vup>310%</>的物理伤害，并造成<@ba.vup>10%</>攻击力的<$ba.burn>灼燃损伤</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 10,
+        "initSp": 7,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 3.1,
+          "burn_scale": 0.1,
+          "attack@max_target": 6
+        },
+        "bbStr": {},
+        "rangeId": "5-1",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ],
+          [
+            0,
+            5
+          ]
+        ],
+        "prefabId": "skchr_yana_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": true
+      },
+      {
+        "skillId": "skchr_yana_2",
+        "iconId": "skchr_yana_2",
+        "name": "瞄准射击",
+        "level": 7,
+        "desc": "瞄准一个敌人，连续造成9次相当于攻击力80%的物理伤害",
+        "descRaw": "瞄准一个敌人，连续造成<@ba.vup>9</>次相当于攻击力<@ba.vup>80%</>的物理伤害",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 12,
+        "initSp": 10,
+        "maxChargeTime": 2,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 0.8,
+          "times": 9
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_yana_2",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_yana_3",
+        "iconId": "skchr_yana_3",
+        "name": "三连射",
+        "level": 7,
+        "desc": "攻击力+30%，每次攻击造成三连击，攻击间隔小幅增大，装有10发弹药，打完后技能结束",
+        "descRaw": "攻击力<@ba.vup>+30%</>，每次攻击造成<@ba.vup>三连击</>，攻击间隔<@ba.vup>小幅增大</>，装有<@ba.vup>10</>发弹药，打完后技能结束",
+        "skillType": "MANUAL",
+        "durationType": "AMMO",
+        "duration": -1,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 30,
+        "initSp": 18,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.3,
+          "attack@atk_scale": 0.6,
+          "attack@times": 3,
+          "base_attack_time": 0.4,
+          "ammo": 10
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_yana_3",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 2,
+        "overrideTokenKey": null,
+        "isDefault": false
+      }
+    ],
+    "statsBase": {
+      "maxHp": 1888,
+      "atk": 866,
+      "def": 160,
+      "res": 0,
+      "cost": 24,
+      "blockCnt": 1,
+      "bat": 2.8,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "traitBase": {
+      "desc": "攻击造成群体物理伤害",
+      "descRaw": "攻击造成<@ba.kw>群体物理伤害</>",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "talentsBase": [
+      {
+        "index": 0,
+        "name": "灼痕",
+        "desc": "技能造成伤害时，额外造成一次相当于攻击力110%的真实伤害",
+        "descRaw": "技能造成伤害时，额外造成一次相当于攻击力<@ba.vup>110%</>的真实伤害",
+        "bb": {
+          "true_scale": 1.1
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 5,
+        "potBelow": {
+          "desc": "技能造成伤害时，额外造成一次相当于攻击力100%的真实伤害",
+          "descRaw": "技能造成伤害时，额外造成一次相当于攻击力<@ba.vup>100%</>的真实伤害",
+          "bb": {
+            "true_scale": 1
+          }
+        }
+      },
+      {
+        "index": 1,
+        "name": "随意开火",
+        "desc": "每3次攻击后，额外射出一枚特殊子弹，随机造成以下四种效果之一，并回复1点技力：\n造成相当于攻击力300%的物理伤害，且爆炸范围扩大至1.5倍\n造成相当于攻击力200%的物理伤害，无视目标50%的防御力\n造成相当于攻击力150%的物理伤害，并额外附加相当于攻击力100%的灼燃损伤\n造成相当于攻击力100%的法术伤害，使命中目标眩晕1.5秒",
+        "descRaw": "每<@ba.vup>3</>次攻击后，额外射出一枚特殊子弹，随机造成以下四种效果之一，并回复<@ba.vup>1</>点技力：\n造成相当于攻击力<@ba.vup>300%</>的物理伤害，且爆炸范围扩大至<@ba.vup>1.5</>倍\n造成相当于攻击力<@ba.vup>200%</>的物理伤害，无视目标<@ba.vup>50%</>的防御力\n造成相当于攻击力<@ba.vup>150%</>的物理伤害，并额外附加相当于攻击力<@ba.vup>100%</>的<$ba.burn>灼燃损伤</>\n造成相当于攻击力<@ba.vup>100%</>的<$ba.kw>法术伤害</>，使命中目标<$ba.stun>眩晕</><@ba.vup>1.5</>秒",
+        "bb": {
+          "interval": 3,
+          "sp": 1,
+          "blast_scale": 3,
+          "blast_radius_mul": 1.5,
+          "pierce_scale": 2,
+          "pierce_def": 0.5,
+          "burn_scale": 1.5,
+          "burn_element": 1,
+          "stun_scale": 1,
+          "stun": 1.5
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      }
+    ],
+    "modules": [],
+    "potDown": {
+      "0": {
+        "stats.cost": 26,
+        "statsBase.cost": 26
+      },
+      "1": {
+        "stats.atk": 816,
+        "statsBase.atk": 816
+      },
+      "2": {
+        "stats.maxHp": 1738,
+        "statsBase.maxHp": 1738
+      },
+      "3": {
+        "stats.atk": 841,
+        "statsBase.atk": 841
+      },
+      "4": {
+        "stats.cost": 25,
+        "statsBase.cost": 25
+      }
+    }
+  }
+}

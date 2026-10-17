@@ -1,0 +1,469 @@
+/* public/admin/admin.css — the operational panel.
+   Self-contained on purpose: no /css/ file and no /fonts/ sheet is linked, so the panel renders during a half-finished
+   deploy (or on a host whose asset pipeline never ran) instead of waiting on files the player client needs.
+   Dark, dense and calm: it is read at a glance, next to the game. Colours follow the client's theme.
+   Everything here is read-only except the 全体公告 section (the one write, server/admin.js publishAnnouncement /
+   withdrawAnnouncement). */
+
+:root {
+  --bg: #0c0f0e;
+  --panel: #131a17;
+  --panel-2: #18211d;
+  --line: #26332d;
+  --text: #d8e3de;
+  --muted: #8fa39b;
+  --mint: #4ed8af;
+  --amber: #f6a329;
+  --red: #e73118;
+  --mono: "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+/* The page shows/hides the login overlay and the dashboard with the `hidden` attribute. An author rule like
+   `.login { display: grid }` or `main { display: grid }` beats the user agent's `[hidden] { display: none }`, so the
+   attribute needs this explicit rule — without it both panes render at once. */
+[hidden] { display: none !important; }
+
+body.admin {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, "Segoe UI", "Noto Sans SC", sans-serif;
+}
+
+/* ---- top bar ------------------------------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #121a17, #0e1412);
+}
+
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand__mark { font-size: 28px; line-height: 1; }
+.brand h1 { margin: 0; font-size: 16px; letter-spacing: 2px; color: var(--mint); }
+.brand small { color: var(--muted); }
+
+.topbar__right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.badge {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge--ok { border-color: #1f6f57; color: var(--mint); }
+.badge--warn { border-color: #7a5a12; color: var(--amber); }
+.badge--error { border-color: #7a2114; color: var(--red); }
+.badge--idle { border-color: var(--line); }
+
+.btn {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--mint); }
+.btn--ghost { background: transparent; }
+.btn--primary { background: var(--mint); border-color: var(--mint); color: #05221a; font-weight: 600; }
+.btn--primary:hover { filter: brightness(1.08); }
+
+/* ---- login --------------------------------------------------------------------------------------- */
+
+.login { display: grid; place-items: center; padding: 8vh 20px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.card--login { width: min(460px, 100%); }
+.card--login h2 { margin: 0 0 8px; font-size: 16px; color: var(--mint); }
+.card--login p { margin: 8px 0; }
+.field { display: block; margin: 14px 0; }
+.field span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.field input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #0a0e0c;
+  color: var(--text);
+  font-family: var(--mono);
+}
+.field input:focus { outline: 1px solid var(--mint); }
+
+.muted { color: var(--muted); }
+.err { color: var(--red); }
+
+/* ---- dashboard ----------------------------------------------------------------------------------- */
+
+main { padding: 16px 20px 32px; display: grid; gap: 16px; }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.card--stat { display: grid; gap: 4px; }
+.card__label { color: var(--muted); font-size: 12px; letter-spacing: .5px; }
+.card__value { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--mint); }
+.card__value small { font-size: 13px; color: var(--muted); font-weight: 400; }
+.card__sub { color: var(--muted); font-size: 12px; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.panel__head {
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.count { color: var(--mint); font-family: var(--mono); }
+
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th, .table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+.table tr:last-child td { border-bottom: none; }
+.table td.empty { color: var(--muted); text-align: center; padding: 18px; }
+
+/* The room code is the key an operator matches a row against the rest of the panel (and against a player report).
+   With seven columns the table is wider than a laptop pane, so `.table-wrap` scrolls it — and the code column
+   scrolled out of sight first, leaving rows with no identity at all (owner's screenshot 2026-10-14: every 房号 read
+   「—」). Sticky keeps it pinned while the rest scrolls under it; the background is opaque because a sticky cell
+   otherwise shows the scrolling content through it. */
+.table th:first-child, .table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel);
+}
+.table thead th { background: var(--panel); }
+
+.code { font-family: var(--mono); color: var(--mint); letter-spacing: 2px; }
+
+/* ---- per-room cost (性能消耗) ---------------------------------------------------------------------- */
+.perf { min-width: 116px; }
+.perf__bar {
+  height: 4px;
+  margin-bottom: 5px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.perf__fill { height: 100%; width: 0; border-radius: 2px; background: var(--muted); transition: width .25s linear; }
+.perf__bar--cool .perf__fill { background: var(--mint); }
+.perf__bar--warm .perf__fill { background: var(--amber); }
+.perf__bar--hot .perf__fill { background: var(--red); }
+.perf__line { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.perf__pct { font-family: var(--mono); font-size: 12px; color: var(--text); }
+.perf__total { font-family: var(--mono); font-size: 11px; }
+
+.pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pill--ok { border-color: #1f6f57; color: var(--mint); }
+.pill--warn { border-color: #7a5a12; color: var(--amber); }
+.pill--idle { border-color: var(--line); }
+
+.tag {
+  display: inline-block;
+  margin: 0 4px 4px 0;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tag--bot { border-color: #2f5a72; color: #8fd0ef; }
+.tag--off { border-color: #6a2a1e; color: #e79b86; }
+.tag--free { border-style: dashed; color: var(--muted); }
+
+/* ---- log console --------------------------------------------------------------------------------- */
+
+.console {
+  height: 300px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: #080b0a;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.console__empty { color: var(--muted); }
+.log { display: flex; gap: 10px; white-space: pre-wrap; word-break: break-word; }
+.log__time { color: #55665f; flex: none; }
+.log__level { flex: none; width: 46px; }
+.log__level--info { color: var(--mint); }
+.log__level--warn { color: var(--amber); }
+.log__level--error { color: var(--red); }
+.log__msg { color: var(--text); }
+
+.footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.footer code { font-family: var(--mono); color: var(--muted); }
+
+/* ---- 玩家反馈 (面板新增) ------------------------------------------------------------------------- */
+.panel__note {
+  margin: 0;
+  padding: 10px 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.feedback { display: flex; flex-direction: column; }
+.feedback .empty { color: var(--muted); text-align: center; padding: 18px; margin: 0; }
+.fb { border-bottom: 1px solid var(--line); padding: 12px 16px; }
+.fb:last-child { border-bottom: none; }
+.fb__head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; margin-bottom: 6px; }
+.fb__time { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+.fb__chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--mint);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.fb__desc { margin: 0 0 8px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.fb__report summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.fb__pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: #0d1211;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+}
+
+/* ---- 全体公告 (js/ui/announce.js, server/admin.js publishAnnouncement) ---------------------------------- */
+/* The panel's only write. Kept visually calm: one field, one publish button, one withdraw button, and a list of what
+   this session published. */
+.panel--announce { border-color: #2f4a3f; }
+.panel--announce .panel__head { border-bottom-color: #2f4a3f; }
+.announce__hint { margin: 10px 14px 0; font-size: 12px; line-height: 1.6; }
+.announce__form { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 0; }
+.announce__input {
+  width: 100%;
+  resize: vertical;
+  min-height: 56px;
+  padding: 8px 10px;
+  background: #080b0a;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: 14px/1.5 system-ui, "Segoe UI", "Noto Sans SC", sans-serif;
+}
+.announce__input:focus { outline: none; border-color: var(--mint); box-shadow: 0 0 0 2px rgba(78, 216, 175, .15); }
+.announce__row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.announce__count { color: var(--muted); font-family: var(--mono); font-size: 12px; flex: none; }
+.announce__status { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--muted); }
+.announce__status.is-ok { color: var(--mint); }
+.announce__status.is-error { color: var(--red); }
+.announce__status.is-busy { color: var(--amber); }
+.announce__sub {
+  margin: 14px 14px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.announce__list { margin: 0; padding: 0 14px 14px; list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow: auto; }
+.announce__item { padding: 6px 8px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; }
+.announce__item--empty { background: transparent; border-style: dashed; font-size: 12px; }
+.announce__item-head { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.announce__item-text { margin-top: 3px; font-size: 13px; line-height: 1.5; word-break: break-word; }
+
+/* ---- 更新公告 (editable, free text: public/admin/admin.js) ----------------------------------------------
+   Deliberately the SAME shell as 全体公告 above — same .panel, the same .panel--announce border tone, the same
+   .announce__hint / .announce__row pieces — so the two read as siblings in one column. What it adds is what free
+   text needs and the announcement panel has no equivalent of: a meta line (source · digest), a proportional
+   textarea (a person writes prose here, not JSON) and the live preview, which uses the very same block rule the
+   player's panel applies (shared/updateNotes.js notesBlocks → .notes__p / .notes__ul / .notes__li). */
+
+/* Same mint-green frame as .panel--announce: the two are the only panels in this column that carry player-facing
+   text, and they should look like a pair. */
+.panel--notes { border-color: #2f4a3f; }
+.panel--notes .panel__head { border-bottom-color: #2f4a3f; }
+
+/* ---- the editor: same field shell as 全体公告's textarea. Proportional, NOT monospace: the announcement is free
+   text a person writes, not JSON, so it should read like the page it becomes. ---- */
+
+.notes__text {
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  min-height: 190px;
+  white-space: pre-wrap;
+}
+
+/* Unmistakably a form field, not the read-only meta line above it. */
+.notes__text:focus { border-color: var(--mint); }
+
+.notes__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 14px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.notes__ver { color: var(--mint); font-family: var(--mono); font-size: 12px; }
+.notes__digest {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ---- the preview: the player's layout, rendered by the same rule the panel applies (a paragraph per blank-line
+   block, a bullet per leading `- `). It is here so an operator can see WHAT SHIPS without opening the game. ---- */
+
+.notes__preview { max-height: 360px; overflow-y: auto; padding: 0 14px 4px; }
+.notes__p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;   /* the writer's own line breaks are part of what they wrote */
+  word-break: break-word;
+}
+.notes__ul { margin: 0 0 10px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.notes__li {
+  position: relative;
+  padding-left: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-word;
+}
+/* A small mint diamond bullet — the same marker the player panel draws (.unotes__bullet). */
+.notes__li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  background: var(--mint);
+  transform: rotate(45deg);
+}
+.notes__empty { margin: 0; padding: 10px; font-size: 13px; }
+
+/* ---- 服务器槽位（蓝绿）: server/peer.js, DEPLOY.md §8.4 ------------------------------------------------
+   Two cards side by side when the box is wide enough, stacked when it is not. The ACTIVE card is the one serving this
+   page; the other one carries the only judgement this section exists for (may I stop it?), which is why its verdict
+   line is the loudest thing in the card. Colours are the panel's own tokens only (no new literals — see
+   test/admin-update-notes.test.js "no new colour literals"). ---- */
+
+.slots { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); padding: 4px 16px 14px; }
+.slot { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.slot--active { border-color: var(--mint); }
+.slot--down { border-color: var(--red); opacity: .85; }
+.slot__head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.slot__name { font-size: 13px; font-weight: 600; color: var(--text); }
+.slot--active .slot__name { color: var(--mint); }
+.slot__tag {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+}
+.slot__state { margin-left: auto; font-size: 11px; color: var(--muted); }
+.slot--down .slot__state { color: var(--red); }
+.slot__facts { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
+.slot__fact { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.slot__counters { font-size: 12px; color: var(--text); line-height: 1.7; }
+.slot__verdict { margin: 9px 0 0; font-size: 12px; line-height: 1.5; }
+.slot__verdict--free { color: var(--mint); }
+.slot__verdict--busy { color: var(--amber); }
+.slot__hint { margin: 0 16px 14px; font-size: 12px; }
+
+/* ---- 封禁 IP: server/bans.js, DEPLOY.md §8.3 -------------------------------------------------------- */
+
+.ban__row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ban__input {
+  flex: 1 1 240px; min-width: 0; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; font-size: 13px;
+}
+.ban__input--reason { flex: 1 1 160px; }
+.ban__input--num { flex: 0 1 130px; }
+.ban__input:focus { outline: 1px solid var(--mint); }
+.bans { list-style: none; margin: 0; padding: 0; }
+.ban { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--line); }
+.ban--empty { color: var(--muted); justify-content: center; border-top: 0; padding: 18px; }
+.ban__main { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; flex: 1 1 auto; }
+.ban__rule { font-family: var(--mono); font-size: 13px; color: var(--mint); }
+.ban__reason { font-size: 13px; color: var(--text); word-break: break-word; }
+.ban__meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; }
+.ban__remove { flex: 0 0 auto; }
+
+.btn--tiny { font-size: 11px; padding: 2px 8px; }
+/* The delete control of a feedback card sits at the end of its head row (the head is what wraps). */
+.fb__spacer { flex: 1 1 auto; }
+.fb__del { flex: 0 0 auto; }
+.fb__del:hover { border-color: var(--red); color: var(--red); }
+
+/* ---- 客户端地址（业主 2026-10-14：封禁要知道封谁）--------------------------------------------------------
+   房间表里**不常显**任何玩家的地址：座位只在鼠标悬停时由浏览器原生提示条给出（admin.js seatTag 的 title），
+   指针变成手形提示「可以点」。反馈卡上的地址是常显的——那条报告是玩家自己送来的，运维正要对它做判断。
+   只用面板既有 token，不引入新的颜色字面量（test/admin-update-notes.test.js 有一节专查这个）。 ---- */
+
+.tag--addr { cursor: pointer; }
+.tag--addr:hover { border-color: var(--mint); color: var(--mint); }
+.fb__chip--ip { font-family: var(--mono); cursor: pointer; }
+.fb__chip--click:hover { border-color: var(--mint); color: var(--mint); }
+
+/* ---- 服务器人数上限（服务器后端可改，server/limits.js）------------------------------------------------------
+   这一节只用面板既有 token（同上一节：test/admin-update-notes.test.js 会拦新的颜色字面量）。
+   `.limits__value--full` 复用 --amber（不是 --red）：到顶是「新人进不来」，不是故障——已在玩的人一个都没事，
+   而红色会让运维以为出事了。 ---- */
+
+.limits { display: flex; flex-direction: column; gap: 10px; }
+.limits__now { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.limits__value { font-family: var(--mono); font-size: 26px; line-height: 1; color: var(--mint); }
+.limits__value--full { color: var(--amber); }
+.limits__meta { font-size: 12px; }
+

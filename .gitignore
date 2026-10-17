@@ -22,6 +22,32 @@ ffmpeg-*/
 Stronghold-Protocol-0.2.1-fusion/
 Stronghold-Protocol-v0.2.4/
 
+# --- 交付物与参考包（2026-10-16 补）------------------------------------------------------------
+# 参考对象/：第三方 Forge 发行包。它曾经是「只读参考」，现在是**补丁的底座** ——
+#   参考对象/Stronghold-Protocol-Forge-0.18.6-0.2.6-win-x64  +  协议源石-Forge补丁.patch
+#   = 可运行的协议源石版。**删了它补丁就打不出来了**，所以既不能进仓库、也不能当垃圾清掉。
+# 协议源石-Forge补丁.patch / 新增素材.zip：交付物本身（patch 2.1 MB + 素材 5.2 MB）。
+#   patch 是文本，但素材 zip 是二进制且会随每次重新生成而变，进仓库只会让历史膨胀。
+参考对象/
+协议源石-Forge*.patch
+协议源石-Forge*.zip
+install-hextech.mjs
+
+# Stronghold-Protocol-Forge-协议源石版/：**跑起来的**协议源石版。
+#   ⚠️ 2026-10-17 起改为**部分纳入仓库**：这棵树现在是源码的唯一副本（原 Stronghold-Protocol-repo 已删），
+#   整棵 ignore 会让 rg / git grep 看不到源码（表现为「改动好像没了」）。
+#   所以只挡住 1.1 GB 的游戏素材、参考包与构建缓存；源码、数据、文档、测试照常进仓库。
+Stronghold-Protocol-Forge-协议源石版/参考/
+Stronghold-Protocol-Forge-协议源石版/参考对象/
+Stronghold-Protocol-Forge-协议源石版/.scratch/
+Stronghold-Protocol-Forge-协议源石版/app/public/assets/
+Stronghold-Protocol-Forge-协议源石版/app/public/fonts/
+Stronghold-Protocol-Forge-协议源石版/app/.cache/
+Stronghold-Protocol-Forge-协议源石版/app/third-party/
+Stronghold-Protocol-Forge-协议源石版/node/
+05-部署/*.tar.gz
+05-部署/sp-deploy*
+
 # --- 嵌套仓库：它自己有 origin，按普通目录提交会变成 gitlink ---
 Stronghold-Protocol-repo/
 # 游戏仓库的链接工作树（Stronghold-Protocol-repo/.git/worktrees/_head-check），
@@ -30,6 +56,9 @@ _head-check/
 
 # --- 通用 ---
 node_modules/
+# 06-视频：成片（每个 ~60 MB）与中间帧（每次全量 200–300 MB）都不进仓库
+06-视频/out/
+06-视频/.frames/
 .env
 .env.*
 *.msi
@@ -37,3 +66,8 @@ node_modules/
 *.tmp
 Thumbs.db
 desktop.ini
+
+# 部署包（2026-10-17：服务器/ 下的 tar.gz 是发布包副本，最大 784 MB，不进仓库）
+*.tar.gz
+*.tgz
+Stronghold-Protocol-Forge-协议源石版/服务器/
