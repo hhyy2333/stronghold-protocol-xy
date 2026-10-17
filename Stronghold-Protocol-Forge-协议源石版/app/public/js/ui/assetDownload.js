@@ -34,8 +34,8 @@ export function AssetDownloadButton() {
     : state.phase === 'paused' ? t('继续下载素材') : t('预载素材');
   const restart = () => { void assetDownload.start(state.scope || 'visual'); };
 
-  const ready = state.cached || 0;
-  const missing = Math.max(0, (state.total || 0) - ready);
+  // 导入的、以及浏览器缓存里本来就有的，都不会再下载；这个数字让玩家看得出「不是从 0 重下」。
+  const reused = state.reused || 0;
   return html`<div class="title-assets__item">
     <${Button} variant="secondary" block=${true} size="sm" data-testid="asset-download" aria-describedby="title-asset-download-hint" onClick=${() => setOpen(true)}>${label}<//>
     <small id="title-asset-download-hint">${t('画面约 450 MB、含语音约 790 MB，建议使用 Wi-Fi 下载。')}</small>
@@ -56,7 +56,7 @@ export function AssetDownloadButton() {
       ${state.phase === 'idle' ? null : html`<div>
         <${ProgressBar} value=${state.done} max=${state.total || 1} label=${t('已完成 {done} / {total} 个文件', { done: state.done, total: state.total })} />
         <p>${t('已读取 {size} MB（含浏览器缓存）', { size: (state.bytes / 1048576).toFixed(1) })}</p>
-        ${state.total > 0 ? html`<p>${t('已就绪 {ready}，缺少 {missing}', { ready, missing })}</p>` : null}
+        ${state.total > 0 ? html`<p>${t('其中 {n} 个已在浏览器缓存里，不需要重新下载', { n: reused })}</p>` : null}
       </div>`}
       <p class="t-lo">${t('已导入的素材直接使用，不再向服务器请求。')}</p>
       <p class="t-lo">${t('素材会存进浏览器缓存：之后开局不会再临时下载，进房间更快。关闭窗口会暂停；缓存被清理后可再点一次。')}</p>

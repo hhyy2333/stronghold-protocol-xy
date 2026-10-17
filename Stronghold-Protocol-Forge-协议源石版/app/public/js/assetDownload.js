@@ -1,6 +1,8 @@
 // Explicit title-screen predownload. Reuse the game's HTTP cache and exact manifest URLs;
 // never decode every model/image/audio file into RAM or persist an unverified "complete" flag.
-// A URL already stored by a local import (assetPack.js) is marked done and not requested again.
+// Two kinds of file are already on disk and never requested again: what a local import stored (assetPack.js) and what
+// the browser's own HTTP cache already holds from an earlier match — the latter found with `only-if-cached`, a cache
+// lookup that sends no request, so the bar starts at what is really here instead of at 0.
 import { mediaUrl } from './media.js';
 import { listImportedPaths } from './assetCache.js';
 
@@ -37,14 +39,16 @@ export function createAssetDownload({ fetch: doFetch = (...args) => globalThis.f
   concurrency = 4, timeoutMs = 60000, retries = 2, lookupImported = listImportedPaths } = {}) {
   let state = {
     phase: 'idle', scope: 'visual', total: 0, done: 0, bytes: 0, failures: [], localMissing: false, cached: 0,
-    counts: { visual: 0, all: 0 },
+    reused: 0, counts: { visual: 0, all: 0 },
   };
   let urls = null, running = null, controller = null, paused = false, lastNotice = 0;
+  /** 不用下载就算就绪的文件数：本地导入的 + 浏览器 HTTP 缓存里已有的。 */
+  let reused = 0;
   const complete = new Set(), failures = new Map(), listeners = new Set();
   const emit = (force = false) => {
     if (!force && Date.now() - lastNotice < 100) return;
     lastNotice = Date.now();
-    state = { ...state, done: complete.size, failures: [...failures.values()] };
+    state = { ...state, done: complete.size, reused, failures: [...failures.values()] };
     for (const listener of listeners) listener(state);
   };
 
@@ -100,6 +104,21 @@ export function createAssetDownload({ fetch: doFetch = (...args) => globalThis.f
     }
   }
 
+  /**
+   * 这个文件是不是已经在浏览器的 HTTP 缓存里：`only-if-cached` 只查缓存、不发网络请求，命中返回响应，未命中在
+   * Chrome / Firefox 都以失败的 fetch 收场。素材 URL 带内容哈希且被服务器标成一年不变，命中就是要的那份字节。
+   * 不支持的浏览器（或任何意外）一律当作未命中，退回普通请求 —— 最坏情况就是老行为，不会漏文件。
+   */
+  async function probeCached(url) {
+    try {
+      const response = await doFetch(url, { cache: 'only-if-cached', mode: 'same-origin', signal: controller.signal });
+      await response.body?.cancel();
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   async function run() {
     try {
       if (!urls) {
@@ -134,6 +153,7 @@ export function createAssetDownload({ fetch: doFetch = (...args) => globalThis.f
           try { path = new URL(url, 'http://localhost').pathname; } catch { /* keep the queue string */ }
           if (imported.has(url) || imported.has(path)) {
             cached++;
+            reused++;
             complete.add(url);
           }
         }
@@ -150,6 +170,13 @@ export function createAssetDownload({ fetch: doFetch = (...args) => globalThis.f
         while (!paused && next < queue.length) {
           const url = queue[next++];
           try {
+            // 先问浏览器缓存（不发请求）。玩过一局之后大部分素材就在里面 —— 命中即完成，进度条不会每次从头爬。
+            if (await probeCached(url)) {
+              complete.add(url);
+              reused++;
+              emit();
+              continue;
+            }
             await request(url);
             complete.add(url);
           } catch (error) {
@@ -179,8 +206,9 @@ export function createAssetDownload({ fetch: doFetch = (...args) => globalThis.f
       // A new check after completion revalidates the manifest and all files through the HTTP cache.
       // Switching scope mid-way restarts the queue for that scope; already-cached files come back fast.
       complete.clear();
+      reused = 0;
       state = {
-        ...state, scope, total: 0, done: 0, bytes: 0, failures: [], cached: 0,
+        ...state, scope, total: 0, done: 0, bytes: 0, failures: [], cached: 0, reused: 0,
       };
       if (state.phase === 'complete') urls = null;
       running = run().finally(() => { running = null; });
