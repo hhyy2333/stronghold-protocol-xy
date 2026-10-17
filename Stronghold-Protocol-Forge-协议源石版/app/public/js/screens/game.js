@@ -546,7 +546,8 @@ function MatchScreen() {
         if (!drag && !facing) {
           const pf = typeof view.prepField === 'function' ? view.prepField() : null;
           const want = prepCameraFor(pub, myId, shopFolded, stageLayout);
-          if (prepFieldMismatch(pf, want)) setCam(want.kind, want.opts);
+          // 纠正也走「瞬时」：棋子已经按新映射重画，镜头再飞过去只会让人看清那一下跳。
+          if (prepFieldMismatch(pf, want)) setCam(want.kind, { ...want.opts, instant: true });
         }
       }
       return;

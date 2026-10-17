@@ -173,6 +173,11 @@ import { t } from '../../../shared/i18n.js';
 
 export { ensurePixi } from './app/pixi.js';
 
+/** `?debug=prep`: log every prep-field change (道中 ↔ 最终攻势半场) — the frame the board re-homes the pieces. */
+const debugPrep = (() => {
+  try { return new URLSearchParams(globalThis.location?.search || '').get('debug') === 'prep'; } catch { return false; }
+})();
+
 /** fx.damage / fx.heal option: the official effect drew the hit (no procedural spark, slash or glow; numbers stay). */
 const NO_SPARK = Object.freeze({ noSpark: true });
 export { PEN_CAMERA_MS, LEADER_HIT_STYLE, DRAG_HOLD_TILES, DEPLOY_REPLAY_MS } from './app/tune.js';
@@ -637,8 +642,17 @@ export async function createFieldView(host, options = {}) {
     camOpts = { ...o };
     // the field actually shown (a 'prep' camera on the boss rows is the Final Assault prep: boss field built / drawn)
     const vk = viewKind(camKind, camOpts, L);
+    const prepBefore = prepXf;
     if (vk === 'prep') setPrepField(IDENTITY);
     else if (vk === 'bossPrep') setPrepField(bossPrepField(camOpts.side === 'R' ? 'R' : 'L', L));
+    // 取景换了一套（道中 ↔ 最终攻势的 boss 半场，或 L/R 镜像）：棋子和高亮**已经**按新映射重画了，镜头却还在飞，
+    // 玩家看到的就是「干员突然瞬移到上面，然后镜头被拉过去」（业主 2026-10-18 的录像：回合 14 最终攻势休整期）。
+    // 休整期之间的这种切换一律瞬时到位；从/到战斗的切换仍按 flightView 飞，不在这里。
+    const prepish = (v) => v === 'prep' || v === 'bossPrep';
+    if (prepXf !== prepBefore && prepish(prevView) && prepish(vk)) {
+      o = { ...o, instant: true };
+      if (debugPrep) console.warn('[prepfield]', prevView, '->', vk, camKind, camOpts.side);
+    }
     const target = targetCamera(camKind, camOpts);
     const rest = restView(vk, L);
     const focus = camRect();

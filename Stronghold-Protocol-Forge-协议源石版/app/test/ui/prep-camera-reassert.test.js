@@ -47,9 +47,17 @@ test('接线：休整期分支拿 view.prepField() 与 prepCameraFor 比对，�
   const src = readFileSync(new URL('../../public/js/screens/game.js', import.meta.url), 'utf8');
   assert.match(src, /typeof view\.prepField === 'function'/, 'must read the renderer state');
   assert.match(src, /prepFieldMismatch\(pf, want\)/, 'must judge through the pure helper');
-  assert.match(src, /if \(prepFieldMismatch\(pf, want\)\) setCam\(want\.kind, want\.opts\)/, 'must re-request the camera');
+  assert.match(src, /if \(prepFieldMismatch\(pf, want\)\) setCam\(want\.kind, \{ \.\.\.want\.opts, instant: true \}\)/, 'must re-request the camera, instantly');
   assert.match(src, /if \(!drag && !facing\)/, 'deferred while a piece is dragged or its direction is chosen (as foldCamera does)');
   // 延后的那次必须真的会再跑：拖拽/方向轮结束要重新触发这个 effect，否则兜底只在选中时生效
   assert.match(src, /holdSeq, !!drag, !!facing\]\),?/, 'the effect re-runs when the drag or the wheel ends');
   assert.match(src, /const want = prepCameraFor\(pub, myId, shopFolded, stageLayout\)/, 'the wanted camera is the same one the entry path asks for');
+});
+
+test('接线：取景换了一套时镜头必须瞬时到位（否则就是「棋子瞬移 + 镜头被拉过去」）', () => {
+  const src = readFileSync(new URL('../../public/js/render/app.js', import.meta.url), 'utf8');
+  assert.ok(src.includes('const prepBefore = prepXf;'), 'setCamera 要先记住上一套取景');
+  assert.ok(src.includes('prepXf !== prepBefore'), '取景变了要能看出来');
+  assert.ok(src.includes("prepish(prevView) && prepish(vk)"), '只对休整期之间（道中 ↔ 最终攻势半场）的切换强制瞬时');
+  assert.ok(src.includes('{ ...o, instant: true }'), '镜头瞬时到位，不飞');
 });
