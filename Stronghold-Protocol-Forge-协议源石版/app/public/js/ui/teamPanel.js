@@ -120,6 +120,42 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
   const [openPid, setOpenPid] = useState(null);
   // the playerId whose avatar just called onWatch, so the other click of a double-click does not open the view again
   const askedAt = useRef(/** @type {{ id: string|null, at: number }} */ ({ id: null, at: 0 }));
+  // Emote bubble placement (2026-10-17): in a big room the rows scroll inside `.team__rows`, and an absolutely
+  // positioned bubble inside that scroll container is clipped by it (and adds a horizontal scrollbar). In `many`
+  // mode the bubble is rendered in a sibling `.team__bubbles` layer instead, and placed here from the row's rect
+  // (the layer itself is not clipped by the scroller). Rows still carry `data-team-pid` so the lookup is cheap.
+  const rootRef = useRef(null);
+  const listRef = useRef(null);
+  const bubbleRefs = useRef(new Map());
+  const placeBubbles = () => {
+    const root = rootRef.current, list = listRef.current;
+    if (!root || !list) return;
+    const bounds = list.getBoundingClientRect();
+    const left = bounds.right - root.getBoundingClientRect().left + 6;
+    const rows = [...list.children];
+    for (const [pid, el] of bubbleRefs.current) {
+      const row = rows.find((child) => child.dataset.teamPid === pid);
+      if (!row || !el) continue;
+      const r = row.getBoundingClientRect();
+      const center = r.top + r.height / 2;
+      // a row scrolled out of the column takes its bubble with it
+      if (center < bounds.top || center > bounds.bottom) { el.style.display = 'none'; continue; }
+      el.style.display = '';
+      el.style.left = `${left}px`;
+      el.style.top = `${center - root.getBoundingClientRect().top}px`;
+    }
+  };
+  useEffect(() => { placeBubbles(); });
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return undefined;
+    const onMove = () => placeBubbles();
+    list.addEventListener('scroll', onMove, { passive: true });
+    window.addEventListener('resize', onMove);
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(onMove) : null;
+    ro?.observe(list);
+    return () => { list.removeEventListener('scroll', onMove); window.removeEventListener('resize', onMove); ro?.disconnect(); };
+  }, []);
   const phaseKey = `${pub?.phase}:${pub?.round}`;
   useEffect(() => { setOpenPid(null); }, [phaseKey, watching, observe?.observing]);
   const players = sortedPlayers(pub);
@@ -159,7 +195,8 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
     noteAsked(p);
     onWatch(p);
   };
-  return html`<aside class=${cx('team', compact && 'team--compact', many && 'team--many')} aria-label=${t('同盟成员')}>
+  return html`<aside ref=${rootRef} class=${cx('team', compact && 'team--compact', many && 'team--many')} aria-label=${t('同盟成员')}>
+    <div class="team__rows" ref=${listRef}>
     ${players.map((p) => {
       const self = p.playerId === myId;
       const status = p.alive === false ? 'dead' : p.status;
@@ -172,7 +209,7 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
       const title = observe ? (self ? (observe.observing ? t('返回战场') : t('你自己')) : t('查看 {name} 的战场', { name: p.name })) : (self ? t('查看自己的阵地') : t('查看 {name} 的阵地', { name: p.name }));
       const lp = rowLp(p, pub, self ? selfLive : null, { uniteLocal, cap });
       const inTeam = team.has(p.playerId);
-      return html`<div key=${p.playerId} class=${cx('team__row', self && 'is-self', inTeam && 'is-team', watched && 'is-watched', p.alive === false && 'is-dead', open && 'is-open')}>
+      return html`<div key=${p.playerId} data-team-pid=${p.playerId} class=${cx('team__row', self && 'is-self', inTeam && 'is-team', watched && 'is-watched', p.alive === false && 'is-dead', open && 'is-open')}>
         <button type="button" class="team__btn" onClick=${() => click(p, self)} onDblClick=${(e) => dblClick(e, p, self)} title=${inTeam && !self ? `${title} · ${t('与你在同一战场')}` : title} aria-expanded=${observe && !self ? String(open) : undefined}>
           <${PlayerAvatar} player=${p} self=${self} />
           ${inTeam ? html`<span class=${cx('team__frame', !frameArt && 'team__frame--plain')} style=${frameArt ? `--frame:url("${frameArt}")` : undefined} aria-hidden="true"></span>` : null}
@@ -200,8 +237,17 @@ export function TeamPanel({ pub, myId, watching, bubbles, onWatch, compact = fal
           ${back ? html`<button type="button" class="btn btn--secondary btn--sm team__back"
             onClick=${() => observe.onBack()}><span class="btn__label">${t('返回战场')}</span></button>` : null}
         </div>
-        ${bubble ? html`<${EmoteBubble} key=${bubble.seq} id=${bubble.id} class="team__bubble" />` : null}
+        ${!many && bubble ? html`<${EmoteBubble} key=${bubble.seq} id=${bubble.id} class="team__bubble" />` : null}
       </div>`;
     })}
+    </div>
+    ${many && players.some((p) => bubbles?.get(p.playerId)) ? html`<div class="team__bubbles">
+      ${players.map((p) => {
+        const bubble = bubbles?.get(p.playerId);
+        return bubble ? html`<span key=${`${p.playerId}:${bubble.seq}`} class="team__bubble-slot" ref=${(el) => {
+          if (el) bubbleRefs.current.set(p.playerId, el); else bubbleRefs.current.delete(p.playerId);
+        }}><${EmoteBubble} id=${bubble.id} class="team__bubble" /></span>` : null;
+      })}
+    </div>` : null}
   </aside>`;
 }

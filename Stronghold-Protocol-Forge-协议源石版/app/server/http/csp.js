@@ -9,7 +9,32 @@ import { createHash } from 'node:crypto';
 // SES evaluates confined code. This relaxation belongs only to the simulation Worker, never its parent document.
 export const SIM_WORKER_CSP = "default-src 'none'; script-src 'self' 'unsafe-eval'; connect-src 'none'";
 
-export function siteCsp(publicDir) {
+/**
+ * Asset origins a deployment serves from a separate CDN (2026-10-17: a 302 in nginx rewrote
+ * /assets and /fonts to https://speedcdn.jiangjiangze.icu). The CSP has to name that origin,
+ * otherwise the browser blocks every redirected byte - the first 0.19 deploy shipped with the
+ * old 'self'-only policy and the CDN-hosted art, fonts and voice never loaded. `SP_ASSET_CDN`
+ * is the same variable the deployment already keeps in /etc/stronghold.env; comma-separated,
+ * scheme+host are kept, paths are dropped.
+ * @returns {string[]} origins, e.g. ['https://speedcdn.example.com']
+ */
+export function assetCdnOrigins(env = process.env) {
+  const raw = String(env.SP_ASSET_CDN ?? '').trim();
+  if (!raw) return [];
+  const out = [];
+  for (const part of raw.split(',')) {
+    const s = part.trim();
+    if (!s) continue;
+    try {
+      const u = new URL(s);
+      if ((u.protocol === 'https:' || u.protocol === 'http:') && !out.includes(u.origin)) out.push(u.origin);
+    } catch { /* not a URL: ignore, a bad env value must not take the site down */ }
+  }
+  return out;
+}
+
+// Deliberately no remote script origin: only the import-map hashes run inline, and every script is same-origin.
+export function siteCsp(publicDir, env = process.env) {
   const hashes = new Set();
   for (const rel of ['index.html', 'studio/index.html', 'dev/game-mock.html', 'dev/render-demo.html', 'dev/battle-perf.html', 'dev/uikit.html']) {
     let html;
@@ -18,5 +43,7 @@ export function siteCsp(publicDir) {
       hashes.add(`'sha256-${createHash('sha256').update(m[1]).digest('base64')}'`);
     }
   }
-  return `default-src 'self'; script-src 'self'${hashes.size ? ' ' + [...hashes].join(' ') : ''}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'none'`;
+  const cdn = assetCdnOrigins(env);
+  const extra = cdn.length ? ` ${cdn.join(' ')}` : '';
+  return `default-src 'self'; script-src 'self'${hashes.size ? ' ' + [...hashes].join(' ') : ''}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${extra}; font-src 'self' https://fonts.gstatic.com${extra}; img-src 'self' data: blob:${extra}; media-src 'self'${extra}; connect-src 'self'${extra}; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'none'`;
 }

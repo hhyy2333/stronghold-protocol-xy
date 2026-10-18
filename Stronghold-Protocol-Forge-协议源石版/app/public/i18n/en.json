@@ -1683,7 +1683,7 @@
   "不屈余烬": "Undying Ember",
   "〖不屈〗盟约效果触发后，该干员获得 6 秒阻挡数 +2。": "After the 〖Indomitable〗 bond triggers, that operator gains +2 block for 6 s.",
   "特质扩散": "Trait Diffusion",
-  "战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给相邻一格的干员（优先右边）。": "At battle start, your leftmost operator (lowest in its column) copies its in-battle traits to the operator on an adjacent tile, the right one first.",
+  "战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给最近的干员（优先右边）。": "At battle start, your leftmost operator (lowest in its column) copies its in-battle traits to the nearest operator, the right one first.",
   "击倒馈赠": "Knock-Out Gift",
   "作战中，你的干员每击倒 1 个敌人，该干员攻击力 +10%（本场战斗内叠加）。": "In battle, every enemy your operator knocks out gives that operator +10 % ATK (stacking for the battle).",
   "技能层涌": "Skill Surge",

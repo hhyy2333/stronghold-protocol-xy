@@ -51,13 +51,55 @@ const AB_FLAG_STATUS = Object.freeze({ 16: 'freeze' });
 
 function garrisonIdsOf(u) {
   const list = u?.def?.raw?.garrisonIds ?? u?.def?.garrisonIds;
-  return Array.isArray(list) ? list : EMPTY;
+  const own = Array.isArray(list) ? list : EMPTY;
+  const copied = u && Array.isArray(u.spreadGarrisonIds) ? u.spreadGarrisonIds : null;
+  if (!copied || !copied.length) return own;
+  return [...new Set([...own, ...copied])];
+}
+
+/**
+ * 特质扩散 (hex_traitspread, 业主 2026-10-18): at battle start the owner's leftmost-bottom operator copies its
+ * IN_BATTLE traits to the NEAREST own operator, the right side preferred. Written as extra garrison ids on the target
+ * before the install loop, so the target keeps its own traits and the copy is additive.
+ *
+ * [ASSUMED] nearest = Manhattan distance; a tie prefers right → left → up → down (row 0 is the BOTTOM row, so up is
+ * +row), then the lower row / the left column, so the pick is deterministic. Runs once per player; no card → no copy.
+ * `最靠左（同列更靠下）` = the smallest column, and in one column the smaller row (the lower tile).
+ */
+function applyTraitSpread(battle) {
+  const cmp = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+  for (const ps of battle.players || []) {
+    const refs = (ps && ps.playerEffects) || [];
+    if (!refs.some((e) => e && (e.data?.hexId === 'hex_traitspread' || e.key === 'hex:hex_traitspread'))) continue;
+    const ops = [];
+    for (const u of battle.allyUnits) {
+      if (!S.isOp(u) || u.ownerId !== ps.playerId || u.removed) continue;
+      if (!Number.isFinite(u.homeR) || !Number.isFinite(u.homeC)) continue;
+      ops.push(u);
+    }
+    if (ops.length < 2) continue;
+    ops.sort((a, b) => a.homeC - b.homeC || a.homeR - b.homeR);
+    const src = ops[0];
+    const srcIds = garrisonIdsOf(src);
+    if (!srcIds.length) continue;
+    const rank = (u) => {
+      const dr = u.homeR - src.homeR, dc = u.homeC - src.homeC;
+      const dir = dc > 0 ? 0 : dc < 0 ? 1 : dr > 0 ? 2 : 3; // right → left → up → down
+      return [Math.abs(dr) + Math.abs(dc), dir, Math.abs(dr), u.homeR, u.homeC];
+    };
+    const target = ops.filter((u) => u !== src).sort((a, b) => cmp(rank(a), rank(b)))[0];
+    if (!target) continue;
+    const have = new Set(garrisonIdsOf(target));
+    const extra = srcIds.filter((id) => !have.has(id));
+    if (extra.length) target.spreadGarrisonIds = [...(target.spreadGarrisonIds || []), ...extra];
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // install
 
 export function install(battle) {
+  applyTraitSpread(battle);
   const all = [];
   const owned = new Map(); // unit → Set(garrisonId)
   const add = (unit, g, grantedBy = null) => {

@@ -308,7 +308,7 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_traitspread',
     name: '特质扩散',
-    desc: '战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给相邻一格的干员（优先右边）。',
+    desc: '战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给最近的干员（优先右边）。',
     rarity: 'gold',
     effect: { traitSpread: true },
   },
