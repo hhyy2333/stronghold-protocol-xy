@@ -1,0 +1,3649 @@
+{
+  "chess_char_1_04_a": {
+    "chessId": "chess_char_1_04_a",
+    "baseId": "chess_char_1_04_a",
+    "goldenId": "chess_char_1_04_b",
+    "isGolden": false,
+    "tier": 1,
+    "identifier": 3,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": "char_4137_udflow",
+      "tmplId": null,
+      "skillIndex": 1,
+      "uniEquipId": "uniequip_002_udflow",
+      "potRank": 0
+    },
+    "shopSortId": 4,
+    "charId": "char_4137_udflow",
+    "name": "深巡",
+    "appellation": "Underflow",
+    "rarity": 5,
+    "profession": "TANK",
+    "subProfessionId": "shotprotector",
+    "subProfessionName": "哨戒铁卫",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "steadShip"
+    ],
+    "garrisonIds": [
+      "garrison_18_a"
+    ],
+    "price": 2,
+    "sellPrice": 1,
+    "upgradeNum": 3,
+    "upgradeChessId": "chess_char_1_04_b",
+    "status": {
+      "phase": 1,
+      "level": 55,
+      "skillLevel": 4,
+      "equipLevel": 0
+    },
+    "stats": {
+      "maxHp": 2207,
+      "atk": 348,
+      "def": 479,
+      "res": 0,
+      "cost": 19,
+      "blockCnt": 3,
+      "bat": 1.2,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "2-2",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "arrow",
+    "canHitFly": true,
+    "targetPriority": null,
+    "trait": {
+      "desc": "能够阻挡三个敌人，可以进行远程攻击",
+      "descRaw": "能够阻挡三个敌人，可以进行远程攻击",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "skill": {
+      "skillId": "skchr_udflow_2",
+      "iconId": "skchr_udflow_2",
+      "name": "行动能力剥夺",
+      "level": 4,
+      "desc": "攻击距离加长，攻击力+30%，攻击速度+25，攻击变为向正前方发射的毒性鳍刺，能穿过3个目标且造成1秒停顿。",
+      "descRaw": "攻击距离<@ba.vup>加长</>，攻击力<@ba.vup>+30%</>，攻击速度<@ba.vup>+25</>，攻击变为向正前方发射的毒性鳍刺，能穿过<@ba.vup>3</>个目标且造成<@ba.vup>1</>秒<$ba.sluggish>停顿</>。",
+      "skillType": "MANUAL",
+      "durationType": "NONE",
+      "duration": 15,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 39,
+      "initSp": 21,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk": 0.3,
+        "mode": 1,
+        "attack@sluggish": 1,
+        "attack_speed": 25,
+        "attack@max_target": 3
+      },
+      "bbStr": {},
+      "rangeId": "3-2",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ]
+      ],
+      "prefabId": "skchr_udflow_2",
+      "trigger": {
+        "rule": "ACTIVE_RANGE",
+        "rawRule": "TAKE_DAMAGE",
+        "customRangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ]
+      },
+      "index": 1,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "细胞活性抑制剂",
+        "desc": "攻击使目标在3秒内每秒受到50（+10）点法术伤害（对【海怪】敌人伤害加倍）",
+        "descRaw": "攻击使目标在3秒内每秒受到50<@ba.talpu>（+10）</>点法术伤害（对【海怪】敌人伤害加倍）",
+        "bb": {
+          "duration": 3,
+          "interval": 1,
+          "damage": 50,
+          "damage_seamonster": 100
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "攻击使目标在3秒内每秒受到40点法术伤害（对【海怪】敌人伤害加倍）",
+          "descRaw": "攻击使目标在3秒内每秒受到40点法术伤害（对【海怪】敌人伤害加倍）",
+          "bb": {
+            "duration": 3,
+            "interval": 1,
+            "damage": 40,
+            "damage_seamonster": 80
+          }
+        }
+      }
+    ],
+    "tokens": [],
+    "module": {
+      "id": "uniequip_002_udflow",
+      "name": "基于咖啡的神经活性剂",
+      "type": "SPT-X",
+      "level": 0,
+      "active": false
+    },
+    "assets": {
+      "avatar": "char_4137_udflow",
+      "portrait": "char_4137_udflow_1",
+      "spine": "char_4137_udflow",
+      "skillIcon": "skchr_udflow_2",
+      "subProfIcon": "sub_shotprotector_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_udflow_1",
+        "iconId": "skchr_udflow_1",
+        "name": "侵袭破坏应对",
+        "level": 4,
+        "desc": "攻击力+32%，防御力+32%",
+        "descRaw": "攻击力<@ba.vup>+32%</>，防御力<@ba.vup>+32%</>",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 30,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 37,
+        "initSp": 5,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.32,
+          "def": 0.32
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_udflow_1",
+        "trigger": {
+          "rule": "TAKE_DAMAGE",
+          "rawRule": "TAKE_DAMAGE",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_udflow_2",
+        "iconId": "skchr_udflow_2",
+        "name": "行动能力剥夺",
+        "level": 4,
+        "desc": "攻击距离加长，攻击力+30%，攻击速度+25，攻击变为向正前方发射的毒性鳍刺，能穿过3个目标且造成1秒停顿。",
+        "descRaw": "攻击距离<@ba.vup>加长</>，攻击力<@ba.vup>+30%</>，攻击速度<@ba.vup>+25</>，攻击变为向正前方发射的毒性鳍刺，能穿过<@ba.vup>3</>个目标且造成<@ba.vup>1</>秒<$ba.sluggish>停顿</>。",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 15,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 39,
+        "initSp": 21,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.3,
+          "mode": 1,
+          "attack@sluggish": 1,
+          "attack_speed": 25,
+          "attack@max_target": 3
+        },
+        "bbStr": {},
+        "rangeId": "3-2",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "prefabId": "skchr_udflow_2",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "TAKE_DAMAGE",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": true
+      }
+    ],
+    "potDown": {
+      "0": {
+        "stats.cost": 22
+      },
+      "1": {
+        "stats.respawnTime": 80
+      },
+      "2": {
+        "stats.cost": 21
+      },
+      "4": {
+        "stats.cost": 20
+      }
+    }
+  },
+  "chess_char_1_04_b": {
+    "chessId": "chess_char_1_04_b",
+    "baseId": "chess_char_1_04_a",
+    "goldenId": "chess_char_1_04_b",
+    "isGolden": true,
+    "tier": 1,
+    "identifier": 136,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": "char_4137_udflow",
+      "tmplId": null,
+      "skillIndex": 1,
+      "uniEquipId": "uniequip_002_udflow",
+      "potRank": 0
+    },
+    "shopSortId": 4,
+    "charId": "char_4137_udflow",
+    "name": "深巡",
+    "appellation": "Underflow",
+    "rarity": 5,
+    "profession": "TANK",
+    "subProfessionId": "shotprotector",
+    "subProfessionName": "哨戒铁卫",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "steadShip"
+    ],
+    "garrisonIds": [
+      "garrison_18_b"
+    ],
+    "price": 2,
+    "sellPrice": 1,
+    "upgradeNum": 0,
+    "upgradeChessId": null,
+    "status": {
+      "phase": 2,
+      "level": 50,
+      "skillLevel": 7,
+      "equipLevel": 1
+    },
+    "stats": {
+      "maxHp": 2904,
+      "atk": 449,
+      "def": 655,
+      "res": 0,
+      "cost": 21,
+      "blockCnt": 3,
+      "bat": 1.2,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "2-2",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "arrow",
+    "canHitFly": true,
+    "targetPriority": null,
+    "trait": {
+      "desc": "能够阻挡三个敌人，可以进行远程攻击",
+      "descRaw": "能够阻挡三个敌人，可以进行远程攻击",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null,
+      "moduleDesc": "攻击范围内敌人的隐匿效果失效",
+      "moduleDescRaw": "攻击范围内敌人的<$ba.invisible>隐匿</>效果失效"
+    },
+    "skill": {
+      "skillId": "skchr_udflow_2",
+      "iconId": "skchr_udflow_2",
+      "name": "行动能力剥夺",
+      "level": 7,
+      "desc": "攻击距离加长，攻击力+40%，攻击速度+30，攻击变为向正前方发射的毒性鳍刺，能穿过3个目标且造成1秒停顿。",
+      "descRaw": "攻击距离<@ba.vup>加长</>，攻击力<@ba.vup>+40%</>，攻击速度<@ba.vup>+30</>，攻击变为向正前方发射的毒性鳍刺，能穿过<@ba.vup>3</>个目标且造成<@ba.vup>1</>秒<$ba.sluggish>停顿</>。",
+      "skillType": "MANUAL",
+      "durationType": "NONE",
+      "duration": 15,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 36,
+      "initSp": 22,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk": 0.4,
+        "mode": 1,
+        "attack@sluggish": 1,
+        "attack_speed": 30,
+        "attack@max_target": 3
+      },
+      "bbStr": {},
+      "rangeId": "3-2",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ]
+      ],
+      "prefabId": "skchr_udflow_2",
+      "trigger": {
+        "rule": "ACTIVE_RANGE",
+        "rawRule": "TAKE_DAMAGE",
+        "customRangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ]
+      },
+      "index": 1,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "细胞活性抑制剂",
+        "desc": "攻击使目标在3秒内每秒受到90（+10）点法术伤害（对【海怪】敌人伤害加倍）",
+        "descRaw": "攻击使目标在3秒内每秒受到90<@ba.talpu>（+10）</>点法术伤害（对【海怪】敌人伤害加倍）",
+        "bb": {
+          "duration": 3,
+          "interval": 1,
+          "damage": 90,
+          "damage_seamonster": 180
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "攻击使目标在3秒内每秒受到80点法术伤害（对【海怪】敌人伤害加倍）",
+          "descRaw": "攻击使目标在3秒内每秒受到80点法术伤害（对【海怪】敌人伤害加倍）",
+          "bb": {
+            "duration": 3,
+            "interval": 1,
+            "damage": 80,
+            "damage_seamonster": 160
+          }
+        }
+      }
+    ],
+    "tokens": [],
+    "module": {
+      "id": "uniequip_002_udflow",
+      "name": "基于咖啡的神经活性剂",
+      "type": "SPT-X",
+      "level": 1,
+      "active": true
+    },
+    "assets": {
+      "avatar": "char_4137_udflow_2",
+      "portrait": "char_4137_udflow_2",
+      "spine": "char_4137_udflow",
+      "skillIcon": "skchr_udflow_2",
+      "subProfIcon": "sub_shotprotector_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_udflow_1",
+        "iconId": "skchr_udflow_1",
+        "name": "侵袭破坏应对",
+        "level": 7,
+        "desc": "攻击力+39%，防御力+39%",
+        "descRaw": "攻击力<@ba.vup>+39%</>，防御力<@ba.vup>+39%</>",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 30,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 35,
+        "initSp": 10,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.39,
+          "def": 0.39
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_udflow_1",
+        "trigger": {
+          "rule": "TAKE_DAMAGE",
+          "rawRule": "TAKE_DAMAGE",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_udflow_2",
+        "iconId": "skchr_udflow_2",
+        "name": "行动能力剥夺",
+        "level": 7,
+        "desc": "攻击距离加长，攻击力+40%，攻击速度+30，攻击变为向正前方发射的毒性鳍刺，能穿过3个目标且造成1秒停顿。",
+        "descRaw": "攻击距离<@ba.vup>加长</>，攻击力<@ba.vup>+40%</>，攻击速度<@ba.vup>+30</>，攻击变为向正前方发射的毒性鳍刺，能穿过<@ba.vup>3</>个目标且造成<@ba.vup>1</>秒<$ba.sluggish>停顿</>。",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 15,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 36,
+        "initSp": 22,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.4,
+          "mode": 1,
+          "attack@sluggish": 1,
+          "attack_speed": 30,
+          "attack@max_target": 3
+        },
+        "bbStr": {},
+        "rangeId": "3-2",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "prefabId": "skchr_udflow_2",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "TAKE_DAMAGE",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": true
+      }
+    ],
+    "statsBase": {
+      "maxHp": 2904,
+      "atk": 411,
+      "def": 625,
+      "res": 0,
+      "cost": 21,
+      "blockCnt": 3,
+      "bat": 1.2,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "traitBase": {
+      "desc": "能够阻挡三个敌人，可以进行远程攻击",
+      "descRaw": "能够阻挡三个敌人，可以进行远程攻击",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "talentsBase": [
+      {
+        "index": 0,
+        "name": "细胞活性抑制剂",
+        "desc": "攻击使目标在3秒内每秒受到90（+10）点法术伤害（对【海怪】敌人伤害加倍）",
+        "descRaw": "攻击使目标在3秒内每秒受到90<@ba.talpu>（+10）</>点法术伤害（对【海怪】敌人伤害加倍）",
+        "bb": {
+          "duration": 3,
+          "interval": 1,
+          "damage": 90,
+          "damage_seamonster": 180
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "攻击使目标在3秒内每秒受到80点法术伤害（对【海怪】敌人伤害加倍）",
+          "descRaw": "攻击使目标在3秒内每秒受到80点法术伤害（对【海怪】敌人伤害加倍）",
+          "bb": {
+            "duration": 3,
+            "interval": 1,
+            "damage": 80,
+            "damage_seamonster": 160
+          }
+        }
+      }
+    ],
+    "modules": [
+      {
+        "uniEquipId": "uniequip_002_udflow",
+        "name": "基于咖啡的神经活性剂",
+        "typeName": "SPT-X",
+        "typeIcon": "spt-x",
+        "icon": "uniequip_002_udflow",
+        "isDefault": true,
+        "level": 1,
+        "attr": {
+          "atk": 38,
+          "def": 30
+        },
+        "traitOverride": {
+          "desc": "能够阻挡三个敌人，可以进行远程攻击",
+          "descRaw": "能够阻挡三个敌人，可以进行远程攻击",
+          "bb": {},
+          "bbStr": {},
+          "rangeGrid": null,
+          "moduleDesc": "攻击范围内敌人的隐匿效果失效",
+          "moduleDescRaw": "攻击范围内敌人的<$ba.invisible>隐匿</>效果失效"
+        },
+        "talentChanges": [
+          {
+            "talentIndex": -1,
+            "name": null,
+            "desc": null,
+            "descRaw": null,
+            "bb": {},
+            "bbStr": {},
+            "rangeGrid": null,
+            "tokenKey": null,
+            "hidden": true
+          }
+        ]
+      }
+    ],
+    "potDown": {
+      "0": {
+        "stats.cost": 24,
+        "statsBase.cost": 24
+      },
+      "1": {
+        "stats.respawnTime": 80,
+        "statsBase.respawnTime": 80
+      },
+      "2": {
+        "stats.cost": 23,
+        "statsBase.cost": 23
+      },
+      "4": {
+        "stats.cost": 22,
+        "statsBase.cost": 22
+      }
+    }
+  },
+  "chess_char_4_12_a": {
+    "chessId": "chess_char_4_12_a",
+    "baseId": "chess_char_4_12_a",
+    "goldenId": "chess_char_4_12_b",
+    "isGolden": false,
+    "tier": 4,
+    "identifier": 71,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": "char_474_glady",
+      "tmplId": null,
+      "skillIndex": 2,
+      "uniEquipId": "uniequip_002_glady",
+      "potRank": 0
+    },
+    "shopSortId": 12,
+    "charId": "char_474_glady",
+    "name": "歌蕾蒂娅",
+    "appellation": "Gladiia",
+    "rarity": 6,
+    "profession": "SPECIAL",
+    "subProfessionId": "hookmaster",
+    "subProfessionName": "钩索师",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "swiftShip"
+    ],
+    "garrisonIds": [
+      "garrison_39_a"
+    ],
+    "price": 3,
+    "sellPrice": 1,
+    "upgradeNum": 3,
+    "upgradeChessId": "chess_char_4_12_b",
+    "status": {
+      "phase": 2,
+      "level": 1,
+      "skillLevel": 4,
+      "equipLevel": 0
+    },
+    "stats": {
+      "maxHp": 1754,
+      "atk": 640,
+      "def": 281,
+      "res": 0,
+      "cost": 13,
+      "blockCnt": 2,
+      "bat": 1.8,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "3-2",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        3
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "arrow",
+    "canHitFly": true,
+    "targetPriority": null,
+    "trait": {
+      "desc": "技能可以使敌人产生位移\n可以放置于远程位",
+      "descRaw": "技能可以使敌人产生<@ba.kw>位移</>\n可以放置于远程位",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "skill": {
+      "skillId": "skchr_glady_3",
+      "iconId": "skchr_glady_3",
+      "name": "缺水的碎漩狂舞",
+      "level": 4,
+      "desc": "对一个远处目标束缚并制造一个龙卷风使周围敌人移动速度-50%，每1.5秒造成85%攻击力的法术伤害并小力地拖拽至中心。技能结束时把目标地点周围的敌人小力地拖拽至面前",
+      "descRaw": "对一个远处目标<$ba.root>束缚</>并制造一个龙卷风使周围敌人移动速度<@ba.vup>-50%</>，每<@ba.vup>1.5</>秒造成<@ba.vup>85%</>攻击力的<@ba.vup>法术伤害</>并<@ba.vup>小力地</>拖拽至中心。技能结束时把目标地点周围的敌人<@ba.vup>小力地</>拖拽至面前",
+      "skillType": "MANUAL",
+      "durationType": "NONE",
+      "duration": 8,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 42,
+      "initSp": 22,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk_scale": 0.85,
+        "attack@force": 0,
+        "force": 0,
+        "projectile_delay_time": 9,
+        "interval": 1.5,
+        "hit_duration": 9,
+        "move_speed": -0.5
+      },
+      "bbStr": {},
+      "rangeId": null,
+      "rangeGrid": null,
+      "prefabId": "skchr_glady_3",
+      "trigger": {
+        "rule": "DEFAULT",
+        "rawRule": "DEFAULT",
+        "customRangeGrid": null
+      },
+      "index": 2,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "阿戈尔的波涛",
+        "desc": "在场时，所有【深海猎人】干员每秒回复2.5%最大生命值且受到【海怪】敌人的物理与法术伤害降低25%",
+        "descRaw": "在场时，所有【深海猎人】干员每秒回复2.5%最大生命值且受到【海怪】敌人的物理与法术伤害降低25%",
+        "bb": {
+          "hp_recovery_per_sec_by_max_hp_ratio": 0.025,
+          "damage_resistance": 0.25
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "弱肉强食",
+        "desc": "攻击重量小于等于3的敌人时攻击力提升至136%（+6%）",
+        "descRaw": "攻击重量小于等于3的敌人时攻击力提升至136%<@ba.talpu>（+6%）</>",
+        "bb": {
+          "value": 3,
+          "atk_scale": 1.36
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "攻击重量小于等于3的敌人时攻击力提升至130%",
+          "descRaw": "攻击重量小于等于3的敌人时攻击力提升至130%",
+          "bb": {
+            "value": 3,
+            "atk_scale": 1.3
+          }
+        }
+      }
+    ],
+    "tokens": [],
+    "module": {
+      "id": "uniequip_002_glady",
+      "name": "执政官手镜",
+      "type": "HOK-X",
+      "level": 0,
+      "active": false
+    },
+    "assets": {
+      "avatar": "char_474_glady",
+      "portrait": "char_474_glady_1",
+      "spine": "char_474_glady",
+      "skillIcon": "skchr_glady_3",
+      "subProfIcon": "sub_hookmaster_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_glady_1",
+        "iconId": "skchr_glady_1",
+        "name": "缺水的大洋裂断",
+        "level": 4,
+        "desc": "下次攻击会将目标中等力度地拖拽至面前，并对其造成相当于攻击力150%的物理伤害\n可充能2次",
+        "descRaw": "下次攻击会将目标<@ba.vup>中等力度地</>拖拽至面前，并对其造成相当于攻击力<@ba.vup>150%</>的物理伤害\n<@ba.rem>可充能2次</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 6,
+        "initSp": 0,
+        "maxChargeTime": 2,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 1.5,
+          "force": 1,
+          "cnt": 2
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_glady_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_glady_2",
+        "iconId": "skchr_glady_2",
+        "name": "缺水的掌握怒海",
+        "level": 4,
+        "desc": "攻击间隔增大，攻击范围扩大，每次攻击优先对被阻挡的两个目标造成相当于攻击力135%的物理伤害且以中等力度地拖拽至自己面前",
+        "descRaw": "攻击间隔<@ba.vdown>增大</>，攻击范围扩大，每次攻击优先对被阻挡的两个目标造成相当于攻击力<@ba.vup>135%</>的物理伤害且以<@ba.vup>中等力度地</>拖拽至自己面前",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 20,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 32,
+        "initSp": 15,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "base_attack_time": 0.5,
+          "attack@max_target": 2,
+          "attack@atk_scale": 1.35,
+          "attack@force": 1
+        },
+        "bbStr": {},
+        "rangeId": "3-14",
+        "rangeGrid": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            2
+          ],
+          [
+            -1,
+            3
+          ]
+        ],
+        "prefabId": "skchr_glady_2",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ],
+            [
+              -1,
+              1
+            ],
+            [
+              -1,
+              2
+            ],
+            [
+              -1,
+              3
+            ]
+          ]
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_glady_3",
+        "iconId": "skchr_glady_3",
+        "name": "缺水的碎漩狂舞",
+        "level": 4,
+        "desc": "对一个远处目标束缚并制造一个龙卷风使周围敌人移动速度-50%，每1.5秒造成85%攻击力的法术伤害并小力地拖拽至中心。技能结束时把目标地点周围的敌人小力地拖拽至面前",
+        "descRaw": "对一个远处目标<$ba.root>束缚</>并制造一个龙卷风使周围敌人移动速度<@ba.vup>-50%</>，每<@ba.vup>1.5</>秒造成<@ba.vup>85%</>攻击力的<@ba.vup>法术伤害</>并<@ba.vup>小力地</>拖拽至中心。技能结束时把目标地点周围的敌人<@ba.vup>小力地</>拖拽至面前",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 8,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 42,
+        "initSp": 22,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 0.85,
+          "attack@force": 0,
+          "force": 0,
+          "projectile_delay_time": 9,
+          "interval": 1.5,
+          "hit_duration": 9,
+          "move_speed": -0.5
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_glady_3",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 2,
+        "overrideTokenKey": null,
+        "isDefault": true
+      }
+    ],
+    "potDown": {
+      "0": {
+        "stats.cost": 16
+      },
+      "1": {
+        "stats.respawnTime": 80
+      },
+      "2": {
+        "stats.cost": 15
+      },
+      "4": {
+        "stats.cost": 14
+      }
+    }
+  },
+  "chess_char_4_12_b": {
+    "chessId": "chess_char_4_12_b",
+    "baseId": "chess_char_4_12_a",
+    "goldenId": "chess_char_4_12_b",
+    "isGolden": true,
+    "tier": 4,
+    "identifier": 204,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": "char_474_glady",
+      "tmplId": null,
+      "skillIndex": 2,
+      "uniEquipId": "uniequip_002_glady",
+      "potRank": 0
+    },
+    "shopSortId": 12,
+    "charId": "char_474_glady",
+    "name": "歌蕾蒂娅",
+    "appellation": "Gladiia",
+    "rarity": 6,
+    "profession": "SPECIAL",
+    "subProfessionId": "hookmaster",
+    "subProfessionName": "钩索师",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "swiftShip"
+    ],
+    "garrisonIds": [
+      "garrison_39_b"
+    ],
+    "price": 3,
+    "sellPrice": 1,
+    "upgradeNum": 0,
+    "upgradeChessId": null,
+    "status": {
+      "phase": 2,
+      "level": 60,
+      "skillLevel": 7,
+      "equipLevel": 1
+    },
+    "stats": {
+      "maxHp": 2232,
+      "atk": 792,
+      "def": 314,
+      "res": 0,
+      "cost": 13,
+      "blockCnt": 2,
+      "bat": 1.8,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "3-2",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        3
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "arrow",
+    "canHitFly": true,
+    "targetPriority": null,
+    "trait": {
+      "desc": "技能可以使敌人产生位移\n可以放置于远程位",
+      "descRaw": "技能可以使敌人产生<@ba.kw>位移</>\n可以放置于远程位",
+      "bb": {
+        "dist": 1,
+        "value": 800,
+        "interval": 0.066
+      },
+      "bbStr": {},
+      "rangeGrid": null,
+      "moduleDesc": "拖拽期间敌人受到正比于距离的法术伤害",
+      "moduleDescRaw": "拖拽期间敌人受到正比于距离的法术伤害"
+    },
+    "skill": {
+      "skillId": "skchr_glady_3",
+      "iconId": "skchr_glady_3",
+      "name": "缺水的碎漩狂舞",
+      "level": 7,
+      "desc": "对一个远处目标束缚并制造一个龙卷风使周围敌人移动速度-50%，每1.5秒造成100%攻击力的法术伤害并中等力度地拖拽至中心。技能结束时把目标地点周围的敌人中等力度地拖拽至面前",
+      "descRaw": "对一个远处目标<$ba.root>束缚</>并制造一个龙卷风使周围敌人移动速度<@ba.vup>-50%</>，每<@ba.vup>1.5</>秒造成<@ba.vup>100%</>攻击力的<@ba.vup>法术伤害</>并<@ba.vup>中等力度地</>拖拽至中心。技能结束时把目标地点周围的敌人<@ba.vup>中等力度地</>拖拽至面前",
+      "skillType": "MANUAL",
+      "durationType": "NONE",
+      "duration": 8,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 39,
+      "initSp": 24,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk_scale": 1,
+        "attack@force": 1,
+        "force": 1,
+        "projectile_delay_time": 9,
+        "interval": 1.5,
+        "hit_duration": 9,
+        "move_speed": -0.5
+      },
+      "bbStr": {},
+      "rangeId": null,
+      "rangeGrid": null,
+      "prefabId": "skchr_glady_3",
+      "trigger": {
+        "rule": "DEFAULT",
+        "rawRule": "DEFAULT",
+        "customRangeGrid": null
+      },
+      "index": 2,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "阿戈尔的波涛",
+        "desc": "在场时，所有【深海猎人】干员每秒回复2.5%最大生命值且受到【海怪】敌人的物理与法术伤害降低25%",
+        "descRaw": "在场时，所有【深海猎人】干员每秒回复2.5%最大生命值且受到【海怪】敌人的物理与法术伤害降低25%",
+        "bb": {
+          "hp_recovery_per_sec_by_max_hp_ratio": 0.025,
+          "damage_resistance": 0.25
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "弱肉强食",
+        "desc": "攻击重量小于等于3的敌人时攻击力提升至136%（+6%）",
+        "descRaw": "攻击重量小于等于3的敌人时攻击力提升至136%<@ba.talpu>（+6%）</>",
+        "bb": {
+          "value": 3,
+          "atk_scale": 1.36
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "攻击重量小于等于3的敌人时攻击力提升至130%",
+          "descRaw": "攻击重量小于等于3的敌人时攻击力提升至130%",
+          "bb": {
+            "value": 3,
+            "atk_scale": 1.3
+          }
+        }
+      }
+    ],
+    "tokens": [],
+    "module": {
+      "id": "uniequip_002_glady",
+      "name": "执政官手镜",
+      "type": "HOK-X",
+      "level": 1,
+      "active": true
+    },
+    "assets": {
+      "avatar": "char_474_glady_2",
+      "portrait": "char_474_glady_2",
+      "spine": "char_474_glady",
+      "skillIcon": "skchr_glady_3",
+      "subProfIcon": "sub_hookmaster_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_glady_1",
+        "iconId": "skchr_glady_1",
+        "name": "缺水的大洋裂断",
+        "level": 7,
+        "desc": "下次攻击会将目标中等力度地拖拽至面前，并对其造成相当于攻击力180%的物理伤害\n可充能2次",
+        "descRaw": "下次攻击会将目标<@ba.vup>中等力度地</>拖拽至面前，并对其造成相当于攻击力<@ba.vup>180%</>的物理伤害\n<@ba.rem>可充能2次</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 5,
+        "initSp": 0,
+        "maxChargeTime": 2,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 1.8,
+          "force": 1,
+          "cnt": 2
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_glady_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_glady_2",
+        "iconId": "skchr_glady_2",
+        "name": "缺水的掌握怒海",
+        "level": 7,
+        "desc": "攻击间隔增大，攻击范围扩大，每次攻击优先对被阻挡的两个目标造成相当于攻击力150%的物理伤害且以中等力度地拖拽至自己面前",
+        "descRaw": "攻击间隔<@ba.vdown>增大</>，攻击范围扩大，每次攻击优先对被阻挡的两个目标造成相当于攻击力<@ba.vup>150%</>的物理伤害且以<@ba.vup>中等力度地</>拖拽至自己面前",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 20,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 29,
+        "initSp": 20,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "base_attack_time": 0.5,
+          "attack@max_target": 2,
+          "attack@atk_scale": 1.5,
+          "attack@force": 1
+        },
+        "bbStr": {},
+        "rangeId": "3-14",
+        "rangeGrid": [
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            2
+          ],
+          [
+            -1,
+            3
+          ]
+        ],
+        "prefabId": "skchr_glady_2",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": [
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ],
+            [
+              -1,
+              1
+            ],
+            [
+              -1,
+              2
+            ],
+            [
+              -1,
+              3
+            ]
+          ]
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_glady_3",
+        "iconId": "skchr_glady_3",
+        "name": "缺水的碎漩狂舞",
+        "level": 7,
+        "desc": "对一个远处目标束缚并制造一个龙卷风使周围敌人移动速度-50%，每1.5秒造成100%攻击力的法术伤害并中等力度地拖拽至中心。技能结束时把目标地点周围的敌人中等力度地拖拽至面前",
+        "descRaw": "对一个远处目标<$ba.root>束缚</>并制造一个龙卷风使周围敌人移动速度<@ba.vup>-50%</>，每<@ba.vup>1.5</>秒造成<@ba.vup>100%</>攻击力的<@ba.vup>法术伤害</>并<@ba.vup>中等力度地</>拖拽至中心。技能结束时把目标地点周围的敌人<@ba.vup>中等力度地</>拖拽至面前",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 8,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 39,
+        "initSp": 24,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 1,
+          "attack@force": 1,
+          "force": 1,
+          "projectile_delay_time": 9,
+          "interval": 1.5,
+          "hit_duration": 9,
+          "move_speed": -0.5
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_glady_3",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 2,
+        "overrideTokenKey": null,
+        "isDefault": true
+      }
+    ],
+    "statsBase": {
+      "maxHp": 2122,
+      "atk": 747,
+      "def": 314,
+      "res": 0,
+      "cost": 13,
+      "blockCnt": 2,
+      "bat": 1.8,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "traitBase": {
+      "desc": "技能可以使敌人产生位移\n可以放置于远程位",
+      "descRaw": "技能可以使敌人产生<@ba.kw>位移</>\n可以放置于远程位",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "talentsBase": [
+      {
+        "index": 0,
+        "name": "阿戈尔的波涛",
+        "desc": "在场时，所有【深海猎人】干员每秒回复2.5%最大生命值且受到【海怪】敌人的物理与法术伤害降低25%",
+        "descRaw": "在场时，所有【深海猎人】干员每秒回复2.5%最大生命值且受到【海怪】敌人的物理与法术伤害降低25%",
+        "bb": {
+          "hp_recovery_per_sec_by_max_hp_ratio": 0.025,
+          "damage_resistance": 0.25
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "弱肉强食",
+        "desc": "攻击重量小于等于3的敌人时攻击力提升至136%（+6%）",
+        "descRaw": "攻击重量小于等于3的敌人时攻击力提升至136%<@ba.talpu>（+6%）</>",
+        "bb": {
+          "value": 3,
+          "atk_scale": 1.36
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "攻击重量小于等于3的敌人时攻击力提升至130%",
+          "descRaw": "攻击重量小于等于3的敌人时攻击力提升至130%",
+          "bb": {
+            "value": 3,
+            "atk_scale": 1.3
+          }
+        }
+      }
+    ],
+    "modules": [
+      {
+        "uniEquipId": "uniequip_002_glady",
+        "name": "执政官手镜",
+        "typeName": "HOK-X",
+        "typeIcon": "hok-x",
+        "icon": "uniequip_002_glady",
+        "isDefault": true,
+        "level": 1,
+        "attr": {
+          "maxHp": 110,
+          "atk": 45
+        },
+        "traitOverride": {
+          "desc": "技能可以使敌人产生位移\n可以放置于远程位",
+          "descRaw": "技能可以使敌人产生<@ba.kw>位移</>\n可以放置于远程位",
+          "bb": {
+            "dist": 1,
+            "value": 800,
+            "interval": 0.066
+          },
+          "bbStr": {},
+          "rangeGrid": null,
+          "moduleDesc": "拖拽期间敌人受到正比于距离的法术伤害",
+          "moduleDescRaw": "拖拽期间敌人受到正比于距离的法术伤害"
+        },
+        "talentChanges": []
+      },
+      {
+        "uniEquipId": "uniequip_003_glady",
+        "name": "淡金坠饰",
+        "typeName": "HOK-Y",
+        "typeIcon": "hok-y",
+        "icon": "uniequip_003_glady",
+        "isDefault": false,
+        "level": 1,
+        "attr": {
+          "atk": 50,
+          "def": 30
+        },
+        "traitOverride": {
+          "desc": "技能可以使敌人产生位移，向自身拖拽较远的敌人时力度提升一个等级\n可以放置于远程位",
+          "descRaw": "技能可以使敌人产生<@ba.kw>位移</>，向自身拖拽较远的敌人时力度提升一个等级\n可以放置于远程位",
+          "bb": {},
+          "bbStr": {},
+          "rangeGrid": null
+        },
+        "talentChanges": [
+          {
+            "talentIndex": -1,
+            "name": null,
+            "desc": null,
+            "descRaw": null,
+            "bb": {
+              "skill@range_radius": 2.5,
+              "skill@delta_force": 1,
+              "attack@range_radius": 2.5,
+              "attack@delta_force": 1
+            },
+            "bbStr": {},
+            "rangeGrid": null,
+            "tokenKey": null,
+            "hidden": true
+          }
+        ]
+      }
+    ],
+    "potDown": {
+      "0": {
+        "stats.cost": 16,
+        "statsBase.cost": 16
+      },
+      "1": {
+        "stats.respawnTime": 80,
+        "statsBase.respawnTime": 80
+      },
+      "2": {
+        "stats.cost": 15,
+        "statsBase.cost": 15
+      },
+      "4": {
+        "stats.cost": 14,
+        "statsBase.cost": 14
+      }
+    }
+  },
+  "chess_char_5_05_a": {
+    "chessId": "chess_char_5_05_a",
+    "baseId": "chess_char_5_05_a",
+    "goldenId": "chess_char_5_05_b",
+    "isGolden": false,
+    "tier": 5,
+    "identifier": 90,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "NORMAL",
+    "backup": {
+      "charId": "char_602_cdfend",
+      "tmplId": null,
+      "skillIndex": 2,
+      "uniEquipId": null,
+      "potRank": 0
+    },
+    "shopSortId": 5,
+    "charId": "char_4145_ulpia",
+    "name": "乌尔比安",
+    "appellation": "Ulpianus",
+    "rarity": 6,
+    "profession": "WARRIOR",
+    "subProfessionId": "crusher",
+    "subProfessionName": "重剑手",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "raidShip"
+    ],
+    "garrisonIds": [
+      "garrison_12_a"
+    ],
+    "price": 4,
+    "sellPrice": 1,
+    "upgradeNum": 3,
+    "upgradeChessId": "chess_char_5_05_b",
+    "status": {
+      "phase": 2,
+      "level": 1,
+      "skillLevel": 4,
+      "equipLevel": 0
+    },
+    "stats": {
+      "maxHp": 4947,
+      "atk": 1362,
+      "def": 0,
+      "res": 0,
+      "cost": 22,
+      "blockCnt": 2,
+      "bat": 2.5,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "1-1",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "melee",
+    "projectile": "none",
+    "canHitFly": false,
+    "targetPriority": null,
+    "trait": {
+      "desc": "同时攻击阻挡的所有敌人",
+      "descRaw": "同时攻击阻挡的<@ba.kw>所有敌人</>",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "skill": {
+      "skillId": "skchr_ulpia_3",
+      "iconId": "skchr_ulpia_3",
+      "name": "必须开辟的通路",
+      "level": 4,
+      "desc": "最大生命值+40%，攻击力+200%，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力135%的物理伤害和6秒晕眩。若船锚停留的位置可以部署，乌尔比安会移动到该位置\n可以手动结束技能，技能结束时乌尔比安会返回到初始的位置",
+      "descRaw": "最大生命值<@ba.vup>+40%</>，攻击力<@ba.vup>+200%</>，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力<@ba.vup>135%</>的物理伤害和<@ba.vup>6</>秒<$ba.stun>晕眩</>。若船锚停留的位置可以部署，乌尔比安会<$ba.addash>移动</>到该位置\n<@ba.rem>可以手动结束技能，技能结束时乌尔比安会返回到初始的位置</>",
+      "skillType": "MANUAL",
+      "durationType": "NONE",
+      "duration": 25,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 29,
+      "initSp": 10,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "max_hp": 0.4,
+        "atk": 2,
+        "atk_scale": 1.35,
+        "stun": 6,
+        "projectile_range": 1.8
+      },
+      "bbStr": {},
+      "rangeId": "6-1",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          0,
+          6
+        ]
+      ],
+      "prefabId": "skchr_ulpia_3",
+      "trigger": {
+        "rule": "CUSTOM_RANGE",
+        "rawRule": "CUSTOM_RANGE_SEARCH_ENEMY",
+        "customRangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ],
+          [
+            0,
+            5
+          ],
+          [
+            0,
+            6
+          ]
+        ]
+      },
+      "index": 2,
+      "overrideTokenKey": "token_10039_ulpia_block"
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "本性的坚守",
+        "desc": "每次受到伤害时，治疗自身100点生命值；生命值低于50%时，治疗效果提升至160点生命值",
+        "descRaw": "每次受到伤害时，治疗自身100点生命值；生命值低于50%时，治疗效果提升至160点生命值",
+        "bb": {
+          "hp_ratio": 0.5,
+          "value1": 100,
+          "value2": 160
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "血脉的哺养",
+        "desc": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加10（+1）次，其他【深海猎人】干员获得50%的提高效果",
+        "descRaw": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加10<@ba.talpu>（+1）</>次，其他【深海猎人】干员获得50%的提高效果",
+        "bb": {
+          "max_stack_cnt": 10,
+          "max_hp": 120,
+          "atk": 30,
+          "ulpia_t_1[abyssal].max_hp": 60,
+          "ulpia_t_1[abyssal].atk": 15,
+          "ulpia_t_1[abyssal].max_stack_cnt": 10
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加9次，其他【深海猎人】干员获得50%的提高效果",
+          "descRaw": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加9次，其他【深海猎人】干员获得50%的提高效果",
+          "bb": {
+            "max_stack_cnt": 9,
+            "max_hp": 120,
+            "atk": 30,
+            "ulpia_t_1[abyssal].max_hp": 60,
+            "ulpia_t_1[abyssal].atk": 15,
+            "ulpia_t_1[abyssal].max_stack_cnt": 9
+          }
+        }
+      }
+    ],
+    "tokens": [
+      "token_10039_ulpia_block"
+    ],
+    "module": {
+      "id": "uniequip_002_ulpia",
+      "name": "乌尔比安的衣橱",
+      "type": "CRU-X",
+      "level": 0,
+      "active": false
+    },
+    "assets": {
+      "avatar": "char_4145_ulpia",
+      "portrait": "char_4145_ulpia_1",
+      "spine": "char_4145_ulpia",
+      "skillIcon": "skchr_ulpia_3",
+      "subProfIcon": "sub_crusher_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_ulpia_1",
+        "iconId": "skchr_ulpia_1",
+        "name": "必须促成的接触",
+        "level": 4,
+        "desc": "向前方扔出船锚，船锚会把目标地点周围的两名敌人中等力度地拖拽至面前，对其造成相当于攻击力185%的物理伤害",
+        "descRaw": "向前方扔出船锚，船锚会把目标地点周围的两名敌人<@ba.vup>中等力度地</>拖拽至面前，对其造成相当于攻击力<@ba.vup>185%</>的物理伤害",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": -1,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 6,
+        "initSp": 0,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 1.85,
+          "max_target": 2,
+          "force": 1
+        },
+        "bbStr": {},
+        "rangeId": "3-2",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "prefabId": "skchr_ulpia_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_ulpia_2",
+        "iconId": "skchr_ulpia_2",
+        "name": "必须维系的界限",
+        "level": 4,
+        "desc": "第一天赋的效果提升至1.6倍，阻挡数+1，生命上限+30%，攻击力+115%\n持续时间无限",
+        "descRaw": "第一天赋的效果提升至<@ba.vup>1.6</>倍，阻挡数<@ba.vup>+1</>，生命上限<@ba.vup>+30%</>，攻击力<@ba.vup>+115%</>\n<@ba.rem>持续时间无限</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": -1,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 84,
+        "initSp": 0,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "talent_scale": 1.6,
+          "atk": 1.15,
+          "max_hp": 0.3,
+          "block_cnt": 1
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_ulpia_2",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_ulpia_3",
+        "iconId": "skchr_ulpia_3",
+        "name": "必须开辟的通路",
+        "level": 4,
+        "desc": "最大生命值+40%，攻击力+200%，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力135%的物理伤害和6秒晕眩。若船锚停留的位置可以部署，乌尔比安会移动到该位置\n可以手动结束技能，技能结束时乌尔比安会返回到初始的位置",
+        "descRaw": "最大生命值<@ba.vup>+40%</>，攻击力<@ba.vup>+200%</>，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力<@ba.vup>135%</>的物理伤害和<@ba.vup>6</>秒<$ba.stun>晕眩</>。若船锚停留的位置可以部署，乌尔比安会<$ba.addash>移动</>到该位置\n<@ba.rem>可以手动结束技能，技能结束时乌尔比安会返回到初始的位置</>",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 25,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 29,
+        "initSp": 10,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "max_hp": 0.4,
+          "atk": 2,
+          "atk_scale": 1.35,
+          "stun": 6,
+          "projectile_range": 1.8
+        },
+        "bbStr": {},
+        "rangeId": "6-1",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ],
+          [
+            0,
+            5
+          ],
+          [
+            0,
+            6
+          ]
+        ],
+        "prefabId": "skchr_ulpia_3",
+        "trigger": {
+          "rule": "CUSTOM_RANGE",
+          "rawRule": "CUSTOM_RANGE_SEARCH_ENEMY",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              4
+            ],
+            [
+              0,
+              5
+            ],
+            [
+              0,
+              6
+            ]
+          ]
+        },
+        "index": 2,
+        "overrideTokenKey": "token_10039_ulpia_block",
+        "isDefault": true
+      }
+    ],
+    "potDown": {
+      "0": {
+        "stats.cost": 24
+      },
+      "1": {
+        "stats.maxHp": 4697
+      },
+      "2": {
+        "stats.atk": 1317
+      },
+      "4": {
+        "stats.cost": 23
+      }
+    }
+  },
+  "chess_char_5_05_b": {
+    "chessId": "chess_char_5_05_b",
+    "baseId": "chess_char_5_05_a",
+    "goldenId": "chess_char_5_05_b",
+    "isGolden": true,
+    "tier": 5,
+    "identifier": 223,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "NORMAL",
+    "backup": {
+      "charId": "char_602_cdfend",
+      "tmplId": null,
+      "skillIndex": 2,
+      "uniEquipId": null,
+      "potRank": 0
+    },
+    "shopSortId": 5,
+    "charId": "char_4145_ulpia",
+    "name": "乌尔比安",
+    "appellation": "Ulpianus",
+    "rarity": 6,
+    "profession": "WARRIOR",
+    "subProfessionId": "crusher",
+    "subProfessionName": "重剑手",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "raidShip"
+    ],
+    "garrisonIds": [
+      "garrison_12_b"
+    ],
+    "price": 4,
+    "sellPrice": 1,
+    "upgradeNum": 0,
+    "upgradeChessId": null,
+    "status": {
+      "phase": 2,
+      "level": 60,
+      "skillLevel": 7,
+      "equipLevel": 1
+    },
+    "stats": {
+      "maxHp": 6155,
+      "atk": 1613,
+      "def": 0,
+      "res": 0,
+      "cost": 22,
+      "blockCnt": 2,
+      "bat": 2.5,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "1-1",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "melee",
+    "projectile": "none",
+    "canHitFly": false,
+    "targetPriority": null,
+    "trait": {
+      "desc": "同时攻击阻挡的所有敌人",
+      "descRaw": "同时攻击阻挡的<@ba.kw>所有敌人</>",
+      "bb": {
+        "heal_scale": 1.2
+      },
+      "bbStr": {},
+      "rangeGrid": null,
+      "moduleDesc": "受到的治疗效果提升20%",
+      "moduleDescRaw": "受到的治疗效果提升<@ba.kw>20%</>"
+    },
+    "skill": {
+      "skillId": "skchr_ulpia_3",
+      "iconId": "skchr_ulpia_3",
+      "name": "必须开辟的通路",
+      "level": 7,
+      "desc": "最大生命值+60%，攻击力+230%，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力140%的物理伤害和6秒晕眩。若船锚停留的位置可以部署，乌尔比安会移动到该位置\n可以手动结束技能，技能结束时乌尔比安会返回到初始的位置",
+      "descRaw": "最大生命值<@ba.vup>+60%</>，攻击力<@ba.vup>+230%</>，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力<@ba.vup>140%</>的物理伤害和<@ba.vup>6</>秒<$ba.stun>晕眩</>。若船锚停留的位置可以部署，乌尔比安会<$ba.addash>移动</>到该位置\n<@ba.rem>可以手动结束技能，技能结束时乌尔比安会返回到初始的位置</>",
+      "skillType": "MANUAL",
+      "durationType": "NONE",
+      "duration": 25,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 28,
+      "initSp": 15,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "max_hp": 0.6,
+        "atk": 2.3,
+        "atk_scale": 1.4,
+        "stun": 6,
+        "projectile_range": 1.8
+      },
+      "bbStr": {},
+      "rangeId": "6-1",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          0,
+          6
+        ]
+      ],
+      "prefabId": "skchr_ulpia_3",
+      "trigger": {
+        "rule": "CUSTOM_RANGE",
+        "rawRule": "CUSTOM_RANGE_SEARCH_ENEMY",
+        "customRangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ],
+          [
+            0,
+            5
+          ],
+          [
+            0,
+            6
+          ]
+        ]
+      },
+      "index": 2,
+      "overrideTokenKey": "token_10039_ulpia_block"
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "本性的坚守",
+        "desc": "每次受到伤害时，治疗自身100点生命值；生命值低于50%时，治疗效果提升至160点生命值",
+        "descRaw": "每次受到伤害时，治疗自身100点生命值；生命值低于50%时，治疗效果提升至160点生命值",
+        "bb": {
+          "hp_ratio": 0.5,
+          "value1": 100,
+          "value2": 160
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "血脉的哺养",
+        "desc": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加10（+1）次，其他【深海猎人】干员获得50%的提高效果",
+        "descRaw": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加10<@ba.talpu>（+1）</>次，其他【深海猎人】干员获得50%的提高效果",
+        "bb": {
+          "max_stack_cnt": 10,
+          "max_hp": 120,
+          "atk": 30,
+          "ulpia_t_1[abyssal].max_hp": 60,
+          "ulpia_t_1[abyssal].atk": 15,
+          "ulpia_t_1[abyssal].max_stack_cnt": 10
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加9次，其他【深海猎人】干员获得50%的提高效果",
+          "descRaw": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加9次，其他【深海猎人】干员获得50%的提高效果",
+          "bb": {
+            "max_stack_cnt": 9,
+            "max_hp": 120,
+            "atk": 30,
+            "ulpia_t_1[abyssal].max_hp": 60,
+            "ulpia_t_1[abyssal].atk": 15,
+            "ulpia_t_1[abyssal].max_stack_cnt": 9
+          }
+        }
+      }
+    ],
+    "tokens": [
+      "token_10039_ulpia_block"
+    ],
+    "module": {
+      "id": "uniequip_002_ulpia",
+      "name": "乌尔比安的衣橱",
+      "type": "CRU-X",
+      "level": 1,
+      "active": true
+    },
+    "assets": {
+      "avatar": "char_4145_ulpia_2",
+      "portrait": "char_4145_ulpia_2",
+      "spine": "char_4145_ulpia",
+      "skillIcon": "skchr_ulpia_3",
+      "subProfIcon": "sub_crusher_icon"
+    },
+    "skills": [
+      {
+        "skillId": "skchr_ulpia_1",
+        "iconId": "skchr_ulpia_1",
+        "name": "必须促成的接触",
+        "level": 7,
+        "desc": "向前方扔出船锚，船锚会把目标地点周围的两名敌人中等力度地拖拽至面前，对其造成相当于攻击力210%的物理伤害",
+        "descRaw": "向前方扔出船锚，船锚会把目标地点周围的两名敌人<@ba.vup>中等力度地</>拖拽至面前，对其造成相当于攻击力<@ba.vup>210%</>的物理伤害",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": -1,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 5,
+        "initSp": 0,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 2.1,
+          "max_target": 2,
+          "force": 1
+        },
+        "bbStr": {},
+        "rangeId": "3-2",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "prefabId": "skchr_ulpia_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_ulpia_2",
+        "iconId": "skchr_ulpia_2",
+        "name": "必须维系的界限",
+        "level": 7,
+        "desc": "第一天赋的效果提升至1.8倍，阻挡数+1，生命上限+40%，攻击力+130%\n持续时间无限",
+        "descRaw": "第一天赋的效果提升至<@ba.vup>1.8</>倍，阻挡数<@ba.vup>+1</>，生命上限<@ba.vup>+40%</>，攻击力<@ba.vup>+130%</>\n<@ba.rem>持续时间无限</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": -1,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 78,
+        "initSp": 0,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "talent_scale": 1.8,
+          "atk": 1.3,
+          "max_hp": 0.4,
+          "block_cnt": 1
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_ulpia_2",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 1,
+        "overrideTokenKey": null,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_ulpia_3",
+        "iconId": "skchr_ulpia_3",
+        "name": "必须开辟的通路",
+        "level": 7,
+        "desc": "最大生命值+60%，攻击力+230%，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力140%的物理伤害和6秒晕眩。若船锚停留的位置可以部署，乌尔比安会移动到该位置\n可以手动结束技能，技能结束时乌尔比安会返回到初始的位置",
+        "descRaw": "最大生命值<@ba.vup>+60%</>，攻击力<@ba.vup>+230%</>，立即朝面前扔出一个船锚，撞击到目标或达到最远距离时停止，并对周围所有敌人造成攻击力<@ba.vup>140%</>的物理伤害和<@ba.vup>6</>秒<$ba.stun>晕眩</>。若船锚停留的位置可以部署，乌尔比安会<$ba.addash>移动</>到该位置\n<@ba.rem>可以手动结束技能，技能结束时乌尔比安会返回到初始的位置</>",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 25,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 28,
+        "initSp": 15,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "max_hp": 0.6,
+          "atk": 2.3,
+          "atk_scale": 1.4,
+          "stun": 6,
+          "projectile_range": 1.8
+        },
+        "bbStr": {},
+        "rangeId": "6-1",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ],
+          [
+            0,
+            5
+          ],
+          [
+            0,
+            6
+          ]
+        ],
+        "prefabId": "skchr_ulpia_3",
+        "trigger": {
+          "rule": "CUSTOM_RANGE",
+          "rawRule": "CUSTOM_RANGE_SEARCH_ENEMY",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              4
+            ],
+            [
+              0,
+              5
+            ],
+            [
+              0,
+              6
+            ]
+          ]
+        },
+        "index": 2,
+        "overrideTokenKey": "token_10039_ulpia_block",
+        "isDefault": true
+      }
+    ],
+    "statsBase": {
+      "maxHp": 5825,
+      "atk": 1529,
+      "def": 0,
+      "res": 0,
+      "cost": 22,
+      "blockCnt": 2,
+      "bat": 2.5,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "traitBase": {
+      "desc": "同时攻击阻挡的所有敌人",
+      "descRaw": "同时攻击阻挡的<@ba.kw>所有敌人</>",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "talentsBase": [
+      {
+        "index": 0,
+        "name": "本性的坚守",
+        "desc": "每次受到伤害时，治疗自身100点生命值；生命值低于50%时，治疗效果提升至160点生命值",
+        "descRaw": "每次受到伤害时，治疗自身100点生命值；生命值低于50%时，治疗效果提升至160点生命值",
+        "bb": {
+          "hp_ratio": 0.5,
+          "value1": 100,
+          "value2": 160
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "血脉的哺养",
+        "desc": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加10（+1）次，其他【深海猎人】干员获得50%的提高效果",
+        "descRaw": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加10<@ba.talpu>（+1）</>次，其他【深海猎人】干员获得50%的提高效果",
+        "bb": {
+          "max_stack_cnt": 10,
+          "max_hp": 120,
+          "atk": 30,
+          "ulpia_t_1[abyssal].max_hp": 60,
+          "ulpia_t_1[abyssal].atk": 15,
+          "ulpia_t_1[abyssal].max_stack_cnt": 10
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加9次，其他【深海猎人】干员获得50%的提高效果",
+          "descRaw": "每次击倒一名敌人时，自身的生命上限提高120，攻击力提高30，最多叠加9次，其他【深海猎人】干员获得50%的提高效果",
+          "bb": {
+            "max_stack_cnt": 9,
+            "max_hp": 120,
+            "atk": 30,
+            "ulpia_t_1[abyssal].max_hp": 60,
+            "ulpia_t_1[abyssal].atk": 15,
+            "ulpia_t_1[abyssal].max_stack_cnt": 9
+          }
+        }
+      }
+    ],
+    "modules": [
+      {
+        "uniEquipId": "uniequip_002_ulpia",
+        "name": "乌尔比安的衣橱",
+        "typeName": "CRU-X",
+        "typeIcon": "cru-x",
+        "icon": "uniequip_002_ulpia",
+        "isDefault": true,
+        "level": 1,
+        "attr": {
+          "maxHp": 330,
+          "atk": 84
+        },
+        "traitOverride": {
+          "desc": "同时攻击阻挡的所有敌人",
+          "descRaw": "同时攻击阻挡的<@ba.kw>所有敌人</>",
+          "bb": {
+            "heal_scale": 1.2
+          },
+          "bbStr": {},
+          "rangeGrid": null,
+          "moduleDesc": "受到的治疗效果提升20%",
+          "moduleDescRaw": "受到的治疗效果提升<@ba.kw>20%</>"
+        },
+        "talentChanges": []
+      },
+      {
+        "uniEquipId": "uniequip_003_ulpia",
+        "name": "“前路”",
+        "typeName": "CRU-Y",
+        "typeIcon": "cru-y",
+        "icon": "uniequip_003_ulpia",
+        "isDefault": false,
+        "level": 1,
+        "attr": {
+          "maxHp": 360,
+          "atk": 100
+        },
+        "traitOverride": {
+          "desc": "同时攻击阻挡的所有敌人",
+          "descRaw": "同时攻击阻挡的<@ba.kw>所有敌人</>",
+          "bb": {
+            "damage_scale": 1.1
+          },
+          "bbStr": {},
+          "rangeGrid": null,
+          "moduleDesc": "对被阻挡的敌人伤害提升至110%",
+          "moduleDescRaw": "对被阻挡的敌人伤害提升至<@ba.kw>110%</>"
+        },
+        "talentChanges": []
+      }
+    ],
+    "potDown": {
+      "0": {
+        "stats.cost": 24,
+        "statsBase.cost": 24
+      },
+      "1": {
+        "stats.maxHp": 5905,
+        "statsBase.maxHp": 5575
+      },
+      "2": {
+        "stats.atk": 1568,
+        "statsBase.atk": 1484
+      },
+      "4": {
+        "stats.cost": 23,
+        "statsBase.cost": 23
+      }
+    }
+  },
+  "chess_char_6_23_a": {
+    "chessId": "chess_char_6_23_a",
+    "baseId": "chess_char_6_23_a",
+    "goldenId": "chess_char_6_23_b",
+    "isGolden": false,
+    "tier": 6,
+    "identifier": 630,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": null,
+      "tmplId": null,
+      "skillIndex": 1,
+      "uniEquipId": null,
+      "potRank": 0
+    },
+    "shopSortId": 630,
+    "charId": "char_4231_clemnt",
+    "name": "克莱门莎",
+    "appellation": "Clementia",
+    "rarity": 6,
+    "profession": "WARRIOR",
+    "subProfessionId": "primguard",
+    "subProfessionName": "本源近卫",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "swiftShip",
+      "steadShip"
+    ],
+    "garrisonIds": [
+      "garrison_clemnt_a"
+    ],
+    "price": 5,
+    "sellPrice": 1,
+    "upgradeNum": 3,
+    "upgradeChessId": "chess_char_6_30_b",
+    "status": {
+      "phase": 2,
+      "level": 60,
+      "skillLevel": 7,
+      "equipLevel": 0
+    },
+    "stats": {
+      "maxHp": 2491,
+      "atk": 902,
+      "def": 352,
+      "res": 10,
+      "cost": 21,
+      "blockCnt": 2,
+      "bat": 1.2,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "1-1",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "bolt",
+    "canHitFly": false,
+    "targetPriority": null,
+    "trait": {
+      "desc": "能够阻挡两个敌人，可以造成元素伤害",
+      "descRaw": "能够阻挡两个敌人，可以造成<@ba.kw>元素伤害</>",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "skill": {
+      "skillId": "skchr_clemnt_3",
+      "iconId": "skchr_clemnt_3",
+      "name": "与海为敌",
+      "level": 7,
+      "desc": "攻击范围扩大，攻击目标数+2，每次攻击对目标造成相当于攻击力200%的物理伤害并额外造成相当于物理伤害20%的侵蚀损伤；当全场有敌人侵蚀损伤爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成3次相当于攻击力270%的物理伤害与相当于攻击力200%的元素伤害\n技能装有10发弹药，打完后结束（可随时停止技能）",
+      "descRaw": "攻击范围<@ba.vup>扩大</>，攻击目标数<@ba.vup>+2</>，每次攻击对目标造成相当于攻击力<@ba.vup>200%</>的物理伤害并额外造成相当于物理伤害<@ba.vup>20%</>的<$ba.dt.erosion2>侵蚀损伤</>；当全场有敌人<$ba.dt.erosion2>侵蚀损伤</>爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成<@ba.vup>3</>次相当于攻击力<@ba.vup>270%</>的物理伤害与相当于攻击力<@ba.vup>200%</>的元素伤害\n<@ba.rem>技能装有10发弹药，打完后结束（可随时停止技能）</>",
+      "skillType": "MANUAL",
+      "durationType": "AMMO",
+      "duration": 0,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 45,
+      "initSp": 28,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "attack@max_target": 3,
+        "attack@atk_scale": 2,
+        "attack@ep_damage_ratio": 0.2,
+        "attack@ep_break_duration": 1,
+        "projectile_life_time": 5,
+        "s3_atk_scale": 2.7,
+        "ep_damage_scale": 2,
+        "trigger_time": 10,
+        "audio_trigger_cnt": 3,
+        "ep_break_duration": 1
+      },
+      "bbStr": {},
+      "rangeId": "3-2",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ]
+      ],
+      "prefabId": "skchr_clemnt_3",
+      "trigger": {
+        "rule": "ACTIVE_RANGE",
+        "rawRule": "DEFAULT",
+        "customRangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ]
+      },
+      "index": 2,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "生死定夺",
+        "desc": "造成物理伤害时有25%概率攻击力提升至150%（+15%），目标防御力低于初始值时概率提升至50%",
+        "descRaw": "造成物理伤害时有25%概率攻击力提升至150%<@ba.talpu>（+15%）</>，目标防御力低于初始值时概率提升至50%",
+        "bb": {
+          "t1_atk_scale": 1.5,
+          "prob_normal": 0.25,
+          "prob_special": 0.5
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 2,
+        "potBelow": {
+          "desc": "造成物理伤害时有25%概率攻击力提升至135%，目标防御力低于初始值时概率提升至50%",
+          "descRaw": "造成物理伤害时有25%概率攻击力提升至135%，目标防御力低于初始值时概率提升至50%",
+          "bb": {
+            "t1_atk_scale": 1.35,
+            "prob_normal": 0.25,
+            "prob_special": 0.5
+          }
+        }
+      },
+      {
+        "index": 1,
+        "name": "习得性防御",
+        "desc": "受到来自自身前方单位造成的物理和法术伤害降低35%（+5%），若伤害来源为【海怪】，则降低55%（+5%）",
+        "descRaw": "受到来自自身前方单位造成的物理和法术伤害降低35%<@ba.talpu>（+5%）</>，若伤害来源为【海怪】，则降低55%<@ba.talpu>（+5%）</>",
+        "bb": {
+          "damage_resistance_normal": 0.35,
+          "damage_resistance_seamonster": 0.55
+        },
+        "bbStr": {
+          "tag": "seamonster"
+        },
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "受到来自自身前方单位造成的物理和法术伤害降低30%，若伤害来源为【海怪】，则降低50%",
+          "descRaw": "受到来自自身前方单位造成的物理和法术伤害降低30%，若伤害来源为【海怪】，则降低50%",
+          "bb": {
+            "damage_resistance_normal": 0.3,
+            "damage_resistance_seamonster": 0.5
+          }
+        }
+      }
+    ],
+    "tokens": [],
+    "module": null,
+    "assets": {
+      "avatar": "char_4231_clemnt",
+      "avatarE2": "char_4231_clemnt_2",
+      "portrait": "char_4231_clemnt_1",
+      "portraitE2": "char_4231_clemnt_2",
+      "spine": {
+        "front": {
+          "skel": "/assets/spine/op/char_4231_clemnt/front/char_4231_clemnt.skel",
+          "atlas": "/assets/spine/op/char_4231_clemnt/front/char_4231_clemnt.atlas",
+          "textures": [
+            "/assets/spine/op/char_4231_clemnt/front/char_4231_clemnt.png"
+          ],
+          "pma": false,
+          "anims": {
+            "idle": "Idle",
+            "deploy": "Start",
+            "attack": {
+              "begin": null,
+              "loop": "Attack",
+              "end": null
+            },
+            "die": "Die"
+          }
+        }
+      }
+    },
+    "skills": [
+      {
+        "skillId": "skchr_clemnt_1",
+        "iconId": "skchr_clemnt_1",
+        "name": "冲蚀",
+        "level": 7,
+        "desc": "下次攻击的攻击力提高至225%并造成相当于物理伤害30%的侵蚀损伤",
+        "descRaw": "下次攻击的攻击力提高至<@ba.vup>225%</>并造成相当于物理伤害<@ba.vup>30%</>的<$ba.dt.erosion2>侵蚀损伤</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WHEN_ATTACK",
+        "spCost": 3,
+        "initSp": 0,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 2.25,
+          "ep_damage_ratio": 0.3
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_clemnt_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null
+      },
+      {
+        "skillId": "skchr_clemnt_2",
+        "iconId": "skchr_clemnt_2",
+        "name": "风暴潮",
+        "level": 7,
+        "desc": "攻击范围扩大，攻击速度+100，每次攻击对目标及其周围最多5名地面敌人造成相当于攻击力230%的物理伤害；向前方召唤浮游放逐舱，放逐舱使周围累计不超过8重量的最多15名地面敌人不断向前移动；放逐舱在移动3格后消失并留下漩涡，处于漩涡的所有敌人移动速度-70%且每秒受到200点侵蚀损伤和相当于攻击力285%的物理伤害",
+        "descRaw": "攻击范围<@ba.vup>扩大</>，攻击速度<@ba.vup>+100</>，每次攻击对目标及其周围最多<@ba.vup>5</>名地面敌人造成相当于攻击力<@ba.vup>230%</>的物理伤害；向前方召唤浮游放逐舱，放逐舱使周围累计不超过<@ba.vup>8</>重量的最多<@ba.vup>15</>名地面敌人不断向前移动；放逐舱在移动3格后消失并留下漩涡，处于漩涡的所有敌人移动速度<@ba.vup>-70%</>且每秒受到<@ba.vup>200</>点<$ba.dt.erosion2>侵蚀损伤</>和相当于攻击力<@ba.vup>285%</>的物理伤害",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 16,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 20,
+        "initSp": 12,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "attack_speed": 100,
+          "attack@aoe_atk_scale": 2.3,
+          "attack@max_passenger_mass": 8,
+          "attack@max_passenger_cnt": 15,
+          "attack@move_speed": -0.7,
+          "attack@water_element": 200,
+          "attack@physical_atk_scale": 2.85,
+          "attack@max_target": 5
+        },
+        "bbStr": {},
+        "rangeId": "4-1",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ]
+        ],
+        "prefabId": "skchr_clemnt_2",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              4
+            ]
+          ]
+        },
+        "index": 1,
+        "overrideTokenKey": null
+      },
+      {
+        "skillId": "skchr_clemnt_3",
+        "iconId": "skchr_clemnt_3",
+        "name": "与海为敌",
+        "level": 7,
+        "desc": "攻击范围扩大，攻击目标数+2，每次攻击对目标造成相当于攻击力200%的物理伤害并额外造成相当于物理伤害20%的侵蚀损伤；当全场有敌人侵蚀损伤爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成3次相当于攻击力270%的物理伤害与相当于攻击力200%的元素伤害\n技能装有10发弹药，打完后结束（可随时停止技能）",
+        "descRaw": "攻击范围<@ba.vup>扩大</>，攻击目标数<@ba.vup>+2</>，每次攻击对目标造成相当于攻击力<@ba.vup>200%</>的物理伤害并额外造成相当于物理伤害<@ba.vup>20%</>的<$ba.dt.erosion2>侵蚀损伤</>；当全场有敌人<$ba.dt.erosion2>侵蚀损伤</>爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成<@ba.vup>3</>次相当于攻击力<@ba.vup>270%</>的物理伤害与相当于攻击力<@ba.vup>200%</>的元素伤害\n<@ba.rem>技能装有10发弹药，打完后结束（可随时停止技能）</>",
+        "skillType": "MANUAL",
+        "durationType": "AMMO",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 45,
+        "initSp": 28,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "attack@max_target": 3,
+          "attack@atk_scale": 2,
+          "attack@ep_damage_ratio": 0.2,
+          "attack@ep_break_duration": 1,
+          "projectile_life_time": 5,
+          "s3_atk_scale": 2.7,
+          "ep_damage_scale": 2,
+          "trigger_time": 10,
+          "audio_trigger_cnt": 3,
+          "ep_break_duration": 1
+        },
+        "bbStr": {},
+        "rangeId": "3-2",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "prefabId": "skchr_clemnt_3",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        "index": 2,
+        "overrideTokenKey": null
+      }
+    ],
+    "modules": []
+  },
+  "chess_char_6_23_b": {
+    "chessId": "chess_char_6_23_b",
+    "baseId": "chess_char_6_23_a",
+    "goldenId": "chess_char_6_23_b",
+    "isGolden": true,
+    "tier": 6,
+    "identifier": 631,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "PRESET",
+    "backup": {
+      "charId": null,
+      "tmplId": null,
+      "skillIndex": 2,
+      "uniEquipId": null,
+      "potRank": 0
+    },
+    "shopSortId": 631,
+    "charId": "char_4231_clemnt",
+    "name": "克莱门莎",
+    "appellation": "Clementia",
+    "rarity": 6,
+    "profession": "WARRIOR",
+    "subProfessionId": "primguard",
+    "subProfessionName": "本源近卫",
+    "position": "MELEE",
+    "nationId": "egir",
+    "bonds": [
+      "egirShip",
+      "swiftShip",
+      "steadShip"
+    ],
+    "garrisonIds": [
+      "garrison_clemnt_b"
+    ],
+    "price": 5,
+    "sellPrice": 1,
+    "upgradeNum": 0,
+    "upgradeChessId": null,
+    "status": {
+      "phase": 2,
+      "level": 60,
+      "skillLevel": 7,
+      "equipLevel": 0
+    },
+    "stats": {
+      "maxHp": 2491,
+      "atk": 902,
+      "def": 352,
+      "res": 10,
+      "cost": 21,
+      "blockCnt": 2,
+      "bat": 1.2,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "1-1",
+    "rangeGrid": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ]
+    ],
+    "dmgType": "phys",
+    "attackKind": "ranged",
+    "projectile": "bolt",
+    "canHitFly": false,
+    "targetPriority": null,
+    "trait": {
+      "desc": "能够阻挡两个敌人，可以造成元素伤害",
+      "descRaw": "能够阻挡两个敌人，可以造成<@ba.kw>元素伤害</>",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "skill": {
+      "skillId": "skchr_clemnt_3",
+      "iconId": "skchr_clemnt_3",
+      "name": "与海为敌",
+      "level": 7,
+      "desc": "攻击范围扩大，攻击目标数+2，每次攻击对目标造成相当于攻击力200%的物理伤害并额外造成相当于物理伤害20%的侵蚀损伤；当全场有敌人侵蚀损伤爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成3次相当于攻击力270%的物理伤害与相当于攻击力200%的元素伤害\n技能装有10发弹药，打完后结束（可随时停止技能）",
+      "descRaw": "攻击范围<@ba.vup>扩大</>，攻击目标数<@ba.vup>+2</>，每次攻击对目标造成相当于攻击力<@ba.vup>200%</>的物理伤害并额外造成相当于物理伤害<@ba.vup>20%</>的<$ba.dt.erosion2>侵蚀损伤</>；当全场有敌人<$ba.dt.erosion2>侵蚀损伤</>爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成<@ba.vup>3</>次相当于攻击力<@ba.vup>270%</>的物理伤害与相当于攻击力<@ba.vup>200%</>的元素伤害\n<@ba.rem>技能装有10发弹药，打完后结束（可随时停止技能）</>",
+      "skillType": "MANUAL",
+      "durationType": "AMMO",
+      "duration": 0,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 45,
+      "initSp": 28,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "attack@max_target": 3,
+        "attack@atk_scale": 2,
+        "attack@ep_damage_ratio": 0.2,
+        "attack@ep_break_duration": 1,
+        "projectile_life_time": 5,
+        "s3_atk_scale": 2.7,
+        "ep_damage_scale": 2,
+        "trigger_time": 10,
+        "audio_trigger_cnt": 3,
+        "ep_break_duration": 1
+      },
+      "bbStr": {},
+      "rangeId": "3-2",
+      "rangeGrid": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ]
+      ],
+      "prefabId": "skchr_clemnt_3",
+      "trigger": {
+        "rule": "ACTIVE_RANGE",
+        "rawRule": "DEFAULT",
+        "customRangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ]
+      },
+      "index": 2,
+      "overrideTokenKey": null
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "生死定夺",
+        "desc": "造成物理伤害时有25%概率攻击力提升至150%（+15%），目标防御力低于初始值时概率提升至50%",
+        "descRaw": "造成物理伤害时有25%概率攻击力提升至150%<@ba.talpu>（+15%）</>，目标防御力低于初始值时概率提升至50%",
+        "bb": {
+          "t1_atk_scale": 1.5,
+          "prob_normal": 0.25,
+          "prob_special": 0.5
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 2,
+        "potBelow": {
+          "desc": "造成物理伤害时有25%概率攻击力提升至135%，目标防御力低于初始值时概率提升至50%",
+          "descRaw": "造成物理伤害时有25%概率攻击力提升至135%，目标防御力低于初始值时概率提升至50%",
+          "bb": {
+            "t1_atk_scale": 1.35,
+            "prob_normal": 0.25,
+            "prob_special": 0.5
+          }
+        }
+      },
+      {
+        "index": 1,
+        "name": "习得性防御",
+        "desc": "受到来自自身前方单位造成的物理和法术伤害降低35%（+5%），若伤害来源为【海怪】，则降低55%（+5%）",
+        "descRaw": "受到来自自身前方单位造成的物理和法术伤害降低35%<@ba.talpu>（+5%）</>，若伤害来源为【海怪】，则降低55%<@ba.talpu>（+5%）</>",
+        "bb": {
+          "damage_resistance_normal": 0.35,
+          "damage_resistance_seamonster": 0.55
+        },
+        "bbStr": {
+          "tag": "seamonster"
+        },
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false,
+        "potMin": 4,
+        "potBelow": {
+          "desc": "受到来自自身前方单位造成的物理和法术伤害降低30%，若伤害来源为【海怪】，则降低50%",
+          "descRaw": "受到来自自身前方单位造成的物理和法术伤害降低30%，若伤害来源为【海怪】，则降低50%",
+          "bb": {
+            "damage_resistance_normal": 0.3,
+            "damage_resistance_seamonster": 0.5
+          }
+        }
+      }
+    ],
+    "tokens": [],
+    "module": null,
+    "assets": {
+      "avatar": "char_4231_clemnt",
+      "avatarE2": "char_4231_clemnt_2",
+      "portrait": "char_4231_clemnt_1",
+      "portraitE2": "char_4231_clemnt_2",
+      "spine": {
+        "front": {
+          "skel": "/assets/spine/op/char_4231_clemnt/front/char_4231_clemnt.skel",
+          "atlas": "/assets/spine/op/char_4231_clemnt/front/char_4231_clemnt.atlas",
+          "textures": [
+            "/assets/spine/op/char_4231_clemnt/front/char_4231_clemnt.png"
+          ],
+          "pma": false,
+          "anims": {
+            "idle": "Idle",
+            "deploy": "Start",
+            "attack": {
+              "begin": null,
+              "loop": "Attack",
+              "end": null
+            },
+            "die": "Die"
+          }
+        }
+      }
+    },
+    "skills": [
+      {
+        "skillId": "skchr_clemnt_1",
+        "iconId": "skchr_clemnt_1",
+        "name": "冲蚀",
+        "level": 7,
+        "desc": "下次攻击的攻击力提高至225%并造成相当于物理伤害30%的侵蚀损伤",
+        "descRaw": "下次攻击的攻击力提高至<@ba.vup>225%</>并造成相当于物理伤害<@ba.vup>30%</>的<$ba.dt.erosion2>侵蚀损伤</>",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WHEN_ATTACK",
+        "spCost": 3,
+        "initSp": 0,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_scale": 2.25,
+          "ep_damage_ratio": 0.3
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": "skchr_clemnt_1",
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "overrideTokenKey": null
+      },
+      {
+        "skillId": "skchr_clemnt_2",
+        "iconId": "skchr_clemnt_2",
+        "name": "风暴潮",
+        "level": 7,
+        "desc": "攻击范围扩大，攻击速度+100，每次攻击对目标及其周围最多5名地面敌人造成相当于攻击力230%的物理伤害；向前方召唤浮游放逐舱，放逐舱使周围累计不超过8重量的最多15名地面敌人不断向前移动；放逐舱在移动3格后消失并留下漩涡，处于漩涡的所有敌人移动速度-70%且每秒受到200点侵蚀损伤和相当于攻击力285%的物理伤害",
+        "descRaw": "攻击范围<@ba.vup>扩大</>，攻击速度<@ba.vup>+100</>，每次攻击对目标及其周围最多<@ba.vup>5</>名地面敌人造成相当于攻击力<@ba.vup>230%</>的物理伤害；向前方召唤浮游放逐舱，放逐舱使周围累计不超过<@ba.vup>8</>重量的最多<@ba.vup>15</>名地面敌人不断向前移动；放逐舱在移动3格后消失并留下漩涡，处于漩涡的所有敌人移动速度<@ba.vup>-70%</>且每秒受到<@ba.vup>200</>点<$ba.dt.erosion2>侵蚀损伤</>和相当于攻击力<@ba.vup>285%</>的物理伤害",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 16,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 20,
+        "initSp": 12,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "attack_speed": 100,
+          "attack@aoe_atk_scale": 2.3,
+          "attack@max_passenger_mass": 8,
+          "attack@max_passenger_cnt": 15,
+          "attack@move_speed": -0.7,
+          "attack@water_element": 200,
+          "attack@physical_atk_scale": 2.85,
+          "attack@max_target": 5
+        },
+        "bbStr": {},
+        "rangeId": "4-1",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            4
+          ]
+        ],
+        "prefabId": "skchr_clemnt_2",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ],
+            [
+              0,
+              4
+            ]
+          ]
+        },
+        "index": 1,
+        "overrideTokenKey": null
+      },
+      {
+        "skillId": "skchr_clemnt_3",
+        "iconId": "skchr_clemnt_3",
+        "name": "与海为敌",
+        "level": 7,
+        "desc": "攻击范围扩大，攻击目标数+2，每次攻击对目标造成相当于攻击力200%的物理伤害并额外造成相当于物理伤害20%的侵蚀损伤；当全场有敌人侵蚀损伤爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成3次相当于攻击力270%的物理伤害与相当于攻击力200%的元素伤害\n技能装有10发弹药，打完后结束（可随时停止技能）",
+        "descRaw": "攻击范围<@ba.vup>扩大</>，攻击目标数<@ba.vup>+2</>，每次攻击对目标造成相当于攻击力<@ba.vup>200%</>的物理伤害并额外造成相当于物理伤害<@ba.vup>20%</>的<$ba.dt.erosion2>侵蚀损伤</>；当全场有敌人<$ba.dt.erosion2>侵蚀损伤</>爆发时，消耗1发弹药对目标所在位置及其周围四格内所有地面敌人造成<@ba.vup>3</>次相当于攻击力<@ba.vup>270%</>的物理伤害与相当于攻击力<@ba.vup>200%</>的元素伤害\n<@ba.rem>技能装有10发弹药，打完后结束（可随时停止技能）</>",
+        "skillType": "MANUAL",
+        "durationType": "AMMO",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 45,
+        "initSp": 28,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "attack@max_target": 3,
+          "attack@atk_scale": 2,
+          "attack@ep_damage_ratio": 0.2,
+          "attack@ep_break_duration": 1,
+          "projectile_life_time": 5,
+          "s3_atk_scale": 2.7,
+          "ep_damage_scale": 2,
+          "trigger_time": 10,
+          "audio_trigger_cnt": 3,
+          "ep_break_duration": 1
+        },
+        "bbStr": {},
+        "rangeId": "3-2",
+        "rangeGrid": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ]
+        ],
+        "prefabId": "skchr_clemnt_3",
+        "trigger": {
+          "rule": "ACTIVE_RANGE",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ]
+          ]
+        },
+        "index": 2,
+        "overrideTokenKey": null
+      }
+    ],
+    "modules": [],
+    "traitBase": {
+      "desc": "可以进行远程攻击，但此时攻击力降低至80%",
+      "descRaw": "可以进行<@ba.kw>远程攻击</>，但此时攻击力降低至80%",
+      "bb": {
+        "atk_scale": 0.8
+      },
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "talentsBase": [
+      {
+        "index": 0,
+        "name": "颂乐音符",
+        "desc": "丰川祥子可以持续攻击且攻击会演奏追踪敌人的音符，音符飘出攻击范围一段时间后消失。每存在一个音符，Ave Mujica成员无视敌人3%的防御力和2%法术抗性（最多叠加至10层）",
+        "descRaw": "丰川祥子可以持续攻击且攻击会演奏追踪敌人的音符，音符飘出攻击范围一段时间后消失。每存在一个音符，<$ba.mujica>Ave Mujica</>成员无视敌人3%的防御力和2%法术抗性（最多叠加至10层）",
+        "bb": {
+          "def_pen": 0.03,
+          "res_pen": 0.02,
+          "max_stack": 10
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "毋畏遗忘",
+        "desc": "对敌人造成伤害时使Fever+3",
+        "descRaw": "对敌人造成伤害时使<$ba.fever>Fever</>+3",
+        "bb": {
+          "fever": 3
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      }
+    ],
+    "statsBase": {
+      "maxHp": 1910,
+      "atk": 704,
+      "def": 400,
+      "res": 10,
+      "cost": 18,
+      "blockCnt": 2,
+      "bat": 1.3,
+      "aspd": 100,
+      "respawnTime": 66,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    }
+  }
+}
