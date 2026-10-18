@@ -10,7 +10,7 @@ import { bondList, offBondCounts } from '../bondsMeta.js';
 import { cardView } from '../choices.js';
 import { hexIdsOf, hexView, enemyHexView, firstLeakFree } from '../hextech.js';
 import { bountySpawns, previewOf } from '../waves.js';
-import { applyEnemyHexes, enemyHexMods } from '../hextech.js';
+import { applyEnemyHexes, matchEnemyMods } from '../hextech.js';
 import { timelineAt } from '../fields.js';
 import { bossFieldPlacement } from '../finalAssault.js';
 import { battleProgress } from '../../sim/spec.js';
@@ -284,7 +284,7 @@ export class MatchViews {
    */
   nextEnemiesFor(ps) {
     if (!ps.alive) return [];
-    const fold = (list) => applyEnemyHexes(list, enemyHexMods(this));
+    const fold = (list) => applyEnemyHexes(list, matchEnemyMods(this));
     if (this.bossWaves) {
       const g = this.bossGroupOf(ps);
       if (!g) return [];

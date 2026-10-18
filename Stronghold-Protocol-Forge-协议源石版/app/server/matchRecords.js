@@ -200,7 +200,7 @@ export class MatchRecords {
 
   /**
    * 落一条**完整结算**。`summary` 形状不对（没有 players、房间号不合法）⇒ 返回 null 且**什么都不写**。
-   * @param {{ code: string, mode?: string, difficulty?: string, matchCount?: number }} room
+   * @param {{ code: string, mode?: string, difficulty?: string, level?: number, matchCount?: number }} room
    * @param {object|null} summary `server/lobby.js` 的结算摘要
    * @param {number} [finishedAt] ms epoch（测试注入；生产走 `this.now()` 的调用方）
    * @returns {object|null} 内部记录（未裁剪）
@@ -217,6 +217,7 @@ export class MatchRecords {
       finishedAt,
       mode: room.mode,
       difficulty: summary.difficulty || room.difficulty,
+      level: Number(summary.protocolLevel ?? room.level) || 0,
       victory: !!summary.victory,
       roundsPassed: Number(summary.roundsPassed) || 0,
       durationMs: Number(summary.durationMs) || 0,

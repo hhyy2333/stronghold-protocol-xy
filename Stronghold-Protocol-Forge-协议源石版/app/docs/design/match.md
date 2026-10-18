@@ -169,3 +169,23 @@ before mutation; data preparation failure leaves the old opening intact. This is
 mode rule. Unrelated result-screen changes from PR #408 are not included.
 
 The shared DIY detail preview (stats, range, trait, talents, potential, cultivation and matching normal/elite skill descriptions) follows roster loadout resolution. Jessica shield placement is limited to her four orthogonal neighbors. The two Ptilopsis prep-gift copy exceptions are defined in §31.3 and META; no generic change to all copied conditions is implied.
+
+
+## 协议等级 1–18（2026-10-18，业主裁定）
+
+**叠加在「终极模拟」之上的一条数值难度轴，`0` = 关闭。** 它不是第 5 个模式：四个难度是四份不同的官方数据
+（回合表 / 敌池 / 盟约集合 / 首领回合），各做 18 份 = 72 套数据，不可维护。等级只折进引擎**已有**的读取点。
+
+- **口径**：只有 `difficulty === 'ABYSS'` 能开 1–18；其他难度上服务端归一化为 0。`0` 时引擎逐字节不变
+  （golden 不移动）；13–18 标 `experimental`（框架，数值等平衡脚本扫过再定）。
+- **表**：`shared/protocolLevels.js`。每级只动 1–2 个玩家能感知的量，乘法曲线，每 3 级一个拐点：
+  1–6 敌方生命/攻击；7–12 追加防御/法抗、漏怪 LP、每波数量、收入；13–18 首领池、额外敌方协议源石、收入惩罚。
+- **读取点**：`GameData.protocolLevel / protocolLevelMods`（`income()`、`bossPoolHp()`）；
+  `server/match/hextech.js matchEnemyMods`（敌方协议源石 + 等级折成同一份 spawn mods —— **实战与预览是同一个
+  fold**）；`settle.js` 的漏怪损失。
+- **协议 / 房间**：`room.create.level`（可选）、`room.setLevel`（房主、开局前、ABYSS 专属，别处点名拒绝）、
+  `room.state.level`（只有 >0 才带这个键）；`m.result.protocolLevel` 进战绩（`matchRecords` 的 `level`、
+  `ui/stats` 的 `level`）。
+- **匹配**：`server/matchmaking.js` 严格按 `(difficulty, level)` 成房 —— 不同等级不会凑到同一间。
+- **待办**：13–18 的数值、额外敌方协议源石真正发牌、扫级平衡脚本、按级分榜的排行 UI。
+

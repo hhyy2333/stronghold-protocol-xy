@@ -176,6 +176,8 @@ export function buildResult(m, outcome) {
     teamLp: m.teamLp != null ? Math.max(0, Math.round(m.teamLp)) : null,
     modeId: m.modeId,
     difficulty: m.difficulty,
+    // 协议等级 (owner's call 2026-10-18): 0 when off; records/战绩 are split by it
+    protocolLevel: m.protocolLevel || 0,
     stageId: m.stageId,
     bossId: m.bossId,
     hiddenBossId: m.hiddenBossId,

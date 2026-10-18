@@ -16,6 +16,15 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 新：协议等级 1–18（只叠加在终极模拟上）
+
+- **决定**（业主 2026-10-18）：加一条 1–18 的额外难度等级，**只在最高难度（终极模拟）能开启**；战绩按级分；匹配严格同级；这一轮先出框架（1–12 调过，13–18 标实验）。
+- **实现**：新增 `shared/protocolLevels.js`（18 行手写数值表 + 纯函数）。`0` = 关闭，其它难度服务端归一化为 0 ⇒ 引擎逐字节不变、golden 不移动。每级只动 1–2 个可感知量：1–6 敌方生命/攻击；7–12 追加防御/法抗、漏怪 LP、每波数量、收入；13–18 首领池、额外敌方协议源石（数据已留）、收入惩罚。
+- **落点**：`GameData.protocolLevel / protocolLevelMods`（收入、首领池）；`server/match/hextech.js` 的 `matchEnemyMods`（敌方协议源石 + 等级折成同一份 spawn mods，战斗与预览同一个 fold）；`settle.js` 漏怪损失；`room.create.level` / `room.setLevel` / `room.state.level`（>0 才带）；`m.result.protocolLevel` → 战绩 `level`；`server/matchmaking.js` 严格按 (难度, 等级) 成房。
+- **界面**：大厅「选择模拟协议」在终极模拟下多一个 0–18 滑杆（0=关闭，显示该级倍率与是否实验档）；房间难度旁显示 `Lv.N`，房主可在房间的协议面板里改（服务端只允许 ABYSS 开）。
+- **测试**：新增 `test/match/protocol-levels.test.js` 5 条（表/归一化/0 级不变/折入/接线）；`test/match/hextech.test.js` 43/43；`browser-syntax`、`client-imports` 通过；`i18n check --all --strict` 0 errors。
+- **未做（下一步）**：13–18 数值未调；额外敌方协议源石尚未真正发牌；扫级平衡脚本未写；按级分榜的排行 UI 只做到记录/统计带 `level`。
+
 ### 改：局内聊天常态开启、可隐藏；边框与排版优化
 
 - **决定**（业主 2026-10-18）：「常态开启可隐藏，然后再优化下边框」。

@@ -13,6 +13,7 @@
 // `applyEnemyHexes` folds them into a battle's spawn list.
 
 import { sumEnemyMods, rollOffers, fissionBondIds as sharedFissionBondIds, fissionCap, fissionMul } from '../../shared/hextech.js';
+import { protocolLevelEnemyMods } from '../../shared/protocolLevels.js';
 import { hasBattlePart, DEBT_EFFECT_KEY } from '../sim/content/hextech.js';
 import { bossPoolHp } from './finalAssault.js';
 
@@ -427,6 +428,18 @@ export function firstLeakFree(ps) {
 export function enemyHexMods(m) {
   const list = Array.isArray(m.enemyHexes) ? m.enemyHexes : [];
   return sumEnemyMods(list.map((e) => m.gd.hex(e && e.id ? e.id : e)).filter(Boolean));
+}
+
+/**
+ * 这一局**全部**敌方 mods：敌方协议源石 + 协议等级（owner's call 2026-10-18）。战斗（combat.js）与预览（views.js）
+ * 必须折同一份 —— 这就是「预览的敌人数量 = 实战出怪数量」那条纪律的延续。等级关闭时它与 enemyHexMods 逐字节相同。
+ * @param {any} m
+ */
+export function matchEnemyMods(m) {
+  const list = (Array.isArray(m.enemyHexes) ? m.enemyHexes : []).map((e) => m.gd.hex(e && e.id ? e.id : e)).filter(Boolean);
+  const level = protocolLevelEnemyMods(m.protocolLevel, m.difficulty);
+  if (level) list.push(level);
+  return sumEnemyMods(list);
 }
 
 /** The keys a leader's spawns may take: the shared leader HP pool is never scaled (waves.js:339). */

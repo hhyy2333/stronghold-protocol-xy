@@ -25,6 +25,7 @@ import { ModPicker } from '../ui/modPicker.js';
 import { ResumeMatchButton } from '../ui/resumeMatch.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MIN_SEATS, MAX_SPECTATORS, modeIdFor, clampSeats, ERR, ERR_TEXT } from '../../../shared/constants.js';
+import { PROTOCOL_LEVEL_MAX, protocolLevelRow } from '../../../shared/protocolLevels.js';
 import { RANDOM_MODE } from '../../../shared/randomMode.js';
 import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo, confirmDialog } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
@@ -649,7 +650,27 @@ export function ProtoCard({ roomMode, difficulty, selected, onSelect, matchmakin
  * Comes up from black over the hub (`chained`: straight after 选择同盟方式, already black) and fades back out
  * (ui/transitions.js); the picture is redrawn for each difficulty.
  */
-function ProtocolSelect({ card, roomMode, random, variant, difficulty, onDifficulty, onClose, matchmaking, brief, privateRoom, onPrivate,
+/**
+ * 协议等级选择器 (owner's call 2026-10-18): the 1–18 axis; 0 = 关闭. Shown ONLY on the highest difficulty — the server
+ * normalizes the level to 0 on every other difficulty, and quick match is strict on (difficulty, level).
+ */
+function ProtocolLevelPicker({ level = 0, onLevel }) {
+  const row = level > 0 ? protocolLevelRow(level) : null;
+  return html`<div class="proto-level" data-testid="protocol-level">
+    <div class="proto-level__head">
+      <span>${t('协议等级')}</span>
+      <b class="num">${level > 0 ? t('等级 {n}', { n: level }) : t('关闭')}</b>
+    </div>
+    <input type="range" min="0" max=${PROTOCOL_LEVEL_MAX} step="1" value=${level} aria-label=${t('协议等级')}
+      onInput=${(e) => onLevel(Number(e.currentTarget.value))} />
+    <div class="proto-level__foot"><span>0</span><span>${PROTOCOL_LEVEL_MAX}</span></div>
+    <p class="proto-level__note">${row
+      ? t('敌方生命 ×{hp}、攻击 ×{atk}；等级越高，首领池与收入惩罚越重', { hp: row.enemy.hpMul.toFixed(2), atk: row.enemy.atkMul.toFixed(2) })
+      : t('关闭：与之前的终极模拟完全一致')}${row?.experimental ? t('（测试中的档位）') : ''}</p>
+  </div>`;
+}
+
+function ProtocolSelect({ card, roomMode, random, variant, difficulty, onDifficulty, level = 0, onLevel = () => {}, onClose, matchmaking, brief, privateRoom, onPrivate,
   online, maint, busy, isSearching, onCreate, onQueue, purpose = 'create', onSearch, onCancel, mm, onBrowse, chained = false,
   seatValue, seatRange, onSeatPick, selectedMods, onToggleMod, onSelectMods, queue, onQuickMatch, onCancelQuickMatch, test = false }) {
   const [leaving, leave] = useLeave(onClose);
@@ -733,6 +754,7 @@ function ProtocolSelect({ card, roomMode, random, variant, difficulty, onDifficu
             ${roomMode === 'coop' && CAN_ROOM_QUEUE && !CAN_QUEUE ? html`<${Button} variant="secondary" size="md" icon="users" loading=${busy === 'queue'} disabled=${!online || maint?.active || !!queue}
               onClick=${onQuickMatch}>${t('快速匹配')}<//>` : null}
           </div>` : null}
+          ${difficulty === 'ABYSS' ? html`<${ProtocolLevelPicker} level=${level} onLevel=${onLevel} />` : null}
           ${hasRoomModPicker(roomMode) ? html`<${ModPicker} selected=${selectedMods} onToggle=${onToggleMod} onSelect=${onSelectMods} />` : null}
           ${roomMode === 'coop'
             ? html`<${SeatCapPicker} value=${seatValue} min=${seatRange.min} max=${seatRange.max} onChange=${onSeatPick} />`
@@ -961,6 +983,17 @@ export function LobbyScreen() {
   useData('config');
   const [simulation, setSimulation] = useState(lobbySimulationPreference);
   const [difficulty, setDifficulty] = useState(() => preferredDifficulty(lobbySimulationPreference()));
+  // 协议等级 (owner's call 2026-10-18): remembered per browser; only meaningful on ABYSS (everything else sends no level).
+  const [protocolLevel, setProtocolLevel] = useState(() => {
+    const saved = loadPref('lobby.protocolLevel', 0);
+    return Number.isInteger(saved) && saved >= 0 && saved <= PROTOCOL_LEVEL_MAX ? saved : 0;
+  });
+  const pickProtocolLevel = (v) => {
+    const n = Math.max(0, Math.min(PROTOCOL_LEVEL_MAX, Math.trunc(Number(v)) || 0));
+    setProtocolLevel(n);
+    savePref('lobby.protocolLevel', n);
+  };
+  const levelFor = (d) => (d === 'ABYSS' ? protocolLevel : 0);
   const [fpVariant, setFpVariant] = useState(firepowerVariantPreference);
   // 测试场 is a solo room too (server/lobby.js refuses a co-op test field): only 'coop' maps to coop.
   const roomMode = simulation === 'coop' ? 'coop' : 'solo';
@@ -1118,6 +1151,9 @@ export function LobbyScreen() {
     // 测试场: a room flag fixed for the room's lifetime (server/lobby.js Room.test). Absent for every other mode,
     // so their request is byte-for-byte what it always was.
     ...(testMode ? { test: true } : {}),
+    // 协议等级 (owner 2026-10-18): only the highest difficulty sends it; 0/off sends NO key (the request stays the one
+    // this client always sent).
+    ...(levelFor(difficulty) > 0 ? { level: levelFor(difficulty) } : {}),
   }));
   const queueMatch = () => run('queue', () => net.request('match.queue', { mode: roomMode, difficulty, random: randomMode, ...(randomMode ? { variant } : {}), fillBots: false }));
   const cancelMatch = () => run('cancel', () => net.request('match.cancel'));
@@ -1126,7 +1162,7 @@ export function LobbyScreen() {
   // `modIds` is deliberately NOT sent — a quick-matched room runs the server's default set.
   const quickMatch = () => run('queue', async () => {
     const set = roomMods.currentModSet();
-    const payload = { mode: 'coop', difficulty, ...(set ? { mods: set.digest } : {}) };
+    const payload = { mode: 'coop', difficulty, ...(set ? { mods: set.digest } : {}), ...(levelFor(difficulty) > 0 ? { level: levelFor(difficulty) } : {}) };
     await net.request('room.queue', payload, { timeout: 20000 });
     // Only a reply that was actually `ok` reaches this line (`run` shows the error otherwise — QUEUE_FULL included).
     // The server's own `room.queued` frame follows for a real queue; until it does, the panel shows the one frame the
@@ -1271,7 +1307,7 @@ export function LobbyScreen() {
     </main>
 
     ${sheetOpen ? html`<${ProtocolSelect} card=${modeCard} roomMode=${roomMode} random=${randomMode} variant=${variant} difficulty=${difficulty}
-      onDifficulty=${pickDifficulty} onClose=${() => setSheetOpen(false)} matchmaking=${matchmakingCounts}
+      onDifficulty=${pickDifficulty} level=${levelFor(difficulty)} onLevel=${pickProtocolLevel} onClose=${() => setSheetOpen(false)} matchmaking=${matchmakingCounts}
       brief=${randomMode ? html`<${FirepowerBrief} variant=${fpVariant} onVariant=${pickVariant} />` : null}
       privateRoom=${privateRoom} onPrivate=${setPrivateRoom} online=${online} maint=${maint} busy=${busy} isSearching=${isSearching}
       onCreate=${create} onQueue=${async () => { await queueMatch(); setSheetOpen(false); }}

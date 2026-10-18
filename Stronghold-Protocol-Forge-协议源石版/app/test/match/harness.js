@@ -73,6 +73,8 @@ export function makeMatch(o = {}) {
   }
   h.m = new Match({
     roomCode: 'TEST', mode, difficulty, seats, spectators: o.spectators, seed: o.seed ?? 1, matchNo: o.matchNo, data: o.data ?? DATA, log,
+    // 协议等级 (owner's call 2026-10-18): normalized by GameData against the mode's difficulty
+    ...(o.protocolLevel != null ? { protocolLevel: o.protocolLevel } : {}),
     send: (id, msg) => {
       for (const fn of h.onSend) fn(id, msg);
       if (msg.t === 'b.snap' || msg.t === 'b.ev') { h.frames++; if (!captureFrames) return true; }

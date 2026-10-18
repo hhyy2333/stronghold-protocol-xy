@@ -346,6 +346,8 @@ export class Match {
     this.formView = formView(this.data && this.data.chess, this.eliteForm, { tokens: this.data && this.data.tokens });
     this.gd = new GameData(this.data, this.modeId, {
       ...(this.seatCap ? { seatCap: this.seatCap } : {}),
+      // 协议等级 (owner's call 2026-10-18): normalized inside GameData against the mode's own difficulty; 0 when off.
+      ...(opts.protocolLevel != null ? { protocolLevel: opts.protocolLevel } : {}),
       // 本局的口径（DESIGN §28.39）。空数组 = 没有包声明口径 ⇒ `GameData` 一个字节都不动。
       variants: this.variants,
       // 本局的行为开关（DESIGN §28.43.1）：prep 侧的 `pieceBonds` 从这一份读取视图里读 `morphPairing`。
@@ -354,6 +356,9 @@ export class Match {
       forms: this.formView,
     });
     if (!this.difficulty) this.difficulty = this.gd.difficulty;
+    /** 协议等级：已由 GameData 归一化（只有终极模拟能 >0）；战斗/预览的一切读取都从这里或 gd 拿。 */
+    this.protocolLevel = this.gd.protocolLevel;
+    this.protocolLevelMods = this.gd.protocolLevelMods;
     this.isSolo = this.mode === 'solo' || this.gd.isSolo;
     /**
      * 测试场 (opts.test, the owner's request of 2026-10-11; server/lobby.js Room.test): a room the host created as a test

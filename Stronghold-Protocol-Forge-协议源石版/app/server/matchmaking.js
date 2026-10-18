@@ -51,6 +51,7 @@
 //     queue size, and "start with whoever is here" is an owner decision (reported, not implemented).
 
 import { DIFFICULTIES, MAX_SEATS, ERR } from '../shared/constants.js';
+import { protocolLevelActive } from '../shared/protocolLevels.js';
 import { sendSession } from './net.js';
 
 const fail = (code, detail) => (detail ? { error: code, detail } : { error: code });
@@ -139,13 +140,16 @@ export class MatchmakeQueue {
     if (!session.connected) return fail(ERR.QUEUED, 'not connected');
     if (msg.mode != null && msg.mode !== QUEUE_MODE) return fail(ERR.BAD_MSG, 'a quick match forms a co-op room');
     if (this.waiting().length >= this.max) return fail(ERR.QUEUE_FULL, `the queue holds ${this.max} waiting players`);
+    const difficulty = DIFFICULTIES.includes(msg.difficulty) ? msg.difficulty : this.opts.difficulty;
     const entry = {
       playerId,
       session,
       at: this.lobby.now(),
       connected: true,
       mode: QUEUE_MODE,
-      difficulty: DIFFICULTIES.includes(msg.difficulty) ? msg.difficulty : this.opts.difficulty,
+      difficulty,
+      // 协议等级 (owner's call 2026-10-18): only the HIGHEST difficulty may carry one; matching is STRICT on it.
+      level: protocolLevelActive(msg.level, difficulty) ? msg.level : 0,
       mods: typeof msg.mods === 'string' ? msg.mods : undefined,
     };
     this.entries.set(playerId, entry);
@@ -181,7 +185,12 @@ export class MatchmakeQueue {
   tryPlace() {
     const order = this.waiting();
     if (order.length < this.size) return false;
-    const picked = order.slice(0, this.size);
+    // 严格同级（业主 2026-10-18）：只把**同一难度 + 同一协议等级**的等待者凑成一房；队首凑不齐就等下一轮。
+    // （等级只在终极模拟上 >0，其它难度所有条目的 level 都是 0，于是这里逐字等于从前的行为。）
+    const head = order[0];
+    const group = order.filter((e) => e.difficulty === head.difficulty && (e.level || 0) === (head.level || 0));
+    if (group.length < this.size) return false;
+    const picked = group.slice(0, this.size);
     for (const e of picked) e.member = true;   // reserved: nothing may form a second room out of these
     let room = null;
     let failure = null;
@@ -199,7 +208,7 @@ export class MatchmakeQueue {
       // maxSeats`) — a big room with the queue's 4 people in it, which is exactly the room `room.queue` promised when
       // the player entered (the panel's `need` = `this.size` = one official room). A host who wants a smaller room
       // creates one and invites.
-      const res = this.lobby.create(picked[0].session, { mode: QUEUE_MODE, difficulty: picked[0].difficulty });
+      const res = this.lobby.create(picked[0].session, { mode: QUEUE_MODE, difficulty: picked[0].difficulty, level: picked[0].level || 0 });
       if (!res || !res.ok) failure = res;
       else {
         room = this.lobby.rooms.get(picked[0].session.roomCode) || null;
@@ -405,6 +414,8 @@ export class MatchmakeQueue {
       need: extra.need ?? this.size,
       waitedMs: Math.max(0, this.lobby.now() - entry.at),
       deadline: extra.deadline ?? entry.at + this.waitMs,
+      // 严格同级：帧里带上这一条声明的等级（0 = 关闭；老客户端不认识这个键，忽略即可）
+      ...(entry.level > 0 ? { level: entry.level } : {}),
       ...(extra.code ? { code: extra.code } : {}),
     });
   }

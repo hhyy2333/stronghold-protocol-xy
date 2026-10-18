@@ -8,7 +8,7 @@ import { deriveSeed } from '../../sim/rng.js';
 import { withBounties } from '../waves.js';
 // 协议源石敌方 hex 的 mods 半边（applyEnemyHexes / enemyHexMods）：**实战与预览必须折同一份**，否则
 // 预览显示的敌人数量与真打出来的不一致。
-import { applyEnemyHexes, enemyHexMods } from '../hextech.js';
+import { applyEnemyHexes, matchEnemyMods } from '../hextech.js';
 import { planUnite } from '../unite.js';
 import { FieldRunner, DeadBattle } from '../fields.js';
 import { DELAYS } from './common.js';
@@ -63,7 +63,7 @@ export class MatchCombat {
     // 由 test/content/choices.test.js 的「same enemy total」抓住；保证「预览的敌人数量 = 实战出怪数量」。
     const spawns = applyEnemyHexes(
       withBounties(this.gd, this.round, wave, ps.bounties, ps.playerId).map((s) => ({ ...s, ownerPlayerId: ps.playerId })),
-      enemyHexMods(this),
+      matchEnemyMods(this),
     );
     const ev = { input, kind: 'normal', round: this.round, spawns, ...(preview ? { preview: true } : {}) };
     // Preview construction failures go to the rehearsal's discard path, never Match.dispatch's live error sink.

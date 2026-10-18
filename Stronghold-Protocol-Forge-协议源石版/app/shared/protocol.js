@@ -22,6 +22,7 @@ import { isPluginId } from './plugins/manifest.js';
  */
 const SEAT_CAP = maxSeatsFrom(typeof process !== 'undefined' && process.env ? process.env : {});
 import { isModDigest, isModId } from './modIdentity.js';
+import { PROTOCOL_LEVEL_MAX } from './protocolLevels.js';
 
 // Mod identity (DESIGN §28.2): the wire shape of a mod set lives in shared/modIdentity.js, because jsconfig.json
 // excludes THIS file from the typecheck slice and a validator written here is never machine-checked. Re-exported so the
@@ -594,7 +595,10 @@ export const C2S = {
     // never runs and the host may grant themselves any 协议源石 and any amount of funds from the in-match test panel
     // (`g.testHex` / `g.testHexClear` / `g.testFunds`). Absent = a normal room (every existing behaviour).
     test: (v) => v === undefined || v === null || isBool(v),
-    $optional: ['mods', 'modIds', 'chatMode', 'seatCap', 'test'],
+    // 协议等级 (owner's call 2026-10-18): 0 = off, 1–18 only on the HIGHEST difficulty (the handler normalizes to 0
+    // elsewhere; the wire only guarantees the shape).
+    level: (v) => v === undefined || v === null || isInt(v, 0, PROTOCOL_LEVEL_MAX),
+    $optional: ['mods', 'modIds', 'chatMode', 'seatCap', 'test', 'level'],
   },
   // 房间同意（W7, DESIGN §28.53）：进一个**声明了模组集合**的房间（`room.state.mods`）时，真人玩家必须**明确
   // 同意**才继续 —— 这是「我知道这一局要跑别人写的内容」那句话的落点。它与 `checkModSet` 要客户端回一个摘要
@@ -620,6 +624,9 @@ export const C2S = {
   'records.mine': {},
   'room.ready': { ready: isBool },
   'room.setDifficulty': { difficulty: (v) => DIFFICULTIES.includes(v) },
+  // 协议等级 (owner's call 2026-10-18): the host moves the room's level before the match; 0 = off, only on ABYSS
+  // (server/lobby.js setLevel refuses elsewhere by name).
+  'room.setLevel': { level: (v) => isInt(v, 0, PROTOCOL_LEVEL_MAX) },
   // 本房座位上限 (业主裁决 B5, docs/META.md §1.9): the HOST resizes the room it is already in — the same host-only,
   // before-the-match window `room.setDifficulty` / `room.setAiPicksLast` live in.
   //
@@ -713,7 +720,10 @@ export const C2S = {
     mode: (v) => v == null || v === 'coop',
     difficulty: (v) => v == null || DIFFICULTIES.includes(v),
     mods: (v) => v == null || isModDigest(v),
-    $optional: ['mode', 'difficulty', 'mods'],
+    // 协议等级 (owner's call 2026-10-18): matchmaking is STRICT on it — only the same difficulty AND level are placed
+    // together (server/matchmaking.js tryPlace), so a queue entry's level is part of its identity.
+    level: (v) => v == null || isInt(v, 0, PROTOCOL_LEVEL_MAX),
+    $optional: ['mode', 'difficulty', 'mods', 'level'],
   },
   'room.dequeue': {},
 

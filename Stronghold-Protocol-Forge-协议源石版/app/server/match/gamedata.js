@@ -17,6 +17,7 @@ import { MAX_SEATS } from '../../shared/constants.js';
 // 这里只消费它的判决（`null` = 什么都不用改，缺省路径逐字节不变）。
 import { variantDataPatch, variantValue } from '../../shared/variants.js';
 import { morphPairingOf, morphSlotPolicy } from '../../shared/morph.js';
+import { isProtocolLevel, protocolLevelActive, protocolLevelMods } from '../../shared/protocolLevels.js';
 import { formView, isEliteForm } from '../../shared/formProjection.js';
 import { isShopItem } from '../sim/simdata.js';
 import { mergeData } from '../../shared/plugins/dataUtils.js';
@@ -168,6 +169,14 @@ export class GameData {
      */
     this.seatCap = Number.isFinite(opts?.seatCap) && opts.seatCap >= 1 ? Math.floor(opts.seatCap) : MAX_SEATS;
     this.economy = this.config.economy && typeof this.config.economy === 'object' ? this.config.economy : {};
+    /**
+     * 协议等级 (owner's call 2026-10-18): the 1–18 numeric axis on top of the HIGHEST difficulty only. 0 = off — and the
+     * other difficulties normalize to 0 here, so a room that never picked a level reads byte-for-byte today's data.
+     * @type {number}
+     */
+    this.protocolLevel = protocolLevelActive(opts?.protocolLevel, this.difficulty) && isProtocolLevel(opts.protocolLevel) ? opts.protocolLevel : 0;
+    /** @type {ReturnType<typeof protocolLevelMods>} null when the axis is off (every caller must treat null as "no change") */
+    this.protocolLevelMods = protocolLevelMods(this.protocolLevel, this.difficulty);
     const chess = this.raw.chess && typeof this.raw.chess === 'object' ? this.raw.chess : {};
     this._chess = chess;
     /**
@@ -248,7 +257,8 @@ export class GameData {
     let base = boss && boss.bloodPoint && Number.isFinite(boss.bloodPoint[diff]) ? boss.bloodPoint[diff] : null;
     if (base == null && boss && boss.bloodPoint) base = Object.values(boss.bloodPoint).find((v) => Number.isFinite(v)) ?? null;
     if (base == null) base = 500000;
-    return Math.max(1, Math.round(base * this.bossPoolShare(aliveCount)));
+    const levelMul = this.protocolLevelMods ? this.protocolLevelMods.bossPoolMul : 1;
+    return Math.max(1, Math.round(base * this.bossPoolShare(aliveCount) * levelMul));
   }
 
   /**
@@ -378,9 +388,11 @@ export class GameData {
   income(round) {
     const arr = Array.isArray(this.economy.income) ? this.economy.income : DEFAULTS.income;
     const cap = numOr(this.economy.incomeCap, DEFAULTS.incomeCap);
+    // 协议等级 ≥10 的收入惩罚：只在级别开着时生效（缺省 0 ⇒ 逐字不变）
+    const delta = this.protocolLevelMods ? this.protocolLevelMods.incomeDelta : 0;
     const v = arr[round];
-    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
-    return Math.max(0, Math.min(cap, 3 + round));
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return Math.max(0, v + delta);
+    return Math.max(0, Math.min(cap, 3 + round) + delta);
   }
 
   chessPrice(id) {

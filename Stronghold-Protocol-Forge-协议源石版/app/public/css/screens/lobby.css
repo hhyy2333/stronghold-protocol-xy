@@ -1471,6 +1471,13 @@ button.sw-eth:hover { border-color: #fff; }
 
 /* the foot: options, hint, 开始模拟 */
 .proto-foot { flex: none; display: flex; flex-direction: column; gap: .08rem; padding-left: .5rem; }
+/* 协议等级 (owner's call 2026-10-18): the 1–18 axis, shown only on the HIGHEST difficulty; 0 = 关闭 */
+.proto-level { display: flex; flex-direction: column; gap: .06rem; padding: .1rem .12rem; border: 1px solid var(--line-2); border-radius: .06rem; background: rgba(0, 0, 0, .22); }
+.proto-level__head { display: flex; align-items: baseline; justify-content: space-between; font-size: calc(.15 * var(--t)); letter-spacing: .04em; color: var(--text-md); }
+.proto-level__head b { color: var(--amber); font-size: calc(.16 * var(--t)); }
+.proto-level input[type="range"] { width: 100%; accent-color: var(--amber); }
+.proto-level__foot { display: flex; justify-content: space-between; font-size: calc(.12 * var(--t)); color: var(--text-lo); }
+.proto-level__note { margin: 0; font-size: calc(.13 * var(--t)); line-height: 1.5; color: var(--text-lo); }
 .proto-opts { display: flex; align-items: center; justify-content: space-between; gap: .14rem; }
 .proto-private { display: inline-flex; align-items: center; gap: .08rem; font-size: calc(.17 * var(--t)); color: #c9cecc; cursor: pointer; }
 .proto-private input { width: max(.22rem, 15px); height: max(.22rem, 15px); accent-color: var(--mint-500); }

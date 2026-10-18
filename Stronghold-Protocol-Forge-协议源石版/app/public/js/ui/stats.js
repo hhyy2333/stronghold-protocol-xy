@@ -222,6 +222,7 @@ export function normalizeRecord(raw) {
     reason: str(r.reason, 32),
     modeId: str(r.modeId),
     difficulty: str(r.difficulty, 24),
+    level: int(r.level ?? r.protocolLevel, 0),
     stageId: str(r.stageId),
     bossId: str(r.bossId),
     hiddenBossId: str(r.hiddenBossId),

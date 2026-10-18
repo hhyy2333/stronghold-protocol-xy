@@ -178,6 +178,7 @@ import { DIFFICULTIES, ERR, MAX_SEATS, MIN_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN,
 import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks, charPotentialChanges, PACK_MSG_LIMITS, CHAT_LIMITS } from '../shared/protocol.js';
 import { modSetOf, isModId, modSetDrift } from '../shared/modIdentity.js';
 import { normalizeSupportConfig, checkSupport, supportPicker, supportCapacity, supportTiers } from '../shared/support.js';
+import { isProtocolLevel, protocolLevelActive } from '../shared/protocolLevels.js';
 import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
 import { normalizeAnnouncement } from '../shared/announce.js';
 // The admin log ring, so a published announcement also shows in the /admin/ console it came from (server/admin.js
@@ -399,6 +400,12 @@ export class Room {
     this.mode = mode;
     this.difficulty = difficulty;
     /**
+     * 协议等级 (owner's call 2026-10-18): 1–18 on top of the HIGHEST difficulty (ABYSS) only; 0 = off. Fixed at creation,
+     * changed by the host through room.setLevel, and reset to 0 whenever the difficulty moves off ABYSS.
+     * @type {number}
+     */
+    this.level = 0;
+    /**
      * 「AI 队友最后选择」 (room.setAiPicksLast, GitHub #338; co-op only, off by default): the match's strategy and 机变 drafts
      * put every human seat before every AI seat (Match opts.aiPicksLast). Kept across the room's matches.
      */
@@ -547,6 +554,8 @@ export class Room {
       hostId: this.hostId,
       mode: this.mode,
       difficulty: this.difficulty,
+      // 协议等级：只有开了才带这个键，没开的房间帧逐字节不变
+      ...(this.level > 0 ? { level: this.level } : {}),
       aiPicksLast: this.aiPicksLast,
       // 测试场 (the owner's request of 2026-10-11): the room is a test field — the lobby and the room bar say so, and the
       // in-match screen offers the test panel. Always present (false for a normal room), so the client reads one field.
@@ -1212,6 +1221,7 @@ export class Lobby {  /**
         return OK;
       case 'room.ready': return this.ready(session, msg);
       case 'room.setDifficulty': return this.setDifficulty(session, msg);
+      case 'room.setLevel': return this.setLevel(session, msg);
       case 'room.setSeatCap': return this.setSeatCap(session, msg);
       case 'room.setAiPicksLast': return this.setAiPicksLast(session, msg);
       // 房间内改本房间的模组集合（G1/G2，docs/WORKSHOP.md §1.9.3）：房主、开局前、且没有真人已就绪
@@ -1491,7 +1501,7 @@ export class Lobby {  /**
   // room.* handlers
   // ---------------------------------------------------------------------------------------------------
 
-  create(session, { mode, difficulty, mods, modIds, chatMode, seatCap, test }) {
+  create(session, { mode, difficulty, mods, modIds, chatMode, seatCap, test, level }) {
     const cur = this.roomOf(session);
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
     // 测试场 (the owner's request of 2026-10-11): a test field is SOLO-only — its whole point is a single tester poking at
@@ -1540,6 +1550,8 @@ export class Lobby {  /**
     // `mode:'solo'` 只画一张卡），改掉它就会移动每一个 solo 帧 —— 所以 solo 一律忽略这个字段。
     const roomCap = mode === 'coop' && seatCap != null ? clampSeats(seatCap, this.opts.maxSeats) : this.opts.maxSeats;
     const room = new Room(code, mode, difficulty, this.now(), roomCap);
+    // 协议等级：只有终极模拟能开；缺省 / 其它难度一律 0（关闭）—— 一个没点等级的房间与此前逐字节相同。
+    room.level = protocolLevelActive(level, difficulty) && isProtocolLevel(level) ? level : 0;
     room.content = this.vanilla;
     // the server owner's default plugins (plugins/config.json `default`; header "Gameplay plugins"): none — the original game
     const defaults = this.plugins?.defaults?.() || [];
@@ -1700,6 +1712,25 @@ export class Lobby {  /**
     return OK;
   }
 
+  /**
+   * room.setLevel (owner's call 2026-10-18): the host moves the room's 协议等级 0–18 before the match starts. Levels exist
+   * only on the HIGHEST difficulty — refused elsewhere by name, never silently clamped.
+   */
+  setLevel(session, { level }) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    if (room.match) return fail(ERR.ROOM_STARTED);
+    if (!isProtocolLevel(level)) return fail(ERR.BAD_TARGET, 'level must be an integer 0–18');
+    if (level > 0 && room.difficulty !== 'ABYSS') return fail(ERR.BAD_TARGET, '协议等级只在终极模拟可用');
+    if (room.level === level) return OK;
+    room.level = level;
+    this.dropReplay(room, session.playerId);
+    for (const s of room.seats) if (s && !s.isBot && s.playerId !== room.hostId) s.ready = false;
+    this.broadcastState(room);
+    return OK;
+  }
+
   setDifficulty(session, { difficulty }) {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
@@ -1709,6 +1740,8 @@ export class Lobby {  /**
     // a plugin mode chosen (header "Gameplay plugins") carries its own difficulty: picking one leaves it
     if (room.difficulty !== difficulty || room.content?.modeId) {
       room.difficulty = difficulty;
+      // 等级只属于终极模拟：难度一动，等级回到 0（不悄悄带到别的难度上）
+      if (difficulty !== 'ABYSS') room.level = 0;
       if (room.content?.modeId) { const rest = { ...room.content }; delete rest.modeId; room.content = Object.freeze(rest); }
       for (const s of room.seats) if (s && !s.isBot && s.playerId !== room.hostId) s.ready = false;
       this.broadcastState(room);
@@ -2549,6 +2582,8 @@ export class Lobby {  /**
         roomCode: room.code,
         mode: room.mode,
         difficulty: room.difficulty,
+        // 协议等级 (owner's call 2026-10-18): normalized by GameData against the mode's difficulty; absent = 0 = off
+        ...(room.level > 0 ? { protocolLevel: room.level } : {}),
         // a plugin mode the host chose (header "Gameplay plugins"), else the official mode of the difficulty
         modeId: room.content?.modeId || modeIdFor(room.mode, room.difficulty),
         // 「AI 队友最后选择」 (GitHub #338): fixed for the match
@@ -2616,7 +2651,7 @@ export class Lobby {  /**
       room.matchKey = key;
       room.replay = null;
       room.matchCount++;
-      this.log.info(`[lobby] ${room.code} match #${room.matchCount} starting (${room.mode}/${room.difficulty}, ${seats.length} seats, seed ${seed}${modded ? `, content ${room.content.cs.slice(0, 8)}${match.hosted ? ' in its match host' : ''}` : ''})`);
+      this.log.info(`[lobby] ${room.code} match #${room.matchCount} starting (${room.mode}/${room.difficulty}${room.level ? `/Lv${room.level}` : ''}, ${seats.length} seats, seed ${seed}${modded ? `, content ${room.content.cs.slice(0, 8)}${match.hosted ? ' in its match host' : ''}` : ''})`);
       this.broadcastState(room);
       match.start();
     } catch (e) {
@@ -2632,7 +2667,7 @@ export class Lobby {  /**
     }
     // 房间级钩子（§28.20）：**一局真的起来了**（`match.start()` 已经跑完并且抛都没抛）。
     this.hookFire(room, 'matchStart', {
-      matchNo: room.matchCount, mode: room.mode, difficulty: room.difficulty, seed,
+      matchNo: room.matchCount, mode: room.mode, difficulty: room.difficulty, level: room.level, seed,
       players: room.seats.filter(Boolean).map((s) => s.playerId),
       spectators: room.spectators.map((s) => s.playerId),
     });

@@ -134,7 +134,7 @@ function RecordBody({ record }) {
   return html`<div class="match-record__body">
     <p class="match-record__meta">
       ${record.victory ? t('模拟完成') : t('模拟失败')}
-      · ${t('通过回合')} ${record.roundsPassed || 0}
+      · ${t('通过回合')} ${record.roundsPassed || 0}${record.level > 0 ? ` · Lv.${record.level}` : ''}
       ${record.code ? ` · ${record.code}` : ''}
       ${Number.isFinite(record.finishedAt) && record.finishedAt ? ` · ${new Date(record.finishedAt).toLocaleString()}` : ''}
     </p>
