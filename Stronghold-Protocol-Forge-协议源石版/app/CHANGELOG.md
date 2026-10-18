@@ -16,6 +16,16 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 新：后台面板的数据显示加「网络」
+
+- 业主 2026-10-18。`GET /api/admin/overview` 增加 `network` 块，读的是与 `/healthz?traffic=1` 同一个计数器（`server/http/traffic.js`）：
+  - WebSocket：当前 / 累计连接、上下行**线上字节**（含帧头）、消息负载字节、消息数、压缩节省比例；
+  - HTTP：响应数、字节、按类别（assets / audio / code / data / other）明细；
+  - 「距上一次刷新」的速率（面板 2 秒一刷；第一次刷新显示累计，没有速率）。
+- 面板概览新增两张卡：**网络 · WebSocket**（累计出站 + 出/入速率、消息/s、压缩省 %、当前连接）与 **网络 · HTTP**（累计字节 + 响应数 · 速率 · 运行时长；悬停看按类别明细）。中英文案都补齐。
+- 接线：`AdminService` 新增 `traffic` 依赖；`server/index.js` 把 `createTrafficCounter()` 提前到 admin 之前创建再传进去（原来是建完 admin 才建，admin 拿不到）。
+- 测试：`test/admin.test.js` 新用例（overview 的 network 字段 + 两次轮询后的累计增长与速率）；新增 `test/admin-panel-network.test.js`（服务端接线 + 页面两张卡的 id + 中英文字符串）。
+
 ### 改：大厅的「作战提示」小卡也去掉
 
 - 业主 2026-10-18（截图：作战提示 02/21）。左侧栏那张轮播提示卡整个移除：`public/js/screens/lobby.js` 删掉 `TipsPanel`（连同 `FALLBACK_TIPS` 与 5 秒轮播）及只给它用的 `getConfig` import；`public/css/screens/lobby.css` 删掉 `.tips*` 规则与 `tip-in` 动画。

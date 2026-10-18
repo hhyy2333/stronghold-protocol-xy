@@ -160,11 +160,15 @@ export class AdminService {
     secret, now = Date.now, log = noopLog, trustProxy = 'auto',
     maxFailures = ADMIN_MAX_FAILURES, lockoutMs = ADMIN_LOCKOUT_MS, feedback = null,
     announceMinGapMs = ADMIN_ANNOUNCE_MIN_GAP_MS, announceStore = null, notesStore = null, bans = null, slots = null,
-    limits = null, limitsStore = null,
+    limits = null, limitsStore = null, traffic = null,
   } = {}) {
     this.lobby = lobby;
     this.network = network;
     this.registry = registry;
+    /** 网络流量计数 (server/http/traffic.js)：/healthz?traffic=1 与后台面板的「网络」卡读同一份。null = 没接线。 */
+    this.traffic = traffic;
+    /** 上一次的网络读数，用来算「距上次 /overview」的速率（面板每 2 秒拉一次）。 */
+    this._netPrev = null;
     this.startedAt = startedAt;
     this.buildTag = buildTag;
     this.now = now;
@@ -395,6 +399,61 @@ export class AdminService {
       bots: stats.bots ?? 0,
       spectators: stats.spectators ?? 0,
       perf: this._perfAggregate(),
+      // 网络（owner 2026-10-18）：累计量 + 距上一次 /overview 的速率（面板 2 秒一刷）。
+      network: this.networkOverview(),
+    };
+  }
+
+  /**
+   * 网络流量：WebSocket / HTTP 的累计字节与消息数，外加「距上一次 /overview」的速率。
+   *
+   * 为什么速率在这里算：面板每 2 秒拉一次 /overview，把上一次读数留在 AdminService 上最省事，也不打扰别的读数
+   * 窗口（与 _perfAggregate 同一思路）。第一次调用没有速率（null），面板显示「—/s」。
+   * @returns {null | Record<string, any>}
+   */
+  networkOverview() {
+    const count = this.traffic;
+    if (!count || typeof count.snapshot !== 'function') return null;
+    let snap;
+    try { snap = count.snapshot(); } catch { return null; }
+    const ws = snap.ws || {};
+    const http = snap.http || {};
+    const total = http.total || { requests: 0, bytes: 0 };
+    const at = this.now();
+    const prev = this._netPrev;
+    this._netPrev = {
+      at,
+      ws: { wireOut: ws.wireOut || 0, wireIn: ws.wireIn || 0, messagesOut: ws.messagesOut || 0, messagesIn: ws.messagesIn || 0 },
+      http: { requests: total.requests || 0, bytes: total.bytes || 0 },
+    };
+    const dt = prev ? Math.max(0.001, (at - prev.at) / 1000) : null;
+    const per = (cur, was) => (dt == null ? null : Math.max(0, (cur - was) / dt));
+    const wireOut = ws.wireOut || 0;
+    const payloadOut = ws.payloadOut || 0;
+    const categories = {};
+    for (const [k, v] of Object.entries(http)) {
+      if (k === 'total' || !v || typeof v !== 'object') continue;
+      categories[k] = { requests: v.requests || 0, bytes: v.bytes || 0 };
+    }
+    return {
+      seconds: snap.seconds || 0,
+      open: ws.open || 0,
+      connections: ws.connections || 0,
+      wireOut, wireIn: ws.wireIn || 0,
+      payloadOut, payloadIn: ws.payloadIn || 0,
+      messagesOut: ws.messagesOut || 0, messagesIn: ws.messagesIn || 0,
+      httpRequests: total.requests || 0, httpBytes: total.bytes || 0,
+      httpByCategory: categories,
+      // WebSocket 的消息负载（压缩前）→ 线上字节（含帧头，近似）：越大说明压缩省得越多；没有负载时 null。
+      compressionSavedPct: payloadOut > 0 ? Math.max(0, Math.round((1 - wireOut / payloadOut) * 1000) / 10) : null,
+      rates: dt == null ? null : {
+        wireOutBps: per(wireOut, prev.ws.wireOut),
+        wireInBps: per(ws.wireIn || 0, prev.ws.wireIn),
+        messagesOutPerSec: per(ws.messagesOut || 0, prev.ws.messagesOut),
+        messagesInPerSec: per(ws.messagesIn || 0, prev.ws.messagesIn),
+        httpRequestsPerSec: per(total.requests || 0, prev.http.requests),
+        httpBytesPerSec: per(total.bytes || 0, prev.http.bytes),
+      },
     };
   }
 

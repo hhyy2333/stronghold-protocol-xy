@@ -45,6 +45,11 @@ const STRINGS = {
     statRooms: '房间 / 进行中对局',
     statCpu: 'CPU 占用',
     statMemory: '进程内存 (RSS)',
+    statNetWs: '网络 · WebSocket',
+    netWsSub: '出 {out} · 入 {in} · {msgs}/s 条消息 · 压缩省 {saved}% · 当前 {open} 条连接',
+    netWsSubNoRate: '出 {out} · 入 {in} · 累计 {msgs} 条消息 · 当前 {open} 条连接',
+    statNetHttp: '网络 · HTTP',
+    netHttpSub: '{requests} 个响应 · {rate} · 运行 {uptime}',
     clients: '人类 {humans} · 电脑 {bots} · 观战 {spectators}',
     uptime: '运行 {uptime}',
     load: '负载 {load} · {cores} 核心',
@@ -213,6 +218,11 @@ const STRINGS = {
     statRooms: 'Rooms / matches',
     statCpu: 'CPU usage',
     statMemory: 'Process memory (RSS)',
+    statNetWs: 'Network · WebSocket',
+    netWsSub: 'out {out} · in {in} · {msgs} msg/s · {saved}% saved · {open} open',
+    netWsSubNoRate: 'out {out} · in {in} · {msgs} msgs total · {open} open',
+    statNetHttp: 'Network · HTTP',
+    netHttpSub: '{requests} responses · {rate} · up {uptime}',
     clients: 'humans {humans} · bots {bots} · spectators {spectators}',
     uptime: 'up {uptime}',
     load: 'load {load} · {cores} cores',
@@ -376,6 +386,20 @@ const element = (tag, className, text) => {
 
 /** `{name}` placeholders of one string. */
 const fmt = (text, params) => String(text).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
+
+/** Bytes → "12.4 KB" / "3.1 MB" (binary units; enough for a bandwidth card). */
+function bytesText(n) {
+  const v = Math.max(0, Number(n) || 0);
+  if (v < 1024) return `${Math.round(v)} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  if (v < 1024 * 1024 * 1024) return `${(v / 1024 / 1024).toFixed(1)} MB`;
+  return `${(v / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+/** Bytes/second → "12.4 KB/s" (or "—/s" before the first rate window). */
+function rateText(n) {
+  return typeof n === 'number' && Number.isFinite(n) ? `${bytesText(n)}/s` : '—/s';
+}
 
 /** Seconds → "1h 02m 03s" (or "02m 03s" under an hour). */
 function duration(sec) {
@@ -964,6 +988,33 @@ function renderOverview(o) {
   $('stat-heap').textContent = t('heap', {
     used: system.heapUsedMb ?? 0, total: system.heapTotalMb ?? 0, free: system.systemFreeMb ?? 0,
   });
+  const net = o.network;
+  if (net) {
+    // 网络（owner 2026-10-18）：累计量与「距上一次刷新」的速率；第一次刷新还没有速率窗口，说「累计」。
+    const rate = net.rates;
+    const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+    setText('stat-net-ws', bytesText(net.wireOut));
+    setText('stat-net-ws-sub', rate
+      ? t('netWsSub', {
+        out: rateText(rate.wireOutBps), in: rateText(rate.wireInBps),
+        msgs: Math.round(rate.messagesOutPerSec ?? 0),
+        saved: net.compressionSavedPct == null ? '—' : net.compressionSavedPct,
+        open: net.open,
+      })
+      : t('netWsSubNoRate', { out: bytesText(net.wireOut), in: bytesText(net.wireIn), msgs: net.messagesOut, open: net.open }));
+    setText('stat-net-http', bytesText(net.httpBytes));
+    setText('stat-net-http-sub', t('netHttpSub', {
+      requests: net.httpRequests, rate: rateText(rate && rate.httpBytesPerSec), uptime: duration(net.seconds),
+    }));
+    // 悬停给出按类别（assets / audio / code / data / other）的明细。
+    const httpCard = $('stat-net-http');
+    if (httpCard) {
+      httpCard.title = Object.entries(net.httpByCategory || {})
+        .sort((a, b) => b[1].bytes - a[1].bytes)
+        .map(([k, v]) => `${k}: ${bytesText(v.bytes)} · ${v.requests}`)
+        .join('\n');
+    }
+  }
 }
 
 /** One feedback card: the time, the chips, the player's words and the diagnostics behind a <details>. */

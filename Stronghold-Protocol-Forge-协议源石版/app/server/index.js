@@ -571,10 +571,12 @@ export async function startServer(opts = {}) {
     log.info(`[slots] 本槽 ${slotConfig.name}（:${slotConfig.port ?? '?'}），对端 ${slotConfig.peerName}（${slotConfig.peerHost}:${slotConfig.peerPort}，来自 ${slotConfig.source}）`);
   }
 
+  // 网络流量计数（server/http/traffic.js）：/healthz?traffic=1 与后台面板的「网络」卡共用这一份。
+  const traffic = createTrafficCounter();
   // The read-only admin API. There is no code default for the token on purpose (see server/admin.js): without
   // ADMIN_SECRET (or the option) `admin.enabled` is false and routes.js answers 404 for every /api/admin/* path.
   const admin = new AdminService({
-    lobby, network, registry, startedAt: Date.now(),
+    lobby, network, registry, startedAt: Date.now(), traffic,
     buildTag: () => buildTag(),
     secret: opts.adminSecret ?? process.env.ADMIN_SECRET,
     feedback,
@@ -605,7 +607,6 @@ export async function startServer(opts = {}) {
   resetBuildTag();
   buildTag();
 
-  const traffic = createTrafficCounter();
   const server = http.createServer(createRequestHandler({ serveStatic, csp: process.env.SP_CSP === 'off' ? null : siteCsp(publicDir), health: { startedAt, network, registry, lobby, modHealth: () => modMount.healthz(), content, traffic, assetIndex, views, trusted: trustedRuntime?.health }, log,
     records, accounts,
     // 管理后台 + 玩家反馈 + 更新公告 (协议源石版 port). `admin.enabled` is false without ADMIN_SECRET, in which case

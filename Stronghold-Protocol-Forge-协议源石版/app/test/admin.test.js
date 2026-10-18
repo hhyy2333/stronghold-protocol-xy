@@ -166,6 +166,20 @@ describe('admin API with ADMIN_SECRET', () => {
     assert.ok(o.humans >= 0 && o.bots >= 0 && o.spectators >= 0);
   });
 
+  test('the overview publishes network traffic (totals + a rate on the second poll)', async () => {
+    const one = json(await httpReq(srv.port, '/api/admin/overview', { headers: auth(SECRET) }));
+    assert.ok(one.network, 'network block');
+    for (const k of ['open', 'connections', 'wireOut', 'wireIn', 'payloadOut', 'payloadIn', 'messagesOut', 'messagesIn', 'httpRequests', 'httpBytes']) {
+      assert.equal(typeof one.network[k], 'number', k);
+    }
+    assert.ok(one.network.httpByCategory && typeof one.network.httpByCategory === 'object', 'per-category HTTP bytes');
+    await new Promise((r) => setTimeout(r, 60));
+    const two = json(await httpReq(srv.port, '/api/admin/overview', { headers: auth(SECRET) }));
+    assert.ok(two.network.httpRequests > one.network.httpRequests, 'the polls themselves are counted');
+    assert.ok(two.network.rates && typeof two.network.rates.httpBytesPerSec === 'number', 'a rate window after two polls');
+    assert.ok(two.network.compressionSavedPct === null || typeof two.network.compressionSavedPct === 'number');
+  });
+
   test('HEAD answers 200 with the headers and no body', async () => {
     const r = await httpReq(srv.port, '/api/admin/overview', { method: 'HEAD', headers: auth(SECRET) });
     assert.equal(r.status, 200);
