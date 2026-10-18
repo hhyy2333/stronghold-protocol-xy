@@ -25,6 +25,7 @@
   - 所有新动画在 `prefers-reduced-motion` 下关闭。
 - 改动：`public/js/ui/hexOverlay.js`（环境层、glitch 标题、倒角层）、`public/css/screens/game-panels.css`（末尾新增视觉层；原有 `.has-tier` 背景长写规则与 ARMED 规则保持不动）。新增 `test/ui/hex-restyle.test.js` 钉住这套视觉契约（选择器 / 关键属性 / 减少动态 / 无 `:has`）。
 - 验收截图：1600×900 / 1280×720 / 960×540 三档（无溢出）；`hextechDraft` 10/10、`hextechArmedFace` 3/3、`hextechTierArt` 6/6、`hex-restyle` 3/3、`browser-syntax` 6/6。
+- **修复（同日）**：阶位点阵被滤镜糊掉 —— 卡牌的磨砂只该作用在卡片**背后**，那一轮却在点阵上的 scrim 也加了 `backdrop-filter: blur(1.6px)`。现在 scrim 只做上下压暗（`backdrop-filter: none`），点阵按原图（1385×1093 级别）降采样显示，圆点是干净的；`hex-restyle` 测试新增断言钉住「点阵层不许有 backdrop-filter」。
 
 ### 改：房间模组的勾选会记住了
 

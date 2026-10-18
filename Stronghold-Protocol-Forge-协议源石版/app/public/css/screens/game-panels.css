@@ -1202,7 +1202,10 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
   background: linear-gradient(0deg, var(--hx-cyan), transparent); box-shadow: 0 0 .1rem rgba(0, 255, 255, .7);
 }
 .hxcard.has-tier { border: 0; box-shadow: inset 0 0 0 1px rgba(0, 255, 255, .06), 0 .1rem .28rem rgba(0, 0, 0, .55); }
-.hxcard.has-tier .hxcard__glow { -webkit-backdrop-filter: blur(1.6px) saturate(1.12); backdrop-filter: blur(1.6px) saturate(1.12); }
+/* ⚠ 阶位点阵（hextech/tier 的原图，1385×1093 级别）必须是**清晰**的：卡片自身的磨砂玻璃在卡片外，
+   曾经在这层 glow 上加的 backdrop-filter 会把点阵一起糊掉（owner 2026-10-18 的截图反馈）。这一层只做
+   上下压暗的 scrim，不加任何滤镜。 */
+.hxcard.has-tier .hxcard__glow { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .hxcard.is-tappable:hover {
   transform: translateY(-.06rem); border-color: rgba(0, 255, 255, .7);
   box-shadow: 0 0 0 1px rgba(0, 255, 255, .55), 0 0 .34rem rgba(0, 255, 255, .38), 0 .14rem .32rem rgba(0, 0, 0, .58);

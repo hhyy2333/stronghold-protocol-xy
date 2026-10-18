@@ -23,6 +23,8 @@ test('the overlay mounts the ambient layer and the glitch title', () => {
 
 test('cards: frosted glass, glowing bevel, cyan hover, masked description', () => {
   assert.match(CSS, /\.hxcard\s*\{[^}]*backdrop-filter:\s*blur\(/, 'the card is frosted glass');
+  // 阶位点阵不能被任何东西糊掉：这层 scrim 不许有 backdrop-filter
+  assert.match(CSS, /\.hxcard\.has-tier \.hxcard__glow\s*\{[^}]*backdrop-filter:\s*none/, 'the tier art stays crisp (no blur over the dot matrix)');
   assert.match(CSS, /\.hxcard\s*\{[^}]*\-webkit-backdrop-filter:\s*blur\(/, 'with the -webkit- prefix (Safari)');
   assert.match(CSS, /\.hxcard__bevel\s*\{[^}]*clip-path:\s*polygon\(/, 'the bevel is chamfered');
   assert.match(CSS, /\.hxcard\.is-tappable:hover\s*\{[^}]*rgba\(0,\s*255,\s*255/, 'hover glows cyan (#00ffff)');
