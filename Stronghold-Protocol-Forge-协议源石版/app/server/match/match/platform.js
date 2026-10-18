@@ -68,6 +68,9 @@ export class MatchPlatform {
         this.finish({ victory: false, reason: 'error' });
         return;
       }
+      // 协议等级 13–18：额外的敌方协议源石在开局直接发给敌方（owner 2026-10-18）。等级关闭时这里返回 0、
+      // 一个字节都不动。
+      this.applyProtocolLevelEnemyHexes();
       this.enterInfoCheck();
     });
   }

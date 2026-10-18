@@ -1219,6 +1219,14 @@ export class Lobby {  /**
       case 'records.mine':
         sendSession(session, { t: 'records.latest', record: this.records ? this.records.latestPlayer(session.playerId) : null });
         return OK;
+      // 排行榜 (owner's call 2026-10-18): per (difficulty, level); no records backend ⇒ an empty board, never an error.
+      case 'records.board': {
+        const body = this.records
+          ? this.records.board({ difficulty: msg.difficulty, level: msg.level ?? 0, limit: msg.limit })
+          : { difficulty: msg.difficulty, level: msg.level ?? 0, total: 0, entries: [] };
+        sendSession(session, { t: 'records.board', ...body });
+        return OK;
+      }
       case 'room.ready': return this.ready(session, msg);
       case 'room.setDifficulty': return this.setDifficulty(session, msg);
       case 'room.setLevel': return this.setLevel(session, msg);

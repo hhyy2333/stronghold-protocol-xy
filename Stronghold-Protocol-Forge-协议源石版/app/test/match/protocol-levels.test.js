@@ -72,6 +72,23 @@ test('a level folds into enemy mods, income and the leader pool — and only on 
   assert.deepEqual(matchEnemyMods(hard.m), {});
 });
 
+test('levels 13+ actually grant extra enemy hexes at the start (13/15/16/18 → 1/1/2/3)', () => {
+  const at = (level, difficulty = 'ABYSS') => {
+    const h = makeMatch({ mode: 'solo', difficulty, humans: 1, seed: 31, fake: true, protocolLevel: level });
+    h.start();
+    return h.m.enemyHexes.map((e) => e && e.id);
+  };
+  assert.equal(at(0).length, 0, 'off: nothing');
+  assert.equal(at(12).length, 0, 'level 12 has no extra enemy card');
+  assert.equal(at(13).length, 1);
+  assert.equal(at(15).length, 1);
+  assert.equal(at(16).length, 2);
+  const lv18 = at(18);
+  assert.equal(lv18.length, 3);
+  assert.equal(new Set(lv18).size, 3, 'no duplicate enemy cards');
+  assert.equal(at(18, 'HARD').length, 0, 'only the highest difficulty carries levels');
+});
+
 test('the lobby and the protocol carry the level; setLevel refuses it off the highest difficulty', () => {
   const lobby = readFileSync(path.join(ROOT, 'server/lobby.js'), 'utf8');
   assert.ok(lobby.includes('room.level = protocolLevelActive(level, difficulty)'));

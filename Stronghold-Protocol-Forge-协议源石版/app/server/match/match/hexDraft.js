@@ -140,6 +140,34 @@ export class MatchHexDraft {
     if (this.phase === PHASE.HEX_DRAFT) this.finishHexDraft();
   }
 
+  /**
+   * 协议等级 (owner's call 2026-10-18): the enemy gets `extraEnemyHexes` extra 协议源石 at the start of the match
+   * (levels 13/15/16/18). Drawn from the enemy roster on the match's own rngHex so a replay is deterministic, skipping
+   * cards the enemy already owns. A level with none (or a data set without the roster) returns 0 and changes nothing.
+   * @returns {number} how many were granted
+   */
+  applyProtocolLevelEnemyHexes() {
+    const extra = this.gd.protocolLevelMods ? this.gd.protocolLevelMods.extraEnemyHexes : 0;
+    if (!(extra > 0)) return 0;
+    if (!Array.isArray(this.enemyHexes)) this.enemyHexes = [];
+    const pool = this.gd.hexEnemyPool();
+    if (!pool.length) return 0;
+    const rarities = [...new Set(pool.map((h) => h && h.rarity).filter(Boolean))].sort();
+    if (!rarities.length) return 0;
+    const owned = this.enemyHexes.map((e) => (e && e.id ? e.id : e));
+    let granted = 0;
+    for (let i = 0; i < extra; i++) {
+      const rarity = pickEnemyRarity(this.rngHex, rarities);
+      const id = pickEnemyHex(this.rngHex, { pool, owned, rarity });
+      if (!id) break;
+      owned.push(id);
+      this.enemyHexes.push({ id, round: this.round });
+      granted += 1;
+    }
+    if (granted) this.hexDrawRound = this.round;
+    return granted;
+  }
+
   /** Grant the enemy side its hex for this round and go to PREP. */
   finishHexDraft() {
     if (this.phase !== PHASE.HEX_DRAFT) return;

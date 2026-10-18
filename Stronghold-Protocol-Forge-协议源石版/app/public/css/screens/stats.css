@@ -75,6 +75,14 @@
 }
 .st-body > * { max-width: max(12.4rem, 760px); margin-left: auto; margin-right: auto; }
 .st-loading { flex: 1; display: grid; place-items: center; min-height: 2rem; }
+/* 排行榜 (owner's call 2026-10-18)：按 (难度, 协议等级) 分榜，服务端出数据 */
+.st-ranks__filters { display: flex; align-items: center; gap: .18rem; flex-wrap: wrap; margin-bottom: .16rem; font-size: max(.17rem, 12px); }
+.st-ranks__filters label { display: inline-flex; align-items: center; gap: .08rem; color: var(--text-md); }
+.st-ranks__filters select { padding: .05rem .1rem; font-size: max(.16rem, 11px); color: var(--text-hi); background: rgba(0, 0, 0, .3); border: 1px solid var(--line-2); border-radius: .05rem; }
+.st-ranks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .06rem; }
+.st-ranks__row { display: flex; align-items: baseline; gap: .14rem; padding: .06rem .1rem; font-size: max(.17rem, 12px); border-bottom: 1px solid var(--line); }
+.st-ranks__pos { width: 1.6em; color: var(--mint-400); }
+.st-ranks__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-empty { margin: .6rem auto; text-align: center; font-size: max(.2rem, 13px); color: var(--text-lo); letter-spacing: .06em; }
 
 .st-sec__h { display: flex; align-items: baseline; gap: .12rem; margin: 0 0 .1rem; font-size: max(.22rem, 14px); font-weight: 800; letter-spacing: .1em; color: var(--text-hi); }

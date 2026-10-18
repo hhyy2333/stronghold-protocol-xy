@@ -50,6 +50,8 @@ export const MAX_PLAYERS = 20_000;
 export const MAX_ROOMS = 5_000;
 /** 追加多少行之后压缩一次。文件行数的硬上界因此是 `索引上限 + 这个数`。 */
 export const COMPACT_AFTER_APPENDS = 5_000;
+/** 每个 (难度, 协议等级) 榜保留多少名。榜单是**派生数据**：装载时从 journal 重建，不单独落盘。 */
+export const BOARD_SIZE = 50;
 
 const num = (value) => Math.max(0, Number(value) || 0);
 
@@ -152,6 +154,12 @@ export class MatchRecords {
     this.byRoom = new Map();
     /** @type {Map<string, object>} playerId → 该玩家最近一局 */
     this.byPlayer = new Map();
+    /**
+     * 排行榜 (owner's call 2026-10-18: 按协议等级分榜): `difficulty|level` → per-player best rows. Derived from the
+     * journal (rebuilt on load), so it adds no file format and no second truth about a match.
+     * @type {Map<string, Array<{ playerId: string, name: string, victory: boolean, roundsPassed: number, level: number, difficulty: string, finishedAt: number }>>}
+     */
+    this.boards = new Map();
     /** 自上次压缩以来追加的行数。 */
     this.appended = 0;
     try {
@@ -183,7 +191,56 @@ export class MatchRecords {
       const last = this.byPlayer.get(player.playerId);
       if (!last || record.finishedAt >= last.finishedAt) this.byPlayer.set(player.playerId, record);
     }
+    this.updateBoard(record);
     this.trim();
+  }
+
+  /**
+   * 维护一个 (难度, 协议等级) 榜：每名真人一条，取「胜 > 通过回合多 > 更早达成」的最好一局；榜长封顶 BOARD_SIZE。
+   * @param {object} record a journal row
+   */
+  updateBoard(record) {
+    const level = Number.isInteger(record.level) && record.level > 0 ? record.level : 0;
+    const key = `${record.difficulty || 'UNKNOWN'}|${level}`;
+    let board = this.boards.get(key);
+    if (!board) this.boards.set(key, (board = []));
+    const better = (a, b) => (a.victory !== b.victory ? (a.victory ? -1 : 1) : a.roundsPassed !== b.roundsPassed ? b.roundsPassed - a.roundsPassed : a.finishedAt - b.finishedAt);
+    for (const player of record.players) {
+      if (!player.playerId || player.isBot) continue;
+      const entry = {
+        playerId: player.playerId,
+        name: String(player.name || '').slice(0, 24),
+        victory: !!player.victory,
+        roundsPassed: Number(record.roundsPassed) || 0,
+        level,
+        difficulty: record.difficulty || 'UNKNOWN',
+        finishedAt: record.finishedAt,
+      };
+      const at = board.findIndex((e) => e.playerId === entry.playerId);
+      if (at >= 0) {
+        if (better(entry, board[at]) >= 0) continue;
+        board[at] = entry;
+      } else board.push(entry);
+      board.sort(better);
+      if (board.length > BOARD_SIZE) board.length = BOARD_SIZE;
+    }
+  }
+
+  /**
+   * 一张榜（按 (难度, 协议等级) 分开，业主 2026-10-18）。`playerId` 不对外 —— 公开面只有名字与成绩。
+   * @param {{ difficulty: string, level?: number, limit?: number }} o
+   * @returns {{ difficulty: string, level: number, total: number, entries: Array<{ name: string, victory: boolean, roundsPassed: number, finishedAt: number }> }}
+   */
+  board({ difficulty, level = 0, limit = 10 }) {
+    const lv = Number.isInteger(level) && level > 0 ? level : 0;
+    const list = this.boards.get(`${difficulty || 'UNKNOWN'}|${lv}`) || [];
+    const cap = Number.isInteger(limit) && limit > 0 ? Math.min(limit, BOARD_SIZE) : 10;
+    return {
+      difficulty: difficulty || 'UNKNOWN',
+      level: lv,
+      total: list.length,
+      entries: list.slice(0, cap).map((e) => ({ name: e.name, victory: e.victory, roundsPassed: e.roundsPassed, finishedAt: e.finishedAt })),
+    };
   }
 
   /** 两个索引各自的上限；只在上限**被超过**时才排序，所以正常路径是 O(1)。 */

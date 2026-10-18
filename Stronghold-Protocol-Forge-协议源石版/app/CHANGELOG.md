@@ -23,7 +23,9 @@
 - **落点**：`GameData.protocolLevel / protocolLevelMods`（收入、首领池）；`server/match/hextech.js` 的 `matchEnemyMods`（敌方协议源石 + 等级折成同一份 spawn mods，战斗与预览同一个 fold）；`settle.js` 漏怪损失；`room.create.level` / `room.setLevel` / `room.state.level`（>0 才带）；`m.result.protocolLevel` → 战绩 `level`；`server/matchmaking.js` 严格按 (难度, 等级) 成房。
 - **界面**：大厅「选择模拟协议」在终极模拟下多一个 0–18 滑杆（0=关闭，显示该级倍率与是否实验档）；房间难度旁显示 `Lv.N`，房主可在房间的协议面板里改（服务端只允许 ABYSS 开）。
 - **测试**：新增 `test/match/protocol-levels.test.js` 5 条（表/归一化/0 级不变/折入/接线）；`test/match/hextech.test.js` 43/43；`browser-syntax`、`client-imports` 通过；`i18n check --all --strict` 0 errors。
-- **未做（下一步）**：13–18 数值未调；额外敌方协议源石尚未真正发牌；扫级平衡脚本未写；按级分榜的排行 UI 只做到记录/统计带 `level`。
+- **额外敌方协议源石（已补齐）**：13/15/16/18 级在开局从敌方名册按本局 `rngHex` 抽 1/1/2/3 张直接发给敌方（跳过已有、确定性；等级关闭时 0，不改变任何默认局）。
+- **按级分榜（已补齐）**：`MatchRecords.board({difficulty, level, limit})` 每 (难度, 等级) 一张榜，每名真人取「胜 > 回合多 > 更早」的最好一局、封顶 50，装载时从 journal 重建且公开面不含 `playerId`；C2S `records.board` + 客户端「统计 → 排行榜」页按难度/等级筛选（**新增** `test/match-records-board.test.js` 与额外敌方源石用例）。
+- **仍未做**：13–18 的数值（`experimental` 档）与扫级平衡脚本。
 
 ### 改：局内聊天常态开启、可隐藏；边框与排版优化
 

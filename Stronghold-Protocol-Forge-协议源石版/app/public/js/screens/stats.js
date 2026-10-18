@@ -23,7 +23,8 @@ import { data, useData } from '../data.js';
 import { fmtNum, diyRecordFor, cardStandIn } from '../ui/gameLogic.js';
 import { useDocClass } from '../ui/device.js';
 import { uiUrl, chessAvatarUrl, chessPortraitUrl, itemIconUrl } from '../ui/assetUrls.js';
-import { identity } from '../net.js';
+import { identity, net } from '../net.js';
+import { PROTOCOL_LEVEL_MAX } from '../../../shared/protocolLevels.js';
 import { TITLE_HEX_SECTORS, titleSectorClip } from '../ui/titleHexagon.js';
 import { store, createStore, useStore, selectRoute } from '../store.js';
 import { ResultView } from './result.js';
@@ -57,6 +58,8 @@ const TABS = [
   { id: 'bands', name: N_('盟约&策略'), micro: 'ALLIANCES / STRATEGIES' },
   { id: 'totals', name: N_('战斗累计'), micro: 'COMBAT TOTALS' },
   { id: 'history', name: N_('对局记录'), micro: 'HISTORY' },
+  // 排行榜 (owner's call 2026-10-18: 按协议等级分榜): server-side boards, one per (difficulty, level)
+  { id: 'ranks', name: N_('排行榜'), micro: 'LEADERBOARD' },
 ];
 
 const pct = (n, d) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
@@ -479,6 +482,52 @@ function Replay({ rec, onBack }) {
 }
 
 /** The overlay, rendered while open (its data hooks run only then). */
+/**
+ * 排行榜 (owner's call 2026-10-18): per (difficulty, 协议等级). The data lives on the server (server/matchRecords.js
+ * `board`, fed by complete settlements), so a server without accounts/records answers an empty board, never an error.
+ */
+function Ranks() {
+  const [difficulty, setDifficulty] = useState('ABYSS');
+  const [level, setLevel] = useState(0);
+  const [board, setBoard] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const shownLevel = difficulty === 'ABYSS' ? level : 0;
+  useEffect(() => {
+    let live = true;
+    setBusy(true);
+    net.request('records.board', { difficulty, level: shownLevel, limit: 20 })
+      .then((res) => { if (live) setBoard(res && Array.isArray(res.entries) ? res : { entries: [], total: 0 }); })
+      .catch(() => { if (live) setBoard({ entries: [], total: 0, unavailable: true }); })
+      .finally(() => { if (live) setBusy(false); });
+    return () => { live = false; };
+  }, [difficulty, shownLevel]);
+  return html`<${Section} title=${t('排行榜')} micro="LEADERBOARD">
+    <div class="st-ranks__filters">
+      <label><span>${t('难度')}</span>
+        <select value=${difficulty} onChange=${(e) => setDifficulty(e.currentTarget.value)}>
+          ${DIFFICULTIES.map((d) => html`<option key=${d} value=${d}>${difficultyName(d)}</option>`)}
+        </select></label>
+      ${difficulty === 'ABYSS' ? html`<label><span>${t('协议等级')}</span>
+        <select value=${String(level)} onChange=${(e) => setLevel(Number(e.currentTarget.value))}>
+          ${Array.from({ length: PROTOCOL_LEVEL_MAX + 1 }, (_, i) => i).map((n) => html`<option key=${n} value=${String(n)}>${n === 0 ? t('关闭') : t('等级 {n}', { n })}</option>`)}
+        </select></label>` : null}
+      ${busy ? html`<${Spinner} size="sm" />` : null}
+    </div>
+    ${!board ? html`<p class="st-empty">${t('正在读取排行榜…')}</p>`
+      : board.unavailable ? html`<p class="st-empty">${t('这个服务器没有开启战绩，排行榜不可用。')}</p>`
+      : board.entries.length ? html`<ol class="st-ranks">
+          ${board.entries.map((row, i) => html`<li key=${i} class="st-ranks__row">
+            <b class="num st-ranks__pos">${i + 1}</b>
+            <span class="st-ranks__name">${row.name || t('博士')}</span>
+            <span class=${row.victory ? 't-mint' : 't-lo'}>${row.victory ? t('成功卫戍') : t('模拟失败')}</span>
+            <span class="num">${t('通过 {n} 回合', { n: row.roundsPassed || 0 })}</span>
+            <span class="t-dim num">${dateTime(row.finishedAt)}</span>
+          </li>`)}
+        </ol>`
+      : html`<p class="st-empty">${t('这个等级还没有战绩。')}</p>`}
+  <//>`;
+}
+
 function StatsScreen({ tab }) {
   const ready = useData('config', 'bands', 'bonds', 'assets');
   const gd = useMemo(() => makeLookups(ready), [ready, data.locale()]);
@@ -580,7 +629,8 @@ function StatsScreen({ tab }) {
     ${stats.dropped ? html`<p class="st-note is-warn"><${Icon} name="warn" />${t('有 {n} 条记录已损坏，已忽略。', { n: stats.dropped })}</p>` : null}
     <div class="ui-slot" data-ui-slot="stats.tab" aria-label=${t('界面插件')} dangerouslySetInnerHTML=${{ __html: '' }}></div>
     <main class="st-body" data-tab=${tab}>
-      ${!ready ? html`<div class="st-loading"><${Spinner} size="md" /></div>`
+      ${tab === 'ranks' ? html`<${Ranks} />`
+        : !ready ? html`<div class="st-loading"><${Spinner} size="md" /></div>`
         : stats.newer ? html`<p class="st-empty">${t('检测到更新版本的统计数据，请先升级客户端再查看，以免覆盖数据。')}</p>`
           : empty ? html`<p class="st-empty">${t('还没有记录 —— 完成一局对局后，这里会开始积累。')}</p>`
             : tab === 'bands' ? html`<${Bands} agg=${agg} gd=${gd} records=${stats.records} />`
