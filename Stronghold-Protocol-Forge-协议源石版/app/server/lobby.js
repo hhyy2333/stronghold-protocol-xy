@@ -27,15 +27,11 @@
 //     ones first) becomes host. A room without humans is disposed (bots never keep a room alive).
 //   * Disconnect in LOBBY: the seat shows connected=false and is freed after `lobbyGraceMs` (60 s); a
 //     session that comes back after that gets `room.closed {reason:'timeout'}`.
-//     Disconnect in a match: the seat is kept and match.onDisconnect(playerId) is called.
-//   * Reconnect: `hello` with a known token (reconnect window, 10 min, see net.js) rebinds the session;
-//     the lobby then broadcasts room.state and, in a match, calls match.onReconnect(playerId).
-//     Solo runs (下半: "休整期及机变阶段没有时间限制…24小时内随时返回", research 01 §1 / 06 §17): a session that drops
-//     while its solo room's match runs stays resumable for the official `config.constants.singleReconnectTime`
-//     (86400 s; option `soloReconnectWindowMs` overrides it) instead of the 10-minute window — the untimed solo match
-//     simply waits (net.js session.resumeWindowMs, set at every disconnect). Only after that does expiry turn into
-//     match.onLeave ('abandoned'). The extension outlives the match, so a run that ended meanwhile (e.g. a server-run
-//     Final Assault) still shows its result on the player's return.
+//     Disconnect in a match: the seat is kept and match.onDisconnect(playerId) is called; the session stays resumable
+//     for the reconnect window (net.js: 5 min — owner's call 2026-10-18, **every mode**, solo included) and expiry
+//     then removes the player from the room (match.onLeave('abandoned')).
+//   * Reconnect: `hello` with a known token inside that window rebinds the session; the lobby then broadcasts
+//     room.state and, in a match, calls match.onReconnect(playerId).
 //     A repeated hello on a live connection is a full resync: room.state goes to the requester only
 //     (broadcast only when the seat visibly changed, e.g. a rename in LOBBY); the heavy part (match.onReconnect,
 //     or the result replay below) runs at most once per `resyncMinGapMs` per session — extra requests inside
@@ -236,7 +232,6 @@ export const LOBBY_DEFAULTS = Object.freeze({
   // 房间的座位数在建房时定死，改上限不会 resize 一个活房间（也不会在对局中动座位数组）。
   maxSeats: maxSeatsFrom(process.env),
   resyncMinGapMs: 1000,   // heavy resyncs (match state / result replay) per session at most this often on repeated hellos
-  soloReconnectWindowMs: null, // a dropped solo run stays resumable this long (null = data singleReconnectTime, 24 h)
   queue: null,            // 野排匹配 (server/matchmaking.js MATCHMAKE_DEFAULTS): size / max / waitMs / sweepMs / difficulty
   // 房内聊天（引擎特性）允许的快捷短语 id。**唯一真源**：文案在客户端（`public/i18n/*`），服务端只认 id，
   // 所以未在此列出的 id 一律点名拒绝（`request === 'room.quickMsg'` 的 `BAD_MSG`）。
@@ -256,9 +251,6 @@ export const LOBBY_DEFAULTS = Object.freeze({
 export const DEFAULT_QUICK_PHRASES = Object.freeze([
   'niceOne', 'myBad', 'wellPlayed', 'thanks', 'wait', 'ready', 'help', 'focus', 'goodLuck',
 ]);
-
-/** Official `singleReconnectTime` (s) when the data lacks it (constData, research 01 §1). */
-export const SOLO_RECONNECT_FALLBACK_SEC = 86_400;
 
 /** Display names for AI teammates (the tutorial NPCs first, then a few familiar faces). */
 export const BOT_NAMES = Object.freeze(['AI·华法琳', 'AI·阿米娅', 'AI·惊蛰', 'AI·杜宾', 'AI·凯尔希', 'AI·可露希尔']); // i18n-ignore: player names (docs/I18N.md)
@@ -1449,8 +1441,8 @@ export class Lobby {  /**
     // 野排匹配: a queued player may have no room at all, so the queue is told before the `if (!room)` return below
     this.matchmake.onDisconnect(session);
     const room = this.roomOf(session);
-    // a solo run may be resumed within singleReconnectTime (24 h); everything else keeps the registry's window
-    session.resumeWindowMs = room && room.match && room.mode === 'solo' ? this.soloResumeWindowMs() : null;
+    // every mode uses the registry's reconnect window (5 min): there is no solo extension any more (owner 2026-10-18)
+    session.resumeWindowMs = null;
     if (!room) return;
     const player = room.seatOf(session.playerId);
     const seat = player || room.spectatorOf(session.playerId);
@@ -2945,14 +2937,6 @@ export class Lobby {  /**
   roomData(room) {
     const assets = room && this.workshop && this.workshop.roomAssets ? this.workshop.roomAssets.forRoom(room.modSet) : null;
     return assets ? assets.data : this.safeData();
-  }
-
-  /** How long a dropped solo run stays resumable (ms): the option, else data singleReconnectTime, else 24 h. */
-  soloResumeWindowMs() {
-    const o = this.opts.soloReconnectWindowMs;
-    if (typeof o === 'number' && Number.isFinite(o) && o > 0) return o;
-    const sec = this.safeData()?.config?.constants?.singleReconnectTime;
-    return (typeof sec === 'number' && Number.isFinite(sec) && sec > 0 ? sec : SOLO_RECONNECT_FALLBACK_SEC) * 1000;
   }
 
   // ---------------------------------------------------------------------------------------------------

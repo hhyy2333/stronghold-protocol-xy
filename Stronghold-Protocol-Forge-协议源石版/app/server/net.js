@@ -2,8 +2,8 @@
 //
 // Responsibilities:
 //   * Session objects (playerId, secret reconnect token, name, bound socket, connection state) and the
-//     SessionRegistry that resolves reconnect tokens and expires sessions after the reconnect window (10 min; the
-//     lobby may extend it per session via `session.resumeWindowMs` — a solo run: 24 h, see server/lobby.js).
+//     SessionRegistry that resolves reconnect tokens and expires sessions after the reconnect window (5 min, owner's
+//     call 2026-10-18: every mode, solo included — a dropped player is removed from the room when it expires).
 //   * Per-connection pipeline: token-bucket rate limit (40 msg/s) → JSON decode → schema validation
 //     (shared/protocol.js) → **the pack's `server.preDispatch` hook, when one is installed** (DESIGN §28.13:
 //     `opts.preDispatch` / `opts.onConnection`, assembled by server/modDispatch.js; with no such pack both are
@@ -55,7 +55,7 @@ export const NET_DEFAULTS = Object.freeze({
   abuseDropsPerSec: 400,        // rate-limited messages within one second before the socket is closed (1008)
   heartbeatMs: 30_000,          // ping interval; a socket that missed one full interval is terminated
   helloTimeoutMs: 30_000,       // sockets that never say hello are closed (4002)
-  reconnectWindowMs: 10 * 60_000, // disconnected sessions stay resumable this long
+  reconnectWindowMs: 5 * 60_000,  // disconnected sessions stay resumable this long (then the seat is freed)
   snapDropBytes: 1 << 20,       // skip b.snap while bufferedAmount exceeds this
   hardBufferBytes: 16 << 20,    // terminate a socket whose send queue exceeds this
   maxConnections: 2000,         // concurrent sockets (enforced by index.js at upgrade time)

@@ -26,7 +26,7 @@ const NET_OPTION_KEYS = ['reconnectWindowMs', 'heartbeatMs', 'helloTimeoutMs', '
   // (server/limits.js LiveLimits) is the panel-editable socket ceiling. Both stay absent when the console is off,
   // and `netOptionsFrom` only copies keys that are non-null, so an unported install is unchanged.
   'bans', 'limits'];
-const LOBBY_OPTION_KEYS = ['lobbyGraceMs', 'maxRooms', 'maxRoomsPerAddr', 'maxMatchesPerAddr', 'resyncMinGapMs', 'soloReconnectWindowMs',
+const LOBBY_OPTION_KEYS = ['lobbyGraceMs', 'maxRooms', 'maxRoomsPerAddr', 'maxMatchesPerAddr', 'resyncMinGapMs',
   // 野排匹配 (server/matchmaking.js MATCHMAKE_DEFAULTS): `queue` = { size, max, waitMs, sweepMs, difficulty }
   'queue',
   // 人机上限（业主 2026-10-16）：全服一个、每房间一个。`startServer` 传得进来（测试与部署都要），

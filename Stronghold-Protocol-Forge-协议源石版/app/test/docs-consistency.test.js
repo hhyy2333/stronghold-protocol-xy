@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { GameData } from '../server/match/gamedata.js';
 import { helperOrder } from '../server/match/unite.js';
 import { NET_DEFAULTS } from '../server/net.js';
-import { SOLO_RECONNECT_FALLBACK_SEC, LOBBY_DEFAULTS } from '../server/lobby.js';
+import { LOBBY_DEFAULTS } from '../server/lobby.js';
 import { moduleTypeIconUrl } from '../public/js/ui/assetUrls.js';
 import { validateC2S } from '../shared/protocol.js';
 import { ERR, PHASE, ERR_TEXT } from '../shared/constants.js';
@@ -140,20 +140,18 @@ test('boss results: no synthetic zero for a running boss field (docs), handover 
   assert.match(META, /hands the field to the partner's replica or the server/);
 });
 
-test('reconnect windows: co-op 10 min, solo 10 min by default, the official 24 h opt-in (code, data, every doc)', () => {
-  assert.equal(NET_DEFAULTS.reconnectWindowMs, 10 * 60_000);
-  assert.equal(LOBBY_DEFAULTS.soloReconnectWindowMs, 10 * 60_000, 'the solo default is the co-op window');
-  assert.equal(SOLO_RECONNECT_FALLBACK_SEC, 86_400, 'the fallback when the data lacks the official value');
+test('reconnect window: 5 min for every mode, no solo extension (code, data, every doc)', () => {
+  assert.equal(NET_DEFAULTS.reconnectWindowMs, 5 * 60_000, 'owner\'s call 2026-10-18');
+  assert.ok(!('soloReconnectWindowMs' in LOBBY_DEFAULTS), 'the solo window option is gone');
+  // the official value is still in the data (it is the official rule); the engine simply does not use it as a window
   assert.equal(DATA.config.constants.singleReconnectTime, 86_400);
-  assert.match(DESIGN, /singleReconnectTime/);
-  assert.match(DESIGN, /soloReconnectWindowMs: 0/, 'DESIGN names the option that restores the official 24 h');
-  assert.match(META, /singleReconnectTime/);
   assert.match(dataRow('constants'), /singleReconnectTime/);
+  assert.match(META, /5 min/);
   for (const [name, text] of [['README', README], ['DEPLOY', DEPLOY], ['PLAYING', PLAYING]]) {
-    assert.match(text, /10 分钟/, `${name}: the resume window`);
-    assert.match(text, /24 小时/, `${name}: the official window it replaced`);
+    assert.match(text, /5 分钟/, `${name}: the resume window`);
+    assert.ok(!/独立模拟 24 小时内/.test(text), `${name}: the solo run is not held 24 h`);
+    assert.ok(!/同盟模拟 10 分钟内/.test(text), `${name}: not the old 10-minute window`);
   }
-  assert.ok(!/独立模拟 24 小时内/.test(README), 'README: the solo window is no longer simply 24 h');
   assert.ok(!/断线 10 分钟内可重连，掉线期间 AI 托管/.test(README), 'README: a dropped seat is not AI-played unless 暂离');
 });
 
@@ -162,7 +160,7 @@ test('the server-wide AI cap is documented where an operator and a host would lo
   assert.match(DESIGN, /BOT_LIMIT/);
   assert.match(DESIGN, /SP_MAX_BOTS/);
   assert.match(ARCHITECTURE, /SP_MAX_BOTS/);
-  assert.match(ARCHITECTURE, /SP_SOLO_RECONNECT_MS/);
+  assert.doesNotMatch(ARCHITECTURE, /SP_SOLO_RECONNECT_MS/, 'the solo reconnect variable is gone');
   assert.match(ERR_TEXT.BOT_LIMIT, /AI/);
 });
 

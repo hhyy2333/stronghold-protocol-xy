@@ -1457,25 +1457,6 @@ describe('lobby timers and match interface', () => {
     assert.ok(freed);
   });
 
-  test('a dropped solo run gets its own window (default 10 min), not the registry\'s', () => {
-    // The default is the co-op window's length, NOT the data's singleReconnectTime: an untimed solo run held open for
-    // 24 h keeps a whole match in memory while nobody plays it. Overridable per deployment (SP_SOLO_RECONNECT_MS).
-    assert.equal(srv.lobby.soloResumeWindowMs(), LOBBY_DEFAULTS.soloReconnectWindowMs, 'the option is the default');
-    assert.equal(srv.lobby.soloResumeWindowMs(), 10 * 60_000, '10 min, the co-op window');
-    assert.notEqual(srv.lobby.soloResumeWindowMs(), 86_400 * 1000, 'not the official 24 h');
-  });
-
-  test('soloReconnectWindowMs: 0 restores the official singleReconnectTime (24 h)', () => {
-    // 0 (like null / a non-number) means "no override" → the data value, the official 86400 s, so a deployment that
-    // wants the official rule has it back with one option or SP_SOLO_RECONNECT_MS=0.
-    const mk = (soloReconnectWindowMs) => new Lobby({
-      registry: srv.registry, log: cap.log, MatchClass: Match, getData: () => srv.lobby.safeData(),
-      options: { soloReconnectWindowMs },
-    });
-    assert.equal(mk(0).soloResumeWindowMs(), 86_400 * 1000, '0 → data singleReconnectTime');
-    assert.equal(mk(null).soloResumeWindowMs(), 86_400 * 1000, 'null → data singleReconnectTime');
-    assert.equal(mk(5 * 60_000).soloResumeWindowMs(), 5 * 60_000, 'an explicit number wins');
-  });
 });
 
 // ---------------------------------------------------------------------------------------------------
@@ -1483,9 +1464,8 @@ describe('lobby timers and match interface', () => {
 // 06 §17); only co-op sessions expire after the reconnect window (real Match: the untimed solo match waits).
 // ---------------------------------------------------------------------------------------------------
 
-describe('solo resume window', () => {
-  const WINDOW = 300;       // stands in for the 10-minute reconnect window
-  const SOLO_WINDOW = 1500; // stands in for singleReconnectTime (24 h)
+describe('dropped runs use one reconnect window', () => {
+  const WINDOW = 300; // stands in for the 5-minute reconnect window (owner's call 2026-10-18: every mode)
   let srv;
   let url;
   const open = [];
@@ -1494,7 +1474,7 @@ describe('solo resume window', () => {
   before(async () => {
     srv = await startServer({
       port: 0, host: '127.0.0.1', log: cap.log, MatchClass: RealMatch, seedFn: () => 20260929,
-      reconnectWindowMs: WINDOW, soloReconnectWindowMs: SOLO_WINDOW, lobbyGraceMs: 200,
+      reconnectWindowMs: WINDOW, lobbyGraceMs: 200,
     });
     url = `ws://127.0.0.1:${srv.port}/ws`;
   });
@@ -1505,7 +1485,7 @@ describe('solo resume window', () => {
   });
   const connect = async () => { const c = await TestClient.connect(url); open.push(c); return c; };
 
-  test('solo: resumable past the reconnect window, the match waits; expires only after the solo window', async () => {
+  test('solo: no extension — expiry removes the player and disposes the room', async () => {
     const a = await connect();
     const w = await a.hello('Solo');
     a.id = w.playerId;
@@ -1515,22 +1495,8 @@ describe('solo resume window', () => {
     const room = srv.lobby.getRoom(st.code);
     const match = room.match;
     await a.terminate();
-    await delay(WINDOW + 600); // several sweeps past the co-op window
-    assert.equal(room.match, match, 'the solo match still runs');
-    assert.equal(match.players.get(a.id).left, false, 'not treated as a quit');
-
-    const b = await connect();
-    const w2 = await b.hello('Solo', w.token);
-    assert.equal(w2.resumed, true);
-    assert.equal(w2.playerId, a.id);
-    assert.equal((await b.waitFor('room.state')).inMatch, true);
-    await b.waitFor('m.public', (p) => p.phase === PHASE.INFO_CHECK);
-    await b.waitFor('m.private');
-
-    // a reconnect re-evaluates the window: the extension is set at every drop, and still ends after the solo window
-    await b.terminate();
-    await delay(SOLO_WINDOW + 700);
-    assert.equal(match.ended, true, 'expiry after the solo window → onLeave → abandoned');
+    await delay(WINDOW + 700);
+    assert.equal(match.ended, true, 'the solo window is the registry window → onLeave → abandoned');
     assert.equal(srv.lobby.getRoom(st.code), null, 'empty room disposed');
     const c = await connect();
     const w3 = await c.hello('Solo', w.token);
@@ -1538,7 +1504,7 @@ describe('solo resume window', () => {
     assert.notEqual(w3.playerId, a.id);
   });
 
-  test('co-op sessions keep the plain reconnect window; a solo player back in the lobby too', async () => {
+  test('co-op sessions keep the same reconnect window; a solo player back in the lobby too', async () => {
     const a = await connect();
     const w = await a.hello('Coop');
     a.id = w.playerId;

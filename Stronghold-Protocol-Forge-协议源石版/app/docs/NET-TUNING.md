@@ -45,18 +45,18 @@
 | `snapDropBytes`（发送缓冲超过则丢 `b.snap`） | `1 << 20` | `server/net.js:56`（用在 `:298`） | 同值 |
 | `hardBufferBytes`（发送队列超过则断开） | `16 << 20` | `server/net.js:57`（用在 `:297`） | 同值 |
 | `isDroppable` | 只有 `b.snap` 可丢；`m.public` **永不**因背压被丢 | `server/net.js:307`（用在 `:318`） | 同值 |
-| `heartbeatMs` / `helloTimeoutMs` / `reconnectWindowMs` | `30000` / `30000` / `600000` | `server/net.js:53-55` | 同值 |
+| `heartbeatMs` / `helloTimeoutMs` / `reconnectWindowMs` | `30000` / `30000` / `300000` | `server/net.js:53-55` | 重连窗口自 2026-10-18 起为 5 分钟（原 10 分钟） |
 | `maxConnections` / `maxConnectionsPerAddr` / `maxSessions` | `2000` / `64` / `20000` | `server/net.js:58-60` | 同值 |
 | `maxRooms` / `maxRoomsPerAddr` / `maxMatchesPerAddr` | `1000` / `16` / `8` | `server/lobby.js:155-157` | 同值 |
 | `resyncMinGapMs`（重复 hello 的重同步间隔） | `1000` | `server/lobby.js:163` | 同值 |
-| `lobbyGraceMs` / `soloReconnectWindowMs` | `60000` / `null` | `server/lobby.js:154`、`:164` | 同值 |
+| `lobbyGraceMs` | `60000` | `server/lobby.js:154` | 同值（独立模拟的重连扩展已删除：所有模式同一个 5 分钟窗口） |
 | 静态 gzip 阈值 / 缓存 | `GZIP_MIN_BYTES = 512`、`GZIP_CACHE_MAX_FILE = 8 << 20`、`GZIP_CACHE_MAX_TOTAL = 96 << 20`、level 6 | `server/http/files.js:62-64`、`:94` | 同值 |
 | 匹配队列 `MATCHMAKE_DEFAULTS` | `size:null, max:null, waitMs:120000, sweepMs:5000, difficulty:'NORMAL'` | `server/matchmaking.js:59-70` | **上游无此参数**（野排匹配是我们的功能，与本次优化无关） |
 | 座位上限 | **缺省 20 座**（`DEFAULT_MAX_SEATS`），`SP_MAX_SEATS=N` 可加 | `shared/constants.js`（`MAX_SEATS = 4`、`DEFAULT_MAX_SEATS = 20`、`maxSeatsFrom`）；`server/lobby.js:162` | 上游 `MAX_SEATS = 4` 且**无覆盖**（上游 `shared/constants.js` 没有 `maxSeatsFrom`）。**`MAX_SEATS = 4` 不动**：它是「官方房间 1–4 人」的声明与超容变体的参照，缺省上限是另一件事 |
 
 **哪些参数能不改代码就调**：`startServer()` 选项里只有 `server/http/config.js:19-23` 列的键能被转发
 （net：`reconnectWindowMs, heartbeatMs, helloTimeoutMs, ratePerSec, rateBurst, maxConnections, abuseDropsPerSec, maxConnectionsPerAddr, heavyPerSec, heavyBurst, trustProxy`；
-lobby：`lobbyGraceMs, maxRooms, maxRoomsPerAddr, maxMatchesPerAddr, resyncMinGapMs, soloReconnectWindowMs, queue`）。
+lobby：`lobbyGraceMs, maxRooms, maxRoomsPerAddr, maxMatchesPerAddr, resyncMinGapMs, queue`）。
 **§2.1 的五个参数都不在这两张名单里**——这就是「要动必须改源码」的确切依据。
 
 ### 2.3 席位上限：缺省 20 座，`SP_MAX_SEATS=N` 可加

@@ -16,6 +16,18 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 改：掉线 5 分钟即踢出（所有模式，删除独立模拟 24 小时重连窗口）
+
+- 业主 2026-10-18：掉线的人 5 分钟就踢。`server/net.js` 的 `reconnectWindowMs` 10 分钟 → **5 分钟**；删掉独立模拟专用的重连扩展（`soloReconnectWindowMs` 选项、`SP_SOLO_RECONNECT_MS`、`soloResumeWindowMs()`、`SOLO_RECONNECT_FALLBACK_SEC`，以及 `server/lobby.js` 每次断线单独延长窗口的那一行）。同盟 / 独立模拟现在同一个窗口，超时即 `onExpire` → 移除座位（对局里按 `onLeave('abandoned')`）。
+- 房间未开局时的 60 秒 `lobbyGraceMs` 不变（本来就比 5 分钟短）。
+- 文档同步：README / PLAYING / DEPLOY / META / NET-TUNING / docs/design/network.md（官方 `config.constants.singleReconnectTime` 仍留在数据里，只是不再当重连窗口）；`test/docs-consistency` 的重连断言、`test/lobby.test.js` 的独立模拟重连用例改成「单一窗口」用例（2/2 通过）。
+- 部署提醒：如果 `/etc/stronghold.env` 里显式设过旧的独立重连变量，删掉（现在不再读取）。
+
+### 改：房间顶栏去掉「助战」入口
+
+- 业主 2026-10-18：房间顶栏（干员调配旁边）那个「助战」按钮去掉。助战本身没动：对局简报（briefing）里的入口还在，选拔与发放逻辑一字未改。
+- `public/js/screens/room.js`：删掉 `<SupportButton from="room">` 与对应 import（房间界面不再引用它）。
+
 ### 改：协议等级 13–18 量过一轮、整张表调成单调曲线
 
 - **测量**：`tools/balance.mjs` 新增 `--level N`（把等级折进敌方 mods / 收入 / 首领池，与真对局同一个 fold）与 `--level` 的 bot 模式支持；ABYSS 多排 11–18 级各跑 R8/R12（3 场 × 4 块 competent 板）+ R14 首领轮。方法与数字记在 `docs/BALANCE.md` §8。

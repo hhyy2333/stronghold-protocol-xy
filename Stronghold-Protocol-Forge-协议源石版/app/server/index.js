@@ -143,7 +143,7 @@ export {
  *   lobbyGraceMs?: number, reconnectWindowMs?: number, heartbeatMs?: number, helloTimeoutMs?: number,
  *   ratePerSec?: number, rateBurst?: number, maxConnections?: number, maxRooms?: number,
  *   maxConnectionsPerAddr?: number, maxRoomsPerAddr?: number, maxMatchesPerAddr?: number, resyncMinGapMs?: number,
- *   heavyPerSec?: number, heavyBurst?: number, trustProxy?: 'auto' | boolean, soloReconnectWindowMs?: number,
+ *   heavyPerSec?: number, heavyBurst?: number, trustProxy?: 'auto' | boolean,
  *   accounts?: boolean, accountsFile?: string, recordsFile?: string,
  *   wsLanes?: readonly import('./http/wsLanes.js').WsLane[],
  *   httpLanes?: readonly import('./http/httpLanes.js').HttpLane[],
