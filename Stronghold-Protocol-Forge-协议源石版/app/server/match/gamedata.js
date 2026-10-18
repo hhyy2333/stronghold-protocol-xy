@@ -17,7 +17,7 @@ import { MAX_SEATS } from '../../shared/constants.js';
 // 这里只消费它的判决（`null` = 什么都不用改，缺省路径逐字节不变）。
 import { variantDataPatch, variantValue } from '../../shared/variants.js';
 import { morphPairingOf, morphSlotPolicy } from '../../shared/morph.js';
-import { isProtocolLevel, protocolLevelActive, protocolLevelMods } from '../../shared/protocolLevels.js';
+import { isProtocolLevel, protocolLevelActive, protocolLevelMods, PROTOCOL_LEVEL_INCOME_FREE_ROUNDS } from '../../shared/protocolLevels.js';
 import { formView, isEliteForm } from '../../shared/formProjection.js';
 import { isShopItem } from '../sim/simdata.js';
 import { mergeData } from '../../shared/plugins/dataUtils.js';
@@ -388,8 +388,14 @@ export class GameData {
   income(round) {
     const arr = Array.isArray(this.economy.income) ? this.economy.income : DEFAULTS.income;
     const cap = numOr(this.economy.incomeCap, DEFAULTS.incomeCap);
-    // 协议等级 ≥10 的收入惩罚：只在级别开着时生效（缺省 0 ⇒ 逐字不变）
-    const delta = this.protocolLevelMods ? this.protocolLevelMods.incomeDelta : 0;
+    // 协议等级 ≥10 的收入惩罚：只在级别开着时生效（缺省 0 ⇒ 逐字不变）。
+    //
+    // **前 7 回合豁免，第 8 回合起才罚**（业主 2026-10-18：「n18 经济惩罚太重」→「从第 8 回合开始减少钱」）。
+    // 这条惩罚是绝对减：Lv18 的 −3 会把第 1 回合的 4 金砍到 1 金（最便宜的棋子 2 金）—— 那不是「更难」，
+    // 是一个什么都做不了的开局。而经济压力真正该出现的位置是中后期：那时构筑与利息已经起来，少几金是压力
+    // 而不是死刑。于是高等级的强度拆成两段：前 7 回合由敌方数值 / 首领池 / 额外源石承担，第 8 回合起再加经济。
+    const delta = this.protocolLevelMods && round > PROTOCOL_LEVEL_INCOME_FREE_ROUNDS
+      ? this.protocolLevelMods.incomeDelta : 0;
     const v = arr[round];
     if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return Math.max(0, v + delta);
     return Math.max(0, Math.min(cap, 3 + round) + delta);

@@ -181,6 +181,12 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   单调曲线（生命/攻击逐级升；数量、漏怪、收入惩罚、首领池、额外敌方源石在 13–18 都不回头）。
 - **表**：`shared/protocolLevels.js`。每级只动 1–2 个玩家能感知的量，乘法曲线，每 3 级一个拐点：
   1–6 敌方生命/攻击；7–12 追加防御/法抗、漏怪 LP、每波数量、收入；13–18 首领池、额外敌方协议源石、收入惩罚。
+- **收入惩罚从第 8 回合起生效**（`PROTOCOL_LEVEL_INCOME_FREE_ROUNDS = 7`，业主 2026-10-18：「n18 经济惩罚太重」
+  →「从第 8 回合开始减少钱」）。这条惩罚是**绝对减**，而开局是自走棋最脆弱的地方：Lv18 的 `incomeDelta: -3`
+  曾把第 1 回合的 4 金砍到 1 金（最便宜的棋子 2 金）—— 那不是「更难」，是开局就被判死。豁免前 7 回合后，
+  Lv18 的资金轨迹是 `4 5 6 7 8 9 10 | 8 9`（第 8 回合从 11 掉到 8），而**每一级都比原来不更重**。
+  **为什么不改成百分比**：`-1` 档（Lv10–13）只砍掉约 8 %，换成 −25 % 那种比例反而比原来更重。高等级的强度
+  前 7 回合由敌方数值 / 首领池 / 额外敌方源石承担，第 8 回合起再加入经济压力。
 - **读取点**：`GameData.protocolLevel / protocolLevelMods`（`income()`、`bossPoolHp()`）；
   `server/match/hextech.js matchEnemyMods`（敌方协议源石 + 等级折成同一份 spawn mods —— **实战与预览是同一个
   fold**）；`settle.js` 的漏怪损失。

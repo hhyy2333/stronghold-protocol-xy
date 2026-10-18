@@ -77,8 +77,11 @@ test('a level folds into enemy mods, income and the leader pool — and only on 
   const lv18 = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true, protocolLevel: 18 });
   assert.equal(lv6.m.protocolLevel, 6);
   assert.deepEqual(matchEnemyMods(lv6.m), { hpMul: 1.33, atkMul: 1.2 }, 'level 6 enemy mods');
-  assert.equal(lv12.m.gd.income(1), base.m.gd.income(1) - 1, 'level 12 pays one fund less');
-  assert.equal(lv12.m.gd.income(1) >= 0, true);
+  // 收入惩罚从第 8 回合起才生效（PROTOCOL_LEVEL_INCOME_FREE_ROUNDS = 7，业主 2026-10-18「从第 8 回合开始减少钱」）
+  assert.equal(lv12.m.gd.income(8), base.m.gd.income(8) - 1, 'level 12 pays one fund less from round 8');
+  assert.equal(lv12.m.gd.income(1), base.m.gd.income(1), 'the first seven rounds are exempt');
+  assert.equal(lv12.m.gd.income(7), base.m.gd.income(7), 'round 7 is still exempt');
+  assert.equal(lv12.m.gd.income(8) >= 0, true);
   const bossId = Object.keys(DATA.bosses)[0];
   assert.equal(lv18.m.gd.bossPoolHp(bossId, 2), Math.round(base.m.gd.bossPoolHp(bossId, 2) * 1.5));
   // the pool a real boss round builds (bossPoolHpFor → finalAssault.bossPoolHp) carries it too — one source, both halves
@@ -88,6 +91,38 @@ test('a level folds into enemy mods, income and the leader pool — and only on 
   const hard = makeMatch({ mode: 'solo', difficulty: 'HARD', humans: 1, seed: 21, fake: true, protocolLevel: 6 });
   assert.equal(hard.m.protocolLevel, 0);
   assert.deepEqual(matchEnemyMods(hard.m), {});
+});
+
+// 业主 2026-10-18：「n18 经济惩罚太重」，随后定为「从第 8 回合开始减少钱」。收入惩罚是绝对减，而开局是
+// 自走棋最脆弱的地方 —— Lv18 的第 1 回合曾只剩 1 金（最便宜的棋子 2 金），等于开局就被判死。这条测试钉住
+// 「前 7 回合豁免、第 8 回合起才罚」本身。
+test('the income penalty starts at round 8, so every level opens with a normal hand', () => {
+  const base = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true });
+  const lv18 = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true, protocolLevel: 18 });
+  // 前 7 回合：与不带等级**逐值相同**，于是 Lv18 也能正常起手（4 / 5 / 6 / 7 / 8 / 9 / 10 金）
+  for (let r = 1; r <= 7; r++) {
+    assert.equal(lv18.m.gd.income(r), base.m.gd.income(r), `round ${r} is exempt at level 18`);
+  }
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map((r) => lv18.m.gd.income(r)), [4, 5, 6, 7, 8, 9, 10], 'the opening seven rounds are the normal ones');
+  // 第 8 回合起才罚，且罚的是表里写的那个绝对值
+  assert.equal(lv18.m.gd.income(8), base.m.gd.income(8) - 3, 'level 18 pays three funds less from round 8');
+  assert.equal(lv18.m.gd.income(12), base.m.gd.income(12) - 3);
+  // 永远不为负、也永远不比不带等级多（惩罚只会往下）
+  for (let r = 1; r <= 15; r++) {
+    const got = lv18.m.gd.income(r);
+    assert.ok(got >= 0, `income(${r}) is never negative`);
+    assert.ok(got <= base.m.gd.income(r), `income(${r}) never exceeds the unlevelled value`);
+  }
+  // 每一级都不比不带等级多，且豁免回合内与不带等级一致
+  for (const lv of [10, 12, 13, 14, 17, 18]) {
+    const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true, protocolLevel: lv });
+    for (let r = 1; r <= 7; r++) assert.equal(h.m.gd.income(r), base.m.gd.income(r), `L${lv} round ${r} exempt`);
+    assert.ok(h.m.gd.income(8) <= base.m.gd.income(8), `L${lv} round 8 never pays more`);
+  }
+  // 等级 0 / 其它难度：逐字不变（豁免逻辑一个字节都不碰它们）
+  assert.equal(base.m.gd.income(1), 4);
+  assert.equal(base.m.gd.income(4), 7);
+  assert.equal(base.m.gd.income(8), 11);
 });
 
 test('levels 13+ actually grant extra enemy hexes at the start (13/14/15 → 1, 16/17 → 2, 18 → 3)', () => {

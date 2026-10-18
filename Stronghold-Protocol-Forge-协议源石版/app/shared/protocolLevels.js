@@ -25,6 +25,19 @@
 /** 最高等级。0 = 关闭。 */
 export const PROTOCOL_LEVEL_MAX = 18;
 
+/**
+ * 收入惩罚**豁免的前几个回合**（业主 2026-10-18：「n18 经济惩罚太重」，随后定为「从第 8 回合开始减少钱」）。
+ *
+ * 收入惩罚是绝对减（`incomeDelta: -3` 就是每回合少 3 金）。**前 7 个回合不罚，第 8 回合起才罚**：
+ *   * 开局三回合（4 / 5 / 6 金）是自走棋最脆弱的地方 —— Lv18 的 −3 曾把第 1 回合砍到 1 金（最便宜的
+ *     棋子 2 金），那不是「更难」，是开局就什么都做不了；
+ *   * 而经济惩罚真正该起作用的位置是**中后期**：那时构筑与利息已经起来，少几金是压力而不是死刑。
+ *
+ * 于是高等级的强度拆成两段：前 7 回合由敌方数值 / 首领池 / 额外敌方源石承担，第 8 回合起再加入经济压力。
+ * `income(round)` 只在 `round > PROTOCOL_LEVEL_INCOME_FREE_ROUNDS` 时折 `incomeDelta`；表里的数值不为此改动。
+ */
+export const PROTOCOL_LEVEL_INCOME_FREE_ROUNDS = 7;
+
 /** 每一级的数值。`hpMul/atkMul/defMul/resMul` 是**乘数**，`countAdd` 是每波额外敌人数（加法），其余是绝对增减。 */
 export const PROTOCOL_LEVELS = Object.freeze([
   { level: 1, tier: 'steady', label: 'I', enemy: { hpMul: 1.05, atkMul: 1.03 } },

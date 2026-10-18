@@ -151,7 +151,10 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
         const id = ps.playerId;
         const inc = incomeEv.get(ps);
         const want = gd.income(r);
-        if (want !== Math.min(3 + r, 12) && !gd.economy.income) fail(`income(${r}) ${want}`);
+        // 协议等级开着时 `want` 故意不等于 min(3+r, 12)（收入惩罚，且前 3 回合豁免），所以那一格只在
+        // **没有等级、也没有 economy.income** 时才当判据 —— 否则每个高等级对局都会被审计判成违规。
+        const levelActive = gd.protocolLevel > 0;
+        if (!levelActive && want !== Math.min(3 + r, 12) && !gd.economy.income) fail(`income(${r}) ${want}`);
         if (!inc) fail(`${id}: no onIncome dispatch`);
         else {
           if (inc.initial.income !== want || inc.initial.pending !== p0) fail(`${id}: onIncome started with ${inc.initial.income}+${inc.initial.pending}, expected ${want}+${p0}`);
