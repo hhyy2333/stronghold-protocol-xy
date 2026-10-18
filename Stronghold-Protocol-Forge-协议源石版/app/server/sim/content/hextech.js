@@ -327,12 +327,25 @@ function applySpec(ctx, spec, hex = null, hook = '') {
       did = true;
     }
   }
-  // 战损回收 / 过路费-style: funds per counted leak of the round's own battle, at settlement (next prep).
-  // Owner's rebalance of 2026-10-13: the flat 3/leak became 1/leak, DOUBLED to `perLeakAfterLoss` when this round's
-  // 协防 failed and the player was actually charged LP — the event carries both halves (settle.js dispatches
-  // `{ result, lpLoss, perfect, unite }`), so the card reads the outcome rather than the leaks alone. `unite != null`
-  // is what makes it 协防's failure and not an ordinary round's own leak: a 联防 only charges a leaker for what got
-  // past the helpers, so lpLoss > 0 there IS the failed defence. The cap is unchanged.
+  // 战损回收: funds per **LP actually charged this round**, at settlement (next prep).
+  //
+  // Owner's call 2026-10-18: the card now pays for the damage taken, not for the leaks. It used to be 1/leak
+  // (doubled to 2 when a 协防 had failed and charged LP); the payout is now a flat `perLpLoss` per LP of
+  // `ev.lpLoss` — the settlement's own number, cap unchanged. Reading `lpLoss` instead of counting `leaked`
+  // is what makes the card follow the real cost: a 联防 leaker is charged only for what got past the helpers,
+  // and a protocol level's extra leak LP (settle.js `levelLeak`) is charged on top, so both now count.
+  //
+  // 过路费 (the enemy hex `payout`) still pays per leak — that is a different card and keeps its own reading.
+  if (isPos(spec.perLpLoss)) {
+    const charged = Number(ctx.event()?.lpLoss);
+    if (Number.isFinite(charged) && charged > 0) {
+      const cap = Number.isInteger(spec.cap) && spec.cap > 0 ? spec.cap : Infinity;
+      ctx.addPendingFunds(Math.min(cap, Math.trunc(charged) * spec.perLpLoss));
+      did = true;
+    }
+  }
+  // 战损回收's old shape (`perLeak` / `perLeakAfterLoss`): kept readable so an already-installed pack that
+  // declares it still pays, but the bundled card no longer uses it (see the comment above).
   if (isPos(spec.perLeak)) {
     const ev = ctx.event() || {};
     const leaked = (ev.result?.leaked || []).filter((l) => l && l.counted !== false).length;

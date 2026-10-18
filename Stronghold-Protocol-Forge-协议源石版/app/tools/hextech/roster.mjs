@@ -36,6 +36,10 @@
 //   shopSlot { index, pick }   — rewrite one shop slot (`pick: 'board'` = a random operator from the own board)
 //   bondAtkPct N               — every sale: +N % ATK, permanently, for the operators sharing a sold bond
 //   perLeak { perLeak, cap }   — at settlement: funds per counted leak (cap per round)
+//   perLpLoss { perLpLoss, cap } — at settlement: funds per LP actually charged this round (cap per round).
+//                                 The leak-counting sibling of the above; 战损回收 uses this one so the payout
+//                                 follows the real cost (a 联防 leaker is charged only for what got past the
+//                                 helpers, and a level's extra leak LP is counted too).
 //   mainBondCount N            — the own most-numerous bond needs N fewer operators (the 调和 mechanism)
 //   firstKillBy { profession, coins } — first kill of a battle by that profession credits coins (bounty channel)
 //   firstAttackBy { profession, atkPct, seconds } — battle: each own operator of that profession's own first
@@ -221,9 +225,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_recovery',
     name: '战损回收',
-    desc: '每场战斗每漏掉 1 个敌人，下回合开始时额外得到 1 资金；若该回合的联防失败并扣除了你的目标生命值，则每漏掉 1 个敌人额外得到 2 资金（每回合最多 12）。',
+    desc: '每场战斗每扣除 1 点目标生命值，下回合开始时额外得到 2 资金（每回合最多 12）。',
     rarity: 'silver',
-    effect: { onBattleResult: { perLeak: 1, perLeakAfterLoss: 2, cap: 12 } },
+    effect: { onBattleResult: { perLpLoss: 2, cap: 12 } },
   },
   {
     id: 'hex_heritage',

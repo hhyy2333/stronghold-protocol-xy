@@ -156,38 +156,38 @@ test('传承: every sale adds +2 % to the bonds of the sold operator, on the hex
   for (const b of chess.bonds) assert.equal(acc[b], 4, `${b} accumulated twice`);
 });
 
-test('战损回收: it pays 1 per counted leak, 2 after a failed 联防 charge, and honours the cap', () => {
+test('战损回收: 2 funds per LP actually charged this round, capped at 12', () => {
   const reg = getDefaultRegistry();
   const h = reg.get(hexEffectKey('hex_recovery'));
   const leak = (counted) => ({ enemyKey: 'e', counted });
-  // an ordinary round: 1 fund per counted leak (the owner's rebalance of 2026-10-13; it was a flat 3)
-  const ctx = ctxStub();
-  ctx.ev = { result: { leaked: [leak(true), leak(true), leak(false)] } };
-  h.onBattleResult(ctx);
-  assert.equal(ctx.pending, 2, 'two counted leaks × 1');
-  // a 联防 that failed and charged the player LP: 2 funds per counted leak instead — and ONLY then (`unite` present)
-  const united = ctxStub();
-  united.ev = { result: { leaked: [leak(true), leak(true)] }, unite: { helpers: ['p2'] }, lpLoss: 2 };
-  h.onBattleResult(united);
-  assert.equal(united.pending, 4, 'two counted leaks × 2 after a failed defence');
-  // a 联防 that held (no LP charged) pays the ordinary rate — nothing was lost to compensate
-  const held = ctxStub();
-  held.ev = { result: { leaked: [leak(true)] }, unite: { helpers: ['p2'] }, lpLoss: 0 };
-  h.onBattleResult(held);
-  assert.equal(held.pending, 1, 'a defence that held pays the flat rate');
-  // an ordinary round never pays the doubled rate even when the player lost LP to its OWN leaks (no `unite` on the event)
-  const own = ctxStub();
-  own.ev = { result: { leaked: [leak(true)] }, lpLoss: 3 };
-  h.onBattleResult(own);
-  assert.equal(own.pending, 1, 'an ordinary round stays at 1 — `unite` is what marks 协防');
-  const heavy = ctxStub();
-  heavy.ev = { result: { leaked: Array.from({ length: 9 }, () => leak(true)) }, unite: {}, lpLoss: 5 };
-  h.onBattleResult(heavy);
-  assert.equal(heavy.pending, 12, '9 × 2 = 18 is capped at 12');
-  const clean = ctxStub();
-  clean.ev = { result: { leaked: [] } };
-  h.onBattleResult(clean);
-  assert.equal(clean.pending, 0, 'a perfect round pays nothing');
+  // Owner's decision 2026-10-18: the card pays for the damage TAKEN, not for the leaks — 2 per LP, cap 12.
+  // `ev.lpLoss` is the settlement's own number (settle.js), so a 联防 leaker charged only for what got past the
+  // helpers, and a protocol level's extra leak LP, both count through this one reading.
+  const at = (lpLoss) => {
+    const ctx = ctxStub();
+    ctx.ev = { result: { leaked: [leak(true), leak(true)] }, lpLoss };
+    h.onBattleResult(ctx);
+    return ctx.pending;
+  };
+  assert.equal(at(1), 2, '1 LP × 2');
+  assert.equal(at(2), 4, '2 LP × 2');
+  assert.equal(at(3), 6, '3 LP × 2');
+  // the cap is per round, unchanged at 12
+  assert.equal(at(5), 10);
+  assert.equal(at(6), 12, '6 LP × 2 = 12, exactly the cap');
+  assert.equal(at(9), 12, '9 LP × 2 = 18 is capped at 12');
+  // nothing charged ⇒ nothing paid (a perfect round, or a 联防 that held)
+  assert.equal(at(0), 0, 'no LP charged pays nothing');
+  assert.equal(at(undefined), 0, 'an event without lpLoss pays nothing');
+  // leaks alone no longer pay: 9 leaks with 0 LP charged is 0 (the old shape paid 9)
+  const leakOnly = ctxStub();
+  leakOnly.ev = { result: { leaked: Array.from({ length: 9 }, () => leak(true)) }, lpLoss: 0 };
+  h.onBattleResult(leakOnly);
+  assert.equal(leakOnly.pending, 0, 'leaks alone pay nothing now — the LP charged is what pays');
+  // the bundled card no longer carries the old keys
+  const decl = HEXTECH.playerHexes.hex_recovery;
+  assert.deepEqual(decl.effect.onBattleResult, { perLpLoss: 2, cap: 12 });
+  assert.ok(!('perLeak' in decl.effect.onBattleResult), 'the leak-counting keys are gone from the bundled card');
 });
 
 test('盟约之主: the most numerous bond needs 1 fewer operator, and the bonus follows the board', () => {
