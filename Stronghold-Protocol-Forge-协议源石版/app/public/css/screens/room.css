@@ -340,14 +340,28 @@
 
 /* 协议等级 (owner's call 2026-10-18): the chip beside the difficulty pill and the host's slider in 选择模拟协议 */
 /* 协议等级 (owner 2026-10-18: 从「选择模拟协议」面板挪到底栏) —— 一只袖珍滑杆，紧挨难度胶囊 */
-.rs-pill__lv { display: inline-flex; align-items: center; gap: .06rem; height: max(.34rem, 22px); padding: 0 .08rem; margin-right: .04rem;
-  background: rgba(0, 0, 0, .28); border: 1px solid var(--line-2); border-radius: .04rem; cursor: pointer; }
-.rs-pill__lvname { font-size: calc(.12 * var(--t)); letter-spacing: .06em; color: var(--text-dim); white-space: nowrap; }
-.rs-pill__lv input { width: 1.05rem; height: max(.18rem, 12px); margin: 0; accent-color: var(--amber); cursor: pointer; }
-.rs-pill__lv input:disabled { cursor: default; opacity: .45; }
-.rs-pill__lv b { min-width: .4rem; text-align: right; font-size: calc(.14 * var(--t)); letter-spacing: .04em; color: var(--amber); }
+.rs-pill__lv { display: inline-flex; align-items: center; gap: .08rem; height: max(.44rem, 28px); padding: 0 .1rem; margin: 0 .02rem; cursor: pointer;
+  background: linear-gradient(180deg, #151817, #0b0d0c); border: 1px solid rgba(200, 220, 214, .16);
+  clip-path: polygon(.05rem 0, 100% 0, 100% calc(100% - .05rem), calc(100% - .05rem) 100%, 0 100%, 0 .05rem);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), inset 0 0 .16rem rgba(0, 0, 0, .5); }
+.rs-pill__lvname { font-size: calc(.12 * var(--t)); letter-spacing: .1em; color: #8e9794; white-space: nowrap; }
+/* 科技滑杆：细长凹槽轨道 + 发光橙色矩形滑块（WebKit / Firefox 两套伪元素） */
+.rs-pill__lv input[type="range"] { -webkit-appearance: none; appearance: none; width: 1.05rem; height: max(.2rem, 14px); margin: 0; background: transparent; cursor: pointer; }
+.rs-pill__lv input[type="range"]::-webkit-slider-runnable-track { height: 5px; border-radius: 0; border: 1px solid rgba(255, 255, 255, .1);
+  background: linear-gradient(180deg, #070908, #0e1110); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .9); }
+.rs-pill__lv input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: .12rem; height: .22rem; margin-top: -.085rem; border-radius: 0;
+  background: linear-gradient(180deg, #ffc46a, #ff8a1f); border: 1px solid #ffe0b0;
+  box-shadow: 0 0 .1rem rgba(255, 160, 60, .9), 0 0 .26rem rgba(255, 120, 10, .45); }
+.rs-pill__lv input[type="range"]::-moz-range-track { height: 5px; border-radius: 0; border: 1px solid rgba(255, 255, 255, .1);
+  background: linear-gradient(180deg, #070908, #0e1110); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .9); }
+.rs-pill__lv input[type="range"]::-moz-range-thumb { width: .12rem; height: .22rem; border-radius: 0;
+  background: linear-gradient(180deg, #ffc46a, #ff8a1f); border: 1px solid #ffe0b0;
+  box-shadow: 0 0 .1rem rgba(255, 160, 60, .9), 0 0 .26rem rgba(255, 120, 10, .45); }
+.rs-pill__lv input[type="range"]:disabled { cursor: default; opacity: .5; }
+.rs-pill__lv b { min-width: .4rem; padding-left: .08rem; border-left: 1px solid rgba(255, 255, 255, .1); text-align: right;
+  font-size: calc(.14 * var(--t)); letter-spacing: .04em; color: var(--amber); text-shadow: 0 0 .1rem rgba(255, 160, 40, .5); }
 .rs-pill__lv.is-readonly { cursor: default; }
-@media (max-width: 900px) { .rs-pill__lvname { display: none; } .rs-pill__lv input { width: .8rem; } }
+@media (max-width: 900px) { .rs-pill__lvname { display: none; } .rs-pill__lv input[type="range"] { width: .8rem; } }
 .ready-count[hidden] { display: none; }
 .ready-count { display: flex; align-items: baseline; gap: .06rem; font-size: calc(.16 * var(--t)); }
 .ready-count b { font-size: calc(.36 * var(--t)); line-height: 1; color: var(--mint-400); text-shadow: 0 0 .14rem rgba(23, 249, 183, .45); }
