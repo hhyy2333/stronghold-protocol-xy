@@ -11,6 +11,17 @@ import { PHASE, ERR } from '../../../shared/constants.js';
 import { snapFrame } from '../fields.js';
 import { OK, fail } from './common.js';
 
+/** Field kinds a finished field may re-target a view FROM (see `_retargetWatchers`). **Only the squad 联防**: its
+ * fields (`u<i>` / `r<i>`) are separate battles that genuinely end at different moments.
+ *
+ * NOT `boss` / `hidden`: the two pair fields (`b1` / `b2`) share one pool and one end, so there is nothing to move
+ * between, and the rule for them is the opposite — a fighting player must never be shown the other pair's field
+ * (`watch()`'s own gate, DESIGN §8.2 boss rounds). Re-targeting those dragged a spectator off the field it watched
+ * and cost it that field's `b.end` (`test/match/spectator.test.js`).
+ *
+ * NOT `normal`: each player has their own `n:<pid>` field, and every view is already pinned to the right one. */
+const RETARGET_FIELD_KINDS = new Set(['unite']);
+
 export class MatchWatch {
   /**
    * A spectator seat (community report #26; server/lobby.js spectate) joined during the match, came back or asked for a
@@ -260,5 +271,69 @@ export class MatchWatch {
     const dest = changed ? watchers : (to ? [to] : []);
     if (!dest.length) return;
     for (const pid of dest) this.sendTo(pid, meta);
+  }
+
+  /**
+   * One field of a multi-field phase just finished while other fields are still live (a squad 联防, or the boss pairs
+   * of a 20-seat room): move everyone whose view still points at it onto a field that is STILL RUNNING.
+   *
+   * WHY THIS EXISTS (owner's report 2026-10-18): a viewer whose field ended kept staring at a finished battlefield until
+   * the WHOLE phase ended — `_fieldDone` marked `f.live = false` and then only `_maybeFieldsDone` ran, which waits for
+   * every field. `watchers` is a `Map<pid, fieldId>` written in 13 places and read by the frame routing, so nothing
+   * else could move the view: the client's `b.end` handler only stops the battle, it never picks another field.
+   *
+   * ⚠️ **ONLY for a phase whose fields are SHARED** — a squad 联防 (`u<i>` / `r<i>`) or the boss / hidden pairs
+   * (`b1` / `b2`). A normal round (各自行动) gives each player their OWN `n:<pid>` field and everyone's view is
+   * already pinned to the field it should see (a spectator to the one it follows: `_defaultWatch`). Moving those
+   * views on the first field to finish would drag a spectator from the teammate it follows onto whoever happened to
+   * end later — `test/match/spectator.test.js` pins exactly that ("what it was shown in 各自行动 is … n:p_1"), and it
+   * is also wrong for the players themselves: your own battle ending must not hand you somebody else's board.
+   * The distinction is the field KIND, not the phase: a multi-field phase is only worth re-targeting when the
+   * fields are shared between players.
+   *
+   * WHO MOVES. Everyone shown this shared field — an observer (an eliminated player, a spectator seat, a teammate
+   * looking at another squad) AND a player of the field itself (owner's decision: after your own defence ends you
+   * follow the rest of the phase, rather than being parked on your finished board). `watch` is recomputed per target:
+   * a player of the FINISHED field is never a fighter of the new one, so `_startMsg` must not hand them its authority.
+   *
+   * WHERE TO. The player's own field if it is still live (a watcher who fights elsewhere: back to their own battle);
+   * otherwise the field of the player it follows (`_watchTargetField`, item 56); otherwise the first live field. A
+   * field still loading (`!f.done && !f.live`) counts as a candidate only after the live ones, so a viewer is never
+   * parked on an empty one.
+   *
+   * WHY IT IS SAFE. `_fieldDone` only runs once a field HAS its result (`_armRelease` gates on `f.result != null`), so
+   * nothing a moved viewer owed the server is lost. Fields that were never launched (a `noHelper` squad) are not in
+   * `this.fields` and are never chosen.
+   *
+   * @param {object} finished the field that just ended
+   */
+  _retargetWatchers(finished) {
+    if (!finished || this.disposed) return;
+    // 联防 only — see the ⚠️ above (a normal round's own `n:<pid>` fields, and the boss pairs, are never re-targeted)
+    if (!RETARGET_FIELD_KINDS.has(finished.kind)) return;
+    const still = (f) => f && f !== finished && !f.done && (f.live || !f.cc);
+    const candidates = this.fields.filter(still);
+    if (!candidates.length) return;
+    // live fields first, so a viewer already on the field the server is about to load is not moved twice
+    const ordered = [...candidates.filter((f) => f.live), ...candidates.filter((f) => !f.live)];
+    for (const [pid, fid] of [...this.watchers]) {
+      if (fid !== finished.fieldId) continue;
+      const ps = this.players.get(pid) || this.spectators.get(pid);
+      if (!ps || ps.isBot || ps.left) continue;
+      const own = ordered.find((f) => Array.isArray(f.players) && f.players.includes(pid)) || null;
+      const next = own || this._watchTargetField(ps, ordered) || ordered[0];
+      if (!next) continue;
+      if (next.fieldId === fid) continue;
+      this.watchers.set(pid, next.fieldId);
+      if (next.cc) {
+        // client-side combat: a `b.start` of the new field (the replica runs locally). `watch`: not a fighter of the
+        // field being shown. For a player of the FINISHED field that is always true (they fight the old one), which
+        // is exactly what keeps them out of the new field's authority pool.
+        this._sendStart(pid, next, { watch: !(Array.isArray(next.players) && next.players.includes(pid)) });
+      } else {
+        // server-run combat: the field's meta + a snapshot, the same pair `g.watch` sends.
+        this._sendField(pid, next.fieldId);
+      }
+    }
   }
 }

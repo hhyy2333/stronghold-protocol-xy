@@ -171,11 +171,14 @@ export class FieldRunner {
       }
       if (b.finished) { f.live = false; this.m.markPublic(); }
       if (this.ticks % SNAP_EVERY === 0 || !f.live) this._emit(f);
+      // A field of a server-run MULTI-field phase ended while the others still run: move the views parked on it to a
+      // field that is still going (owner's report 2026-10-18; the client-combat twin is `clientCombat._fieldDone`).
+      // Once per field: `_retargetWatchers` is a one-shot move, and this loop runs every tick.
+      if (!f.live && b.finished && !f._retargeted) { f._retargeted = true; this.m._retargetWatchers?.(f); }
     }
     if (this.onTick) {
       try { this.onTick(this); } catch (e) { this.m.reportError('field onTick', e); }
     }
-    for (const f of this.fields) if (f.live && f.battle.finished) { f.live = false; this.m.markPublic(); this._emit(f); }
   }
 
   _forceField(f, reason) {
@@ -191,6 +194,8 @@ export class FieldRunner {
     }
     f.live = false;
     this.m.markPublic();
+    // a force-ended field of a multi-field phase: same one-shot retarget as a natural end (see _tick)
+    if (!f._retargeted) { f._retargeted = true; this.m._retargetWatchers?.(f); }
   }
 
   /** Force-end every live field (team LP 0, hard cap). */

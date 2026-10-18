@@ -236,6 +236,11 @@ export class MatchClientCombat {
     this._clearFieldTimers(f);
     if (!f.result) f.result = syntheticResult(f.players, { bossBy: f.bossBy });
     f.progress.done = true;
+    // A field of a MULTI-field phase ends while the others still run: move every view parked on it to one that is
+    // still going (owner's report 2026-10-18 — before this, a viewer stared at a finished battlefield until the whole
+    // phase ended). Runs before markPublic so the same tick's frame and the b.start agree. Safe here: `_armRelease`
+    // only reaches this once the field HAS its result, so nothing a moved viewer owed is lost.
+    this._retargetWatchers(f);
     this.markPublic();
     this._maybeFieldsDone();
   }
