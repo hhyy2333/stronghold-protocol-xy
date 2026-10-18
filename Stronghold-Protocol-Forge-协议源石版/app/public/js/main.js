@@ -282,13 +282,14 @@ function onWelcome(msg) {
   const prevId = prev.me.playerId;
   const name = typeof msg.name === 'string' && msg.name ? msg.name : prev.me.name;
   // 工坊 mod set (W-A): what this server runs. The client must echo this digest to enter a room, and the lobby renders
-  // its pack list as the room-declaration picker. A server that changed under us (restart, another pack root) must not
-  // leave a pick from the old catalogue selected — setWelcomeMods drops it and returns false (see roomMods.js).
-  const sameMods = roomMods.setWelcomeMods(msg);
+  // its pack list as the room-declaration picker. The picks are a REMEMBERED preference (owner 2026-10-18): every
+  // welcome re-applies them against this server's catalogue, so a reload / reconnect / another room keeps the ticks
+  // (roomMods.js rememberedSelection; a pack the server no longer declares is dropped, never sent).
+  roomMods.setWelcomeMods(msg);
   store.set({
     roomMods: {
       available: roomMods.availableMods(),
-      selected: sameMods ? prev.roomMods.selected : roomMods.getSelectedModIds(),
+      selected: roomMods.getSelectedModIds(),
     },
   });
   identity.saveName(name);
@@ -340,12 +341,7 @@ function onRoomState(msg) {
   // A (new) match starts: forget the previous match's state so stale results never show.
   if (room.inMatch && !(prevRoom && prevRoom.inMatch && prevRoom.code === room.code)) { publicState = null; store.set({ match: emptyMatch() }); }
   store.set({ room });
-  // The picks were made FOR the room we just entered (host) or joined: the next create starts from none, so a pick can
-  // never leak into a room the player did not choose it for (roomMods.js).
-  if (!prevRoom && room) {
-    roomMods.clearSelection();
-    if (store.get().roomMods.selected.length) store.set({ roomMods: { ...store.get().roomMods, selected: [] } });
-  }
+  // 进房不再清空勾选：那是**记住的偏好**（owner 2026-10-18），下一间房默认还是这几个包。(roomMods.js)
   identity.rememberMatch(room.inMatch && seats.some((seat) => seat?.playerId === myId)
     ? { name: store.get().me.name, code: room.code || '' } : null);
   if (room.mode === 'coop' && typeof room.code === 'string') rememberRoom(room.code);

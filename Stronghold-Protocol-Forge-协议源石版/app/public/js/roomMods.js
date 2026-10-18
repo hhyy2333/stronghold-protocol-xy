@@ -16,10 +16,16 @@
 //
 // ▸ Absent means absent. On a plain install `welcome` has NO `mods` key, `welcomeModSet` stays null, and every payload
 // builder here returns the fields it was given, byte-identical: no `mods`, no `modIds`, no empty object.
+//
+// ▸ Remembered picks (owner 2026-10-18: 「每次都要重复勾选，应该记住」). The host's ticks are a **preference**, not room
+// state: they are written to localStorage (`sp.pref.roomMods.selected`) whenever they change and re-applied on every
+// `welcome`, filtered against the catalogue that server actually declared (a pack that is gone is dropped, never sent).
+// Entering a room no longer forgets them, and a page reload keeps them; 「清空」 is the one thing that empties the list.
 
 // 行为开关的有效档位（DESIGN §28.43）：客户端不自己实现合并规则，直接调 `shared/behaviour.js` 那**一份**纯函数
 // （与 `shared/variants.js` 的 `mergeVariantDecls` 逐字同一条「包 id 字典序小的赢」）。
 import { mergeBehaviourDecls, behaviourValue } from '../../shared/behaviour.js';
+import { loadPref, savePref } from './store.js';
 import { setMorphPairing, setMorphSlotPolicy } from './ui/gameLogic/bonds.js';
 import { setUnequipAllowed } from './ui/gameActions.js';
 // 第二格 `prepLoadout` 的客户端半（DESIGN §28.43.3）：干员调配屏"是否锁定"的那份相位判据住在 loadoutSync。
@@ -31,6 +37,20 @@ import { setPrepLoadout } from './ui/loadoutSync.js';
 let welcomeModSet = null;
 /** Pack ids the host has ticked for the room it is about to create. @type {string[]} */
 let selectedModIds = [];
+/** The preference key (`store.js loadPref/savePref` → `sp.pref.roomMods.selected`). */
+const SELECTED_PREF = 'roomMods.selected';
+
+/**
+ * The remembered ticks, filtered against THIS server's catalogue (sorted like `setSelectedModIds`). Read from the
+ * preference on every welcome: a reload, a reconnect and a different room all come through here.
+ * @returns {string[]}
+ */
+function rememberedSelection() {
+  const saved = loadPref(SELECTED_PREF, []);
+  if (!Array.isArray(saved)) return [];
+  const known = new Set(availableMods().map((p) => p.id));
+  return saved.filter((id) => typeof id === 'string' && known.has(id)).sort();
+}
 
 /** Back to "this client has been told about no mods" (a fresh connection, or a test). */
 export function reset() {
@@ -56,7 +76,8 @@ export function setWelcomeMods(msg) {
   const next = digest ? { digest, packs } : null;
   const same = sameSet(welcomeModSet, next);
   welcomeModSet = next;
-  if (!same) selectedModIds = [];
+  // 记住了的勾选在**每一次** welcome 都重新套用（换服务器时只保留这台服务器真有的包；空的服务器上自然是空）。
+  selectedModIds = rememberedSelection();
   // 行为开关的有效档位（DESIGN §28.43）：客户端不自己实现合并规则，直接调 `shared/behaviour.js` 那**一份**纯函数
   // （与 `shared/variants.js` 的 `mergeVariantDecls` 逐字同一条「包 id 字典序小的赢」）。四处读数都走它：
   // `morphPairing`（详情卡 / 列表的 变形同构体 读数）、`unequip`（画不画「卸下」按钮）、
@@ -110,13 +131,18 @@ export function setSelectedModIds(ids) {
     if (typeof id === 'string' && known.has(id) && !kept.includes(id)) kept.push(id);
   }
   selectedModIds = kept.sort();
+  // 这是**偏好**，不是房间状态：写进 localStorage，下次建房/刷新页面还在（业主 2026-10-18）。
+  if (welcomeModSet) savePref(SELECTED_PREF, selectedModIds);
   return selectedModIds.slice();
 }
 
 /** Whether `id` is a pack this server declared (the picker's checkbox state comes from here). @param {string} id */
 export function isAvailable(id) { return availableMods().some((p) => p.id === id); }
 
-/** Forget the host's picks (the room they were made for now exists — the next create starts from none). */
+/**
+ * Forget the LIVE picks only. The remembered preference is deliberately untouched: it is what the next `welcome`
+ * re-applies (a disconnect / a server restart must not erase what the host ticked).
+ */
 export function clearSelection() { selectedModIds = []; }
 
 /**
