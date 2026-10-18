@@ -16,6 +16,12 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 改：大厅「密钥加入」与两张浅色卡对调位置
+
+- 业主 2026-10-18（截图圈出两处）。左列顶部现在放 **S.W.E.E.P.报告 · 干员调配** 两张浅色卡；右列（缺人同盟下方）现在放 **密钥加入**。
+- `public/js/screens/lobby.js`：两处 JSX 对调；`.hub-right__plates` 改名 `.hub-plates`（它不再只属于右列），`public/css/screens/lobby.css` 同步（含窄屏媒体查询）。
+- 验收：1600×900 实际进入大厅截图，两列互不重叠；`browser-syntax` 6/6、eslint 0 errors。
+
 ### 新：后台面板的数据显示加「网络」
 
 - 业主 2026-10-18。`GET /api/admin/overview` 增加 `network` 块，读的是与 `/healthz?traffic=1` 同一个计数器（`server/http/traffic.js`）：

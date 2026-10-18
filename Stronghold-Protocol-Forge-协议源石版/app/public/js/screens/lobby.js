@@ -6,8 +6,8 @@ import { MatchmakingCount } from '../ui/matchmaking.js';
 import { Emblem } from './title.js';
 import { useHubBackdrop, HubBackdrop, HubRadar, BackdropSettings, BackdropGlyph, backdropTheme } from '../ui/hubBackdrop.js';
 // Lobby screen — a hub (owner's request, 2026-10-13): an original backdrop (ui/hubBackdrop.js: generated night scenes or
-// the player's own picture) with the game's dot-matrix emblem in the middle, a left column (密钥加入 · tips), a right
-// column (缺人同盟 card · S.W.E.E.P.报告 (screens/sweep.js) · 干员调配) and four big entries at the bottom right:
+// the player's own picture) with the game's dot-matrix emblem in the middle, a left column (S.W.E.E.P.报告 (screens/sweep.js)
+// · 干员调配), a right column (缺人同盟 card · 密钥加入) and four big entries at the bottom right:
 // 独立模拟 / 同盟模拟 / 无限火力 open the start sheet (difficulty 标准/险境/绝境/终极, 无限火力's variant, private room,
 // 快速匹配, create), 搜寻队友 opens the room list. The 密钥加入 dialog joins with a 同盟密钥 (recent codes remembered) —
 // as a player (加入同盟) or in one of its MAX_SPECTATORS spectator seats (观战: room.spectate, also while its match
@@ -1236,16 +1236,16 @@ export function LobbyScreen() {
 
       <aside class="hub-side">
         <${AchievementEntry} key=${achOpen ? 'open' : 'shut'} onOpen=${() => setAchOpen(true)} />
-        <${HubTile} icon="key" label=${t('密钥加入')} en="JOIN WITH KEY" onClick=${() => setJoinOpen(true)} />
+        <div class="hub-plates">
+          <${SweepPlate} onClick=${() => setSweepOpen(true)} />
+          <${LoadoutButton} from="lobby" size="lg" class="hub-plate hub-plate--loadout" label=${t('干员调配')} />
+        </div>
         <${FriendsTile} />
       </aside>
 
       <aside class="hub-right">
         <${RecruitCard} rooms=${rooms} online=${online} onJoin=${join} onAll=${() => setModalOpen(true)} onCreate=${() => openMode('coop')} />
-        <div class="hub-right__plates">
-          <${SweepPlate} onClick=${() => setSweepOpen(true)} />
-          <${LoadoutButton} from="lobby" size="lg" class="hub-plate hub-plate--loadout" label=${t('干员调配')} />
-        </div>
+        <${HubTile} icon="key" label=${t('密钥加入')} en="JOIN WITH KEY" onClick=${() => setJoinOpen(true)} />
       </aside>
 
       <section class="hub-entries" aria-label=${t('模拟方式')}>

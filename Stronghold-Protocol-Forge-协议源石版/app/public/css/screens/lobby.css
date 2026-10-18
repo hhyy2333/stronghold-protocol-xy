@@ -883,7 +883,7 @@
 .hub-tile__label { font-size: calc(.2 * var(--t)); font-weight: 800; }
 .hub-tile__en { font: 600 .1rem/1 ui-monospace, Consolas, monospace; letter-spacing: .18em; color: var(--text-dim); }
 
-/* right column: 缺人同盟 card, then the S.W.E.E.P.报告 and 干员调配 plates, above the entries */
+/* hub columns: left = S.W.E.E.P.报告 + 干员调配 plates; right = 缺人同盟 card + 密钥加入 */
 .hub-right { grid-column: 3; grid-row: 1; position: relative; z-index: 1; display: flex; flex-direction: column; gap: .16rem; min-width: 0; min-height: 0; padding-top: .06rem; }
 .hub-recruit { flex: none; background: linear-gradient(180deg, rgba(9, 17, 16, .88), rgba(6, 11, 10, .9)); border: 1px solid rgba(223, 230, 226, .14);
   border-top: 2px solid var(--mint-500); box-shadow: 0 .06rem .24rem rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
@@ -923,7 +923,7 @@
 .hub-recruit__create:hover { background: rgba(78, 216, 175, .1); }
 
 /* light plates with bracket marks (S.W.E.E.P.报告 opens screens/sweep.js, 干员调配 is loadout.js's LoadoutButton) */
-.hub-right__plates { display: flex; flex-direction: column; gap: .12rem; }
+.hub-plates { display: flex; flex-direction: column; gap: .12rem; }
 .hub-plate { --pl-ink: #222b28; position: relative; display: flex !important; align-items: center; justify-content: flex-start !important; gap: .14rem;
   width: 100%; height: .7rem !important; min-width: 0; padding: 0 .22rem 0 .2rem !important; color: #111816 !important; text-align: left;
   background:
@@ -1024,7 +1024,7 @@
   .hub-recruit__head { height: max(.36rem, 26px); }
   .hub-recruit__list { --row-h: max(.5rem, 32px); height: calc(var(--row-h) * 2 + .04rem + .12rem); padding: .06rem; }
   .hub-recruit__row:nth-child(n + 3) { display: none; }
-  .hub-right__plates { gap: .08rem; }
+  .hub-plates { gap: .08rem; }
   .hub-plate { height: max(.5rem, 32px) !important; gap: .1rem; }
   .hub-plate__glyph, .hub-plate .lo-entry__icon, .hub-plate > .btn__icon { width: max(.36rem, 22px) !important; height: max(.36rem, 22px) !important; padding: .04rem; }
   .hub-plate__label, .hub-plate .btn__label { font-size: calc(.16 * var(--t)); }
