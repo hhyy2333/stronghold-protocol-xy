@@ -1,0 +1,335 @@
+{
+  "id": "clemnt-addition",
+  "name": "克莱门莎（5 星狙击）完整包：棋子 + 驻守特质 + 三条盟约归属 + 立绘与语音",
+  "version": "2.0.0",
+  "author": "jingjiangze（逆向提取与切片）",
+  "license": "代码与切片 GPL-3.0-or-later；数据、立绘、语音 © Hypergryph / Yostar（含官方素材），仅非商业学习与个人娱乐",
+  "description": "新增 5 星狙击干员克莱门莎（char_4231_clemnt）：商店棋子 chess_char_4_27_a / 精英形态 chess_char_4_27_b，\n驻守特质 garrison_4231_a / _b，并把棋子并入【阿戈尔】【迅捷】【不屈】三条盟约的 members / visibleMembers。\n本版同时补上 2.0 之前的缺口：头像 / 立绘 / Spine 正背面模型 / 三个技能图标 / 中日各 14 条语音（voice + voiceLangs.cn）。\n数据自 weishuxieyi.icu 线上构建（build f638115c25cd-20 / app 0.2.1）逐条提取，数值一字未改。\n含官方素材（美术与音频），版权归鹰角网络 / Yostar，仅供非商业学习与个人娱乐。\n已知缺口：驻守特质 effectKey = custom_gar_allied_kills 在引擎 0.18.3 里没有任何实现（全仓 0 命中），装上后特质不生效；见 PROVENANCE.md 第 5 条。",
+  "gameVersion": ">=0.2.1",
+  "api": ">=1 <2",
+  "layer": "A",
+  "combat": true,
+  "content": [
+    "chess",
+    "garrisons",
+    "bonds"
+  ],
+  "overrides": [
+    "bonds:egirShip",
+    "bonds:swiftShip",
+    "bonds:indomShip"
+  ],
+  "art": {
+    "chars": {
+      "char_4231_clemnt": {
+        "avatar": "op/char_4231_clemnt/avatar.png",
+        "portrait": "op/char_4231_clemnt/portrait.png",
+        "portraitE2": "op/char_4231_clemnt/portrait_e2.png",
+        "spine": {
+          "front": {
+            "skel": "op/char_4231_clemnt/front/char_4231_clemnt.skel",
+            "atlas": "op/char_4231_clemnt/front/char_4231_clemnt.atlas",
+            "textures": [
+              "op/char_4231_clemnt/front/char_4231_clemnt.png"
+            ],
+            "pma": false,
+            "anims": {
+              "idle": "Idle",
+              "deploy": "Start",
+              "attack": {
+                "begin": null,
+                "loop": "Attack",
+                "end": null
+              },
+              "attackDown": {
+                "begin": null,
+                "loop": "Attack_Down",
+                "end": null
+              },
+              "skill": {
+                "begin": null,
+                "loop": "Skill_1",
+                "end": null,
+                "index": 0,
+                "idle": null
+              },
+              "die": "Die",
+              "move": null,
+              "stun": null,
+              "skills": {
+                "0": {
+                  "begin": null,
+                  "loop": "Skill_1",
+                  "end": null,
+                  "index": 0,
+                  "idle": null
+                },
+                "1": {
+                  "begin": "Skill_2_Begin",
+                  "loop": "Skill_2_Loop",
+                  "end": "Skill_2_End",
+                  "index": 1,
+                  "idle": "Skill_2_Idle"
+                },
+                "2": {
+                  "begin": "Skill_3_Begin",
+                  "loop": "Skill_3_Loop",
+                  "end": "Skill_3_End",
+                  "index": 2,
+                  "idle": "Skill_3_Idle"
+                }
+              }
+            },
+            "animations": {
+              "Attack": 1.2,
+              "Attack_Down": 1.2,
+              "Default": 0,
+              "Die": 1,
+              "Idle": 2.4,
+              "Skill_1": 1.2,
+              "Skill_2_Begin": 0.6,
+              "Skill_2_End": 0.2,
+              "Skill_2_Idle": 2.4,
+              "Skill_2_Loop": 1.2,
+              "Skill_3_Begin": 0.2,
+              "Skill_3_End": 0.2,
+              "Skill_3_Idle": 2.4,
+              "Skill_3_Loop": 1.2,
+              "Skill_Down_2_Begin": 0.6,
+              "Skill_Down_2_End": 0.2,
+              "Skill_Down_2_Idle": 2.4,
+              "Skill_Down_2_Loop": 1.2,
+              "Skill_Down_3_Begin": 0.2,
+              "Skill_Down_3_End": 0.2,
+              "Skill_Down_3_Idle": 2.4,
+              "Skill_Down_3_Loop": 1.2,
+              "Start": 1
+            },
+            "events": [
+              "OnAttack",
+              "OnStart"
+            ],
+            "hits": {
+              "Attack": [
+                0.367
+              ],
+              "Attack_Down": [
+                0.367
+              ],
+              "Skill_1": [
+                0.367
+              ],
+              "Skill_2_Begin": [
+                0.233
+              ],
+              "Skill_2_Loop": [
+                0.4
+              ],
+              "Skill_3_Loop": [
+                0.433
+              ],
+              "Skill_Down_2_Begin": [
+                0.233
+              ],
+              "Skill_Down_2_Loop": [
+                0.4
+              ],
+              "Skill_Down_3_Loop": [
+                0.433
+              ]
+            },
+            "bounds": {
+              "x": -214.712,
+              "y": -12.635,
+              "width": 481.838,
+              "height": 455.018
+            }
+          },
+          "back": {
+            "skel": "op/char_4231_clemnt/back/char_4231_clemnt.skel",
+            "atlas": "op/char_4231_clemnt/back/char_4231_clemnt.atlas",
+            "textures": [
+              "op/char_4231_clemnt/back/char_4231_clemnt.png"
+            ],
+            "pma": false,
+            "anims": {
+              "idle": "Idle",
+              "deploy": "Start",
+              "attack": {
+                "begin": null,
+                "loop": "Attack",
+                "end": null
+              },
+              "attackDown": null,
+              "skill": {
+                "begin": null,
+                "loop": "Skill_1",
+                "end": null,
+                "index": 0,
+                "idle": null
+              },
+              "die": null,
+              "move": null,
+              "stun": null,
+              "skills": {
+                "0": {
+                  "begin": null,
+                  "loop": "Skill_1",
+                  "end": null,
+                  "index": 0,
+                  "idle": null
+                },
+                "1": {
+                  "begin": "Skill_2_Begin",
+                  "loop": "Skill_2_Loop",
+                  "end": "Skill_2_End",
+                  "index": 1,
+                  "idle": "Skill_2_Idle"
+                },
+                "2": {
+                  "begin": "Skill_3_Begin",
+                  "loop": "Skill_3_Loop",
+                  "end": "Skill_3_End",
+                  "index": 2,
+                  "idle": "Skill_3_Idle"
+                }
+              }
+            },
+            "animations": {
+              "Attack": 1.2,
+              "Default": 0,
+              "Idle": 2.4,
+              "Skill_1": 1.2,
+              "Skill_2_Begin": 0.6,
+              "Skill_2_End": 0.2,
+              "Skill_2_Idle": 2.4,
+              "Skill_2_Loop": 1.2,
+              "Skill_3_Begin": 0.2,
+              "Skill_3_End": 0.2,
+              "Skill_3_Idle": 2.4,
+              "Skill_3_Loop": 1.2,
+              "Start": 1
+            },
+            "events": [
+              "OnAttack",
+              "OnStart"
+            ],
+            "hits": {
+              "Attack": [
+                0.367
+              ],
+              "Skill_1": [
+                0.367
+              ],
+              "Skill_2_Begin": [
+                0.233
+              ],
+              "Skill_2_Loop": [
+                0.4
+              ],
+              "Skill_3_Loop": [
+                0.433
+              ]
+            },
+            "bounds": {
+              "x": -214.712,
+              "y": -12.635,
+              "width": 481.838,
+              "height": 455.018
+            }
+          }
+        }
+      }
+    }
+  },
+  "voices": {
+    "char_4231_clemnt": {
+      "start": [
+        "voice/jp/char_4231_clemnt/cn_019.mp3"
+      ],
+      "faceEnemy": [
+        "voice/jp/char_4231_clemnt/cn_020.mp3"
+      ],
+      "select": [
+        "voice/jp/char_4231_clemnt/cn_021.mp3",
+        "voice/jp/char_4231_clemnt/cn_022.mp3"
+      ],
+      "place": [
+        "voice/jp/char_4231_clemnt/cn_023.mp3",
+        "voice/jp/char_4231_clemnt/cn_024.mp3"
+      ],
+      "skill1": [
+        "voice/jp/char_4231_clemnt/cn_025.mp3"
+      ],
+      "skill2": [
+        "voice/jp/char_4231_clemnt/cn_026.mp3"
+      ],
+      "skill3": [
+        "voice/jp/char_4231_clemnt/cn_027.mp3"
+      ],
+      "skill4": [
+        "voice/jp/char_4231_clemnt/cn_028.mp3"
+      ],
+      "resultFour": [
+        "voice/jp/char_4231_clemnt/cn_029.mp3"
+      ],
+      "resultThree": [
+        "voice/jp/char_4231_clemnt/cn_030.mp3"
+      ],
+      "resultTwo": [
+        "voice/jp/char_4231_clemnt/cn_031.mp3"
+      ],
+      "resultLose": [
+        "voice/jp/char_4231_clemnt/cn_032.mp3"
+      ]
+    }
+  },
+  "voiceLangs": {
+    "cn": {
+      "char_4231_clemnt": {
+        "start": [
+          "voice/cn/char_4231_clemnt/cn_019.mp3"
+        ],
+        "faceEnemy": [
+          "voice/cn/char_4231_clemnt/cn_020.mp3"
+        ],
+        "select": [
+          "voice/cn/char_4231_clemnt/cn_021.mp3",
+          "voice/cn/char_4231_clemnt/cn_022.mp3"
+        ],
+        "place": [
+          "voice/cn/char_4231_clemnt/cn_023.mp3",
+          "voice/cn/char_4231_clemnt/cn_024.mp3"
+        ],
+        "skill1": [
+          "voice/cn/char_4231_clemnt/cn_025.mp3"
+        ],
+        "skill2": [
+          "voice/cn/char_4231_clemnt/cn_026.mp3"
+        ],
+        "skill3": [
+          "voice/cn/char_4231_clemnt/cn_027.mp3"
+        ],
+        "skill4": [
+          "voice/cn/char_4231_clemnt/cn_028.mp3"
+        ],
+        "resultFour": [
+          "voice/cn/char_4231_clemnt/cn_029.mp3"
+        ],
+        "resultThree": [
+          "voice/cn/char_4231_clemnt/cn_030.mp3"
+        ],
+        "resultTwo": [
+          "voice/cn/char_4231_clemnt/cn_031.mp3"
+        ],
+        "resultLose": [
+          "voice/cn/char_4231_clemnt/cn_032.mp3"
+        ]
+      }
+    }
+  },
+  "notices": {
+    "announcement": "notice/announcement.json",
+    "credits": "notice/credits.json"
+  }
+}

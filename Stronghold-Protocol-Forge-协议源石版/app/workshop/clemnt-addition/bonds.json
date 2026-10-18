@@ -1,0 +1,380 @@
+{
+  "egirShip": {
+    "bondId": "egirShip",
+    "name": "阿戈尔",
+    "identifier": 6,
+    "isCore": true,
+    "bondType": "SEASON",
+    "bondOrder": 2,
+    "powerIdList": [
+      "egir",
+      "abyssal"
+    ],
+    "iconId": "icon_egirShip",
+    "activeCount": 3,
+    "thresholds": [
+      3,
+      5
+    ],
+    "maxCount": null,
+    "thresholdTemplate": "count_threshold_upward",
+    "countMode": "BOARD",
+    "countsHand": false,
+    "countsGoldenOnly": false,
+    "activeType": "BATTLE",
+    "isActiveInDeck": false,
+    "noStack": false,
+    "weight": 10,
+    "maxInactiveBondCount": -1,
+    "layerMilestones": [],
+    "desc": "【阿戈尔】干员生命值提升（受层数影响）\n战斗开始时，【阿戈尔】干员会吞噬身前一格干员对其造成5000点物理伤害并获得其基础攻击力和阻挡数，使【阿戈尔】叠加等于被吞噬者等阶的盟约层数（【阿戈尔】之间优先更靠左和靠上的干员发起吞噬）\n<在场5名不同【阿戈尔】干员>前3名【阿戈尔】干员首次被击倒时立刻复活",
+    "descRaw": "【阿戈尔】干员<@ba.vup>生命值</>提升<@autochess.gray>（受层数影响）</>\n战斗开始时，【阿戈尔】干员会<@ba.vup>吞噬</>身前一格干员对其造成<@ba.vdown>5000</>点物理伤害并获得其<@ba.vup>基础攻击力</>和<@ba.vup>阻挡数</>，使【阿戈尔】叠加等于被吞噬者等阶的<@ba.vup>盟约层数</><@autochess.gray>（【阿戈尔】之间优先更靠左和靠上的干员发起吞噬）</>\n<在场<@autochess.dgreen>5</>名不同【阿戈尔】干员>前3名【阿戈尔】干员首次被击倒时<@ba.vup>立刻复活</>",
+    "effectId": "bondeffect_egir",
+    "effectName": "阿戈尔",
+    "effectDesc": "【阿戈尔】干员生命值+{0:0%}（受层数影响）\n战斗开始时【阿戈尔】干员依次吞噬身前一格干员造成5000点物理伤害并获得其基础攻击力和阻挡数，并叠加等于被吞噬者等阶的盟约层数（【阿戈尔】之间优先更靠左和靠上的干员发起吞噬）\n<在场5名不同【阿戈尔】干员>前3名【阿戈尔】干员首次被击倒时立刻复活",
+    "effectDescRaw": "【阿戈尔】干员生命值<@ba.vup>+{0:0%}</><@ba.acrem>（受层数影响）</>\n战斗开始时【阿戈尔】干员依次吞噬身前一格干员造成<@ba.vdown>5000</>点物理伤害并获得其<@ba.vup>基础攻击力</>和<@ba.vup>阻挡数</>，并叠加等于被吞噬者等阶的盟约层数<@ba.acrem>（【阿戈尔】之间优先更靠左和靠上的干员发起吞噬）</>\n<在场<@ba.vup>5</>名不同【阿戈尔】干员>前3名【阿戈尔】干员首次被击倒时<@ba.vup>立刻复活</>",
+    "effectDescParams": [
+      {
+        "index": 0,
+        "format": "0%",
+        "base": "base_max_hp",
+        "perStack": "max_hp_per_stack"
+      }
+    ],
+    "bb": {
+      "base_max_hp": 0.35,
+      "max_hp_per_stack": 0.01,
+      "damage_value": 5000,
+      "power_bond_char_cnt": 5,
+      "max_free_respawn_cnt": 3
+    },
+    "bbStr": {
+      "key": "act1autochess_bond_eff_egir",
+      "bond_type": "bond_by_id",
+      "bond_id": "egirShip",
+      "bond_add_type": "by_charlevel"
+    },
+    "buffs": [
+      {
+        "key": "env_gbuff_new",
+        "bb": {
+          "base_max_hp": 0.35,
+          "max_hp_per_stack": 0.01,
+          "damage_value": 5000,
+          "power_bond_char_cnt": 5,
+          "max_free_respawn_cnt": 3
+        },
+        "bbStr": {
+          "key": "act1autochess_bond_eff_egir",
+          "bond_type": "bond_by_id",
+          "bond_id": "egirShip",
+          "bond_add_type": "by_charlevel"
+        }
+      }
+    ],
+    "baseParams": [
+      "base_max_hp"
+    ],
+    "perStackParams": [
+      "max_hp_per_stack"
+    ],
+    "members": [
+      "chess_char_1_04_a",
+      "chess_char_2_07_a",
+      "chess_char_3_05_a",
+      "chess_char_3_09_a",
+      "chess_char_4_09_a",
+      "chess_char_4_12_a",
+      "chess_char_5_05_a",
+      "chess_char_5_13_a",
+      "chess_char_6_04_a",
+      "chess_char_4_27_a"
+    ],
+    "visibleMembers": [
+      "chess_char_1_04_a",
+      "chess_char_2_07_a",
+      "chess_char_3_05_a",
+      "chess_char_3_09_a",
+      "chess_char_4_09_a",
+      "chess_char_4_12_a",
+      "chess_char_5_05_a",
+      "chess_char_5_13_a",
+      "chess_char_6_04_a",
+      "chess_char_4_27_a"
+    ],
+    "spec": {
+      "tiers": [
+        {
+          "need": "3 distinct",
+          "effect": "阿戈尔 members maxHP x(1 + 0.35 + 0.01*L) (直接乘算), on the members from their deployment, so before the battle-start devour."
+        },
+        {
+          "need": "3 distinct (battle start)",
+          "effect": "Devour (吞噬): see algorithm."
+        },
+        {
+          "need": "5 distinct",
+          "effect": "3 revives (max_free_respawn_cnt), one per member at most, on its first knock-out; a member never knocked out takes none, and a save by its own kit / item / band revive is no knock-out (the owner's decision of 2026-10-05). The members the battle-start devour knocks out are revived once every devour pass is over, by board position on the player's own board from the bottom-left (columns from the left, bottom first inside a column; a community report relayed on 2026-10-07), while slots last; a later knock-out takes a slot left at once, in time order."
+        }
+      ],
+      "algorithm": [
+        "Order: 阿戈尔 members sorted leftmost first, then topmost (\"更靠左和靠上\").",
+        "Each 阿戈尔 in order marks the unit on the tile directly in front of it (its facing direction) and also the front-tile unit of every 阿戈尔 it has marked (chain). It never marks itself, a unit it already marked, or a unit that marked it.",
+        "The marker immediately gains the base ATK of every unit it marked (a 最终加算: added after its ATK percentages, PRTS \"基础攻击力（最终加算）\") and their block counts.",
+        "After all marks are placed, each mark makes its target suffer one 5000-point physical 流失 (HP loss less the target's DEF, no shields, dodge or damage multipliers; source = the target itself; if it dies, the kill is credited to the marker), resolved in marking order — a member in a chain takes one from every 阿戈尔 behind it. A target that dies cancels its remaining pending marks; a marker knocked out earlier in the pass still resolves its own marks (only the target's state cancels a mark).",
+        "Each devoured unit adds layers to 阿戈尔 equal to its tier (1-6), once per unit per battle.",
+        "(5-member tier) Revive is implemented as: when the unit leaves the field for any reason other than being moved, its next deployment has 0 redeploy time and 0 cost (PRTS). Devour layers: each devoured unit adds its tier once per battle (refreshes next round)."
+      ],
+      "formulas": {
+        "hpMultiplier": "1.35 + 0.01*L",
+        "devourDamage": "5000",
+        "layersPerDevoured": "tier of devoured unit"
+      },
+      "caps": "3 revives per battle",
+      "layerGain": "Devour (tier per devoured unit, every battle); 幽灵鲨 被击倒 +3; 归溟幽灵鲨 被击倒/替身切换 +5 阿戈尔 +5 不屈; 斯卡蒂 each 2 kills +1 阿戈尔/坚守/突袭; 海霓 first kill (enemy or ally) +3 阿戈尔/奥术; 机变 \"斯卡蒂的盟誓\" +8. Strategy 克莱门莎: an 阿戈尔 knocked out adds layers = its tier.",
+      "howToPlay": "Put cheap/high-tier fodder in front of 阿戈尔 carries: they steal base ATK and block, gain layers, and (5) revive. Tier-6 fodder gives +6 layers per battle.",
+      "assumed": [
+        "the 5-tier revive scan of the battle-start devour's knock-outs, 「左下到右上」: columns from the left, bottom first inside a column (the other reading: rows from the bottom, left first inside a row)",
+        "marked allied units are operators of any player (devour hits allies): on a shared field a teammate's operator in front, standing or entering 联防 knocked out, is devoured too and the chain continues through a teammate's 阿戈尔 (the owner's decision of 2026-10-05: PRTS has no own-side limit)"
+      ]
+    }
+  },
+  "swiftShip": {
+    "bondId": "swiftShip",
+    "name": "迅捷",
+    "identifier": 10,
+    "isCore": false,
+    "bondType": "REGULAR",
+    "bondOrder": 2,
+    "powerIdList": [],
+    "iconId": "icon_swiftShip",
+    "activeCount": 2,
+    "thresholds": [
+      2
+    ],
+    "maxCount": null,
+    "thresholdTemplate": "count_threshold_upward",
+    "countMode": "BOARD",
+    "countsHand": false,
+    "countsGoldenOnly": false,
+    "activeType": "BATTLE",
+    "isActiveInDeck": false,
+    "noStack": false,
+    "weight": 10,
+    "maxInactiveBondCount": -1,
+    "layerMilestones": [
+      {
+        "layer": 40,
+        "mode": "reach",
+        "effect": "env_gbuff_new"
+      }
+    ],
+    "desc": "【迅捷】干员技能结束时有概率（受层数影响）立刻回复12点技力\n<达到40层>所有干员技能结束时有等概率额外回复15点技力",
+    "descRaw": "【迅捷】干员技能结束时有概率<@autochess.gray>（受层数影响）</>立刻回复<@ba.vup>12点</>技力\n<达到<@autochess.dgreen>40</>层>所有干员技能结束时有等概率额外回复<@ba.vup>15点</>技力",
+    "effectId": "bondeffect_swift",
+    "effectName": "迅捷",
+    "effectDesc": "【迅捷】干员技能结束时有{0:0%}概率（受层数影响）立刻回复12点技力\n<达到40层>所有干员技能结束时有等概率额外回复15点技力",
+    "effectDescRaw": "【迅捷】干员技能结束时有<@ba.vup>{0:0%}</>概率<@ba.acrem>（受层数影响）</>立刻回复<@ba.vup>12</>点技力\n<达到<@ba.vup>40</>层>所有干员技能结束时有等概率额外回复<@ba.vup>15</>点技力",
+    "effectDescParams": [
+      {
+        "index": 0,
+        "format": "0%",
+        "base": "base_prob",
+        "perStack": "prob_per_stack"
+      }
+    ],
+    "bb": {
+      "base_prob": 0.2,
+      "prob_per_stack": 0.0035,
+      "power_bond_stack_cnt": 40,
+      "normal_sp": 12,
+      "power_sp": 15
+    },
+    "bbStr": {
+      "key": "act1autochess_bond_eff_swift"
+    },
+    "buffs": [
+      {
+        "key": "env_gbuff_new",
+        "bb": {
+          "base_prob": 0.2,
+          "prob_per_stack": 0.0035,
+          "power_bond_stack_cnt": 40,
+          "normal_sp": 12,
+          "power_sp": 15
+        },
+        "bbStr": {
+          "key": "act1autochess_bond_eff_swift"
+        }
+      }
+    ],
+    "baseParams": [
+      "base_prob"
+    ],
+    "perStackParams": [
+      "prob_per_stack"
+    ],
+    "members": [
+      "chess_char_1_01_a",
+      "chess_char_1_16_a",
+      "chess_char_1_19_a",
+      "chess_char_2_13_a",
+      "chess_char_2_19_a",
+      "chess_char_3_10_a",
+      "chess_char_3_18_a",
+      "chess_char_4_14_a",
+      "chess_char_5_14_a",
+      "chess_char_5_15_a",
+      "chess_char_5_22_a",
+      "chess_char_6_05_a",
+      "chess_char_6_10_a",
+      "chess_char_6_19_a",
+      "chess_char_4_27_a"
+    ],
+    "visibleMembers": [
+      "chess_char_1_01_a",
+      "chess_char_1_19_a",
+      "chess_char_2_13_a",
+      "chess_char_2_19_a",
+      "chess_char_3_10_a",
+      "chess_char_3_18_a",
+      "chess_char_4_14_a",
+      "chess_char_5_14_a",
+      "chess_char_5_15_a",
+      "chess_char_5_22_a",
+      "chess_char_6_05_a",
+      "chess_char_6_19_a",
+      "chess_char_4_27_a"
+    ],
+    "spec": {
+      "tiers": [
+        {
+          "need": "2 distinct",
+          "effect": "When a 迅捷 member's skill ends: with p = min(1, 0.20 + 0.0035*L) immediately +12 SP."
+        },
+        {
+          "need": "L >= 40",
+          "effect": "Every operator whose skill ends: with the same p, additionally +15 SP."
+        }
+      ],
+      "formulas": {
+        "p": "min(1, 0.20 + 0.0035*L)",
+        "reaches100%AtL": "229"
+      },
+      "layerGain": "妮芙 休整期结束 +2 per operator on the bench; 蒂比 进入休整期 +2 own active bonds; 莱恩哈特 +5; 引星棘刺 +4 self & front; 获得时: 锡人/野鬃 +2, 忍冬 +6, 锏 +8. 机变 \"银灰的盟誓\" +8.",
+      "assumed": [
+        "迅捷 members roll both the 12 SP and the 15 SP independently"
+      ]
+    }
+  },
+  "indomShip": {
+    "bondId": "indomShip",
+    "name": "不屈",
+    "identifier": 19,
+    "isCore": false,
+    "bondType": "REGULAR",
+    "bondOrder": 2,
+    "powerIdList": [],
+    "iconId": "icon_indomShip",
+    "activeCount": 2,
+    "thresholds": [
+      2,
+      3
+    ],
+    "maxCount": null,
+    "thresholdTemplate": "count_threshold_upward",
+    "countMode": "BOARD",
+    "countsHand": false,
+    "countsGoldenOnly": false,
+    "activeType": "BATTLE",
+    "isActiveInDeck": false,
+    "noStack": false,
+    "weight": 10,
+    "maxInactiveBondCount": -1,
+    "layerMilestones": [],
+    "desc": "地面干员被击倒时，有概率立即重新部署（受层数影响）\n<在场3名不同【不屈】干员>地面干员被击倒时使场上所有干员技力+5",
+    "descRaw": "<@ba.vup>地面干员</>被击倒时，有概率立即<@ba.vup>重新部署</><@autochess.gray>（受层数影响）</>\n<在场<@autochess.dgreen>3</>名不同【不屈】干员><@ba.vup>地面干员</>被击倒时使场上所有干员<@ba.vup>技力+5</>",
+    "effectId": "bondeffect_indom",
+    "effectName": "不屈",
+    "effectDesc": "地面干员被击倒时，有{0:0%}（受层数影响）概率立刻重新部署\n<在场3名不同【不屈】干员>地面干员被击倒时使场上所有干员技力+5",
+    "effectDescRaw": "<@ba.vup>地面干员</>被击倒时，有<@ba.vup>{0:0%}</><@ba.acrem>（受层数影响）</>概率立刻重新部署\n<在场<@ba.vup>3</>名不同【不屈】干员><@ba.vup>地面干员</>被击倒时使场上所有干员技力<@ba.vup>+5</>",
+    "effectDescParams": [
+      {
+        "index": 0,
+        "format": "0%",
+        "base": "base_prob",
+        "perStack": "prob_per_stack"
+      }
+    ],
+    "bb": {
+      "base_prob": 0.18,
+      "prob_per_stack": 0.004,
+      "power_bond_stack_cnt": 0,
+      "sp": 5,
+      "power_bond_char_cnt": 3
+    },
+    "bbStr": {
+      "key": "act1autochess_bond_eff_indom"
+    },
+    "buffs": [
+      {
+        "key": "env_gbuff_new",
+        "bb": {
+          "base_prob": 0.18,
+          "prob_per_stack": 0.004,
+          "power_bond_stack_cnt": 0,
+          "sp": 5,
+          "power_bond_char_cnt": 3
+        },
+        "bbStr": {
+          "key": "act1autochess_bond_eff_indom"
+        }
+      }
+    ],
+    "baseParams": [
+      "base_prob"
+    ],
+    "perStackParams": [
+      "prob_per_stack"
+    ],
+    "members": [
+      "chess_char_1_05_a",
+      "chess_char_1_20_a",
+      "chess_char_2_03_a",
+      "chess_char_2_12_a",
+      "chess_char_3_16_a",
+      "chess_char_4_07_a",
+      "chess_char_5_06_a",
+      "chess_char_5_13_a",
+      "chess_char_6_06_a",
+      "chess_char_4_27_a"
+    ],
+    "visibleMembers": [
+      "chess_char_1_20_a",
+      "chess_char_2_12_a",
+      "chess_char_3_16_a",
+      "chess_char_4_07_a",
+      "chess_char_5_06_a",
+      "chess_char_5_13_a",
+      "chess_char_6_06_a",
+      "chess_char_4_27_a"
+    ],
+    "spec": {
+      "tiers": [
+        {
+          "need": "2 distinct",
+          "effect": "When a ground operator (地面干员 = melee position, on any tile) is knocked out / retreats / swaps 替身<->本体: with p = min(1, 0.18 + 0.004*L) it is redeployed at once (next deployment has 0 redeploy time and 0 cost). Also consumes a \"复活\" charge if it had one."
+        },
+        {
+          "need": "3 distinct",
+          "effect": "When a ground (melee-position) operator is knocked out: every operator on the field +5 SP."
+        }
+      ],
+      "formulas": {
+        "p": "min(1, 0.18 + 0.004*L)",
+        "reaches100%AtL": "205"
+      },
+      "layerGain": "雷蛇 休整期结束 +1; 砾 被击倒 +2; 归溟幽灵鲨 +5; 风笛 kills +2; 机变 \"风笛的盟誓\" +8."
+    }
+  }
+}
