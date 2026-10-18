@@ -360,6 +360,8 @@
 .room-mods__id { font-family: var(--font-num); letter-spacing: .02em; }
 .room-mods__meta { font-size: calc(.13 * var(--t)); color: var(--text-lo); }
 .room-mods__fill { display: flex; align-items: center; gap: .12rem; width: 100%; font-size: calc(.14 * var(--t)); }
+/* 自动补齐 的进度条与那行状态文字并排（owner 2026-10-18）；宽度让它在条带里占住一段，不挤掉按钮 */
+.room-mods__fill .pbar { flex: 1 1 6rem; min-width: 3rem; }
 
 /* ---- 房内聊天（引擎特性；public/js/screens/chat.js） ---------------------------------------------------- */
 .chatp .chatp__list {

@@ -86,14 +86,15 @@ export function resetCatalog() { catalogPromise = null; }
  * corrupted cache entry is not "I have this pack"). `packs` carries the per-pack verdict so a UI can show which one is
  * short; `unknown` names packs the ROOM declared that this server's catalogue does not carry (a server-side
  * inconsistency — nothing here can be downloaded); `missingFiles` counts the files that are not in the store yet
- * (existence only: cheap, so a button can say how much work it is).
+ * (existence only: cheap, so a button can say how much work it is). `missingBytes` sums those files' catalogue
+ * sizes — what the automatic fetch shows as "2.4 / 6.8 MB" (owner's 自动补齐 decision 2026-10-18).
  * @param {{ catalog: { packs: Array<any> }|null, mods: { digest?: string, packs: Array<any> }|null, store: any }} opts
  * @returns {Promise<{ needed: boolean, ok: boolean, digest: string|null, held: string|null,
- *   packs: Array<{ id: string, ok: boolean, known: boolean }>, unknown: string[], missingFiles: number }>}
+ *   packs: Array<{ id: string, ok: boolean, known: boolean }>, unknown: string[], missingFiles: number, missingBytes: number }>}
  */
 export async function planAlignment({ catalog, mods, store: st }) {
   const roomPacks = mods && Array.isArray(mods.packs) ? mods.packs.filter((p) => p && typeof p.id === 'string') : [];
-  if (!roomPacks.length) return { needed: false, ok: true, digest: null, held: null, packs: [], unknown: [], missingFiles: 0 };
+  if (!roomPacks.length) return { needed: false, ok: true, digest: null, held: null, packs: [], unknown: [], missingFiles: 0, missingBytes: 0 };
   const known = new Set((Array.isArray(catalog?.packs) ? catalog.packs : []).map((p) => p && p.id));
   const unknown = roomPacks.filter((p) => !known.has(p.id)).map((p) => p.id);
   const packs = [];
@@ -108,10 +109,11 @@ export async function planAlignment({ catalog, mods, store: st }) {
   }
   const held = verified.length === roomPacks.length ? modDigest(verified) : null;
   const files = await missing(catalog, roomPacks.filter((p) => known.has(p.id)).map((p) => p.id), st);
+  const missingBytes = files.reduce((n, f) => n + (Number.isFinite(f.bytes) ? f.bytes : 0), 0);
   // The digest the room declared is the judge, not "I have every pack I could find": a server whose set moved under us
   // must show up here rather than be papered over.
   const ok = unknown.length === 0 && held !== null && held === mods.digest;
-  return { needed: true, ok, digest: mods.digest ?? null, held, packs, unknown, missingFiles: files.length };
+  return { needed: true, ok, digest: mods.digest ?? null, held, packs, unknown, missingFiles: files.length, missingBytes };
 }
 
 /**

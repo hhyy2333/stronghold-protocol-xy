@@ -1630,8 +1630,12 @@ makes the declaration true. `server/roomAssets.js` is the whole mechanism:
   simulates on: `/room-data/<digest>/` when the spec carries a room set that is not the process set, `/data/` otherwise.
   `public/js/battle/runner.js` passes its data face through `dataBaseFor(spec)` and caches the sim **per face**, so a
   page that plays in a subset room and later in a plain one never mixes the two. The room screen shows the set, the
-  per-pack state, a 「补齐模组」 button driven by `sync`'s progress events, and **withholds the Ready button** while the
-  client is not aligned — the server's own rule stays what it was (a room starts only when every human is ready).
+  per-pack state and, once `planAlignment` says this client is short, **starts the fetch by itself** (`public/js/mods/autoFill.js`
+  `shouldAutoFill`: one automatic attempt per digest, never for a pack this server does not carry) with `sync`'s progress
+  (file count + MB), a 取消 remembered per digest and a manual 重试; it **does not press Ready** afterwards (owner's
+  decision 2026-10-18: 自动补齐，不自动准备) — only the Ready button stays withheld while the client is not aligned, and
+  the footer says so in words (a tooltip is invisible on a touch screen). The server's own rule stays what it was (a room
+  starts only when every human is ready).
 - Asymmetries kept on purpose: `server.modules` stays process-wide (§28.14) and a `matchClass` wrapper still wraps every
   match the process builds. A room's set decides what a **match** runs, not what the **process** boots.
 

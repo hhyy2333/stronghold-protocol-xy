@@ -36,7 +36,7 @@ import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, MIN_SEATS, MAX_SPECT
 import * as SEAT_CONST from '../../../shared/constants.js';
 import { RANDOM_MODE, RANDOM_MODE_NAME } from '../../../shared/randomMode.js';
 import {
-  html, Button, Icon, MicroLabel, AvatarFrame, DifficultyIcon, Tooltip, confirmDialog, doctorNo, Spinner, Modal,
+  html, Button, Icon, MicroLabel, AvatarFrame, DifficultyIcon, Tooltip, confirmDialog, doctorNo, Spinner, Modal, ProgressBar,
 } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
 import { copyText } from '../ui/clipboard.js';
@@ -53,6 +53,7 @@ import { ChatPanel } from './chat.js';
 import * as roomMods from '../roomMods.js';
 import { roomModsOf, shortDigest } from '../roomMods.js';
 import { loadCatalog, planAlignment, alignRoom, missingPackIds, storeFor } from '../mods/align.js';
+import { shouldAutoFill, autoFillDigest, AUTO_FILL_DELAY_MS } from '../mods/autoFill.js';
 import { net } from '../net.js';
 import { store, useStore, shallowEqual, emptyMatch, isSpectating, serverNow, loadPref, savePref } from '../store.js';
 import { data, useData } from '../data.js';
@@ -488,6 +489,9 @@ export function hostStartAlignBlocked({ solo, align }) {
  * client cannot name is called out by name instead of silently staying 「未就绪」.
  * @param {{ room: any, onAlignment?: (state: { ok: boolean, needed: boolean, missing: number }|null) => void }} props
  */
+/** Megabytes with one decimal, for the auto-fill line (a missing count of 0 reads '0'). */
+const mbText = (n) => (Number.isFinite(n) && n > 0 ? (n / 1048576).toFixed(1) : '0');
+
 function RoomModsPanel({ room, myId = null, onAlignment = null }) {
   const mods = roomModsOf(room);
   // 服务端声明过哪些包（`welcome.mods.packs`，main.js 写进 store.roomMods）：房主在房间里能挑的就是这一份的子集。
@@ -502,6 +506,16 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
   const [progress, setProgress] = useState(null);
   const [busy, setBusy] = useState(false);
   const [checked, setChecked] = useState(false);
+  // 自动补齐 (owner's decision 2026-10-18): 'idle' | 'filling' | 'cancelled' | 'failed' — the strip tells the player
+  // which one it is, and 「补齐模组」 stays as the manual retry path.
+  const [phase, setPhase] = useState('idle');
+  const [autoRun, setAutoRun] = useState(false);
+  const [bytesDone, setBytesDone] = useState(0);
+  // one attempt per digest: 'tried' = the digest auto-fill already ran for, 'dismissed' = the one the player cancelled;
+  // 'abort' cancels the current run, 'timer' is the short delay before the automatic start (several clients entering
+  // the same room should not all open their sockets on the same frame).
+  const autoRef = useRef({ tried: null, dismissed: null, abort: null, timer: null, busy: false });
+  const fillRef = useRef(null);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
   const report = onAlignment || (() => {});
@@ -517,15 +531,33 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
     // 要读盘、要哈希，是异步的。在它出结论之前，上一份摘要的 `ok: true` **不是关于这一份集合的结论**，照旧拿它
     // 放行就是「改了集合、有人拿着旧结论点了准备就绪」。所以先报一个 `checking`，硬门据此拒点，等真实结论回来再放行。
     report({ ok: false, needed: true, missing: 0, checking: true });
+    setPhase('idle');
+    setAutoRun(false);
+    setBytesDone(0);
     (async () => {
       const catalog = await loadCatalog();
       const next = await planAlignment({ catalog, mods, store: storeFor() });
       if (!live || !alive.current) return;
       setPlan(next);
       setChecked(true);
-      report({ ok: next.ok, needed: next.needed, missing: next.missingFiles });
+      report({ ok: next.ok, needed: next.needed, missing: next.missingFiles, missingBytes: next.missingBytes });
+      // 自动补齐 (owner's decision 2026-10-18: 自动补齐模组，不自动准备). The verdict already says the client is short, and
+      // the player consented to this set when joining — so start downloading by ourselves. Still: visible (progress +
+      // 取消), one automatic attempt per digest, and NO automatic 准备就绪. A cancelled or failed digest falls back to
+      // the manual 「补齐模组」/「重试」 button.
+      if (shouldAutoFill({ plan: next, busy: autoRef.current.busy, tried: autoRef.current.tried, dismissed: autoRef.current.dismissed })) {
+        autoRef.current.tried = autoFillDigest(next);
+        autoRef.current.timer = setTimeout(() => {
+          autoRef.current.timer = null;
+          void fillRef.current?.({ auto: true });
+        }, AUTO_FILL_DELAY_MS);
+      }
     })().catch(() => { if (live) { setChecked(true); setPlan(null); report(null); } });
-    return () => { live = false; };
+    return () => {
+      live = false;
+      if (autoRef.current.timer) { clearTimeout(autoRef.current.timer); autoRef.current.timer = null; }
+      autoRef.current.abort?.abort();
+    };
     // `digest` is the identity of the set: the same packs re-announced must not re-download or re-hash
   }, [digest]);
 
@@ -534,6 +566,7 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
   const known = plan ? plan.packs : null;
   const unknown = plan ? plan.unknown : [];
   const missingFiles = plan ? plan.missingFiles : 0;
+  const missingBytes = plan ? plan.missingBytes || 0 : 0;
   const ready = !!plan && plan.ok;
 
   /**
@@ -564,26 +597,59 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
     }
   };
 
-  const fill = async () => {
-    if (busy) return;
+  /**
+   * Download this room's missing packs, then ask again. `auto` = started by the alignment check itself (owner's
+   * decision 2026-10-18); the manual button calls it with no argument. Either way the run is visible (count + MB, a
+   * 取消 button), a cancellation makes the digest fall back to the manual button, and the result NEVER readies the
+   * player up — 补齐 only makes 「准备就绪」 clickable again.
+   * @param {{ auto?: boolean }} [opts]
+   */
+  const fill = async ({ auto = false } = {}) => {
+    if (autoRef.current.busy) return;
+    autoRef.current.busy = true;
     setBusy(true);
+    setAutoRun(auto);
+    setPhase('filling');
+    setBytesDone(0);
     setProgress({ done: 0, total: 0 });
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    autoRef.current.abort = controller;
     try {
       const catalog = await loadCatalog();
       const next = await alignRoom({
         catalog, mods, store: storeFor(),
-        onProgress: (e) => { if (alive.current && (e.type === 'done' || e.type === 'file-start' || e.type === 'file-done' || e.type === 'file-skipped')) setProgress({ done: e.done ?? 0, total: e.total ?? 0 }); },
+        signal: controller ? controller.signal : null,
+        onProgress: (e) => {
+          if (!alive.current) return;
+          if (e.type === 'done' || e.type === 'file-start' || e.type === 'file-done' || e.type === 'file-skipped' || e.type === 'file-error') setProgress({ done: e.done ?? 0, total: e.total ?? 0 });
+          if (e.type === 'file-done' || e.type === 'file-skipped') setBytesDone((n) => n + (Number(e.bytes) || 0));
+        },
       });
       if (!alive.current) return;
       setPlan(next);
-      report({ ok: next.ok, needed: next.needed, missing: next.missingFiles });
+      report({ ok: next.ok, needed: next.needed, missing: next.missingFiles, missingBytes: next.missingBytes });
+      if (controller && controller.signal.aborted) {
+        setPhase('cancelled');
+        return;
+      }
+      setPhase(next.ok ? 'idle' : 'failed');
       if (!next.ok) toast(t('模组仍未就绪：{ids}', { ids: missingPackIds(next).join(', ') || '—' }), 'warn');
     } catch (err) {
-      if (alive.current) toastError(err);
+      if (alive.current) { setPhase('failed'); toastError(err); }
     } finally {
+      autoRef.current.busy = false;
+      autoRef.current.abort = null;
       if (alive.current) { setBusy(false); setProgress(null); }
     }
   };
+  /** 取消 the running download: remember the digest so the automatic start does not come back on the next render. */
+  const cancelFill = () => {
+    if (!autoRef.current.busy) return;
+    autoRef.current.dismissed = digest;
+    autoRef.current.abort?.abort();
+  };
+  // the alignment effect above runs before this line and only ever reaches it through a timeout / a click
+  fillRef.current = fill;
 
   return html`<div class="room-mods brackets">
     <${MicroLabel} tone="mint">ROOM MODS<//>
@@ -602,9 +668,21 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
     </ul>` : html`<span class="room-mods__none t-lo">${t('本房间没有声明模组（模拟按服务器加载的全部模组运行）')}</span>`}
     ${checked && plan && !plan.ok
       ? html`<div class="room-mods__fill">
-          <span class="t-lo">${unknown.length ? t('房间点名了本服务器没有的模组：{ids}', { ids: unknown.join(', ') }) : t('本机还缺 {n} 个模组文件', { n: missingFiles })}</span>
-          <${Button} variant="secondary" size="sm" icon="refresh" loading=${busy} disabled=${busy || unknown.length > 0} onClick=${fill}>
-            ${busy && progress && progress.total ? t('正在补齐 {done}/{total}', { done: progress.done, total: progress.total }) : t('补齐模组')}<//>
+          <span class="t-lo">${unknown.length
+            ? t('房间点名了本服务器没有的模组：{ids}', { ids: unknown.join(', ') })
+            : busy
+              ? autoRun
+                ? t('正在自动补齐模组 {done}/{total}（{mb} / {totalMb} MB）', { done: progress?.done ?? 0, total: progress?.total ?? 0, mb: mbText(bytesDone), totalMb: mbText(missingBytes) })
+                : t('正在补齐 {done}/{total}', { done: progress?.done ?? 0, total: progress?.total ?? 0 })
+              : phase === 'cancelled'
+                ? t('已暂停自动补齐')
+                : phase === 'failed'
+                  ? t('补齐失败，可重试')
+                  : t('本机还缺 {n} 个模组文件', { n: missingFiles })}</span>
+          ${busy && progress && progress.total ? html`<${ProgressBar} value=${progress.done} max=${progress.total} />` : null}
+          ${busy ? html`<${Button} variant="ghost" size="sm" onClick=${cancelFill}>${t('取消自动补齐')}<//>` : null}
+          ${unknown.length ? null : html`<${Button} variant="secondary" size="sm" icon="refresh" loading=${busy} disabled=${busy} onClick=${() => void fill()}>
+            ${t(phase === 'failed' ? '重试' : '补齐模组')}<//>`}
         </div>`
       : null}
     ${editable
@@ -823,6 +901,12 @@ export function RoomScreen() {
     ? html`<span class="t-orange"><${Icon} name="wifiOff" />${t('连接中断，正在重连…')}</span>`
     : facts.spectating
       ? html`<span class="t-lo"><${Icon} name="eye" />${t('观战中 · 不占博士席位，模拟开始后可切换观看各位博士')}</span>`
+    // 自动补齐 (owner's decision 2026-10-18): the footer says why 准备就绪 is not clickable — a tooltip alone is invisible
+    // on a touch screen, and that was the whole 「补齐mod文件按钮不明显」 complaint.
+    : align && align.checking
+      ? html`<span class="t-lo">${t('正在核对本房间的模组文件…')}</span>`
+    : align && align.needed && !align.ok
+      ? html`<span class="t-orange"><${Icon} name="refresh" />${t('本机缺 {n} 个模组文件，补齐后才能准备就绪', { n: align.missing || 0 })}</span>`
     : !coop
       ? html`<span class="t-mint">${t('*模拟协议已就绪，准许进入模拟')}</span>`
     : facts.modded && !facts.contentReady
