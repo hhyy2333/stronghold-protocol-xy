@@ -37,7 +37,6 @@ import { SettingsButton } from '../ui/settings.js';
 import { PwaInstallButton, fullscreen } from '../ui/device.js';
 import { LoadoutButton } from './loadout.js';
 import { SweepReport } from './sweep.js';
-import { SupportButton } from './support.js';
 import * as roomMods from '../roomMods.js';
 // 地基加固（B 方案 · 2026-10-13）：`DEFAULT_DIFFICULTY` 与 `parsePlaytestParam` 现在住在 screens/lobbyLinks.js，
 // 这里保留同一份绑定并**原样转发导出** —— screens/playtestLink.js 与 test/playtestLink.test.js 都从本模块导入这两个
@@ -1259,7 +1258,6 @@ export function LobbyScreen() {
       <div class="topbar__right">
         <span class="hub-online"><span class="online-pill__dot"></span><span class="num">${onlineCount}</span><span>${t('名博士在线')}</span></span>
         <${ResumeMatchButton} />
-        <${SupportButton} from="lobby" size="sm" class="lobby-support" />
         <${AccountMeChip} player=${me} onStats=${openStats} />
       </div>
     </header>
