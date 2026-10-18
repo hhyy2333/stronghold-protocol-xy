@@ -201,9 +201,10 @@ export class PlayerState {
     /** slotted slots without stock: every bond of the operator is switched off this match */
     this.diyBanned = Object.freeze([]);
     if (!this.isBot && seat.diy) this.setDiy(seat.diy);
-    // 可露希尔大降价: `freeBuys` = how many purchases still cost nothing (a player-level pool, so it follows refreshes
-    // and covers both slot kinds — see economy.js priceOf / buy)
-    this.shop = { level: 1, upgradePrice: this.gd.upgradeBase(1) ?? 0, slots: [], frozen: false, freeRefreshes: 0, freeBuys: 0 };
+    // 可露希尔大降价: `freeBuyWindow` = how many of the card's free REFRESHES are still ahead — purchases cost nothing
+    // while it lasts, chess and equipment alike (owner's ruling 2026-10-18: 「免费购买是在三次刷新内有效」). It is tied
+    // to the shop's refreshes: economy.js refresh() spends one, round.js startRound closes it (本回合内).
+    this.shop = { level: 1, upgradePrice: this.gd.upgradeBase(1) ?? 0, slots: [], frozen: false, freeRefreshes: 0, freeBuyWindow: 0 };
     /** reward offers queue (merge rewards, special refreshes): { tier, source, label, slots: [{ kind, id, price, sold }] } */
     this.offers = [];
     /** @type {Array<any>} */

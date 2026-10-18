@@ -249,7 +249,7 @@ export class StubMatch {
       ready: p.ready,
       canReady: true,
       shop: {
-        level: 1, maxLevel: 6, upgradePrice: 0, refreshPrice: 0, freeRefreshes: 0, freeBuys: 0, frozen: false,
+        level: 1, maxLevel: 6, upgradePrice: 0, refreshPrice: 0, freeRefreshes: 0, freeBuyWindow: 0, frozen: false,
         slots: [], rewardOffer: null,
       },
       hand: new Array(GEO.HAND_SIZE).fill(null),

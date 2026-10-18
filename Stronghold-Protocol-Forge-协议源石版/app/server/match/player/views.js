@@ -89,8 +89,8 @@ export class PlayerViews {
         upgradePrice: this.shop.level >= this.gd.maxShopLevel ? 0 : this.shop.upgradePrice,
         refreshPrice: free ? 0 : this.refreshPriceNow(),
         freeRefreshes: this.shop.freeRefreshes,
-        // 可露希尔大降价: how many purchases still cost nothing (every slot already shows price 0 while it lasts)
-        freeBuys: this.shop.freeBuys,
+        // 可露希尔大降价: the free-refresh window still ahead — every purchase is free while it is > 0 (the slots show 0)
+        freeBuyWindow: this.shop.freeBuyWindow,
         frozen: this.shop.frozen,
         slots,
         // `source` 'merge' = the promotion reward (晋升奖励); any other offer (a strategy, an item, a 特质) carries the

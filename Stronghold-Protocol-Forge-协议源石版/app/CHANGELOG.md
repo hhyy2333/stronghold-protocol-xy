@@ -20,8 +20,9 @@
 
 - **症状**（业主 2026-10-18）：「可露希尔大降价只免费第一次，刷新后都不免费」—— 拿到卡时那间商店的干员/装备确实是 0 费，刷新一次之后新商店又都要钱。
 - **原因**：卡面「购买干员与装备免费」此前被实现成「把**当前这间商店**的槽位标成 free」（`effectsMeta.freeShopItems`），而数据里 `effect.onPick.discount.buys = 3` 这个**次数**从没被读过；`rollShop` 每次刷新都重建槽位，标记随旧槽位一起消失 ⇒ 这张卡只付了一次。免费刷新那一半（`freeRefreshes`）本来是对的。
-- **修**：免费购买变成**玩家级池子** `shop.freeBuys`（`PlayerState` 初始 0）：`server/sim/content/hextech.js` 的 `discount` 半段改成 `ctx.grantFreeBuys(buys)`（新增的 ctx 原语，预览上下文里是 noop）；`player/economy.js` 的 `priceOf` 在池子 > 0 时报价 0、`buy` 成功时扣一格且**不花资金**（干员与装备一视同仁，跨刷新有效）；`电表倒转·改` 自己的 `slot.free`（一次免费刷新的槽位）保持独立、不消耗这个池子。不变量校验 `freeBuys` 是非负整数；私有视图新增 `shop.freeBuys`（只增字段，旧客户端不读也不受影响）。
-- **验证**：`test/match/hextech.test.js` 新增一条（卡一到手 3 次免费刷新 + 3 次免费购买；跨两次刷新买「装备 → 干员 → 刷新后再买干员」全部 0 费；第 4 次恢复原价并精确扣款；私有视图带 `freeBuys`）。该文件 43/43 通过，`test/content/hextech.test.js` 44/44 通过。
+- **口径**（业主 2026-10-18 的追加裁定）：「免费购买是在**三次刷新内有效**」—— 不是「3 次购买」，也不是「整回合随便买」：窗口就是那张卡自己的 3 次免费刷新，窗口开着时买什么都 0 费，3 次刷新用完窗口随之关闭（回合结束也关闭，卡面写的是「本回合内」）。
+- **修**：新增玩家级 `shop.freeBuyWindow`（`PlayerState` 初始 0）：`server/sim/content/hextech.js` 的 `discount` 半段改成 `ctx.openFreeBuyWindow(refreshes)`（新增 ctx 原语，预览上下文里是 noop）；`player/economy.js` 的 `priceOf` 在窗口 > 0 时报价 0（`buy` 因此自然 0 费，**购买不消耗窗口**），`refresh()` 每次成功刷新把窗口减 1，`player/round.js` 的 `startRound` 把它清零；`电表倒转·改` 自己的 `slot.free`（一次免费刷新的槽位）保持独立。不变量校验它是非负整数；私有视图新增 `shop.freeBuyWindow`（只增字段，旧客户端不读也不受影响）。第一版按「3 次购买」的池子（`freeBuys`）实现，按业主口径已改掉。
+- **验证**：`test/match/hextech.test.js` 新增一条（窗口 = 3 次刷新；窗口开着时装备与干员共买了 2 件都 0 费且窗口还是 3；每次刷新窗口与免费刷新同步减 1、新商店仍 0 费；第 3 次刷新后窗口 0，下一件恢复原价并精确扣款；私有视图带 `freeBuyWindow`）。该文件 43/43 通过，`test/content/hextech.test.js` 44/44 通过。
 - **发布注意**：**服务端**改动 ⇒ 要换槽/重启（蓝绿：新槽起好再切 nginx，旧槽的对局留在里面打完）；客户端无需改动，刷新页面即可。
 
 ### 修：整装待发（`hex_fullkit`）的第三格在客户端不生效

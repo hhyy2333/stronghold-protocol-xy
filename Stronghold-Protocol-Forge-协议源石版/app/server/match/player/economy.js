@@ -139,13 +139,12 @@ export class PlayerEconomy {
     // `priceOf`). Without this line `freeShopChess()` still marked three slots but every price stayed at its base value
     // (measured: [2,2,2] instead of [0,0,0]).
     if (slot.free === true) return 0;
-    // 可露希尔大降价 (fix 2026-10-18): the card's 「购买干员与装备免费」 is a COUNT (roster effect.onPick.discount.buys =
-    // 3), not 「this refresh's slots are free」. The first version marked the CURRENT shop's slots free, so the card paid
-    // out exactly once — a refresh rebuilt the slots and every purchase cost again (owner report 2026-10-18
-    // 「可露希尔大降价只免费第一次，刷新后都不免费」). The pool lives on the player, so it follows refreshes and covers
-    // both slot kinds; 电表倒转·改's own per-refresh `slot.free` flag above stays separate and does not consume it
-    // (economy.js buy reads the same two things).
-    if (this.shop.freeBuys > 0) return 0;
+    // 可露希尔大降价 (owner's ruling 2026-10-18, 「免费购买是在三次刷新内有效」): purchases cost nothing for as long as
+    // the card's free-refresh window is open — `freeBuyWindow` counts the refreshes still ahead (economy.js refresh()
+    // spends one, round.js startRound closes it). The first version marked the CURRENT shop's slots free, so the card
+    // paid out exactly once (owner report 「只免费第一次，刷新后都不免费」); the second draft counted three PURCHASES,
+    // which the owner corrected. 电表倒转·改's own per-refresh `slot.free` flag above stays separate.
+    if (this.shop.freeBuyWindow > 0) return 0;
     const ev = { slot, kind: slot.kind, id: slot.id, price: slot.basePrice };
     this.m.dispatch(this, 'onPrice', ev, { quiet: true });
     const p = Number(ev.price);
@@ -269,9 +268,6 @@ export class PlayerEconomy {
     const slot = this.shop.slots[slotIdx];
     if (!slot) return fail(ERR.BAD_TARGET);
     if (slot.sold) return fail(ERR.SOLD_OUT);
-    // 可露希尔大降价: a purchase paid from the free pool costs nothing and consumes one of it. A slot 电表倒转·改 marked
-    // free is already free — it must not eat the pool (its own flag is what pays for it).
-    const freeBuy = slot.free !== true && this.shop.freeBuys > 0;
     const price = this.priceOf(slot);
     if (this.funds < price) return fail(ERR.NO_FUNDS);
     const handFull = freeSlot(this.hand) < 0;
@@ -284,7 +280,8 @@ export class PlayerEconomy {
       // BV1eLXXBqEgF 2:50–2:57: nine owned + four shop offers => thirteen owned).
       // acquireChess records every copy, including the deficit; future rolls still exclude empty stock.
       if (handFull) return fail(ERR.HAND_FULL);
-      if (freeBuy) { this.shop.freeBuys--; this.dirty(); } else this.spend(price);
+      // 可露希尔大降价: no separate charge — priceOf quotes 0 while the free-refresh window is open
+      this.spend(price);
       slot.sold = true;
       piece = this.acquireChess(slot.id, { source: 'buy' });
     } else {
@@ -292,7 +289,7 @@ export class PlayerEconomy {
       // Already displayed equipment stays purchasable after stock runs out (#624, maintainer 2026-10-14).
       // acquireItem records the debt. Future rolls still exclude empty stock. SOLD_OUT is only this slot, already sold.
       if (handFull) return fail(ERR.HAND_FULL);
-      if (freeBuy) { this.shop.freeBuys--; this.dirty(); } else this.spend(price);
+      this.spend(price);
       slot.sold = true;
       piece = this.acquireItem(slot.id, { source: 'buy', displayed: true });
     }
@@ -327,6 +324,8 @@ export class PlayerEconomy {
     // A manual refresh cancels the freeze: the new cards are not frozen (official, the owner's play of 2026-10-14;
     // GitHub #584, DESIGN §34.14.7). A refresh that fails (funds, phase) returns above and leaves the freeze on.
     this.shop.frozen = false;
+    // 可露希尔大降价: a refresh spends one of the free-purchase window's refreshes (the window IS those refreshes)
+    if (this.shop.freeBuyWindow > 0) { this.shop.freeBuyWindow--; this.dirty(); }
     this.rollShop({ keepFrozen: false });
     this.stats.refreshes++;
     this.round.refreshes++;

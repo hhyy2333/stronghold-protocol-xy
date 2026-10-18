@@ -40,7 +40,7 @@ Solo FUNNY has 9 rounds (boss at R9); everything is read from `data/config.json 
 ```js
 { playerId, seat, name, isBot, connected,
   alive, lp, bandId,
-  funds, shop: { level, upgradePrice, slots: [ Slot ], frozen: bool, freeRefreshes: n, freeBuys: n, rewardOffer: null | { tier, source:'merge'|'special', label, queued, slots:[Slot] } },  // a special offer (凯瑟琳's 定向投放 …) by its source's label; queued = offers behind the shown one (§21.2)
+  funds, shop: { level, upgradePrice, slots: [ Slot ], frozen: bool, freeRefreshes: n, freeBuyWindow: n, rewardOffer: null | { tier, source:'merge'|'special', label, queued, slots:[Slot] } },  // a special offer (凯瑟琳's 定向投放 …) by its source's label; queued = offers behind the shown one (§21.2)
   hand: [ Piece|null ×10 ], temp: [ Piece|null ×5 ],
   board: Map<'r,c', Piece>,                          // chess & token pieces on the normal field
   bonds: { [bondId]: { count, active, tier, layers } },  // layers persist all match

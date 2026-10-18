@@ -1121,19 +1121,15 @@ test('the stats preview runs the battle-start cards without changing the match (
   m.dispose();
 });
 
-test('可露希尔大降价: the next THREE purchases are free — chess and equipment, across refreshes', () => {
+test('可露希尔大降价: 三次刷新免费，且这三次刷新内的购买一律免费（业主 2026-10-18 的口径）', () => {
   const { h, m, ps } = solo1(151);
   ps.funds = 20;
   applyHex(m, ps, m.gd.hex('hex_bigdiscount'));
   assert.equal(ps.shop.freeRefreshes, 3, 'three free refreshes');
-  assert.equal(ps.shop.freeBuys, 3, 'and three free purchases (effect.onPick.discount.buys)');
-  assert.equal(ps.privateView().shop.freeBuys, 3, 'the client is told the count');
-  assert.ok(ps.shop.slots.every((s) => !s || s.sold || ps.priceOf(s) === 0), 'every slot of the shop shown at pick time reads 0');
-  // owner report 2026-10-18 「只免费第一次，刷新后都不免费」: a refresh must NOT end the free purchases
-  assert.deepEqual(m.handle('p_0', { t: 'g.refresh' }), { ok: true });
-  assert.equal(ps.shop.freeRefreshes, 2);
-  assert.equal(ps.shop.freeBuys, 3, 'a refresh does not spend the purchase pool');
-  assert.ok(ps.shop.slots.every((s) => !s || s.sold || ps.priceOf(s) === 0), 'the new shop reads 0 too');
+  assert.equal(ps.shop.freeBuyWindow, 3, 'the free-purchase window IS those three refreshes');
+  assert.equal(ps.privateView().shop.freeBuyWindow, 3, 'the client is told the window');
+  const allFree = () => ps.shop.slots.every((s) => !s || s.sold || ps.priceOf(s) === 0);
+  assert.ok(allFree(), 'every slot of the shop shown at pick time reads 0');
   const buy = (pred) => {
     const idx = ps.shop.slots.findIndex((s) => s && !s.sold && pred(s));
     assert.ok(idx >= 0, 'a slot to buy');
@@ -1142,23 +1138,24 @@ test('可露希尔大降价: the next THREE purchases are free — chess and equ
     assert.deepEqual(m.handle('p_0', { t: 'g.buy', slot: idx }), { ok: true });
     return { price, paid: f0 - ps.funds };
   };
-  // 1: the equipment slot (the card says 购买干员与装备免费)
-  const item = buy((s) => s.kind === 'item');
-  assert.deepEqual(item, { price: 0, paid: 0 }, 'equipment bought for nothing');
-  assert.equal(ps.shop.freeBuys, 2);
-  // 2: an operator
-  const one = buy((s) => s.kind === 'chess');
-  assert.deepEqual(one, { price: 0, paid: 0 }, 'operator bought for nothing');
-  assert.equal(ps.shop.freeBuys, 1);
-  // 3: after another refresh (still free) — the third one is free too
+  // the window is opened by the CARD and spent by REFRESHES — buying does not touch it
+  assert.deepEqual(buy((s) => s.kind === 'item'), { price: 0, paid: 0 }, 'equipment bought for nothing');
+  assert.deepEqual(buy((s) => s.kind === 'chess'), { price: 0, paid: 0 }, 'operator bought for nothing');
+  assert.equal(ps.shop.freeBuyWindow, 3, 'a purchase does not spend the window');
+  // each of the three refreshes keeps the next shop free and shaves the window by one
+  for (const left of [2, 1]) {
+    assert.deepEqual(m.handle('p_0', { t: 'g.refresh' }), { ok: true });
+    assert.equal(ps.shop.freeRefreshes, left);
+    assert.equal(ps.shop.freeBuyWindow, left, 'the window and the free refreshes run out together');
+    assert.ok(allFree(), `the shop after refresh ${3 - left} reads 0`);
+    assert.deepEqual(buy((s) => s.kind === 'chess'), { price: 0, paid: 0 }, 'still free inside the window');
+  }
+  // the third refresh uses the last one: the shop it produces is the first that costs again
   assert.deepEqual(m.handle('p_0', { t: 'g.refresh' }), { ok: true });
-  assert.equal(ps.shop.freeBuys, 1);
-  const three = buy((s) => s.kind === 'chess');
-  assert.deepEqual(three, { price: 0, paid: 0 }, 'the third free purchase');
-  assert.equal(ps.shop.freeBuys, 0, 'the pool is spent');
-  // 4: it costs again, exactly the slot's price
+  assert.equal(ps.shop.freeRefreshes, 0);
+  assert.equal(ps.shop.freeBuyWindow, 0, 'the window closes with the last free refresh');
   const four = buy(() => true);
-  assert.ok(four.price > 0, `the fourth purchase is priced (${four.price})`);
+  assert.ok(four.price > 0, `outside the window a purchase is priced again (${four.price})`);
   assert.equal(four.paid, four.price);
   h.invariants();
   m.dispose();

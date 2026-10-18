@@ -13,6 +13,8 @@ import { ownsHex } from '../hextech.js';
 export class PlayerRound {
   startRound(r) {
     this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0 };
+    // 可露希尔大降价's free-purchase window is 「本回合内」: it does not survive the round it was opened in
+    this.shop.freeBuyWindow = 0;
     this.pendingLayerGains = null; // settled (or lapsed) at the last SETTLE
     if (r > 1) this.shop.upgradePrice = Math.max(0, this.shop.upgradePrice - 1);
     // onIncome handlers may rewrite ev.income / ev.pending (e.g. 老鲤 withholds R1–R2 income until R3)

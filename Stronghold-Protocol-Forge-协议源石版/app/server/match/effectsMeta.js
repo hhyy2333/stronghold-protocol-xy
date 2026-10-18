@@ -517,7 +517,7 @@ function applyPreviewGuard(ctx, ps, m, source, hook) {
   ctx.addPendingFunds = noop(0);
   ctx.spendFunds = noop(false);
   ctx.grantFreeRefresh = noop(ps.shop.freeRefreshes);
-  ctx.grantFreeBuys = noop(ps.shop.freeBuys);
+  ctx.openFreeBuyWindow = noop(ps.shop.freeBuyWindow);
   ctx.zeroFunds = noop(0);
   ctx.spendLp = noop(ps.lp);
   ctx.levelUpFree = noop(false);
@@ -694,10 +694,11 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     spendFunds: (n) => { const v = finiteInt(n); if (!ps.spend(v)) return false; ps._afterSpend(v, 'effect'); return true; },
     grantFreeRefresh: (n = 1) => { const v = finiteInt(n); if (v > 0) { ps.shop.freeRefreshes += v; ps.dirty(); } return ps.shop.freeRefreshes; },
     /**
-     * 可露希尔大降价: `n` purchases cost nothing from now on — a player-level pool (`shop.freeBuys`), so it survives a
-     * refresh and covers chess and equipment alike (the card says 「购买干员与装备免费」). economy.js priceOf / buy read it.
+     * 可露希尔大降价: every purchase costs nothing while the card's free-refresh window is open (the owner's ruling
+     * 2026-10-18 「免费购买是在三次刷新内有效」). `n` = the refreshes the window holds: economy.js refresh() spends one,
+     * round.js startRound closes it. Chess and equipment alike; economy.js priceOf reads it.
      */
-    grantFreeBuys: (n = 1) => { const v = finiteInt(n); if (v > 0) { ps.shop.freeBuys += v; ps.dirty(); } return ps.shop.freeBuys; },
+    openFreeBuyWindow: (n = 1) => { const v = finiteInt(n); if (v > 0) { ps.shop.freeBuyWindow = v; ps.dirty(); } return ps.shop.freeBuyWindow; },
     /**
      * 海克斯 虚空形态 (§29.23): the pick empties the purse. Not a spend — no `stats.gold`, no onSpend, no onPrice — it
      * is the card taking the gold away, so the round's spend bookkeeping stays honest.
