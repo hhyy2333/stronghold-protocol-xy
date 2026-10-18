@@ -696,15 +696,19 @@ function applySpec(ctx, spec, hex = null, hook = '') {
   if (spec.pandora) {
     if (typeof ctx.replaceHexes === 'function') { ctx.replaceHexes(); did = true; }
   }
-  // 可露希尔大降价: the next `refreshes` refreshes and `buys` purchases of THIS round are free. Two separate
-  // primitives: `grantFreeRefresh` is the existing free-refresh pool, and `freeShopChess` marks the CURRENT shop's
-  // chess slots free (the mechanism 电表倒转·改 uses). Item slots are marked too — the card's own text says
-  // 「购买干员，装备免费」, and the item branch of `priceOf` reads the same `free` flag.
+  // 可露希尔大降价: the next `refreshes` refreshes and `buys` purchases of THIS round are free — two pools that both
+  // live on the player, so neither is tied to the shop shown at pick time: `grantFreeRefresh` (the existing
+  // free-refresh pool) and `grantFreeBuys` (economy.js priceOf / buy; chess and equipment alike).
+  //
+  // Fix 2026-10-18 (owner report 「只免费第一次，刷新后都不免费」): the buy half used to mark the CURRENT shop's slots
+  // free, which paid out once — the next refresh rebuilt the slots and every purchase cost again. 电表倒转·改's own
+  // `freeShopChess` (a single FREE refresh's slots) stays what it is; that one really is per-refresh.
   if (spec.discount) {
-    const refreshes = Number.isFinite(Number(spec.discount.refreshes)) ? Math.max(0, Math.trunc(spec.discount.refreshes)) : 0;
+    const n = (v) => (Number.isFinite(Number(v)) ? Math.max(0, Math.trunc(Number(v))) : 0);
+    const refreshes = n(spec.discount.refreshes);
     if (refreshes > 0) { ctx.grantFreeRefresh(refreshes); did = true; }
-    if (typeof ctx.freeShopChess === 'function') { ctx.freeShopChess(); did = true; }
-    if (typeof ctx.freeShopItems === 'function') { ctx.freeShopItems(); did = true; }
+    const buys = n(spec.discount.buys);
+    if (buys > 0 && typeof ctx.grantFreeBuys === 'function') { ctx.grantFreeBuys(buys); did = true; }
   }
   void hook;
   return did;

@@ -1813,6 +1813,7 @@
   "每有 1 名敌人被击倒，其余敌人的攻击力 +2%（本场战斗内叠加，最多 +40%）。": "Every enemy knocked out gives the surviving enemies +2 % ATK (stacks for the battle, up to +40 %).",
   "拖拽装备至该干员以配发（最多 {n} 件）": "Drag equipment onto this operator to equip it (up to {n}).",
   "拖拽至干员身上进行配发（每名干员最多 {n} 件，配发后无法取下）": "Drag onto an operator to equip it (up to {n} each; equipment cannot be taken off)",
+  "拖拽至干员身上进行配发（每名干员最多 {n} 件）": "Drag onto an operator to equip it (up to {n} each)",
   "发言": "Speak",
   "对话记录": "Chat log",
   "还没有人发言": "No one has spoken yet",

@@ -1809,6 +1809,7 @@ function MatchScreen() {
 
       ${resolved ? html`<${DetailPanel} detail=${resolved} editable=${editable} snapHp=${snapHp} onClose=${() => { setDetail(null); setSel(null); }}
         bonds=${detailBonds} offBonds=${offBonds} loadout=${detailLoadout} ops=${priv?.ops ?? null} side=${dSide} shopOpen=${shopOpen} live=${liveStats} voice=${true}
+        equipCap=${priv?.equipCap ?? 2}
         onBond=${(id) => openBond(id, detailOwner, 'detail')}
         onUnequip=${(itemUid) => actions.unequip(itemUid)} />` : null}
 

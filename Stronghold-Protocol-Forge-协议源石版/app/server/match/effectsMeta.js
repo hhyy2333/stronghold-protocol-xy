@@ -517,6 +517,7 @@ function applyPreviewGuard(ctx, ps, m, source, hook) {
   ctx.addPendingFunds = noop(0);
   ctx.spendFunds = noop(false);
   ctx.grantFreeRefresh = noop(ps.shop.freeRefreshes);
+  ctx.grantFreeBuys = noop(ps.shop.freeBuys);
   ctx.zeroFunds = noop(0);
   ctx.spendLp = noop(ps.lp);
   ctx.levelUpFree = noop(false);
@@ -692,6 +693,11 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     addPendingFunds: (n) => { const v = finiteInt(n); if (v > 0) { ps.pendingFunds += v; ps.dirty(); } return v > 0 ? v : 0; },
     spendFunds: (n) => { const v = finiteInt(n); if (!ps.spend(v)) return false; ps._afterSpend(v, 'effect'); return true; },
     grantFreeRefresh: (n = 1) => { const v = finiteInt(n); if (v > 0) { ps.shop.freeRefreshes += v; ps.dirty(); } return ps.shop.freeRefreshes; },
+    /**
+     * 可露希尔大降价: `n` purchases cost nothing from now on — a player-level pool (`shop.freeBuys`), so it survives a
+     * refresh and covers chess and equipment alike (the card says 「购买干员与装备免费」). economy.js priceOf / buy read it.
+     */
+    grantFreeBuys: (n = 1) => { const v = finiteInt(n); if (v > 0) { ps.shop.freeBuys += v; ps.dirty(); } return ps.shop.freeBuys; },
     /**
      * 海克斯 虚空形态 (§29.23): the pick empties the purse. Not a spend — no `stats.gold`, no onSpend, no onPrice — it
      * is the card taking the gold away, so the round's spend bookkeeping stays honest.
@@ -897,18 +903,6 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
       }
       return granted;
     },
-    /**
-     * 可露希尔大降价 (the owner's list of 2026-10-15): mark every unsold ITEM slot of the current shop free. The
-     * chess half is PlayerState.freeShopChess (电表倒转·改 uses it); this is the same rule for the other slot kind,
-     * because the card's own text says 「购买干员，装备免费」.
-     */
-    freeShopItems: () => {
-      let n = 0;
-      for (const s of ps.shop.slots) if (s && s.kind === 'item' && !s.sold) { s.free = true; n++; }
-      if (n) ps.dirty();
-      return n;
-    },
-
     // ---- effects (EffectRef: { id, key?, name, desc, iconKind, iconId, counter?, battle?, params?, data?, hidden? })
     addEffect: (ref) => {
       if (!ref || typeof ref.id !== 'string') return null;

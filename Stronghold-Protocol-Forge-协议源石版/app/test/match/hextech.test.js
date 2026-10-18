@@ -1121,3 +1121,46 @@ test('the stats preview runs the battle-start cards without changing the match (
   m.dispose();
 });
 
+test('可露希尔大降价: the next THREE purchases are free — chess and equipment, across refreshes', () => {
+  const { h, m, ps } = solo1(151);
+  ps.funds = 20;
+  applyHex(m, ps, m.gd.hex('hex_bigdiscount'));
+  assert.equal(ps.shop.freeRefreshes, 3, 'three free refreshes');
+  assert.equal(ps.shop.freeBuys, 3, 'and three free purchases (effect.onPick.discount.buys)');
+  assert.equal(ps.privateView().shop.freeBuys, 3, 'the client is told the count');
+  assert.ok(ps.shop.slots.every((s) => !s || s.sold || ps.priceOf(s) === 0), 'every slot of the shop shown at pick time reads 0');
+  // owner report 2026-10-18 「只免费第一次，刷新后都不免费」: a refresh must NOT end the free purchases
+  assert.deepEqual(m.handle('p_0', { t: 'g.refresh' }), { ok: true });
+  assert.equal(ps.shop.freeRefreshes, 2);
+  assert.equal(ps.shop.freeBuys, 3, 'a refresh does not spend the purchase pool');
+  assert.ok(ps.shop.slots.every((s) => !s || s.sold || ps.priceOf(s) === 0), 'the new shop reads 0 too');
+  const buy = (pred) => {
+    const idx = ps.shop.slots.findIndex((s) => s && !s.sold && pred(s));
+    assert.ok(idx >= 0, 'a slot to buy');
+    const price = ps.priceOf(ps.shop.slots[idx]);
+    const f0 = ps.funds;
+    assert.deepEqual(m.handle('p_0', { t: 'g.buy', slot: idx }), { ok: true });
+    return { price, paid: f0 - ps.funds };
+  };
+  // 1: the equipment slot (the card says 购买干员与装备免费)
+  const item = buy((s) => s.kind === 'item');
+  assert.deepEqual(item, { price: 0, paid: 0 }, 'equipment bought for nothing');
+  assert.equal(ps.shop.freeBuys, 2);
+  // 2: an operator
+  const one = buy((s) => s.kind === 'chess');
+  assert.deepEqual(one, { price: 0, paid: 0 }, 'operator bought for nothing');
+  assert.equal(ps.shop.freeBuys, 1);
+  // 3: after another refresh (still free) — the third one is free too
+  assert.deepEqual(m.handle('p_0', { t: 'g.refresh' }), { ok: true });
+  assert.equal(ps.shop.freeBuys, 1);
+  const three = buy((s) => s.kind === 'chess');
+  assert.deepEqual(three, { price: 0, paid: 0 }, 'the third free purchase');
+  assert.equal(ps.shop.freeBuys, 0, 'the pool is spent');
+  // 4: it costs again, exactly the slot's price
+  const four = buy(() => true);
+  assert.ok(four.price > 0, `the fourth purchase is priced (${four.price})`);
+  assert.equal(four.paid, four.price);
+  h.invariants();
+  m.dispose();
+});
+

@@ -1,6 +1,7 @@
 // Equip-replace dialog (research 04 §"Replacement" / 09 §1.2 UseEquipUp { charChessInstId, equipChessInstId,
-// isChangeEquip, unloadInstId }; PRTS 帮助 "达到上限强行佩戴会改为替换装备"): an item dropped on an operator whose two
-// equipment slots are used opens this dialog. It shows the operator, the incoming item and the two equipped items
+// isChangeEquip, unloadInstId }; PRTS 帮助 "达到上限强行佩戴会改为替换装备"): an item dropped on an operator whose
+// equipment slots are all used (the data's 2, 3 with 海克斯 整装待发 — the cap is the player's own, `priv.equipCap`,
+// which `equipReplaces` reads) opens this dialog. It shows the operator, the incoming item and the two equipped items
 // (icon, tier, name, effect); the player picks the one to replace — it is DESTROYED — and confirms: g.equip
 // {itemUid, targetUid, replaceUid}. 取消 / ✕ / Esc / the backdrop change nothing (no intent is sent).
 // Official look from the local ui/battle sprites (equip_replace_bg, _opiton_bg, _opition_select_01/02_bg, _arrow_line /

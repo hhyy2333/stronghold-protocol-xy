@@ -16,6 +16,23 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 修：可露希尔大降价（`hex_bigdiscount`）只免费了第一次
+
+- **症状**（业主 2026-10-18）：「可露希尔大降价只免费第一次，刷新后都不免费」—— 拿到卡时那间商店的干员/装备确实是 0 费，刷新一次之后新商店又都要钱。
+- **原因**：卡面「购买干员与装备免费」此前被实现成「把**当前这间商店**的槽位标成 free」（`effectsMeta.freeShopItems`），而数据里 `effect.onPick.discount.buys = 3` 这个**次数**从没被读过；`rollShop` 每次刷新都重建槽位，标记随旧槽位一起消失 ⇒ 这张卡只付了一次。免费刷新那一半（`freeRefreshes`）本来是对的。
+- **修**：免费购买变成**玩家级池子** `shop.freeBuys`（`PlayerState` 初始 0）：`server/sim/content/hextech.js` 的 `discount` 半段改成 `ctx.grantFreeBuys(buys)`（新增的 ctx 原语，预览上下文里是 noop）；`player/economy.js` 的 `priceOf` 在池子 > 0 时报价 0、`buy` 成功时扣一格且**不花资金**（干员与装备一视同仁，跨刷新有效）；`电表倒转·改` 自己的 `slot.free`（一次免费刷新的槽位）保持独立、不消耗这个池子。不变量校验 `freeBuys` 是非负整数；私有视图新增 `shop.freeBuys`（只增字段，旧客户端不读也不受影响）。
+- **验证**：`test/match/hextech.test.js` 新增一条（卡一到手 3 次免费刷新 + 3 次免费购买；跨两次刷新买「装备 → 干员 → 刷新后再买干员」全部 0 费；第 4 次恢复原价并精确扣款；私有视图带 `freeBuys`）。该文件 43/43 通过，`test/content/hextech.test.js` 44/44 通过。
+- **发布注意**：**服务端**改动 ⇒ 要换槽/重启（蓝绿：新槽起好再切 nginx，旧槽的对局留在里面打完）；客户端无需改动，刷新页面即可。
+
+### 修：整装待发（`hex_fullkit`）的第三格在客户端不生效
+
+- **症状**（业主 2026-10-18）：「干员可装备 3 个装备」那张卡拿了不生效 —— 身上两件时拖第三件上去，弹的是**替换**对话框（要销毁一件），卡片也一直写 `EQUIP n/2`、提示「最多 2 件」。
+- **原因**：服务端从 0.3.0 移植起就允许 3 件（`PlayerState.equipCap()` → `hextech.equipSlotsOf`，私有视图 `privateView().equipCap`；`test/match/hextech.test.js` 早就在钉），但**客户端从没读过那个字段**：`ui/gameLogic/placement.js` 的 `equipReplaces` 用 `slot.slotCap(2)` 判「满了」，`ui/detailPanel.js` 的分母与两句文案同样写死 2。
+- **修**：`priv.equipCap` 进 `placementContext`（`ctx.equipCap`，缺项 / 旧服务端 / 手搓 priv ⇒ 仍是数据里的 2），替换判据与卡片分母都读它；文案换成已存在的 `{n}` 版 msgid（en 早就有，ja / ko / zh-TW 这次补齐）；准备期棋子的装备圆点从 2 个上限放到 3 个（`render/units.js`、DOM 后备 `ui/fallbackField.js`）。装备位「不占位 / 谁被顶替」仍由 `shared/morph.js` 的策略回答，**未动**。
+- **同一张卡括号里那半句**（「装备变形同构体与两个阵营装备时，两边的阵营盟约都会生效」）随第三格一起成立：官方档下变形同构体占一格，3 格 ⇒ 它 + 两件不同阵营的 `giveBondId` 装备，`grantedBondsByMorph` 按官方档「每一件都授予」。
+- **验证**：新增 `test/ui/equip-cap.test.js`（3 条：`placementContext` 读 `priv.equipCap` 与缺省 2、`equipReplaces` 在两件时 cap 2 弹替换 / cap 3 直接装、卡片 `EQUIP n/3` 与「最多 3 件」文案 + 两阵营盟约都授予）。**零 golden 移动**（服务端规则一个字没改，只是客户端把已有的数字读出来），无协议 / 推送帧变化。
+- **发布注意**：客户端改动，玩家刷新页面即生效；不重启服务器也拿得到新界面。
+
 ### 房间内改模组集合（`room.mods`，房主）
 
 - 新增 C2S **`room.mods { modIds }`**：房主把这一房声明的集合换成另一个（`[]` = 改回「不声明」，即这一局按服务器

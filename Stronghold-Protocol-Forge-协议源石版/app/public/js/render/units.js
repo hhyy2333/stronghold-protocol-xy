@@ -1069,7 +1069,8 @@ export class UnitView {
   /** Equipped item pips (prep): list of item icon URLs. */
   setItems(urls) {
     const P = this.P;
-    const list = Array.isArray(urls) ? urls.slice(0, 2) : [];
+    // 整装待发 opens a third slot (server/match/hextech.js equipSlotsOf): draw up to three pips, not two
+    const list = Array.isArray(urls) ? urls.slice(0, 3) : [];
     while (this.itemPips.length > list.length) this.itemPips.pop().destroy();
     list.forEach((u, i) => {
       let s = this.itemPips[i];

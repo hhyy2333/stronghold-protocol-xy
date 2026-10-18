@@ -212,6 +212,12 @@ export function placementContext({ priv, stage, editable, field = 'normal', getC
   let deployed = 0;
   for (const e of pieces.values()) if (e.area === 'board' && e.piece.kind === 'chess') deployed += 1;
   const count = Number.isInteger(priv?.deployCount) ? priv.deployCount : deployed;
+  // 海克斯 整装待发 (fix 2026-10-18): the player's equipment cap as the server published it in the private view
+  // (`server/match/player/views.js` equipCap = `PlayerState.equipCap()`). This page never read it, so `equipReplaces`
+  // kept the data's own 2 and the card read EQUIP n/2: the third slot the hex opens never opened on the client — a third
+  // item dropped on an operator carrying two popped the replace dialog instead of just attaching (owner report
+  // 2026-10-18「整装待发好像不生效」). A priv without the field (an older server, a test's hand-made one) keeps 2.
+  const equipCap = Number.isInteger(priv?.equipCap) && priv.equipCap > 0 ? priv.equipCap : 2;
   const ov = stageOverrides(priv, getEffect);
   // the own normal board keeps the data's deploy tiles (with the terrain overrides folded in); the boss field of a
   // boss round's prep is read from the legend + its devices under the same overrides (server deploy map, field)
@@ -219,7 +225,7 @@ export function placementContext({ priv, stage, editable, field = 'normal', getC
   const deploy = field === 'bossL' || field === 'bossR'
     ? deploySets(stage, field, ov)
     : deploySets(effectiveStage(stage, ov, L));
-  return { priv, pieces, boardAt, handAt, deploy, cap, count, field, editable: !!editable, getChess, getToken, getItem, backups, layout: L };
+  return { priv, pieces, boardAt, handAt, deploy, cap, count, field, editable: !!editable, getChess, getToken, getItem, backups, layout: L, equipCap };
 }
 
 /**
@@ -422,7 +428,9 @@ const PROMOTE_KEYS = new Set(['use_equip_upgrade_char', 'equip_round_start_upgra
  *
  * 第 7 段（`morphPairing: "plus"`）：判据的「两格满了」那半改读这一页的**装备位策略**（`slotPolicy()`，
  * `shared/morph.js`）—— 变形同构体不占位、且它**永远不是**被顶掉的那一件（它自己从不打开替换对话框）。
- * 缺省档下策略就是引擎今天那条算术（`slotsUsed` = `items.length`、`slotCap` = 2）⇒ 这一函数逐字不变。
+ * 缺省档下策略就是引擎今天那条算术（`slotsUsed` = `items.length`、`slotCap` = 装备位上限）⇒ 这一函数逐字不变；
+ * 那个上限是**这名玩家自己的**（`ctx.equipCap`，服务端私有视图发布；海克斯 整装待发 = 3），不是数据里那个 2 ——
+ * 否则第三件永远走不进「只是装上」那条路（业主 2026-10-18 报「整装待发不生效」）。
  * @param {ReturnType<typeof placementContext>} ctx
  * @param {number} uid
  * @param {any} targetPiece
@@ -432,7 +440,7 @@ export function equipReplaces(ctx, uid, targetPiece) {
   const rec = ctx.getItem(ctx.pieces.get(uid)?.piece?.id);
   const slot = slotPolicy();
   if (slot.isSlotless(rec)) return false;
-  if (slot.slotsUsed(targetPiece.items, ctx.getItem) < slot.slotCap(2)) return false;
+  if (slot.slotsUsed(targetPiece.items, ctx.getItem) < slot.slotCap(ctx.equipCap ?? 2)) return false;
   if (!consumedOnEquip(rec)) return !equipMerges(ctx, uid);
   const promotes = Array.isArray(rec.buffs) && rec.buffs.some((b) => PROMOTE_KEYS.has(b?.key));
   return !(promotes && targetPiece.golden);

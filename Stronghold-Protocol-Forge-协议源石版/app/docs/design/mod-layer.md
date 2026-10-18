@@ -3368,7 +3368,7 @@ bug（`server/match/invariants.js` 写的是收棋子的形状、其余写的是
 | `screens/support.js` 的 `shouldAutoClose` | 与 `loadout.js` 那一处**同形**（相位一离开 `INFO_CHECK` 就收走助战面板） | **无关**：助战**没有**开关，而服务端 `platform.js` 的 `room.support` 同样只在 `INFO_CHECK` 收（`WRONG_PHASE`）⇒ **两边一致，不是缺陷**。将来若有投稿要"休整期换助战"，那就是**第 5 格开关**，两处一起改 |
 | `ui/equipReplace.js` 的 `if (equipped.length < 2) return null;` | 客户端把**装备位写死 2**（换装对话框的触发判据） | **第 7 段已按格开关处理**：`equipReplaces`（`ui/gameLogic/placement.js`）改读 `slotPolicy().slotsUsed` / `slotCap`，`ui/equipReplace.js` 只消费它的判决 ⇒ 两档都对得上服务端 |
 | `ui/gameLogic/placement.js` 的 `if (targetPiece.items.length < 2) return false;` | 同上（拖拽配发的预判） | **同上，已处理**（判据收在 `equipReplaces` 一处） |
-| `ui/detailPanel.js` 的 `EQUIP n/2` 与"最多 2 件"文案 | 纯显示 | **第 7 段已处理**：分子换成 `slotPolicy().slotsUsed`（`plus` 档不数那件不占位的），分母 `slotCap`；`plus` 档另外给那一行画一个「不占装备格」标签（`dtag-slotless`，缺省档不画） |
+| `ui/detailPanel.js` 的 `EQUIP n/2` 与"最多 2 件"文案 | 纯显示 | **第 7 段已处理**：分子换成 `slotPolicy().slotsUsed`（`plus` 档不数那件不占位的），分母 `slotCap`；`plus` 档另外给那一行画一个「不占装备格」标签（`dtag-slotless`，缺省档不画）。**2026-10-18 补**：分母从此是**这名玩家自己的**装备位上限（`priv.equipCap`，服务端 `PlayerState.equipCap()` 经私有视图发布；海克斯 整装待发 = 3），不是数据里那个 2 —— 此前这里只读 `slotPolicy`，把那张卡开出来的第三格挡在界面外（拖第三件弹替换框、卡片写 `EQUIP n/2`） |
 
 ### 28.43.4 待办（本轮**刻意不做**）：`PREP` 里的干员调配入口
 
