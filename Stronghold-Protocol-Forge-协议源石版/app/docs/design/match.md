@@ -177,7 +177,8 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 （回合表 / 敌池 / 盟约集合 / 首领回合），各做 18 份 = 72 套数据，不可维护。等级只折进引擎**已有**的读取点。
 
 - **口径**：只有 `difficulty === 'ABYSS'` 能开 1–18；其他难度上服务端归一化为 0。`0` 时引擎逐字节不变
-  （golden 不移动）；13–18 标 `experimental`（框架，数值等平衡脚本扫过再定）。
+  （golden 不移动）。13–18 已用 `tools/balance.mjs --level` 量过一轮（docs/BALANCE.md §8），与 1–12 同一条
+  单调曲线（生命/攻击逐级升；数量、漏怪、收入惩罚、首领池、额外敌方源石在 13–18 都不回头）。
 - **表**：`shared/protocolLevels.js`。每级只动 1–2 个玩家能感知的量，乘法曲线，每 3 级一个拐点：
   1–6 敌方生命/攻击；7–12 追加防御/法抗、漏怪 LP、每波数量、收入；13–18 首领池、额外敌方协议源石、收入惩罚。
 - **读取点**：`GameData.protocolLevel / protocolLevelMods`（`income()`、`bossPoolHp()`）；
@@ -192,5 +193,5 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 - **排行榜**：`MatchRecords.board({ difficulty, level, limit })` —— 每 (难度, 等级) 一张榜，每名真人只留「胜 > 通过回合多 >
   更早达成」的最好一局，榜长封顶 50；公开面只有名字与成绩（**不含 playerId**），装载时从 journal 重建。C2S
   `records.board` 取榜，客户端「统计 → 排行榜」按难度 / 等级筛选。
-- **待办**：13–18 的数值（`experimental`）、扫级平衡脚本。
+- **待办**：人手实测；L18 的 R8 尖峰（每波 +1 + 3 张额外源石）是刻意的终局强度，实测过狠时先动 18 的 `countAdd`。
 

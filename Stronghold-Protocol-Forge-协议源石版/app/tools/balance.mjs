@@ -35,6 +35,8 @@
 //                     a bond's layers stop at BOND_LAYER_CAP, 999)
 //   --tuning off      ignore data/tuning.json (it only holds title rules now: no effect on the numbers)
 //   --legacy-time     read the combat limits as game seconds (the reading before the fix of docs/BALANCE.md §2.1)
+//   --level N         协议等级 1–18 (only on ABYSS; 0 = off): folds into the enemy mods / income / boss pool exactly
+//                     like a match (shared/protocolLevels.js) — docs/BALANCE.md §8
 //   --boss-lp N       team LP per alive player entering the Final Assault (default 15)
 //   --bots N          also run N bot matches per mode × difficulty (tools/matchrun.mjs logic, 4 AI in multi, the
 //                     match's default bot rehearsal) and print rounds survived / wins
@@ -43,6 +45,7 @@
 //   node tools/balance.mjs --mode multi --difficulty NORMAL
 //   node tools/balance.mjs --mode all --difficulty ALL --samples 8 --json > /tmp/balance.json
 //   node tools/balance.mjs --mode multi --difficulty HARD --rounds 12-15 --tuning off
+//   node tools/balance.mjs --mode multi --difficulty ABYSS --level 18 --rounds 8,12 --samples 3 --no-boss
 
 import { pathToFileURL } from 'node:url';
 import { Match } from '../server/match/Match.js';
@@ -103,11 +106,13 @@ export function withoutTuning(data) {
   return Object.freeze(rest);
 }
 
-export function makeMatch({ data, mode, difficulty, seed, players = 1, rehearsal = 3 }) {
+export function makeMatch({ data, mode, difficulty, seed, players = 1, rehearsal = 3, level = 0 }) {
   const seats = [];
   for (let i = 0; i < players; i++) seats.push({ seat: i, playerId: `p${i}`, name: `P${i + 1}`, isBot: false, connected: true });
   const m = new Match({
     roomCode: 'BAL', mode, difficulty, seats, seed, data, log: QUIET_LOG, scheduler: new VirtualScheduler(),
+    // 协议等级 (owner's call 2026-10-18): the level folds into the enemy mods / income / boss pool exactly like a match
+    ...(level > 0 ? { protocolLevel: level } : {}),
     send: () => true, broadcast: () => {}, onEnd: () => {}, botRehearsal: rehearsal,
   });
   return m;
@@ -294,9 +299,9 @@ function stepToEnd(b, limit) {
  * 联防 runs exactly like the match: ≤ 2 perfect helpers keep HP / SP and fight the union of the leaks; only the
  * survivors cost their source LP). Returns one row per player.
  */
-export function runRound({ data, mode, difficulty, round, seed, rehearsal = 5, profile = 1, players = 1 }) {
+export function runRound({ data, mode, difficulty, round, seed, rehearsal = 5, profile = 1, players = 1, level = 0 }) {
   const n = mode === 'solo' ? 1 : Math.max(1, Math.min(4, players));
-  const m = makeMatch({ data, mode, difficulty, seed, players: n, rehearsal });
+  const m = makeMatch({ data, mode, difficulty, seed, players: n, rehearsal, level });
   const rng = createRng(deriveSeed(seed, `board:${round}`));
   m.round = round;
   m.wave = buildNormalWave(m.gd, m.rngWaves, m.factions, round);
@@ -359,9 +364,9 @@ export function runNormal(opts) {
  * the round, fields are built exactly like Match.startFinalAssault, stepped in lockstep until the pool dies, the team
  * LP runs out (leaks' lifePointReduce + 1 LP/s overtime after 150 s) or `tMax`.
  */
-export function runBoss({ data, mode, difficulty, round, seed, profile = 1, bossLp = 15, tMax = 420, bossId = null }) {
+export function runBoss({ data, mode, difficulty, round, seed, profile = 1, bossLp = 15, tMax = 420, bossId = null, level = 0 }) {
   const players = mode === 'solo' ? 1 : 4;
-  const m = makeMatch({ data, mode, difficulty, seed, players, rehearsal: 0 });
+  const m = makeMatch({ data, mode, difficulty, seed, players, rehearsal: 0, level });
   const gd = m.gd;
   const hidden = round === gd.hiddenRound && round !== gd.bossRound;
   const id = bossId || (hidden ? m.hiddenBossId : m.bossId);
@@ -378,7 +383,7 @@ export function runBoss({ data, mode, difficulty, round, seed, profile = 1, boss
     }
   }
   const alive = m.alivePlayers();
-  // the match's own pool rule (bloodPoint × the players alive, solo × 1 — DESIGN §25.13.4)
+  // the match's own pool rule (bloodPoint × the players alive, solo × 1 — DESIGN §25.13.4, 协议等级's pool multiplier included)
   const pool = new SharedBossPool(bossPoolHp(gd, id, alive.length));
   let teamLp = alive.reduce((s, p) => s + p.lp, 0);
   const teamLp0 = teamLp;
@@ -386,6 +391,18 @@ export function runBoss({ data, mode, difficulty, round, seed, profile = 1, boss
   const battles = groups.map((g, i) => {
     const wave = m.bossWaves[i].wave;
     const spawns = wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined }));
+    // 协议等级 (owner's call 2026-10-18): the boss fields carry the level's enemy mods too (a match folds them via
+    // matchEnemyMods; this tool builds its fields by hand, so it multiplies here — no other fold runs on them).
+    const lvlEnemy = m.gd.protocolLevelMods ? m.gd.protocolLevelMods.enemy : null;
+    if (lvlEnemy) {
+      for (const s of spawns) {
+        if (!s || !s.mods) continue;
+        for (const k of ['hpMul', 'atkMul', 'defMul', 'resMul', 'speedMul']) {
+          if (Number.isFinite(lvlEnemy[k])) s.mods[k] = (Number.isFinite(s.mods[k]) ? s.mods[k] : 1) * lvlEnemy[k];
+        }
+        if (Number.isFinite(lvlEnemy.countAdd)) s.mods.countAdd = (Number.isFinite(s.mods.countAdd) ? s.mods.countAdd : 0) + lvlEnemy.countAdd;
+      }
+    }
     const inputs = g.map((ps, j) => {
       const input = ps.battleInput({ side: j === 0 ? 'L' : 'R', colOffset: j === 0 ? 0 : 8 });
       input.lpForBoss = teamLp;
@@ -479,16 +496,16 @@ export function summarizeBoss(rows) {
 }
 
 /** Run the model for one mode × difficulty. */
-export function runMode({ data, mode, difficulty, rounds = null, samples = 12, bossSamples = 8, seed = 1, rehearsal = 5, profile = 1, bossLp = 15, boss = true, normal = true, groupSize = 4, onRow = null }) {
+export function runMode({ data, mode, difficulty, rounds = null, samples = 12, bossSamples = 8, seed = 1, rehearsal = 5, profile = 1, bossLp = 15, boss = true, normal = true, groupSize = 4, onRow = null, level = 0 }) {
   const modeKey = mode === 'solo' ? 'solo' : 'coop';
-  const probe = makeMatch({ data, mode: modeKey, difficulty, seed: 1, players: 1, rehearsal: 0 });
+  const probe = makeMatch({ data, mode: modeKey, difficulty, seed: 1, players: 1, rehearsal: 0, level });
   const gd = probe.gd;
   const last = gd.hiddenRound || gd.lastRound;
   const bossRound = gd.bossRound;
   const hiddenRound = gd.hiddenRound;
   probe.dispose();
   const list = (rounds || Array.from({ length: last }, (_, i) => i + 1)).filter((r) => r >= 1 && r <= last);
-  const out = { mode: modeKey, modeId: gd.modeId, difficulty, normal: [], boss: [] };
+  const out = { mode: modeKey, modeId: gd.modeId, difficulty, level, normal: [], boss: [] };
   for (const r of list) {
     const isBoss = r === bossRound || r === hiddenRound;
     if (isBoss && !boss) continue;
@@ -497,8 +514,8 @@ export function runMode({ data, mode, difficulty, rounds = null, samples = 12, b
     const n = isBoss ? bossSamples : samples;
     for (let i = 0; i < n; i++) {
       const s = deriveSeed(seed, `${gd.modeId}:${r}:${i}`) || 1;
-      if (isBoss) rows.push(runBoss({ data, mode: modeKey, difficulty, round: r, seed: s, profile, bossLp }));
-      else rows.push(...runRound({ data, mode: modeKey, difficulty, round: r, seed: s, rehearsal, profile, players: modeKey === 'solo' ? 1 : groupSize }));
+      if (isBoss) rows.push(runBoss({ data, mode: modeKey, difficulty, round: r, seed: s, profile, bossLp, level }));
+      else rows.push(...runRound({ data, mode: modeKey, difficulty, round: r, seed: s, rehearsal, profile, players: modeKey === 'solo' ? 1 : groupSize, level }));
     }
     const sum = isBoss ? summarizeBoss(rows) : summarizeNormal(rows);
     (isBoss ? out.boss : out.normal).push(sum);
@@ -508,7 +525,7 @@ export function runMode({ data, mode, difficulty, rounds = null, samples = 12, b
 }
 
 // ---- bots (tools/matchrun.mjs essentials) -------------------------------------------------------------------------
-export function runBots({ data, mode, difficulty, seeds = 10, seed = 1, rehearsal = undefined }) {
+export function runBots({ data, mode, difficulty, seeds = 10, seed = 1, rehearsal = undefined, level = 0 }) {
   const players = mode === 'solo' ? 1 : 4;
   const res = [];
   for (let i = 0; i < seeds; i++) {
@@ -519,6 +536,7 @@ export function runBots({ data, mode, difficulty, seeds = 10, seed = 1, rehearsa
     const m = new Match({
       roomCode: 'BOT', mode: mode === 'solo' ? 'solo' : 'coop', difficulty, seats, seed: seed + i, data, log: QUIET_LOG, scheduler: sched,
       botRehearsal: rehearsal, send: () => true, broadcast: () => {}, onEnd: (s) => { summary = s; },
+      ...(level > 0 ? { protocolLevel: level } : {}),
     });
     m.start();
     sched.runUntil(() => summary != null, { maxSteps: 5e6 });
@@ -596,20 +614,21 @@ async function main() {
     seed: Number(opt.seed) || 1, rehearsal: opt.rehearsal != null && opt.rehearsal !== true ? Math.max(0, Math.floor(Number(opt.rehearsal) || 0)) : 5,
     profile, bossLp: Number(opt['boss-lp']) > 0 ? Number(opt['boss-lp']) : 15, boss: !opt['no-boss'], normal: !opt['boss-only'],
   };
+  const level = Math.max(0, Math.min(18, Math.trunc(Number(opt.level) || 0)));
   const all = [];
   for (const mode of modes) {
     for (const difficulty of diffs) {
       const t0 = Date.now();
       if (!opt.json) {
-        console.log(`\n== ${mode} ${difficulty} (${DIFF_NAMES[difficulty]}) · profile ${profile} · samples ${common.samples ?? (mode === 'solo' ? 16 : 6)}${mode === 'solo' ? '' : `×${common.groupSize} boards`}/${common.bossSamples} · rehearsal ${common.rehearsal} · tuning ${opt.tuning === 'off' ? 'off' : 'on'}`);
+        console.log(`\n== ${mode} ${difficulty} (${DIFF_NAMES[difficulty]})${level > 0 ? ` · 协议等级 ${level}` : ''} · profile ${profile} · samples ${common.samples ?? (mode === 'solo' ? 16 : 6)}${mode === 'solo' ? '' : `×${common.groupSize} boards`}/${common.bossSamples} · rehearsal ${common.rehearsal} · tuning ${opt.tuning === 'off' ? 'off' : 'on'}`);
         printNormalHeader();
       }
       const res = runMode({
-        ...common, mode, difficulty, samples: common.samples ?? (mode === 'solo' ? 16 : 6),
+        ...common, mode, difficulty, level, samples: common.samples ?? (mode === 'solo' ? 16 : 6),
         onRow: opt.json || opt.quiet ? null : (kind, s) => (kind === 'boss' ? printBoss(s) : printNormal(s)),
       });
       if (Number(opt.bots) > 0) {
-        res.bots = runBots({ data, mode, difficulty, seeds: Number(opt.bots), seed: common.seed });
+        res.bots = runBots({ data, mode, difficulty, seeds: Number(opt.bots), seed: common.seed, level });
         if (!opt.json) console.log(`  bots (${mode === 'solo' ? 1 : 4} AI): wins ${res.bots.wins}/${res.bots.n} · rounds passed avg ${f1(res.bots.roundsAvg)} [${res.bots.rounds.join(' ')}] · hidden ${res.bots.hidden}`);
       }
       if (!opt.json) {

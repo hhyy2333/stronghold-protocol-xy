@@ -120,7 +120,11 @@ export function bossPoolHp(gd, bossId, aliveCount, hexTierMul = 1) {
   // 协议源石 (Hextech) 的领袖血量倍率（业主 2026-10-13 加的那一半，hextech.js bossHexTierMul）：
   // 它由调用方传进来（hextech.js bossPoolFor），≤1 一律当 1 —— 只有**加强**才生效。
   const hexes = Number.isFinite(hexTierMul) && hexTierMul > 1 ? hexTierMul : 1;
-  return Math.max(1, Math.round(base * share * tune * hexes));
+  // 协议等级 13–18 的首领池倍率 (owner's call 2026-10-18)：这里是**唯一**算领袖血池的地方（bossRounds 走
+  // bossPoolHpFor → 本函数，audit 重新推导也走它），所以倍率折在这里，两处就不会各写一份。
+  const levelMul = gd.protocolLevelMods && Number.isFinite(gd.protocolLevelMods.bossPoolMul) && gd.protocolLevelMods.bossPoolMul > 0
+    ? gd.protocolLevelMods.bossPoolMul : 1;
+  return Math.max(1, Math.round(base * share * tune * hexes * levelMul));
 }
 
 /**

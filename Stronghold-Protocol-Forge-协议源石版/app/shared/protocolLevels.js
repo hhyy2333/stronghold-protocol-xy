@@ -6,7 +6,9 @@
 //
 // 口径（业主的决定）：
 //   * 只有最高难度（`difficulty === 'ABYSS'`）能开 1–18；其它难度上一律按 0（关闭）处理；
-//   * 1–12 是调过的数值；13–18 是框架（`experimental: true`，数值先给出来，等平衡脚本扫完再改）；
+//   * 1–18 同一条曲线，全部由 `node tools/balance.mjs --difficulty ABYSS --level N` 量过一轮
+//     （docs/BALANCE.md「协议等级」）：13–18 的「额外敌方源石 / 首领池 / 数量」按级**不回头**——任何一轴在同一级
+//     上都不会比上一级轻，于是曲线没有暗坑（12 级原先的 countAdd、16 级后的 extra 空档都已在 2026-10-18 这一轮修掉）；
 //   * 匹配严格同级（server/matchmaking.js），战绩按等级分开记（server/matchRecords.js）。
 //
 // 每一级只动 1–2 个玩家能感知的量，乘法曲线（不是加法），每 3 级一个拐点：
@@ -36,13 +38,13 @@ export const PROTOCOL_LEVELS = Object.freeze([
   { level: 9, tier: 'danger', label: 'IX', leakLp: 1, enemy: { hpMul: 1.56, atkMul: 1.35, defMul: 1.10, resMul: 1.07 } },
   { level: 10, tier: 'danger', label: 'X', incomeDelta: -1, enemy: { hpMul: 1.65, atkMul: 1.40, defMul: 1.12, resMul: 1.09 } },
   { level: 11, tier: 'danger', label: 'XI', enemy: { hpMul: 1.74, atkMul: 1.45, defMul: 1.14, resMul: 1.11 } },
-  { level: 12, tier: 'danger', label: 'XII', milestone: true, incomeDelta: -1, enemy: { hpMul: 1.83, atkMul: 1.50, defMul: 1.16, resMul: 1.13, countAdd: 1 } },
-  { level: 13, tier: 'deep', label: 'XIII', experimental: true, bossPoolMul: 1.10, extraEnemyHexes: 1, enemy: { hpMul: 1.92, atkMul: 1.56, defMul: 1.17, resMul: 1.14 } },
-  { level: 14, tier: 'deep', label: 'XIV', experimental: true, incomeDelta: -2, enemy: { hpMul: 2.02, atkMul: 1.62, defMul: 1.18, resMul: 1.15 } },
-  { level: 15, tier: 'deep', label: 'XV', experimental: true, bossPoolMul: 1.20, extraEnemyHexes: 1, enemy: { hpMul: 2.12, atkMul: 1.68, defMul: 1.19, resMul: 1.16, countAdd: 1 } },
-  { level: 16, tier: 'deep', label: 'XVI', experimental: true, extraEnemyHexes: 2, enemy: { hpMul: 2.23, atkMul: 1.74, defMul: 1.20, resMul: 1.17 } },
-  { level: 17, tier: 'deep', label: 'XVII', experimental: true, incomeDelta: -3, enemy: { hpMul: 2.34, atkMul: 1.80, defMul: 1.21, resMul: 1.18 } },
-  { level: 18, tier: 'deep', label: 'XVIII', experimental: true, milestone: true, bossPoolMul: 1.50, extraEnemyHexes: 3, leakLp: 2, enemy: { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 2 } },
+  { level: 12, tier: 'danger', label: 'XII', milestone: true, incomeDelta: -1, enemy: { hpMul: 1.83, atkMul: 1.50, defMul: 1.16, resMul: 1.13 } },
+  { level: 13, tier: 'deep', label: 'XIII', incomeDelta: -1, bossPoolMul: 1.10, extraEnemyHexes: 1, enemy: { hpMul: 1.92, atkMul: 1.56, defMul: 1.17, resMul: 1.14 } },
+  { level: 14, tier: 'deep', label: 'XIV', incomeDelta: -2, bossPoolMul: 1.10, extraEnemyHexes: 1, enemy: { hpMul: 2.02, atkMul: 1.62, defMul: 1.18, resMul: 1.15 } },
+  { level: 15, tier: 'deep', label: 'XV', incomeDelta: -2, bossPoolMul: 1.20, extraEnemyHexes: 1, enemy: { hpMul: 2.12, atkMul: 1.68, defMul: 1.19, resMul: 1.16 } },
+  { level: 16, tier: 'deep', label: 'XVI', incomeDelta: -2, bossPoolMul: 1.20, extraEnemyHexes: 2, enemy: { hpMul: 2.23, atkMul: 1.74, defMul: 1.20, resMul: 1.17 } },
+  { level: 17, tier: 'deep', label: 'XVII', incomeDelta: -3, bossPoolMul: 1.30, extraEnemyHexes: 2, enemy: { hpMul: 2.34, atkMul: 1.80, defMul: 1.21, resMul: 1.18 } },
+  { level: 18, tier: 'deep', label: 'XVIII', milestone: true, incomeDelta: -3, bossPoolMul: 1.50, extraEnemyHexes: 3, leakLp: 2, enemy: { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 1 } },
 ]);
 
 /** 等级是否是合法整数（0..18）。 */

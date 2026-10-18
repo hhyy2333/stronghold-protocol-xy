@@ -431,3 +431,45 @@ on a leader is cancelled (`MAX_BATTLE_DAMAGE`: 0 damage, nothing to the pool —
   share, no hit, and passes it (`Battle.loseHp noHitLimit` [ASSUMED]: research 11 §2.1 checks every damage modifier, but
   which max HP the official link reads is not documented). Re-check this whenever the pool size changes (research 11 §6).
 
+
+
+## 8. 协议等级 1–18（2026-10-18）
+
+协议等级是叠加在**终极模拟**上的一条数值轴（`shared/protocolLevels.js`，0 = 关闭；实现见
+docs/design/match.md「协议等级 1–18」）。这一轮把 13–18 也量了一遍，并把整张表调成「每一轴都不回头」的单调曲线。
+
+**方法**（§1 的同一个模型，只多了 `--level`）：
+```bash
+node tools/balance.mjs --mode multi --difficulty ABYSS --level 18 --rounds 8,12 --samples 3 --no-boss
+node tools/balance.mjs --mode multi --difficulty ABYSS --level 18 --rounds 14 --boss-samples 3 --boss-only
+```
+`--level N` 把等级折进敌方 mods / 收入 / 首领池（与真对局同一个 fold：`matchEnemyMods` / `GameData.income` /
+`finalAssault.bossPoolHp`）；multi 每轮 4 块 competent 板 + 联防。样本小（3 场 × 4 板），看趋势，不看绝对值。
+
+**测量**（multi，ABYSS；leaks = 每板每轮的漏怪数）：
+
+| 等级 | R8 leaks | R8 kill | R12 leaks | R12 perfect | R12 kill | R12 LP/rd |
+|---|---|---|---|---|---|---|
+| 11 | 9.75 | 57% | 7.58 | 50% | 81% | 0.0 |
+| 12 | 10.00 | 56% | 8.08 | 50% | 79% | 0.0 |
+| 13 | 11.25 | 50% | 9.25 | 33% | 77% | 1.6 |
+| 14 | 11.92 | 47% | 10.92 | 33% | 72% | 0.7 |
+| 15 | 12.42 | 45% | 11.42 | 25% | 71% | 2.0 |
+| 16 | 12.83 | 43% | 13.08 | 17% | 67% | 4.0 |
+| 17 | 13.50 | 40% | 14.33 | 17% | 64% | 4.3 |
+| 18 | 23.25 | 24% | 23.08 | 17% | 56% | 5.1 |
+
+**首领轮**（R14，pool / ratio150 / victory / kill s）：L0 14.67M / 0.90 / 67% / 222 s；L18 22.00M / 0.58 / 33% /
+338 s —— 首领池倍率确实在 `finalAssault.bossPoolHp` 这一处生效（`bossPoolHpFor` 与 audit 都走它）。
+
+**这一轮改了什么**
+- 12 级去掉「每波 +1」：它让 12 级比 13 级还难（旧表 R8 19.6 → 新表 10.0），曲线不再有 12 级尖峰。
+- 额外敌方协议源石铺成 13/14/15 = 1、16/17 = 2、18 = 3（旧表 17 是 0，17 级比 16 级轻）。
+- 首领池倍率铺成 13/14 = 1.10、15/16 = 1.20、17 = 1.30、18 = 1.50（旧表 14/16/17 是 1.0）。
+- 深潜区收入惩罚单调：13 = −1、14/15/16 = −2、17/18 = −3。
+- 13–18 不再标 `experimental`。表的不变量写进 `test/match/protocol-levels.test.js`：生命/攻击严格上升；数量、
+  漏怪、收入惩罚、首领池、额外敌方源石在 13–18 不回头；综合压力代理（生命 × (1 + 数量 × 0.08)）逐级严格上升。
+
+**仍未做**：人手实测。L18 的 R8 尖峰（每波 +1 + 3 张额外源石）是刻意的终局强度；若实测过狠，先动 18 的
+`countAdd`，不要动 13–17。
+
