@@ -33,6 +33,26 @@ test('cards: frosted glass, glowing bevel, cyan hover, masked description', () =
   assert.match(CSS, /\.hxcard__rarity\s*\{[^}]*clip-path:\s*polygon\(/, 'the tier label is a slanted tech tag');
 });
 
+test('selection (armed) and confirm animations are wired', () => {
+  // 未选中的卡：迅速褪色（饱和度降到 20%）/ 透明 30% / 后退到 0.95
+  assert.match(CSS, /\.hxov\.has-armed \.hxcard\.is-tappable:not\(\.is-armed\)\s*\{[^}]*saturate\(\.2\)[^}]*opacity:\s*\.3[^}]*scale\(\.95\)/, 'non-selected cards fade and recede');
+  // 选中瞬间：点阵由中心向外亮起的波
+  assert.ok(CSS.includes('.hxcard.has-tier .hxcard__dotwave'), 'the dot-wave layer is styled');
+  assert.ok(CSS.includes('.hxcard__dotring'), 'the wave front ring is a sibling layer (not clipped by the wave)');
+  assert.ok(JS.includes('hxcard__dotring'), 'the card renders the wave front ring');
+  assert.match(CSS, /\.hxcard\.has-tier\.is-armed \.hxcard__dotwave\s*\{[^}]*animation:\s*hx-dotwave/, 'the wave runs when armed');
+  assert.match(CSS, /@keyframes hx-dotwave/, 'the wave keyframes exist');
+  // 确认：数据流 + 吸入 + 震屏
+  assert.ok(CSS.includes('.hxcard__glitch'), 'the data-stream layer is styled');
+  assert.match(CSS, /\.hxcard\.is-vanishing\s*\{[^}]*animation:\s*hx-suck/, 'the card is sucked away');
+  assert.match(CSS, /\.hxov\.is-vanishing\s*\{[^}]*animation:\s*hx-shake/, 'the overlay shakes');
+  // 组件：两层都存在，确认要等动画放完才发请求
+  assert.ok(JS.includes('hxcard__dotwave') && JS.includes('hxcard__glitch'), 'the card carries both layers');
+  assert.ok(JS.includes('CONFIRM_ANIM_MS') && JS.includes('setVanishing'), 'the confirm waits for the animation');
+  // 减少动态时这些动画也要停
+  assert.match(CSS, /@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\.hxcard\.is-vanishing/, 'reduced motion stops them');
+});
+
 test('global: ambient particles, scanline, HUD header line, flow border, reduced motion', () => {
   for (const sel of ['.hxov__ambient {', '.hxov__ambient::before', '.hxov__ambient::after', '.hx-glitch::before', '.hx-glitch::after', '.hxov__reroll::before']) {
     assert.ok(CSS.includes(sel), sel + ' exists');

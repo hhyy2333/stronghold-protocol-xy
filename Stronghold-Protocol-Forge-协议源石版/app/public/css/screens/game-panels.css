@@ -1236,9 +1236,100 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 }
 .hxcard__confirm { box-shadow: 0 -.04rem .3rem rgba(255, 215, 0, .45); }
 
+/* ---- 选中（已选中，待确认）：没被选中的卡迅速褪色、变透明、向后退（owner 2026-10-18） ---- */
+.hxov.has-armed .hxcard.is-tappable:not(.is-armed) {
+  filter: saturate(.2) brightness(.72);
+  opacity: .3;
+  transform: scale(.95);
+  transition: filter 120ms ease-out, opacity 120ms ease-out, transform 160ms ease-out;
+}
+.hxov.has-armed .hxcard.is-tappable:not(.is-armed):hover {
+  filter: saturate(.2) brightness(.72); opacity: .3; transform: scale(.95);
+}
+
+/* ---- 选中的瞬间：点阵由中心向外「亮起 / 重组」（一层高亮的阶位图 + 圆形裁切波） ---- */
+.hxcard.has-tier .hxcard__dotwave {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0;
+  background-color: #0b0f11; background-image: var(--hx-tier);
+  background-position: center; background-size: cover; background-repeat: no-repeat;
+  filter: brightness(1.45) contrast(1.1) saturate(1.18);
+  mix-blend-mode: screen;
+  clip-path: circle(0% at 50% 50%);
+}
+/* 波前的一圈细光：让「由中心向外」这件事在动态里一眼可见（只有一层亮图，没有这圈会像整体提亮）。
+   它是 dotwave 的**兄弟**层：dotwave 自己带圆形 clip-path，把环画在它里面会被一并裁掉。 */
+.hxcard__dotring {
+  position: absolute; left: 50%; top: 50%; width: 150%; aspect-ratio: 1; z-index: 2;
+  transform: translate(-50%, -50%) scale(.05); border: 2px solid rgba(0, 255, 255, .85); border-radius: 50%;
+  opacity: 0; pointer-events: none;
+  box-shadow: 0 0 .18rem rgba(0, 255, 255, .8), inset 0 0 .12rem rgba(0, 255, 255, .5);
+}
+.hxcard.has-tier.is-armed .hxcard__dotwave { animation: hx-dotwave 720ms cubic-bezier(.2, .7, .25, 1) both; }
+.hxcard.has-tier.is-armed .hxcard__dotring { animation: hx-dotring 720ms cubic-bezier(.2, .7, .25, 1) both; }
+@keyframes hx-dotring {
+  0% { transform: translate(-50%, -50%) scale(.05); opacity: 0; }
+  15% { opacity: .9; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+@keyframes hx-dotwave {
+  0% { clip-path: circle(0% at 50% 50%); opacity: 0; }
+  18% { opacity: .78; }
+  70% { opacity: .6; }
+  100% { clip-path: circle(78% at 50% 50%); opacity: 0; }
+}
+.hxcard.has-tier.is-armed .hxcard__glow { opacity: .55; }
+
+/* ---- 确认（二次点击）：卡牌化作数据流吸入屏幕中心 + 屏幕轻微震动 ---- */
+.hxcard__glitch {
+  position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; padding: .12rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(.15 * var(--t)); line-height: 1.7; letter-spacing: .1em; text-align: center; white-space: pre-wrap;
+  color: var(--hx-cyan); text-shadow: 0 0 .1rem var(--hx-cyan), 0 0 .3rem rgba(0, 255, 255, .55);
+  /* 把卡面盖成一块「数据屏」：乱码压在深色底上，才不会和点阵抢读 */
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 255, 255, .07) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, rgba(2, 8, 11, .82), rgba(2, 8, 11, .92));
+  opacity: 0; pointer-events: none;
+}
+.hxov.is-vanishing .hxcard.is-tappable:not(.is-vanishing) {
+  filter: saturate(.2) brightness(.72); opacity: .3; transform: scale(.95);
+}
+.hxcard.is-vanishing { z-index: 5; animation: hx-suck 620ms cubic-bezier(.5, 0, .75, .4) both; }
+.hxcard.is-vanishing .hxcard__glitch { opacity: 1; animation: hx-glyphs 620ms steps(3, end) both; }
+.hxcard.is-vanishing .hxcard__confirm { opacity: 0; }
+.hxcard.is-vanish-0 { --hx-vx: .85rem; --hx-vy: 1.5rem; }
+.hxcard.is-vanish-1 { --hx-vx: 0rem; --hx-vy: 1.5rem; }
+.hxcard.is-vanish-2 { --hx-vx: -.85rem; --hx-vy: 1.5rem; }
+@keyframes hx-suck {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; filter: none; }
+  18% { transform: translate(calc(var(--hx-vx, 0rem) * .08), calc(var(--hx-vy, 0rem) * .08)) scale(.96); filter: brightness(1.6) saturate(.4); }
+  55% { transform: translate(calc(var(--hx-vx, 0rem) * .45), calc(var(--hx-vy, 0rem) * .45)) scale(.7); filter: brightness(2.4) saturate(0) blur(2px); }
+  100% { transform: translate(var(--hx-vx, 0rem), var(--hx-vy, 0rem)) scale(.26); opacity: 0; filter: brightness(3) blur(7px); }
+}
+@keyframes hx-glyphs {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  8% { opacity: 1; }
+  30% { transform: translate3d(.025rem, -.03rem, 0); opacity: .95; }
+  60% { transform: translate3d(-.02rem, .02rem, 0); opacity: .9; }
+  100% { transform: translate3d(0, -.06rem, 0); opacity: 0; }
+}
+.hxov.is-vanishing { animation: hx-shake 380ms cubic-bezier(.36, .07, .19, .97) both; }
+@keyframes hx-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  15% { transform: translate3d(-.04rem, .02rem, 0); }
+  30% { transform: translate3d(.05rem, -.03rem, 0); }
+  45% { transform: translate3d(-.03rem, -.02rem, 0); }
+  60% { transform: translate3d(.03rem, .03rem, 0); }
+  75% { transform: translate3d(-.02rem, .01rem, 0); }
+}
+
 /* ---- 降低动态：所有新动画在用户要求减少动态时停下 ---- */
 @media (prefers-reduced-motion: reduce) {
   .hxov__ambient::before, .hxov__ambient::after,
   .hx-glitch::before, .hx-glitch::after,
-  .hxov__reroll::before { animation: none; }
+  .hxov__reroll::before,
+  .hxcard.has-tier.is-armed .hxcard__dotwave,
+  .hxcard.is-vanishing, .hxcard.is-vanishing .hxcard__glitch,
+  .hxov.is-vanishing { animation: none; }
+  .hxov.has-armed .hxcard.is-tappable:not(.is-armed) { transition: none; }
 }

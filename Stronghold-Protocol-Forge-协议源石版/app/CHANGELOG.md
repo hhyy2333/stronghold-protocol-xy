@@ -24,8 +24,11 @@
   - **顶部与全局**：环境光 + 缓慢漂移的粒子 + 扫描线（新增 `.hxov__ambient` 层）；标题做轻微故障（glitch）切片；刷新按钮加一圈旋转流光边（`@property` 角度动画，不支持时退化为静止的青金渐变边）；顶部加 HUD 分隔线与角标。
   - 所有新动画在 `prefers-reduced-motion` 下关闭。
 - 改动：`public/js/ui/hexOverlay.js`（环境层、glitch 标题、倒角层）、`public/css/screens/game-panels.css`（末尾新增视觉层；原有 `.has-tier` 背景长写规则与 ARMED 规则保持不动）。新增 `test/ui/hex-restyle.test.js` 钉住这套视觉契约（选择器 / 关键属性 / 减少动态 / 无 `:has`）。
-- 验收截图：1600×900 / 1280×720 / 960×540 三档（无溢出）；`hextechDraft` 10/10、`hextechArmedFace` 3/3、`hextechTierArt` 6/6、`hex-restyle` 3/3、`browser-syntax` 6/6。
+- 验收截图：1600×900 / 1280×720 / 960×540 三档（无溢出）；`hextechDraft` 10/10、`hextechArmedFace` 3/3、`hextechTierArt` 6/6、`hex-restyle` 4/4、`browser-syntax` 6/6。
 - **修复（同日）**：阶位点阵被滤镜糊掉 —— 卡牌的磨砂只该作用在卡片**背后**，那一轮却在点阵上的 scrim 也加了 `backdrop-filter: blur(1.6px)`。现在 scrim 只做上下压暗（`backdrop-filter: none`），点阵按原图（1385×1093 级别）降采样显示，圆点是干净的；`hex-restyle` 测试新增断言钉住「点阵层不许有 backdrop-filter」。
+- **选中（已选中、待确认）**：没被选中的卡迅速褪色（`saturate(.2)` ≈ 饱和度 −80%）、透明度 30%、退回 `scale(.95)`；选中那张的点阵做一次「由中心向外亮起」的波 —— 一层高亮阶位图用圆形 `clip-path` 展开，外加一圈青色波前（独立的兄弟层，避免被波本身的裁切切掉）。
+- **确认（二次点击）**：卡面先被数据流层盖住（等宽乱码 + 扫描线），随后整张卡被吸向屏幕中心（按左/中/右三个方向）、放大变亮模糊消失，整个协议源石界面轻微震动；动画 620ms **放完才发选牌请求**（否则服务器回包会把卡牌提前换成已选状态、动画只播一个开头），回包到达或 1.5 秒兜底后收掉动画状态。
+- 以上动画同样在 `prefers-reduced-motion` 下关闭；`test/ui/hex-restyle.test.js` 扩到 4 条，钉住「未选中褪色参数 / 点阵波与波前环 / 确认动画时序 / 减少动态」。
 
 ### 改：房间模组的勾选会记住了
 

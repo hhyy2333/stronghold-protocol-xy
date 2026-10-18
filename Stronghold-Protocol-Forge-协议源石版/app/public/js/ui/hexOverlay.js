@@ -23,7 +23,7 @@
 // `toolbtn toolbtn--amber`: the official shopPanel/refresh_icon sprite + the label + a badge, here the remaining
 // rerolls) so the draft reads as one game.
 
-import { useEffect, useState } from '../../vendor/hooks.module.js';
+import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, Button, Countdown, MicroLabel, HexBadge, Tooltip } from './components.js';
 import { t, N_ } from '../../../shared/i18n.js';
 import { data, localAsset } from '../data.js';
@@ -32,6 +32,13 @@ import { uiUrl } from './assetUrls.js';
 import { normalizeEnemyHexes } from './gameLogic/draft.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
+/**
+ * 确认选择时的「吸入屏幕中心」动画时长（owner 2026-10-18）。这一小段时间**之后**才真正发 `g.pickHex`：
+ * 动画放完再走网络，避免服务器回包把卡牌提前换掉、动画只播一个开头。520ms 对人眼是「一瞬」，对网络可忽略。
+ */
+const CONFIRM_ANIM_MS = 620;
+/** 确认时覆盖在卡面上的乱码/数据流（纯装饰，不进 i18n；aria-hidden）。 */
+const GLITCH_STREAM = '0x4C 0x7F 0x91 0xA2\n1101 0110 1001 1110\n0xF3 0x0A 0x5C 0xD8\n0000 1111 0101 1010';
 /** The tier label a rarity shows when the roster record is missing (the data's `rarities[].name` is the real source). */
 const RARITY_FALLBACK = { silver: N_('1阶'), gold: N_('2阶'), prismatic: N_('3阶') };
 /** The rarity a hex falls back to when the record names none (the CSS keys `.hxcard--<rarity>`). */
@@ -105,7 +112,7 @@ export function keepsArmed(target) {
 }
 
 /** One 协议源石 card: the tier's 阶位 art as its face, name / tier and effect text on top. */
-export function HexCard({ hex, armed = false, picked = false, faded = false, busy = false, compact = false, onClick = null }) {
+export function HexCard({ hex, armed = false, picked = false, faded = false, busy = false, compact = false, vanishing = false, vanishDir = 0, onClick = null }) {
   const rarity = hex.rarity || RARITY_DEFAULT;
   // The tier art is the card's face — the FULL card and the compact enemy chip alike. The enemy chips used to keep the
   // mod's rune plate "because a 阶位 numeral is illegible at .36rem"; that left the third-party mod's rune as the last
@@ -115,7 +122,8 @@ export function HexCard({ hex, armed = false, picked = false, faded = false, bus
   const useTier = !!rarityTierArt(rarity);
   const tierArt = useTier ? rarityTierArt(rarity) : null;
   const cls = cx('hxcard', `hxcard--${rarity}`, compact && 'hxcard--compact', useTier && 'has-tier',
-    armed && 'is-armed', picked && 'is-picked', faded && 'is-faded', busy && 'is-busy', onClick && 'is-tappable');
+    armed && 'is-armed', picked && 'is-picked', faded && 'is-faded', busy && 'is-busy', onClick && 'is-tappable',
+    vanishing && `is-vanishing is-vanish-${vanishDir}`);
   // The card's face is the tier art; the plate is the drawn fallback only (no local art / no tier). The third-party rune
   // image that used to fill it was removed on 2026-10-12 (tools/hextech-import.mjs header).
   const plate = html`<span class="hxcard__plate">
@@ -140,10 +148,15 @@ export function HexCard({ hex, armed = false, picked = false, faded = false, bus
   // that owns the chip carries the app Tooltip instead (EnemyHexRow / the draft footer), which a long press reaches
   // (components.js TOUCH_TIP_MS). A full card prints its name and effect itself, so it keeps the native title.
   // 视觉重制 (owner 2026-10-18): 磨砂玻璃底板 + 发光倒角 —— 倒角是一层独立的边（compact 小卡不画，省像素）
+  // 选中瞬间的点阵「由中心向外亮起」：一层高亮的阶位图 + 圆形裁切动画（只在 has-tier 的整卡上）。
+  const dotwave = !compact && useTier ? html`<span class="hxcard__dotwave" aria-hidden="true"></span>` : null;
+  const dotring = !compact && useTier ? html`<span class="hxcard__dotring" aria-hidden="true"></span>` : null;
+  // 确认时把卡面盖成数据流（纯装饰；卡牌本身同时在 CSS 里被吸向屏幕中心）
+  const glitch = compact ? null : html`<span class="hxcard__glitch" aria-hidden="true">${GLITCH_STREAM}</span>`;
   const bevel = compact ? null : html`<span class="hxcard__bevel" aria-hidden="true"></span>`;
-  if (!onClick) return html`<span class=${cls} style=${style} title=${compact ? null : tip} data-hex=${hex.id || ''}>${bevel}${body}</span>`;
+  if (!onClick) return html`<span class=${cls} style=${style} title=${compact ? null : tip} data-hex=${hex.id || ''}>${bevel}${dotwave}${dotring}${glitch}${body}</span>`;
   return html`<button type="button" class=${cls} style=${style} title=${tip} data-hex=${hex.id || ''} disabled=${busy} onClick=${onClick}>
-    <span class="hxcard__glow" aria-hidden="true"></span>${bevel}${body}
+    <span class="hxcard__glow" aria-hidden="true"></span>${bevel}${dotwave}${dotring}${glitch}${body}
     ${armed ? html`<span class="hxcard__confirm" role="status"><b>${t('确认选择')}</b><small>${t('再次点击')}</small></span>` : null}
     ${busy ? html`<span class="hxcard__busy" role="status">${t('选择中')}</span>` : null}
   </button>`;
@@ -213,6 +226,10 @@ export function EnemyHexList({ list, label = null, class: cls = '' }) {
  */
 export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }) {
   const [armed, setArmed] = useState(null);
+  /** 确认动画进行中的卡（idx）：动画放完才 onPick；期间不再接受点选。 */
+  const [vanishing, setVanishing] = useState(null);
+  const vanishTimer = useRef(null);
+  useEffect(() => () => { if (vanishTimer.current != null) clearTimeout(vanishTimer.current); }, []);
   // a selection is dropped with Esc, like the 机变 screen (ui/choiceOverlay.js)
   useEffect(() => {
     if (armed == null) return undefined;
@@ -220,19 +237,43 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [armed]);
+  // 已选状态回来（服务器确认了这一手）：确认动画的状态必须收掉，卡牌重新按「已选」显示。
+  useEffect(() => {
+    if (hex && hex.myPick != null && vanishing != null) setVanishing(null);
+  }, [hex && hex.myPick, vanishing]);
   if (!hex || !hex.myOffer.length) return null;
   const enemyHexes = normalizeEnemyHexes(enemy);
   const picked = hex.myPick;
   const waiting = picked == null;
   const canReroll = waiting && hex.myRerolls > 0 && busyIdx == null;
+  /**
+   * 二段点击（确认，owner 2026-10-18）：先放「卡牌化作数据流吸入屏幕中心 + 轻微震屏」的动画，
+   * 动画结束才真正 onPick —— 否则服务器的回包会把卡牌提前换成已选状态，动画只播一个开头。
+   */
+  const commit = (idx) => {
+    if (vanishing != null || !waiting || busyIdx != null) return;
+    // 最后一秒才点确认：动画会跨过截止时间，服务器可能已经替玩家随机选了。这种情况下直接发请求，
+    // 让「按时交卷」优先于演出（动画只在时间还够时播）。
+    if (!hex.untimed && Number.isFinite(hex.turnDeadline) && hex.turnDeadline - Date.now() < CONFIRM_ANIM_MS + 300) {
+      onPick(idx);
+      return;
+    }
+    setArmed(null);
+    setVanishing(idx);
+    vanishTimer.current = setTimeout(() => {
+      onPick(idx);
+      // 服务器的回包（hex.myPick）通常几十毫秒就到，effect 会清掉；这一手只是兜底：动画结束后卡牌不能一直隐身。
+      vanishTimer.current = setTimeout(() => { vanishTimer.current = null; setVanishing(null); }, 1500);
+    }, CONFIRM_ANIM_MS);
+  };
   const tap = (card) => {
-    if (!waiting || busyIdx != null) return;
-    if (armed === card.idx) { setArmed(null); onPick(card.idx); return; }
+    if (!waiting || busyIdx != null || vanishing != null) return;
+    if (armed === card.idx) { commit(card.idx); return; }
     setArmed(card.idx);
   };
   // a press anywhere but a card, the reroll button or the confirm button drops the selection (keepsArmed)
   const onDown = (e) => {
-    if (armed == null || keepsArmed(e.target)) return;
+    if (vanishing != null || armed == null || keepsArmed(e.target)) return;
     setArmed(null);
   };
   // the game's own 刷新 button (ui/shopBar.js): the official shopPanel/refresh_icon sprite, the label and a badge — here
@@ -240,7 +281,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   // foreign skin next to the shop's).
   const rerollLabel = hex.myRerolls > 0 ? t('刷新（剩余 {n} 次）', { n: hex.myRerolls }) : t('刷新已用完');
   const armedName = armed != null ? (hex.myOffer.find((c) => c && c.idx === armed)?.name || null) : null;
-  return html`<div class=${cx('spov', 'hxov', armed != null && 'has-armed')} role="dialog" aria-label=${t('协议源石')} onPointerDown=${onDown}>
+  return html`<div class=${cx('spov', 'hxov', armed != null && 'has-armed', vanishing != null && 'is-vanishing')} role="dialog" aria-label=${t('协议源石')} onPointerDown=${onDown}>
     <div class="spov__veil" aria-hidden="true"></div>
     <div class="hxov__ambient" aria-hidden="true"></div>
     <div class="spov__inner">
@@ -252,6 +293,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
         </div>
         <div class="spov__turn">
           ${armed != null ? html`<${Button} variant="primary" size="lg" icon="check" class="spov__confirm" data-testid="hex-confirm"
+              disabled=${vanishing != null}
               title=${armedName ? t('确认选择「{armedName}」（再次点击卡牌亦可）', { armedName }) : t('确认选择')}
               onClick=${() => tap({ idx: armed })}>${t('确认选择')}<//>` : null}
           <button type="button" class="toolbtn toolbtn--amber hxov__reroll" disabled=${!canReroll} data-testid="hex-reroll"
@@ -267,7 +309,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
       <div class="spov__grid spov__grid--3">
         ${hex.myOffer.map((c) => html`<${HexCard} key=${`${c.id}:${c.idx}`} hex=${c}
           armed=${armed === c.idx} picked=${picked === c.idx} faded=${picked != null && picked !== c.idx}
-          busy=${busyIdx === c.idx} onClick=${() => tap(c)} />`)}
+          busy=${busyIdx === c.idx} vanishing=${vanishing === c.idx} vanishDir=${c.idx} onClick=${() => tap(c)} />`)}
       </div>
       <footer class="hxov__foot">
         <span class="hxov__enemy">
