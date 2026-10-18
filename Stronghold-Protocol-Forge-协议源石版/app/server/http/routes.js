@@ -200,7 +200,11 @@ export function healthReport({ startedAt, network, registry, lobby, modHealth = 
     // gameplay plugins rooms hold now (P1c, §34.6 — a room's cosmetic plugins leave its cs the vanilla one); how many
     // unofficial plugins it has, when it has some (a page's title screen says so; P1a)
     ...(content ? { content: { vanilla: content.cs, sets: contentSets(lobby), ...pluginCount(lobby) } } : {}),
-    sockets: network.connectionCount, sessions: registry.size, ...lobby.stats(),
+    sockets: network.connectionCount, sessions: registry.size,
+    // 连接上限（owner 2026-10-18）：被挡在门外的新页面读 /healthz 的这两格来区分「服务器满」与「网络断了」；
+    // 没设上限时是 null。和 sockets 一起只在 /healthz 上出现，不改任何协议帧。
+    maxConnections: network.maxConnectionCap ?? null,
+    ...lobby.stats(),
   };
   let fields = null;
   try {

@@ -47,8 +47,11 @@ export function ConnectionBanner() {
   const versionMismatch = rejected && conn.lastError.text === CLIENT_ERR_TEXT.VERSION;
   // Short transitional states (a rename re-sends hello on the live socket) only show if they linger.
   const transient = conn.status === 'connecting' || conn.status === 'handshaking' || (conn.status === 'connected' && !rejected);
-  const text = conn.status === 'reconnecting'
-    ? t('与服务器的连接已中断，正在重连')
+  const full = conn.status === 'reconnecting' && conn.full;
+  const text = full
+    ? t('服务器已满（{n}/{max}），请稍后再试', { n: conn.full.connections, max: conn.full.maxConnections })
+    : conn.status === 'reconnecting'
+      ? t('与服务器的连接已中断，正在重连')
     : replaced ? t('该身份已在其他页面登录')
       : conn.status === 'closed' ? t('连接已关闭')
         : rejected ? t(conn.lastError.text) : t('正在连接服务器');

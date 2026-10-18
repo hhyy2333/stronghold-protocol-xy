@@ -49,6 +49,22 @@ export const CLIENT_ERR_TEXT = Object.freeze({
   VERSION: N_('客户端版本与服务器不一致，请刷新页面'),
 });
 
+/**
+ * 「服务器满」判定（owner 2026-10-18）：/healthz 的 `sockets` 与 `maxConnections`。连不上时浏览器拿不到
+ * HTTP 503 的正文（WebSocket 握手失败只给一个 1006），所以升级失败后**补一次 GET /healthz**，把「满了」这个
+ * 事实变成一句能显示的话，而不是无限转圈的「正在连接服务器」。
+ * @param {any} body /healthz 的 JSON
+ * @returns {{ connections: number, maxConnections: number } | null} null = 没满 / 不知道 / 没设上限
+ */
+export function serverFullFrom(body) {
+  if (!body || typeof body !== 'object') return null;
+  const maxConnections = Number(body.maxConnections);
+  const connections = Number(body.sockets);
+  if (!Number.isFinite(maxConnections) || maxConnections <= 0) return null;
+  if (!Number.isFinite(connections) || connections < maxConnections) return null;
+  return { connections, maxConnections };
+}
+
 /** Server close code: the session was taken over by another socket (server/net.js CLOSE.REPLACED). */
 export const CLOSE_REPLACED = 4001;
 /** Server close code: the socket never sent `hello` (server/net.js CLOSE.HELLO_TIMEOUT, ~30–60 s). */
@@ -126,6 +142,7 @@ export class Net {
    * @param {() => number} [opts.now]
    * @param {() => number} [opts.random]
    * @param {{setTimeout: Function, clearTimeout: Function, setInterval: Function, clearInterval: Function}} [opts.timers]
+   * @param {typeof fetch} [opts.fetch] fetch used for the 「服务器满」probe (tests)
    */
   constructor(opts = {}) {
     this.url = opts.url || null;
@@ -140,6 +157,7 @@ export class Net {
       setInterval: (fn, ms) => globalThis.setInterval(fn, ms),
       clearInterval: (id) => globalThis.clearInterval(id),
     };
+    this.fetch = opts.fetch || (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
 
     /** @type {'idle'|'connecting'|'connected'|'handshaking'|'online'|'reconnecting'|'closed'} */
     this.status = 'idle';
@@ -152,6 +170,9 @@ export class Net {
     this.retryAt = 0;          // epoch ms of the next reconnect attempt (0 = none)
     this.ping = null;          // last RTT in ms
     this.lastError = null;     // last NetError relevant to the connection (e.g. hello rejected)
+    /** @type {{ connections: number, maxConnections: number } | null} 「服务器满」的最近一次探测结果（连上即清空） */
+    this.full = null;
+    this._probingFull = false;
     this.clockOffset = 0;
     this.clockSynced = false;
 
@@ -208,6 +229,7 @@ export class Net {
     return {
       status: this.status, attempt: this.attempt, retryAt: this.retryAt, ping: this.ping,
       lastError: this.lastError ? { code: this.lastError.code, text: this.lastError.message } : null,
+      full: this.full,
       playerId: this.playerId,
     };
   }
@@ -298,6 +320,7 @@ export class Net {
   }
 
   _onOpen() {
+    this.full = null;
     this._openedAt = this.now();
     this._lastRx = this._openedAt;
     this._unansweredSince = null;
@@ -334,6 +357,28 @@ export class Net {
       return;
     }
     this._scheduleReconnect();
+    // 握手被拒（503）在浏览器里只是一个 1006：补一次 /healthz 才知道是不是「服务器满」。
+    this._probeFull();
+  }
+
+  /**
+   * 升级失败后问一次 /healthz：满 ⇒ `this.full` 带上 50/50 这样的数字，界面就能说人话。探测失败（网络本身
+   * 不通）就保持未知，不覆盖上一次的结论。同一时刻只跑一次。
+   */
+  _probeFull() {
+    if (this._manualClose || this._probingFull || !this.fetch) return;
+    this._probingFull = true;
+    let request;
+    try { request = this.fetch('/healthz', { cache: 'no-store' }); } catch { this._probingFull = false; return; }
+    Promise.resolve(request)
+      .then((res) => (res && typeof res.json === 'function' ? res.json() : null))
+      .then((body) => {
+        const was = !!this.full;
+        this.full = serverFullFrom(body);
+        if (this.full || was) this._emit('status', this.snapshot());
+      })
+      .catch(() => { /* 探测失败 = 不知道，保持原样 */ })
+      .finally(() => { this._probingFull = false; });
   }
 
   _scheduleReconnect() {
@@ -410,6 +455,7 @@ export class Net {
     this.playerId = msg.playerId ?? null;
     this.attempt = 0;
     this.lastError = null;
+    this.full = null;
     if (Number.isFinite(msg.serverNow)) this._addClockSample(msg.serverNow + (this.ping ?? 0) / 2 - this.now(), Infinity);
     this._setStatus('online');
     this._flushQueue();

@@ -1289,6 +1289,7 @@
   "快速匹配超时：没有等到足够的博士，请稍后再试": "Quick match timed out: not enough doctors were searching — try again shortly",
   "房内聊天": "Room chat",
   "协议等级": "Protocol level",
+  "服务器已满（{n}/{max}），请稍后再试": "Server is full ({n}/{max}). Please try again soon.",
   "排行榜": "Leaderboard",
   "正在读取排行榜…": "Loading the leaderboard…",
   "这个服务器没有开启战绩，排行榜不可用。": "This server does not keep match records, so the leaderboard is unavailable.",

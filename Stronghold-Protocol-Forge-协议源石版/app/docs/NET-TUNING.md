@@ -54,6 +54,11 @@
 | 匹配队列 `MATCHMAKE_DEFAULTS` | `size:null, max:null, waitMs:120000, sweepMs:5000, difficulty:'NORMAL'` | `server/matchmaking.js:59-70` | **上游无此参数**（野排匹配是我们的功能，与本次优化无关） |
 | 座位上限 | **缺省 20 座**（`DEFAULT_MAX_SEATS`），`SP_MAX_SEATS=N` 可加 | `shared/constants.js`（`MAX_SEATS = 4`、`DEFAULT_MAX_SEATS = 20`、`maxSeatsFrom`）；`server/lobby.js:162` | 上游 `MAX_SEATS = 4` 且**无覆盖**（上游 `shared/constants.js` 没有 `maxSeatsFrom`）。**`MAX_SEATS = 4` 不动**：它是「官方房间 1–4 人」的声明与超容变体的参照，缺省上限是另一件事 |
 
+**满员时外面的人看到什么**（业主 2026-10-18）：连接上限到了之后，升级请求照旧被 HTTP 503 拒掉，但浏览器拿不到正文
+（WebSocket 只会报 1006）。所以 `GET /healthz` 多发布一格 `maxConnections`（有效上限；`sockets` 本来就在），客户端
+（`public/js/net.js` 的 `_probeFull`）在非主动断线后排一次 `/healthz`：`sockets >= maxConnections` ⇒ 标题屏/连接横幅
+显示「服务器已满（n/上限），请稍后再试」，自动退避重试照旧。判定是纯函数 `serverFullFrom`（没设上限 / 没这格 ⇒ 不算满）。
+
 **哪些参数能不改代码就调**：`startServer()` 选项里只有 `server/http/config.js:19-23` 列的键能被转发
 （net：`reconnectWindowMs, heartbeatMs, helloTimeoutMs, ratePerSec, rateBurst, maxConnections, abuseDropsPerSec, maxConnectionsPerAddr, heavyPerSec, heavyBurst, trustProxy`；
 lobby：`lobbyGraceMs, maxRooms, maxRoomsPerAddr, maxMatchesPerAddr, resyncMinGapMs, queue`）。

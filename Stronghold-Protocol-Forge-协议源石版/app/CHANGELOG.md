@@ -16,6 +16,14 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 新：服务器满员时，外面的人能看到「服务器已满（n/上限）」
+
+- 业主 2026-10-18（连接上限 50 满了之后别人进来没有提示）。浏览器拿不到 WebSocket 升级失败的 HTTP 503 正文（只报 1006），所以：
+  - `GET /healthz` 增加 `maxConnections`（有效上限；`sockets` 本来就有）；
+  - 客户端 `Net` 在非主动断线后排一次 `GET /healthz`（纯函数 `serverFullFrom`），`sockets >= maxConnections` ⇒ 状态快照带 `full: { connections, maxConnections }`；
+  - 标题屏的连接状态与全局连接横幅显示「服务器已满（50/50），请稍后再试」，自动退避重试照旧（横幅的「立即重连」仍可用），连上 / 收到 welcome 即清空。
+- 上限本身没改，仍由运营面板 / `SP_MAX_CONNECTIONS` 决定。新增 `test/server-full.test.js`（/healthz 两格 + 满员后第二个升级 503）与 `test/ui/server-full.test.js`（判定纯函数 + 接线）。
+
 ### 改：掉线 5 分钟即踢出（所有模式，删除独立模拟 24 小时重连窗口）
 
 - 业主 2026-10-18：掉线的人 5 分钟就踢。`server/net.js` 的 `reconnectWindowMs` 10 分钟 → **5 分钟**；删掉独立模拟专用的重连扩展（`soloReconnectWindowMs` 选项、`SP_SOLO_RECONNECT_MS`、`soloResumeWindowMs()`、`SOLO_RECONNECT_FALLBACK_SEC`，以及 `server/lobby.js` 每次断线单独延长窗口的那一行）。同盟 / 独立模拟现在同一个窗口，超时即 `onExpire` → 移除座位（对局里按 `onLeave('abandoned')`）。
