@@ -70,3 +70,81 @@ test('merged /data JSON is compressed (br and gzip) and still revalidates by ETa
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// Owner's report 2026-10-18（第二层）：装了包的服务器上 `/data/assets.json` 的 19 434 个美术 URL 全是**裸路径**。
+// 原因：工坊合并分支（static.js 的 `/data/*.json`）排在清单视图（`views`）**之前**，所以包一改动 assets.json，
+// 那三条声明就永远走不到 `assetViews` 的 hash 改写 —— 合并体是原始数据。后果是浏览器无法长缓存素材（线上实测
+// 96 分钟 135 212 次 assets 请求、3.23 GB，38 % 是全量重传）。
+//
+// 这里钉住：合并过的美术清单也带内容哈希；非美术清单（chess 等）一个字节都不动。
+test('a MERGED art manifest still gets its content-hash URLs (the workshop branch shadows the view)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-merged-hash-'));
+  for (const d of ['public', 'data', 'shared', 'sim']) fs.mkdirSync(path.join(root, d), { recursive: true });
+  const assets = {
+    version: 1,
+    chars: {
+      char_x: {
+        avatar: '/assets/char/avatar/char_x.png',
+        portrait: '/assets/char/portrait/char_x.png',
+        spine: { skel: '/assets/spine/op/char_x/front/char_x.skel', atlas: '/assets/spine/op/char_x/front/char_x.atlas', textures: ['/assets/spine/op/char_x/front/char_x.png'] },
+      },
+    },
+  };
+  const ART = '/assets/char/avatar/char_x.png';
+  // a fake index: it knows exactly one file, and no models (so the spine block stays plain — the documented fallback).
+  // `hashOf` is called with the index's rel path, which KEEPS the mount segment: '/assets/a.png' → 'assets/a.png'.
+  const assetIndex = {
+    ready: true, size: 1,
+    hashOf: (rel) => (rel === 'assets/char/avatar/char_x.png' ? '0123456789abcdef' : null),
+    modelHash: () => null,
+  };
+  const merged = new Map([['assets', Buffer.from(JSON.stringify(assets))]]);
+  const serve = createStaticHandler({
+    publicDir: path.join(root, 'public'), dataDir: path.join(root, 'data'),
+    sharedDir: path.join(root, 'shared'), simDir: path.join(root, 'sim'),
+    workshopJson: merged, assetIndex, log: quiet,
+  });
+  const server = http.createServer((req, res) => serve(req, res, req.url.split('?')[0], ''));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const r = await get(port, '/data/assets.json');
+    assert.equal(r.status, 200);
+    const body = JSON.parse(r.body.toString('utf8'));
+    assert.equal(body.chars.char_x.avatar, '/assets/~0123456789abcdef/char/avatar/char_x.png', 'the hashed URL the index knows');
+    assert.equal(r.body.toString('utf8').includes(`"${ART}"`), false, 'the plain form is gone');
+    // a URL the index does NOT know stays as it is (the documented fallback, never a 404)
+    assert.equal(body.chars.char_x.portrait, '/assets/char/portrait/char_x.png');
+    // a spine model whose member is unknown keeps every URL plain (rewriteManifest's own rule)
+    assert.equal(body.chars.char_x.spine.skel, '/assets/spine/op/char_x/front/char_x.skel');
+  } finally {
+    await new Promise((r) => server.close(r));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The other half: a merged NON-art data file is passed through byte for byte (the hash step must not touch chess etc.).
+test('a merged non-art data file is untouched by the hash step', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-merged-plain-'));
+  for (const d of ['public', 'data', 'shared', 'sim']) fs.mkdirSync(path.join(root, d), { recursive: true });
+  const chess = { chess_1: { chessId: 'chess_1', avatar: '/assets/should/not/be/touched.png' } };
+  const merged = new Map([['chess', Buffer.from(JSON.stringify(chess))]]);
+  const serve = createStaticHandler({
+    publicDir: path.join(root, 'public'), dataDir: path.join(root, 'data'),
+    sharedDir: path.join(root, 'shared'), simDir: path.join(root, 'sim'),
+    workshopJson: merged,
+    // an index that WOULD hash that path if it were asked
+    assetIndex: { ready: true, size: 1, hashOf: () => '0123456789abcdef', modelHash: () => null },
+    log: quiet,
+  });
+  const server = http.createServer((req, res) => serve(req, res, req.url.split('?')[0], ''));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const r = await get(port, '/data/chess.json');
+    assert.deepEqual(JSON.parse(r.body.toString('utf8')), chess, 'only the three art manifests are rewritten');
+  } finally {
+    await new Promise((r) => server.close(r));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

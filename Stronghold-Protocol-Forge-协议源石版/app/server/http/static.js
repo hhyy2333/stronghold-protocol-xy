@@ -59,6 +59,11 @@ import { ROOT, noopLog } from './config.js';
 import { sendError, sendJson } from './common.js';
 import { MIME, CompressCache, IMMUTABLE_CACHE, isNotModified, serveFile, serveBuffer } from './files.js';
 import { ASSET_INDEX_ROOTS, hashedFileOpts } from './assetIndex.js';
+import { rewriteManifest, VIEW_MANIFESTS } from './assetViews.js';
+
+/** The three manifests by their `/data/<name>` spelling — a merged body of one of these still needs its art URLs
+ * hashed (`rewriteManifest`), exactly like the on-disk view below would have done (see the workshop `/data/` branch). */
+const VIEW_MANIFEST_NAMES = new Set(VIEW_MANIFESTS);
 import { serveMedia } from './media.js';
 import { createPackRegistry } from '../packs.js';
 // The plugin registry (server/plugins/registry.js): 0.3.0 把包注册表并进插件注册表，`server/packs.js` 现在只是它的
@@ -416,8 +421,25 @@ export function createStaticHandler({
       if (buf) {
         // 合并体也要压缩：装了包的服务器（/data/chess.json ≈ 1.9 MB、assets.json ≈ 1.8 MB）以前是**原样**发出去的，
         // 几 MB 的 JSON 把带宽吃满，页面自然慢（业主 2026-10-18 的「网速是不是被限制了」）。
+        //
+        // ⚠️ 美术清单（assets / local-assets / local-fx）**还要再套一遍 `rewriteManifest`**（2026-10-18）：合并体是
+        // 原始数据，里面的 URL 不带内容哈希；而这条分支排在下面的清单视图（`views`，614 行）**之前**，所以装了包的
+        // 服务器上那三条声明永远走不到视图 —— 结果是 `assets.json` 的 19 434 个 URL 全是裸路径，浏览器无法长缓存，
+        // 素材每次都要回源验证（线上实测 96 分钟 135 212 次 assets 请求、3.23 GB，38 % 是全量重传）。
+        // `local-assets` / `local-fx` 平时不受影响，只因**没有包去改它们**（`workshopJson` 里没有那两条）；一旦有包
+        // 改了它们，同一个 bug 就会出现在那两条上 —— 所以这里按**文件名**判，不按「包改没改过」判。
+        let body = buf;
+        if (assetIndex && assetIndex.ready && assetIndex.size && VIEW_MANIFEST_NAMES.has(`${name}.json`)) {
+          try {
+            const { doc } = rewriteManifest(JSON.parse(buf.toString('utf8')), `${name}.json`, assetIndex);
+            body = Buffer.from(JSON.stringify(doc));
+          } catch (e) {
+            // 合并体读不出来就照原样发（与 assetViews 的 `build()` 同一条兜底：宁可少一层缓存，不让请求失败）
+            log.warn?.(`[static] merged /data/${name}.json: the content-hash view failed (${e?.message || e}); served as it is`);
+          }
+        }
         await serveBuffer(req, res, {
-          body: buf, hash: `ws-${createHash('sha1').update(buf).digest('hex').slice(0, 20)}`,
+          body, hash: `ws-${createHash('sha1').update(body).digest('hex').slice(0, 20)}`,
           type: MIME['.json'], cacheControl: 'no-cache', key: `ws:${name}`, cache: gzipCache,
         });
         return;
