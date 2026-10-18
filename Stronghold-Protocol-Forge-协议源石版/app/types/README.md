@@ -31,3 +31,21 @@ Suggested order once the sim split settles: `server/sim/grid.js`, `server/sim/bo
 一起扫会报 107 条，全是这一批：`Buffer` / `process` 没有 node 类型（`types: []`），加上几个函数返回
 `{ ok: false }` 之类的联合字面量被推断宽了。与玩法无关，所以先按文件名排除，等切片按上面的规矩扩到它们时再逐个修。
 （校验方式：把这几行从 `exclude` 里删掉，`npm run typecheck` 应报出这 107 条。）
+
+### 同一批里漏掉的两个（2026-10-18 补）
+
+`shared/formProjection.js`、`shared/morph.js` —— 同样的处境（落在 `shared/**` 里，但 JSDoc 与代码对不上），
+只是当初按名字排除那 8 个时漏了它们，于是 `shared/**` 的 `include` 把 6 条错误带进了 `typecheck`。
+**这 6 条是注释的问题，不是代码的问题**：两处函数运行期行为都正确（`projectElite` 的形态投影、
+`morphPairingOf` 三档输入的归一化都实测过），代价只是 `npm run ci` 的最后一步一直是红的 ——
+`typecheck` 排在 `test` / `smoke` / `lint` / `imports` 之后，那一红会把「本轮改动是否干净」这个信号污染掉。
+
+| 文件 | 条数 | 类型检查看到的是什么 | 实际的形状 |
+|---|---:|---|---|
+| `formProjection.js` | 4 | `@template T` 是裸泛型 ⇒ `rec.chessId` / `rec.id` / `rec.baseId` / `rec.variants` 在类型层面「不存在」 | 运行期这些键就在记录上（`projectElite` 拿 `donor` 的键、再还原 `rec` 的身份字段） |
+| `morph.js` | 2 | `MORPH_PAIRING_OPTIONS.includes(decl)` 推断成 `boolean` ⇒ 把 `string` 赋给返回类型 `'official'` \| `'plus'` 不成立 | `includes` 本来就是那个判据，选项表只有两个值 |
+
+**校验方式（与上面那 8 个同一条）**：把这两行从 `exclude` 里删掉，`npm run typecheck` 应报出这 6 条。
+要真修的话，`formProjection.js` 给 `T` 加约束（`@template {{ id?: string, chessId?: string, baseId?: string }} T`），
+`morph.js` 把选项表标成 `@type {readonly ('official'|'plus')[]}` 或对返回值加断言；两处**都没有测试覆盖**
+（`test/` 下 grep `projectElite` / `morphPairingOf` 0 命中），所以修的时候请自己加一手验证。

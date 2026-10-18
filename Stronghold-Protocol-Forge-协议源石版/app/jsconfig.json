@@ -36,6 +36,15 @@
     "shared/enemyAuthoring.js",
     "shared/statReference.js",
     "shared/stageAuthoring.js",
-    "shared/waveAuthoring.js"
+    "shared/waveAuthoring.js",
+    // 同一条理由再补两个：它们也落在 `shared/**` 里、也被 `include` 扫到，但 JSDoc 与代码的形状对不上（不是
+    // 代码错，是注释只标了一半）。各报 2 / 4 条，与玩法无关：
+    //   * formProjection.js —— `@template T` 是裸泛型，`rec.chessId` / `rec.id` / `rec.baseId` 在类型层面
+    //     「不存在」，运行期当然存在；
+    //   * morph.js —— `MORPH_PAIRING_OPTIONS.includes(decl)` 推断出 `boolean`，返回类型却是字面量联合
+    //     `'official'|'plus'`，于是 `decl` / `hit.option`（`string`）赋不过去。
+    // 两处都没有测试覆盖，改之前先自己跑一遍（见 types/README.md 的「校验方式」）。
+    "shared/formProjection.js",
+    "shared/morph.js"
   ]
 }
