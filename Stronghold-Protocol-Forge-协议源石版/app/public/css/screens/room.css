@@ -339,8 +339,15 @@
 .ailast__opt .icon.is-on { opacity: 1; }
 
 /* 协议等级 (owner's call 2026-10-18): the chip beside the difficulty pill and the host's slider in 选择模拟协议 */
-.rs-pill__level { padding: 0 .1rem; font-size: calc(.14 * var(--t)); letter-spacing: .04em; color: var(--amber); border: 1px solid rgba(246, 163, 41, .45); border-radius: .04rem; }
-.rs-proto__level { margin: .1rem 0 .12rem; }
+/* 协议等级 (owner 2026-10-18: 从「选择模拟协议」面板挪到底栏) —— 一只袖珍滑杆，紧挨难度胶囊 */
+.rs-pill__lv { display: inline-flex; align-items: center; gap: .06rem; height: max(.34rem, 22px); padding: 0 .08rem; margin-right: .04rem;
+  background: rgba(0, 0, 0, .28); border: 1px solid var(--line-2); border-radius: .04rem; cursor: pointer; }
+.rs-pill__lvname { font-size: calc(.12 * var(--t)); letter-spacing: .06em; color: var(--text-dim); white-space: nowrap; }
+.rs-pill__lv input { width: 1.05rem; height: max(.18rem, 12px); margin: 0; accent-color: var(--amber); cursor: pointer; }
+.rs-pill__lv input:disabled { cursor: default; opacity: .45; }
+.rs-pill__lv b { min-width: .4rem; text-align: right; font-size: calc(.14 * var(--t)); letter-spacing: .04em; color: var(--amber); }
+.rs-pill__lv.is-readonly { cursor: default; }
+@media (max-width: 900px) { .rs-pill__lvname { display: none; } .rs-pill__lv input { width: .8rem; } }
 .ready-count[hidden] { display: none; }
 .ready-count { display: flex; align-items: baseline; gap: .06rem; font-size: calc(.16 * var(--t)); }
 .ready-count b { font-size: calc(.36 * var(--t)); line-height: 1; color: var(--mint-400); text-shadow: 0 0 .14rem rgba(23, 249, 183, .45); }

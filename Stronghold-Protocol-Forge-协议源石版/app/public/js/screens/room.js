@@ -52,7 +52,7 @@ import { ChatPanel } from './chat.js';
 import * as roomMods from '../roomMods.js';
 import { roomModsOf, shortDigest } from '../roomMods.js';
 import { loadCatalog, planAlignment, alignRoom, missingPackIds, storeFor } from '../mods/align.js';
-import { PROTOCOL_LEVEL_MAX, protocolLevelRow } from '../../../shared/protocolLevels.js';
+import { PROTOCOL_LEVEL_MAX } from '../../../shared/protocolLevels.js';
 import { shouldAutoFill, autoFillDigest, AUTO_FILL_DELAY_MS } from '../mods/autoFill.js';
 import { net } from '../net.js';
 import { store, useStore, shallowEqual, emptyMatch, isSpectating, serverNow, loadPref, savePref } from '../store.js';
@@ -371,14 +371,11 @@ function AiLastToggle({ option, busy, onToggle }) {
 const clock = (s) => `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, '0')}:${String(Math.floor(Math.max(0, s)) % 60).padStart(2, '0')}`;
 
 /** 选择模拟协议 over the room (host): the difficulty cards and 确认. */
-function RoomProtocol({ room, variant, onClose, onApply, level = 0, busy, leaving = false }) {
+function RoomProtocol({ room, variant, onClose, onApply, busy, leaving = false }) {
   const [pick, setPick] = useState(room.difficulty);
-  const [pickLevel, setPickLevel] = useState(level || 0);
-  const row = pickLevel > 0 ? protocolLevelRow(pickLevel) : null;
   const apply = () => {
-    const wantLevel = pick === 'ABYSS' ? pickLevel : 0;
-    if (pick === room.difficulty && wantLevel === (room.level || 0)) { onClose(); return; }
-    onApply(pick, wantLevel);
+    if (pick === room.difficulty) { onClose(); return; }
+    onApply(pick);
   };
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
@@ -394,14 +391,6 @@ function RoomProtocol({ room, variant, onClose, onApply, level = 0, busy, leavin
         ${DIFFICULTIES.map((d) => html`<${ProtoCard} key=${d} roomMode=${room.mode} difficulty=${d} selected=${pick === d} onSelect=${setPick}
           random=${room.random === true} variant=${variant} />`)}
       </div>
-      ${pick === 'ABYSS' ? html`<div class="proto-level rs-proto__level" data-testid="protocol-level">
-        <div class="proto-level__head"><span>${t('协议等级')}</span><b class="num">${pickLevel > 0 ? t('等级 {n}', { n: pickLevel }) : t('关闭')}</b></div>
-        <input type="range" min="0" max=${PROTOCOL_LEVEL_MAX} step="1" value=${pickLevel} aria-label=${t('协议等级')}
-          onInput=${(e) => setPickLevel(Number(e.currentTarget.value))} />
-        <p class="proto-level__note">${row
-          ? t('敌方生命 ×{hp}、攻击 ×{atk}；等级越高，首领池与收入惩罚越重', { hp: row.enemy.hpMul.toFixed(2), atk: row.enemy.atkMul.toFixed(2) })
-          : t('关闭：与之前的终极模拟完全一致')}${row?.experimental ? t('（测试中的档位）') : ''}</p>
-      </div>` : null}
       <button type="button" class="proto-start rs-proto__ok" disabled=${!!busy} onClick=${apply}>
         <span class="proto-start__mark" aria-hidden="true"><span class="proto-start__rook"><i>[</i><${Icon} name="rook" /><i>]</i></span><small>STRONGHOLD<br />PROTOCOL</small></span>
         <span class="proto-start__label">${busy === 'diff' ? html`<${Spinner} size="sm" />` : null}${t('确认')}</span>
@@ -727,6 +716,12 @@ export function RoomScreen() {
   const [busy, setBusy] = useState(null);
   const [picker, setPicker] = useState(false);
   const [opts, setOpts] = useState(false);
+  // 协议等级滑块（owner 2026-10-18：从「选择模拟协议」面板挪到底栏）。拖动时先改 draft，停手 280ms 才发 room.setLevel，
+  // 否则每拖一格都是一条消息、还会把其它人反复取消准备。
+  const [levelDraft, setLevelDraft] = useState(room?.level || 0);
+  const levelTimer = useRef(null);
+  useEffect(() => { setLevelDraft(room?.level || 0); }, [room?.level, room?.difficulty]);
+  useEffect(() => () => { if (levelTimer.current != null) clearTimeout(levelTimer.current); }, []);
   const [searchWant, setSearchWant] = useState(false); // the host asked to search and has not stopped
   const [searchSince, setSearchSince] = useState(0);
   const [found, setFound] = useState(false);
@@ -864,14 +859,26 @@ export function RoomScreen() {
   // （HEAD 的引擎房间有这两个按钮，见本次 CHANGELOG 0.18.4）。按业主裁定补回**入口**，协议与服务端一字未动。
   const addBot = () => run('add', () => net.request('room.addBot', {}));
   const removeBot = (seat) => run(`rm${seat}`, () => net.request('room.removeBot', { seat }));
-  // 协议等级 (owner's call 2026-10-18): the host applies difficulty + level together; the level is only sent on ABYSS
-  // (the server refuses it elsewhere, and a difficulty change resets it to 0).
-  const setProtocol = (difficulty, level) => run('diff', async () => {
+  // 「选择模拟协议」只改难度；协议等级在底栏的滑块上（owner 2026-10-18）。难度离开终极模拟时服务端会把等级归零。
+  const setProtocol = (difficulty) => run('diff', async () => {
     if (difficulty !== room.difficulty) await net.request('room.setDifficulty', { difficulty });
-    const want = difficulty === 'ABYSS' ? Math.max(0, Math.min(PROTOCOL_LEVEL_MAX, Math.trunc(Number(level)) || 0)) : 0;
-    if (want !== (room.level || 0)) await net.request('room.setLevel', { level: want });
     setPicker(false);
   });
+  /**
+   * 底栏滑块落点：拖完 280ms 发一次 room.setLevel（只有房主、终极模拟、开局前）。
+   * 不走 run()：它会把整个底栏置 busy，拖动过程会闪；失败照常 toastError。
+   */
+  const applyLevel = (v) => {
+    const want = Math.max(0, Math.min(PROTOCOL_LEVEL_MAX, Math.trunc(Number(v)) || 0));
+    setLevelDraft(want);
+    if (!room || !facts?.isHost || room.difficulty !== 'ABYSS' || room.inMatch) return;
+    if (levelTimer.current != null) clearTimeout(levelTimer.current);
+    levelTimer.current = setTimeout(() => {
+      levelTimer.current = null;
+      if (want === (room.level || 0)) return;
+      net.request('room.setLevel', { level: want }).catch((err) => toastError(err));
+    }, 280);
+  };
   const setAiLast = (on) => run('ailast', () => net.request('room.setAiPicksLast', { on }));
   // spectator seats: the host frees one; a spectator takes a free player seat with room.join of this room.
   const removeSpectator = (playerId) => run(`rs${playerId}`, () => net.request('room.removeSpectator', { playerId }));
@@ -1009,7 +1016,16 @@ export function RoomScreen() {
           ${coop && CAN_QUEUE ? html`<span class="rs-pill__mode" title=${t('精确搜寻：只与选择相同难度的博士组成同盟')}><${Icon} name="search" />${t('精确搜寻')}</span><i class="rs-pill__sep"></i>` : null}
           <button type="button" class="rs-pill__diff" disabled=${!facts.isHost || !!busy} onClick=${() => setPicker(true)}
             title=${facts.isHost ? t('更改模拟难度') : t('由创建者选择')}><${DifficultyIcon} difficulty=${room.difficulty} />${t(DIFFICULTY_NAMES[room.difficulty])}</button>
-          ${room.level > 0 ? html`<span class="rs-pill__level num" data-testid="room-level" title=${t('协议等级 {n}', { n: room.level })}>Lv.${room.level}</span>` : null}
+          ${room.difficulty === 'ABYSS' ? html`<label class=${'rs-pill__lv' + (facts.isHost ? '' : ' is-readonly')} title=${t('协议等级：0 = 关闭；等级越高，敌方生命/攻击、首领池与收入惩罚越重')}>
+            <span class="rs-pill__lvname">${t('协议等级')}</span>
+            <input type="range" min="0" max=${PROTOCOL_LEVEL_MAX} step="1" value=${levelDraft} disabled=${!facts.isHost || !!busy}
+              aria-label=${t('协议等级')}
+              onInput=${(e) => setLevelDraft(Number(e.currentTarget.value))}
+              onChange=${(e) => applyLevel(Number(e.currentTarget.value))}
+              onPointerUp=${(e) => applyLevel(Number(e.currentTarget.value))}
+              onKeyUp=${(e) => applyLevel(Number(e.currentTarget.value))} />
+            <b class="num">${levelDraft > 0 ? 'Lv.' + levelDraft : t('关闭')}</b>
+          </label>` : null}
           ${room.content?.modeId ? html`<span class="room-mode" data-testid="room-mode">${(room.content.modes || []).find((m) => m.id === room.content.modeId)?.name || room.content.modeId}</span>` : null}
           <button type="button" class=${`rs-pill__gear${opts ? ' is-on' : ''}`} onClick=${() => setOpts((v) => !v)} title=${t('同盟设置')} aria-label=${t('同盟设置')} aria-expanded=${opts ? 'true' : 'false'}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill-rule="evenodd" /></svg>
@@ -1045,7 +1061,7 @@ export function RoomScreen() {
         { key: 'diff', label: t(DIFFICULTY_NAMES[room.difficulty]), color: DIFFICULTY_COLORS[room.difficulty], icon: html`<${DifficultyIcon} difficulty=${room.difficulty} />` }]} />` : null}
     ${foundShown ? html`<${FoundPanel} class=${foundLeaving ? 'is-leaving' : ''} seats=${facts.seats.length} text=${t('同盟集结完毕')} />` : null}
     ${picking ? html`<${CardPicker} current=${myCard} list=${cardList} m=${m} onPick=${pickCard} onClose=${() => setPicking(false)} />` : null}
-    ${protoShown ? html`<${RoomProtocol} room=${room} variant=${variant} busy=${busy} level=${room.level || 0} onClose=${() => setPicker(false)} onApply=${setProtocol} leaving=${protoLeaving} />` : null}
+    ${protoShown ? html`<${RoomProtocol} room=${room} variant=${variant} busy=${busy} onClose=${() => setPicker(false)} onApply=${setProtocol} leaving=${protoLeaving} />` : null}
   </div>`;
 }
 
