@@ -16,11 +16,29 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 改：WebSocket 压缩回到「上下文保持」，同一局的对局下行少 74 %
+
+- **症状**：`WS_DEFLATE` 声明了 `serverNoContextTakeover: true` + `serverMaxWindowBits: 11` + `threshold: 1024`。前两项都是**向客户端提要求**（`ws` 对声明了更小窗口的 offer 回 400），而第三项在本档位下**根本不起作用**——`ws` 只在 `*_no_context_takeover` 模式里读 `threshold`。
+- **代价**：增量帧上线后，`m.public` 的中位帧只有 **29 B**、p90 是 76 B，而阈值 1024 意味着**热流一帧都不压**；同时关掉上下文保持又让真正被压的大帧也失去"与上一帧的相似性"这笔收益。实测同一局（110 帧 PREP 混合流：100 个增量 delta + 10 个 `m.private`，载荷 24 057 B）：旧档 **10 938 B（2.2x）**，新档 **2 832 B（8.5x）**。
+- **改法**（`server/http/websocket.js` `WS_DEFLATE`）：`threshold: 64`、`zlibDeflateOptions: { level: 3, memLevel: 3 }`、`concurrencyLimit: 32`，**上下文与窗口都不声明**（交给协商：上下文保持开、窗口用 ws 缺省）。顺带修 `transportPolicy`：包只声明 `level` 时不再把基线的 `memLevel` 悄悄丢回库缺省（那是一次没人点名的行为变化）。
+- **内存这笔账**：之前"关掉上下文保持"的理由是省内存，实测**不成立**——贵的是**窗口**而不是上下文。每连接 zlib 状态（RSS 斜率，20 / 80 / 200 条活连接）：不声明窗口 ≈244 KB、`serverMaxWindowBits: 13` ≈133 KB、`11` ≈24 KB；而字节分别是 8.5x / 7.7x / 3.2x。真要压内存，就在 `pack.json.server.transport` 里声明 `serverMaxWindowBits: 13`（拿 90 % 的收益花 55 % 的内存）。
+- `narrowDeflateOffer` 改为读**本部署真正声明的窗口**而不是一个常量：不声明窗口时它恒为 `false`（不存在"窄到 ws 接不了"的 offer，ws 自己会按客户端 offer 收敛）。
+- `test/net-compression.test.js` 与 `test/ws-compression.test.js` 里那两条**本来就是红的**断言（"不声明任何服务端要求"、"threshold 是 64"）现在转绿——它们描述的正是这套配置，是代码走偏了而不是测试过时。
+- 文档同步：`docs/history/0.2.6.md` 加了 `[REVISED 2026-10-18]` 段、`docs/NET-TUNING.md` 把那两行改成实测值并写明 `threshold` 在本档位下不起作用、`README.md` 的功能表同步。
+- 不抬 `PROTOCOL_VERSION`：推送帧的形状与语义一个字没变，变的是线上字节数。
+
 ### 改：大厅「密钥加入」与两张浅色卡对调位置
 
 - 业主 2026-10-18（截图圈出两处）。左列顶部现在放 **S.W.E.E.P.报告 · 干员调配** 两张浅色卡；右列（缺人同盟下方）现在放 **密钥加入**。
 - `public/js/screens/lobby.js`：两处 JSX 对调；`.hub-right__plates` 改名 `.hub-plates`（它不再只属于右列），`public/css/screens/lobby.css` 同步（含窄屏媒体查询）。
 - 验收：1600×900 实际进入大厅截图，两列互不重叠；`browser-syntax` 6/6、eslint 0 errors。
+
+### 修：装了工坊包时，合并过的 /data 与 /i18n JSON 不压缩
+
+- 业主 2026-10-18（「服务器网速是不是被限制了」）。诊断结论：代码、nginx 与内核 tc **都没有限速**；源站公网出口实测约 **5 Mbps**（4 并发合计 ≈660 KB/s），而 CDN 路径 ≈9.7 Mbps —— 瓶颈在**源站公网带宽**（云控制台里买的带宽），不是程序。实例网卡本身的上限是 200 Mbps（metadata `instance/max-netbw-egress`）。
+- 但发现一个放大器：`server/http/static.js` 里工坊合并的 `/data/*.json`、`/i18n/*.json`、`/room-data/...` 三个 handler 手写 headers 直接 `res.end`，绕过了 `serveBuffer` 的 br/gzip 缓存。装了包时 `/data/chess.json`（1.9 MB，实测 brotli 后 **110 KB**，5.8%）与 `/data/assets.json`（1.8 MB）**原样**发出去，冷加载多传约 3.7 MB。
+- 修复：三处改走 `serveBuffer`（br 优先、gzip 兜底、`Vary: Accept-Encoding`、ETag 带编码后缀、304 照旧）。新增 `test/http-merged-json-compression.test.js`（真实 static handler + 合成 merged map：br/gzip/identity/304）。
+- 部署后预计：装了包的服务器首屏数据从 ~4 MB 降到 ~0.3–0.6 MB；5 Mbps 上从 ~6 s 降到 ~1 s。公网带宽本身仍需在云控制台处理（或把 `/data` 合并体也走 CDN）。
 
 ### 新：后台面板的数据显示加「网络」
 

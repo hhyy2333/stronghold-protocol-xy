@@ -397,11 +397,11 @@ export function createStaticHandler({
       const rec = set && set.data && Object.hasOwn(set.data, name) ? set.data[name] : null;
       if (rec !== null && rec !== undefined) {
         const buf = Buffer.from(JSON.stringify(rec), 'utf8');
-        const tag = `"room-${createHash('sha1').update(digest).update(buf).digest('hex').slice(0, 20)}"`;
-        const headers = { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-cache', ETag: tag, 'Content-Length': buf.length };
-        if (isNotModified(req, tag, new Date(0))) { delete headers['Content-Length']; res.writeHead(304, headers); res.end(); return; }
-        res.writeHead(200, headers);
-        res.end(req.method === 'HEAD' ? undefined : buf);
+        // 合并体与普通 JSON 一样要压缩（业主 2026-10-18：合并过的 /data/*.json 曾绕开压缩，几 MB 原样上公网）。
+        await serveBuffer(req, res, {
+          body: buf, hash: `room-${createHash('sha1').update(digest).update(buf).digest('hex').slice(0, 20)}`,
+          type: MIME['.json'], cacheControl: 'no-cache', key: `room:${digest}:${name}`, cache: gzipCache,
+        });
         return;
       }
       sendError(req, res, 404, '页面不存在 · Not found');
@@ -414,11 +414,12 @@ export function createStaticHandler({
       const name = decoded.slice('/data/'.length, -'.json'.length);
       const buf = name && !name.includes('/') ? workshopJson.get(name) : null;
       if (buf) {
-        const tag = `"ws-${createHash('sha1').update(buf).digest('hex').slice(0, 20)}"`;
-        const headers = { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-cache', ETag: tag, 'Content-Length': buf.length };
-        if (isNotModified(req, tag, new Date(0))) { delete headers['Content-Length']; res.writeHead(304, headers); res.end(); return; }
-        res.writeHead(200, headers);
-        res.end(req.method === 'HEAD' ? undefined : buf);
+        // 合并体也要压缩：装了包的服务器（/data/chess.json ≈ 1.9 MB、assets.json ≈ 1.8 MB）以前是**原样**发出去的，
+        // 几 MB 的 JSON 把带宽吃满，页面自然慢（业主 2026-10-18 的「网速是不是被限制了」）。
+        await serveBuffer(req, res, {
+          body: buf, hash: `ws-${createHash('sha1').update(buf).digest('hex').slice(0, 20)}`,
+          type: MIME['.json'], cacheControl: 'no-cache', key: `ws:${name}`, cache: gzipCache,
+        });
         return;
       }
     }
@@ -430,11 +431,10 @@ export function createStaticHandler({
       const code = decoded.slice('/i18n/'.length, -'.json'.length);
       const buf = code && !code.includes('/') ? workshopI18n.get(code) : null;
       if (buf) {
-        const tag = `"ws-i18n-${createHash('sha1').update(buf).digest('hex').slice(0, 20)}"`;
-        const headers = { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-cache', ETag: tag, 'Content-Length': buf.length };
-        if (isNotModified(req, tag, new Date(0))) { delete headers['Content-Length']; res.writeHead(304, headers); res.end(); return; }
-        res.writeHead(200, headers);
-        res.end(req.method === 'HEAD' ? undefined : buf);
+        await serveBuffer(req, res, {
+          body: buf, hash: `ws-i18n-${createHash('sha1').update(buf).digest('hex').slice(0, 20)}`,
+          type: MIME['.json'], cacheControl: 'no-cache', key: `ws-i18n:${code}`, cache: gzipCache,
+        });
         return;
       }
     }
