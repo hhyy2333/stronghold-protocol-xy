@@ -48,7 +48,7 @@ import { SearchPanel, RadarScene, CreateArt, JoinArt } from '../ui/matchFlow.js'
 import { useLeave } from '../ui/transitions.js';
 import { net, identity } from '../net.js';
 import { store, useStore, shallowEqual, loadPref, savePref } from '../store.js';
-import { getConfig, getMode, getStage, useData } from '../data.js';
+import { getMode, getStage, useData } from '../data.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
 import { C2S as SERVER_C2S } from '../../../shared/protocol.js';
 
@@ -349,41 +349,6 @@ export function seatCapPayload(mode, pick, serverMax) {
   return cap === max ? {} : { seatCap: cap };
 }
 
-
-const FALLBACK_TIPS = [
-  N_('联合模拟在选择策略时可以进行一次跳过'),
-  N_('调度中心即使冻结，依然可以主动刷新'),
-  N_('两件同名装备可以合成一件更强力的装备'),
-  N_('只有达成完美作战的队友可以进行联防'),
-];
-const TIP_ROTATE_MS = 5000; // matchingTipRotateInterval
-
-/** Rotating tactical tips (config.json `tips`, weighted list of { tip, weight }). */
-function TipsPanel() {
-  const cfg = getConfig();
-  const fallback = FALLBACK_TIPS.map((x) => t(x));
-  const tips = Array.isArray(cfg?.tips)
-    ? cfg.tips.map((x) => (typeof x === 'string' ? x : x?.tip)).filter((x) => typeof x === 'string' && x)
-    : fallback;
-  const list = tips.length ? tips : fallback;
-  const [idx, setIdx] = useState(() => Math.floor(Math.random() * list.length));
-  useEffect(() => {
-    const id = setInterval(() => setIdx((i) => i + 1), TIP_ROTATE_MS);
-    return () => clearInterval(id);
-  }, []);
-  const i = ((idx % list.length) + list.length) % list.length;
-  return html`<div class="tips brackets">
-    <div class="tips__head">
-      <${Icon} name="info" />
-      <span>${t('作战提示')}</span>
-      <${MicroLabel}>TACTICAL TIPS<//>
-      <span class="tips__idx num">${String(i + 1).padStart(2, '0')}<span class="t-dim">/${String(list.length).padStart(2, '0')}</span></span>
-      <button type="button" class="tips__nav" onClick=${() => setIdx(i - 1 + list.length)} aria-label=${t('上一条')}><${Icon} name="chevronLeft" /></button>
-      <button type="button" class="tips__nav" onClick=${() => setIdx(i + 1)} aria-label=${t('下一条')}><${Icon} name="chevronRight" /></button>
-    </div>
-    <p key=${i} class="tips__text">${list[i]}</p>
-  </div>`;
-}
 
 /**
  * 缺人同盟: public alliance rooms still waiting for doctors, fewest empty seats first (closest to starting), joinable in
@@ -1273,7 +1238,6 @@ export function LobbyScreen() {
         <${AchievementEntry} key=${achOpen ? 'open' : 'shut'} onOpen=${() => setAchOpen(true)} />
         <${HubTile} icon="key" label=${t('密钥加入')} en="JOIN WITH KEY" onClick=${() => setJoinOpen(true)} />
         <${FriendsTile} />
-        <${TipsPanel} />
       </aside>
 
       <aside class="hub-right">

@@ -19,7 +19,6 @@
 .lobby-left > .matchmaking-panel { grid-column: 1; grid-row: 2; margin-bottom: 0; }
 .lobby-left > .lobby-join-label { grid-column: 2; grid-row: 1; }
 .lobby-left > .join-panel { grid-column: 2; grid-row: 2; }
-.lobby-left > .tips { grid-column: 1 / -1; }
 .lobby-right { grid-column: 1; grid-row: 2; }
 .lobby-right .diff-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .18rem; }
 .lobby-right .diff-card { padding: .18rem .2rem .16rem .28rem; gap: .1rem .14rem; }
@@ -287,33 +286,6 @@
   transition: border-color var(--t-fast), background-color var(--t-fast);
 }
 .code-chip:hover { border-color: var(--amber); background: rgba(246, 163, 41, .08); }
-
-/* ---- tips -------------------------------------------------------------------------------------------- */
-.tips {
-  --bk-c: var(--line-3);
-  margin-top: .3rem;
-  padding: .16rem .22rem .2rem;
-  background: rgba(8, 10, 9, .55);
-  border: 1px solid var(--line);
-}
-.tips__head { display: flex; align-items: center; gap: .1rem; font-size: calc(.16 * var(--t)); font-weight: 700; color: var(--text-md); }
-.tips__head > .icon { width: .2rem; height: .2rem; color: var(--mint-500); }
-.tips__idx { margin-left: auto; font-size: calc(.16 * var(--t)); color: var(--text-md); }
-.tips__nav {
-  display: grid;
-  place-items: center;
-  width: .3rem;
-  height: .3rem;
-  padding: 0;
-  border: 1px solid var(--line-2);
-  background: transparent;
-  color: var(--text-lo);
-  transition: color var(--t-fast), border-color var(--t-fast);
-}
-.tips__nav:hover { color: var(--mint-400); border-color: var(--mint-700); }
-.tips__nav .icon { width: .18rem; height: .18rem; }
-.tips__text { margin-top: .1rem; font-size: calc(.17 * var(--t)); color: var(--text-lo); line-height: 1.6; animation: tip-in var(--t-slow) var(--ease-out); }
-@keyframes tip-in { from { opacity: 0; transform: translateX(.1rem); } }
 
 /* ---- difficulty cards -------------------------------------------------------------------------------- */
 .diff-list { display: flex; flex-direction: column; gap: .14rem; }
@@ -910,7 +882,6 @@
 .hub-tile__text { display: flex; flex-direction: column; gap: .02rem; min-width: 0; }
 .hub-tile__label { font-size: calc(.2 * var(--t)); font-weight: 800; }
 .hub-tile__en { font: 600 .1rem/1 ui-monospace, Consolas, monospace; letter-spacing: .18em; color: var(--text-dim); }
-.hub-side .tips { margin-top: .04rem; background: rgba(8, 14, 13, .72); }
 
 /* right column: 缺人同盟 card, then the S.W.E.E.P.报告 and 干员调配 plates, above the entries */
 .hub-right { grid-column: 3; grid-row: 1; position: relative; z-index: 1; display: flex; flex-direction: column; gap: .16rem; min-width: 0; min-height: 0; padding-top: .06rem; }

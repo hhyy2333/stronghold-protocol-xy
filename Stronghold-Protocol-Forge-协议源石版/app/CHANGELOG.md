@@ -16,6 +16,11 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 改：大厅的「作战提示」小卡也去掉
+
+- 业主 2026-10-18（截图：作战提示 02/21）。左侧栏那张轮播提示卡整个移除：`public/js/screens/lobby.js` 删掉 `TipsPanel`（连同 `FALLBACK_TIPS` 与 5 秒轮播）及只给它用的 `getConfig` import；`public/css/screens/lobby.css` 删掉 `.tips*` 规则与 `tip-in` 动画。
+- 数据里的 `config.tips` 保留：「玩法说明」（guide）的空页仍读同一份官方 loading tips，只是大厅不再展示这张卡。
+
 ### 改：大厅顶栏的「助战」按钮也去掉
 
 - 业主 2026-10-18（接续房间顶栏那次）。大厅顶栏（延迟胶囊旁边）那个「助战」入口去掉；助战本身没动：对局简报（briefing）里的入口还在，选拔与发放逻辑一字未改。
