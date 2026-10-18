@@ -139,9 +139,11 @@ export function HexCard({ hex, armed = false, picked = false, faded = false, bus
   // left the enemy's cards unreadable on a phone (user report 2026-10-11: 「手机上…不知道怎么看敌人选的词条」). The row
   // that owns the chip carries the app Tooltip instead (EnemyHexRow / the draft footer), which a long press reaches
   // (components.js TOUCH_TIP_MS). A full card prints its name and effect itself, so it keeps the native title.
-  if (!onClick) return html`<span class=${cls} style=${style} title=${compact ? null : tip} data-hex=${hex.id || ''}>${body}</span>`;
+  // 视觉重制 (owner 2026-10-18): 磨砂玻璃底板 + 发光倒角 —— 倒角是一层独立的边（compact 小卡不画，省像素）
+  const bevel = compact ? null : html`<span class="hxcard__bevel" aria-hidden="true"></span>`;
+  if (!onClick) return html`<span class=${cls} style=${style} title=${compact ? null : tip} data-hex=${hex.id || ''}>${bevel}${body}</span>`;
   return html`<button type="button" class=${cls} style=${style} title=${tip} data-hex=${hex.id || ''} disabled=${busy} onClick=${onClick}>
-    <span class="hxcard__glow" aria-hidden="true"></span>${body}
+    <span class="hxcard__glow" aria-hidden="true"></span>${bevel}${body}
     ${armed ? html`<span class="hxcard__confirm" role="status"><b>${t('确认选择')}</b><small>${t('再次点击')}</small></span>` : null}
     ${busy ? html`<span class="hxcard__busy" role="status">${t('选择中')}</span>` : null}
   </button>`;
@@ -240,11 +242,12 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   const armedName = armed != null ? (hex.myOffer.find((c) => c && c.idx === armed)?.name || null) : null;
   return html`<div class=${cx('spov', 'hxov', armed != null && 'has-armed')} role="dialog" aria-label=${t('协议源石')} onPointerDown=${onDown}>
     <div class="spov__veil" aria-hidden="true"></div>
+    <div class="hxov__ambient" aria-hidden="true"></div>
     <div class="spov__inner">
       <header class="spov__head">
         <div class="spov__titles">
           <${MicroLabel} tone="gold">${t('PROTOCOL // 协议源石')}</${MicroLabel}>
-          <h2 class="spov__title">${t('协议源石')}<span class="spov__bar">|</span><span class="spov__desc">${waiting ? t('从三枚协议源石中选择一枚') : t('已选择')}</span></h2>
+          <h2 class="spov__title hxov__title"><span class="hx-glitch" data-text=${t('协议源石')}>${t('协议源石')}</span><span class="spov__bar">|</span><span class="spov__desc">${waiting ? t('从三枚协议源石中选择一枚') : t('已选择')}</span></h2>
           <p class="spov__sub">${hex.untimed ? t('选择一项（无时间限制）') : t('倒计时结束后仍未选定将自动分配')}${waiting ? t(' · 点击卡牌选中，再次点击确认') : ''}</p>
         </div>
         <div class="spov__turn">

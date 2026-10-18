@@ -1087,3 +1087,155 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
   .dmgrep { width: max(3rem, 300px); max-height: calc(100% - 1.4rem); }
   .dmgrow__bar { display: none; }
 }
+
+/* ====================================================================================================================
+   协议源石 · 赛博朋克视觉重制（owner 2026-10-18）
+   --------------------------------------------------------------------------------------------------------------------
+   基调不变（暗色、金黄强调），这一层只把决斗界面做得更「战术终端」：
+     * 卡牌：磨砂玻璃底板（backdrop blur）+ 发光的斜切倒角，悬停时外发光；名字更大更粗，
+       阶位标签改成斜切科技签，描述底下垫深色半透明遮罩（原来只有文字阴影，压在阶位点阵上偏花）；
+     * 色彩：荧光青 #00ffff 作为主发光色（边框 / 悬停 / 环境光），金黄 #ffd700 保留为强调色与阶位/稀有度标识；
+     * 全局：环境光 + 缓慢漂移的粒子 + 扫描线；标题做轻微故障（glitch）偏移；刷新按钮加一圈旋转流光边。
+   所有这些都用 prefers-reduced-motion 关闭动画；不改左侧玩家面板（owner 明确要求保留原样）。
+   ==================================================================================================================== */
+.hxov, .hxcard { --hx-cyan: #00ffff; --hx-gold: #ffd700; }
+@property --hx-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+
+/* ---- 环境光 / 粒子 / 扫描线 ---- */
+.hxov__ambient {
+  position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  background:
+    radial-gradient(46% 58% at 10% 24%, rgba(0, 255, 255, .12), transparent 72%),
+    radial-gradient(38% 52% at 88% 16%, rgba(255, 215, 0, .08), transparent 72%),
+    radial-gradient(66% 46% at 50% 108%, rgba(0, 255, 255, .07), transparent 72%);
+}
+.hxov__ambient::before {
+  content: ''; position: absolute; inset: -30%;
+  background-image:
+    radial-gradient(circle, rgba(0, 255, 255, .55) 0 1px, transparent 1.6px),
+    radial-gradient(circle, rgba(255, 215, 0, .45) 0 1px, transparent 1.6px);
+  background-size: 1.05rem 1.35rem, 1.7rem 1.55rem;
+  background-position: 0 0, .4rem .6rem;
+  opacity: .28; animation: hx-ambient-drift 28s linear infinite;
+}
+.hxov__ambient::after {
+  content: ''; position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 255, 255, .045) 0 1px, transparent 1px 3px);
+  mix-blend-mode: screen; opacity: .5; animation: hx-scan 8s linear infinite;
+}
+@keyframes hx-ambient-drift { from { transform: translate3d(0, -2%, 0); } to { transform: translate3d(-2%, -14%, 0); } }
+@keyframes hx-scan { from { transform: translateY(-6%); } to { transform: translateY(6%); } }
+
+/* ---- 顶部：HUD 分隔线与角标 ---- */
+.hxov .spov__head { position: relative; padding-bottom: .1rem; border-bottom: 1px solid rgba(0, 255, 255, .18); }
+.hxov .spov__head::before {
+  content: ''; position: absolute; left: 0; bottom: -1px; width: .9rem; height: 1px;
+  background: linear-gradient(90deg, var(--hx-cyan), transparent); box-shadow: 0 0 .12rem rgba(0, 255, 255, .7);
+}
+.hxov .spov__head::after {
+  content: ''; position: absolute; left: 0; bottom: 0; width: 1px; height: .26rem;
+  background: linear-gradient(0deg, var(--hx-cyan), transparent); box-shadow: 0 0 .12rem rgba(0, 255, 255, .6);
+}
+.hxov .spov__title { font-size: calc(.54 * var(--t)); }
+
+/* ---- 标题：故障（glitch）偏移；底字保持清晰，伪层只做错位切片 ---- */
+.hx-glitch {
+  position: relative; display: inline-block; color: #eaffff;
+  text-shadow: 0 0 .14rem rgba(0, 255, 255, .55), 0 0 .42rem rgba(0, 255, 255, .22);
+}
+.hx-glitch::before, .hx-glitch::after {
+  content: attr(data-text); position: absolute; inset: 0; pointer-events: none;
+  clip-path: inset(50% 0 50% 0);
+}
+.hx-glitch::before { color: var(--hx-cyan); transform: translate(-.015rem, .008rem); animation: hx-glitch-a 5.2s steps(1, end) infinite; }
+.hx-glitch::after { color: var(--hx-gold); transform: translate(.015rem, -.008rem); animation: hx-glitch-b 5.2s steps(1, end) infinite; }
+@keyframes hx-glitch-a {
+  0%, 88%, 100% { clip-path: inset(50% 0 50% 0); }
+  89% { clip-path: inset(18% 0 58% 0); }
+  90% { clip-path: inset(62% 0 22% 0); }
+  91% { clip-path: inset(42% 0 40% 0); }
+  92% { clip-path: inset(72% 0 12% 0); }
+  93% { clip-path: inset(50% 0 50% 0); }
+}
+@keyframes hx-glitch-b {
+  0%, 88%, 100% { clip-path: inset(50% 0 50% 0); }
+  89% { clip-path: inset(66% 0 18% 0); }
+  90% { clip-path: inset(26% 0 56% 0); }
+  91% { clip-path: inset(48% 0 34% 0); }
+  92% { clip-path: inset(8% 0 74% 0); }
+  93% { clip-path: inset(50% 0 50% 0); }
+}
+
+/* ---- 刷新按钮：一圈旋转流光边（不支持 @property 时退化成静止的青金渐变边） ---- */
+.hxov__reroll { position: relative; --hx-angle: 0deg; border-color: rgba(0, 255, 255, .35); }
+.hxov__reroll::before {
+  content: ''; position: absolute; inset: -2px; padding: 2px; pointer-events: none;
+  background: conic-gradient(from var(--hx-angle), transparent 0deg 196deg, var(--hx-cyan) 236deg, var(--hx-gold) 288deg, transparent 330deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude;
+  animation: hx-flow 3.6s linear infinite;
+}
+@keyframes hx-flow { to { --hx-angle: 360deg; } }
+
+/* ---- 卡牌：磨砂玻璃底板 + 发光斜切倒角 ---- */
+.hxcard {
+  border-radius: .02rem; border-color: rgba(0, 255, 255, .24);
+  background: linear-gradient(158deg, rgba(13, 26, 31, .82) 0%, rgba(8, 15, 19, .7) 46%, rgba(4, 9, 12, .86) 100%);
+  -webkit-backdrop-filter: blur(9px) saturate(1.25);
+  backdrop-filter: blur(9px) saturate(1.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), inset 0 0 0 1px rgba(0, 255, 255, .05), 0 .1rem .26rem rgba(0, 0, 0, .5);
+}
+.hxcard__bevel {
+  position: absolute; inset: .035rem; z-index: 2; pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, 0) 38%);
+  border: 1px solid rgba(0, 255, 255, .26);
+  clip-path: polygon(.14rem 0, 100% 0, 100% calc(100% - .14rem), calc(100% - .14rem) 100%, 0 100%, 0 .14rem);
+  box-shadow: inset 0 0 .14rem rgba(0, 255, 255, .12);
+}
+.hxcard__bevel::before {
+  content: ''; position: absolute; left: 0; top: 0; width: .26rem; height: 1px;
+  background: linear-gradient(90deg, var(--hx-gold), transparent); box-shadow: 0 0 .1rem rgba(255, 215, 0, .6);
+}
+.hxcard__bevel::after {
+  content: ''; position: absolute; right: 0; bottom: 0; width: 1px; height: .2rem;
+  background: linear-gradient(0deg, var(--hx-cyan), transparent); box-shadow: 0 0 .1rem rgba(0, 255, 255, .7);
+}
+.hxcard.has-tier { border: 0; box-shadow: inset 0 0 0 1px rgba(0, 255, 255, .06), 0 .1rem .28rem rgba(0, 0, 0, .55); }
+.hxcard.has-tier .hxcard__glow { -webkit-backdrop-filter: blur(1.6px) saturate(1.12); backdrop-filter: blur(1.6px) saturate(1.12); }
+.hxcard.is-tappable:hover {
+  transform: translateY(-.06rem); border-color: rgba(0, 255, 255, .7);
+  box-shadow: 0 0 0 1px rgba(0, 255, 255, .55), 0 0 .34rem rgba(0, 255, 255, .38), 0 .14rem .32rem rgba(0, 0, 0, .58);
+}
+.hxcard.has-tier.is-tappable:hover {
+  border: 0;
+  box-shadow: 0 0 0 2px var(--hx-cyan), 0 0 .4rem rgba(0, 255, 255, .4), 0 .14rem .32rem rgba(0, 0, 0, .65);
+}
+
+/* ---- 信息层级：更大的名字、斜切阶位签、描述遮罩 ---- */
+.hxcard__name { font-size: calc(.3 * var(--t)); font-weight: 900; letter-spacing: .06em; text-shadow: 0 0 .12rem rgba(0, 255, 255, .16); }
+.hxcard.has-tier .hxcard__name { font-size: calc(.32 * var(--t)); }
+.hxcard__rarity {
+  align-self: flex-start; padding: .015rem .16rem .015rem .1rem; font-size: calc(.15 * var(--t)); font-weight: 800; letter-spacing: .2em;
+  color: #06100e; background: var(--hx-c);
+  clip-path: polygon(0 0, 100% 0, calc(100% - .12rem) 100%, 0 100%);
+  box-shadow: 0 0 .14rem var(--hx-c-lo);
+}
+.hxcard__desc {
+  position: relative; padding: .055rem .09rem; border-left: 2px solid var(--hx-c);
+  background: linear-gradient(180deg, rgba(2, 8, 11, .86), rgba(2, 8, 11, .66));
+  color: #dcf7f3; text-shadow: 0 1px 2px rgba(0, 0, 0, .85);
+}
+.hxcard.has-tier .hxcard__desc { background: linear-gradient(180deg, rgba(2, 8, 11, .9), rgba(2, 8, 11, .72)); }
+.hxcard.is-armed, .hxcard.is-armed:hover {
+  border-color: var(--hx-gold);
+  box-shadow: 0 0 0 2px var(--hx-gold), 0 .14rem .32rem rgba(0, 0, 0, .6), 0 0 .38rem rgba(255, 215, 0, .45);
+}
+.hxcard__confirm { box-shadow: 0 -.04rem .3rem rgba(255, 215, 0, .45); }
+
+/* ---- 降低动态：所有新动画在用户要求减少动态时停下 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .hxov__ambient::before, .hxov__ambient::after,
+  .hx-glitch::before, .hx-glitch::after,
+  .hxov__reroll::before { animation: none; }
+}
