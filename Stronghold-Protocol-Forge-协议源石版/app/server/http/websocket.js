@@ -24,13 +24,32 @@ import { validateLanes, resolveLane } from './wsLanes.js';
 export const WS_MAX_PAYLOAD = 64 * 1024;
 
 /**
- * permessage-deflate (RFC 7692) for the JSON text frames. A message from 1 KB up (m.public, m.private, b.start, welcome
- * …) is compressed on its own — no context is kept from one message to the next (`serverNoContextTakeover`) — with a
- * 2 KB window and zlib memLevel 7, so a connection holds about 72 KB of zlib state; smaller frames (pong, ok) go out
- * as they are. Measured on a solo session (rounds 3–5, the server's own counters, traffic.js): 173 KB of payload →
- * 60 KB on the wire; replaying a session's frames with larger windows gained nothing on these messages. Browsers
- * negotiate it by themselves; a client that offers none gets plain frames. The inflated size of a client frame still
- * counts against WS_MAX_PAYLOAD.
+ * permessage-deflate (RFC 7692) for the JSON text frames.
+ *
+ * WHAT IS DECLARED, AND WHAT IS NOT. Only three things: a 64-byte threshold, zlib level 3 / memLevel 3, and a
+ * concurrency limit of 32. **Nothing about the context or the window** — and that is the point, not an omission:
+ *   * omitting `serverNoContextTakeover` leaves ws's own default (context takeover ON). That is what makes the stream
+ *     cheap: consecutive `m.public` frames are near-identical, and since the incremental frames landed the median
+ *     delta is **29 bytes**, so the whole win comes from the compressor remembering the previous frame;
+ *   * omitting `serverMaxWindowBits` leaves ws's default window (15). Declaring any window value is also a
+ *     *requirement*: ws refuses the handshake (HTTP 400) for a client that offers a narrower one, so declaring it
+ *     trades "some clients connect uncompressed" for "some clients cannot connect" (see `narrowDeflateOffer`).
+ * A small frame (pong, ok, a `m.public` delta under 64 bytes) goes out as it is. The inflated size of a client frame
+ * still counts against WS_MAX_PAYLOAD.
+ *
+ * WHY THRESHOLD 64 AND NOT ws's 1024. `threshold` is only consulted by ws in the no-context-takeover mode
+ * (`node_modules/ws/lib/sender.js`: the `rsv1 = byteLength >= _threshold` line sits inside the
+ * `..._no_context_takeover` branch). With context takeover on it is inert — measured: 1024 / 256 / 64 / 1 / 0 all
+ * produce the same byte count on the same stream. It is set to 64 to match this tuning's measured baseline and the
+ * live deployment (05-部署/0.3.0+P0-上线记录), not because it changes anything here today.
+ *
+ * MEASURED (this tree, 2026-10-18; frames built by `server/viewsDelta.js`, real socket, bytes counted on the wire):
+ * a 110-frame PREP mix (100 deltas of 29–115 B + 10 `m.private` of ~2 KB) sends 24 057 B of payload as **2 832 B**
+ * (8.5x) with this config, against 10 938 B (2.2x) for the 1 KB threshold + no-context-takeover shape it replaces —
+ * 74 % fewer bytes, and 24 297 B with compression off. Per-connection zlib state (slope over 20/80/200 live sockets,
+ * RSS after GC): **≈244 KB** here, ≈133 KB with a declared 8 KB window at 7.7x, ≈24 KB with 2 KB at 3.2x. The window,
+ * not the context, is what costs memory — so if the socket count ever gets near `maxConnections`, declare
+ * `serverMaxWindowBits: 13` and take 90 % of the saving at 55 % of the memory.
  *
  * 0.2.6 进场（本仓的接法）：这一份是「引擎自己的」压缩参数，也是 `transportPolicy` **没有包声明时的缺省**
  * （`attachWebSocket` 未指定时同样落在这里）。包依旧只能**声明**（`pack.json.server.transport`, DESIGN §28.30）：
@@ -43,25 +62,32 @@ export const WS_MAX_PAYLOAD = 64 * 1024;
  *   * `attachWebSocket` 收到显式 `false` 时同样关（只有 `undefined` 才落回这一份缺省）。
  */
 export const WS_DEFLATE = Object.freeze({
-  threshold: 1024,
-  serverNoContextTakeover: true,
-  serverMaxWindowBits: 11,
-  zlibDeflateOptions: Object.freeze({ memLevel: 7 }),
+  threshold: 64,
+  concurrencyLimit: 32,
+  zlibDeflateOptions: Object.freeze({ level: 3, memLevel: 3 }),
 });
 
 /**
- * Does every permessage-deflate offer of this `Sec-WebSocket-Extensions` header cap the server window below
- * WS_DEFLATE.serverMaxWindowBits? ws cannot accept such an offer and refuses the whole handshake (400), so the upgrade
- * drops the header instead and the connection goes uncompressed. No browser sends `server_max_window_bits`.
+ * Does every permessage-deflate offer of this `Sec-WebSocket-Extensions` header cap the server window below the window
+ * we actually declared? `ws` cannot accept such an offer and refuses the whole handshake (400), so the upgrade drops
+ * the header instead and the connection goes uncompressed — a degraded connection beats one that cannot connect.
+ *
+ * `serverWindowBits` is the window of the `perMessageDeflate` object that is ABOUT to be passed to `ws` (the effective
+ * one, after `transportPolicy`). When it is `undefined` — the engine default: nothing declared, so ws uses 15 and caps
+ * itself to whatever the client offers — **no offer can be too narrow**, and this returns false without looking at the
+ * header. The guard therefore only does anything in a deployment (or a pack declaration) that pins a window.
+ * No browser sends `server_max_window_bits`.
  * @param {string | string[] | undefined} header
+ * @param {number | undefined} serverWindowBits
  */
-export function narrowDeflateOffer(header) {
+export function narrowDeflateOffer(header, serverWindowBits) {
+  if (typeof serverWindowBits !== 'number') return false;
   if (typeof header !== 'string') return false;
   const offers = header.split(',').map((s) => s.trim()).filter((s) => /^permessage-deflate\b/i.test(s));
   if (!offers.length) return false;
   return offers.every((offer) => {
     const m = /(?:^|;)\s*server_max_window_bits\s*=\s*"?(\d+)"?/i.exec(offer);
-    return !!m && Number(m[1]) < WS_DEFLATE.serverMaxWindowBits;
+    return !!m && Number(m[1]) < serverWindowBits;
   });
 }
 
@@ -76,10 +102,11 @@ export const WS_DEFLATE_LIBRARY_THRESHOLD = 1024;
  *
  * 与 `resourceServerPolicy`（`server/http/workshop.js`）逐字同一条三件套：读声明 → 收敛成**一个进程级**的值 →
  * **启动日志点名**。三条语义：
- *   * **没有任何包声明 ⇒ 引擎自己的 `WS_DEFLATE`**（0.2.6 的缺省：1 KB 起、2 KB 窗口、不保留上下文）。这一格
- *     在我们的树上**改了**：从前缺省是 `perMessageDeflate: false`。理由与代价都写明 —— 上游 0.2.6 把「服务器流量层」
- *     的缺省就是这个，而**包依旧只能声明**（`pack.json.server.transport` 一个字没改，仍然是唯一的声明式入口），
- *     区别只在「没人声明时引擎自己开不开」；
+ *   * **没有任何包声明 ⇒ 引擎自己的 `WS_DEFLATE`**（见上：64 B 起、level 3 / memLevel 3，**不声明上下文与窗口**
+ *     —— 上下文保持因此是开着的，窗口交给协商）。这一格在我们的树上**改过**：从前缺省是
+ *     `perMessageDeflate: false`。理由与代价都写明 —— 上游 0.2.6 把「服务器流量层」的缺省就是开着，而**包依旧
+ *     只能声明**（`pack.json.server.transport` 一个字没改，仍然是唯一的声明式入口），区别只在「没人声明时引擎
+ *     自己开不开」；
  *   * **多包声明时包 id 小的赢**（DESIGN §28.3），其余每一包**点名**说明它被谁盖住了 —— 一条声明被静默忽略，
  *     正是这一层到处在消灭的形态；
  *   * **返回值里 `transport` 是「生效值」不是我声明了什么**：`deflate` / `threshold` / `params` 全部按**真正交给
@@ -115,7 +142,7 @@ export function transportPolicy(policies, { log = null } = {}) {
     };
   }
   /** 只把**声明过**的键交给 `ws`：省掉的字段用库自己的缺省（引擎不抄第二份）。基线是引擎自己的 WS_DEFLATE
-   *  （0.2.6 的调参：1 KB 起、2 KB 窗口、不保留上下文），包声明过的键盖在它上面。 */
+   *  （64 B 起、level 3 / memLevel 3，不声明上下文与窗口），包声明过的键盖在它上面。 */
   /** @type {Record<string, any>} */
   const perMessageDeflate = { ...WS_DEFLATE };
   /** @type {string[]} */
@@ -126,11 +153,13 @@ export function transportPolicy(policies, { log = null } = {}) {
     params.push(`${key}=${winner[key]}`);
   }
   if (winner.level !== undefined || winner.memLevel !== undefined) {
+    // 基线自己的 level / memLevel 先垫上：声明只写了 level 的包不该把 memLevel 悄悄退回库缺省（那是一次
+    // 没人点名的行为变化——本层到处在消灭的形态）。
     /** @type {Record<string, number>} */
-    const zlibDeflateOptions = {};
+    const zlibDeflateOptions = { ...(WS_DEFLATE.zlibDeflateOptions || {}) };
     if (winner.level !== undefined) { zlibDeflateOptions.level = winner.level; params.push(`level=${winner.level}`); }
     if (winner.memLevel !== undefined) { zlibDeflateOptions.memLevel = winner.memLevel; params.push(`memLevel=${winner.memLevel}`); }
-    perMessageDeflate.zlibDeflateOptions = zlibDeflateOptions;
+    perMessageDeflate.zlibDeflateOptions = Object.freeze(zlibDeflateOptions);
   }
   const threshold = winner.threshold === undefined ? (perMessageDeflate.threshold ?? WS_DEFLATE_LIBRARY_THRESHOLD) : winner.threshold;
   const transport = {
@@ -211,7 +240,7 @@ function meterSocket(ws, req, traffic) {
  * @param {{ network: Network, log: object, lanes?: readonly import('./wsLanes.js').WsLane[],
  *   perMessageDeflate?: false|object, traffic?: ReturnType<typeof import('./traffic.js').createTrafficCounter>|null }} deps
  *   `perMessageDeflate` 来自 `transportPolicy(...)`（`pack.json.server.transport`, DESIGN §28.30）。**缺省是引擎自己的
- *   `WS_DEFLATE`**（0.2.6 的缺省，与上游 `attachWebSocket` 逐字同一条）；只有**显式 `false`** 才关掉这一格 ——
+ *   `WS_DEFLATE`**（与上游 `attachWebSocket` 同一条接法：这一格没人指定就开）；只有**显式 `false`** 才关掉 ——
  *   包的 `server.transport: { deflate: false }` 走的就是这一条。
  *   `lanes` 是宿主的升级路径表（DESIGN §28.44）；缺省没有表 ⇒ 只有 /ws，行为与这一格之前逐字节相同。
  *   `traffic` 是流量计数（traffic.js）；缺省 null ⇒ 不数 socket（`createTrafficCounter` 之外的使用者，例如测试里
@@ -221,6 +250,10 @@ function meterSocket(ws, req, traffic) {
 export function attachWebSocket(server, { network, log, lanes, perMessageDeflate = undefined, traffic = null }) {
   // 未指定 = 引擎缺省（WS_DEFLATE）；显式 false = 关（包声明 deflate:false / 调用方要求）。
   const deflate = perMessageDeflate === undefined ? { ...WS_DEFLATE } : perMessageDeflate;
+  // The window this socket layer really declares to ws (`undefined` = none, ws uses 15 and caps to the client's
+  // offer by itself). narrowDeflateOffer needs the EFFECTIVE value, not a constant: with no declaration no offer can
+  // be too narrow, so the guard must not invent a 15 to compare against.
+  const declaredWindow = deflate && typeof deflate === 'object' ? deflate.serverMaxWindowBits : undefined;
   // A bad table is a configuration error, and it fails here — at boot, named — rather than leaving the operator
   // with a lane that answers 404 forever (the silent-revert shape this family has been burned by before).
   const table = validateLanes(lanes ?? []);
@@ -258,9 +291,10 @@ export function attachWebSocket(server, { network, log, lanes, perMessageDeflate
       }
       return;
     }
-    // 一个把服务器窗口压到 WS_DEFLATE 之下的 offer：`ws` 接不了、会拒掉整个握手（400）。丢头 ⇒ 这条连接不压缩，
-    // 而不是连不上（上游 0.2.6 的窄 offer 处置，与上面那条 transport 策略并存）。
-    if (narrowDeflateOffer(req.headers['sec-websocket-extensions'])) delete req.headers['sec-websocket-extensions'];
+    // 一个把服务器窗口压到**本部署真正声明的那个窗口**之下的 offer：`ws` 接不了、会拒掉整个握手（400）。丢头 ⇒
+    // 这条连接不压缩，而不是连不上（上游 0.2.6 的窄 offer 处置，与上面那条 transport 策略并存）。引擎缺省不声明
+    // 窗口 ⇒ 这里一律 false（见 narrowDeflateOffer 的注释）。
+    if (narrowDeflateOffer(req.headers['sec-websocket-extensions'], declaredWindow)) delete req.headers['sec-websocket-extensions'];
     try {
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
     } catch (e) {

@@ -520,9 +520,9 @@ npm start          # 启动服务器：http://localhost:3000
 | `GET /healthz?traffic=1` 多报一段**流量计数**与**素材哈希索引状态**；⚠️ **只对 loopback / 内网客户端**开放，公网请求拿到的还是原来那一份 | `server/http/routes.js:247`（`wantsTraffic` 与 `isLocalIp` 两道闸）、`:135-137`；计数本体 `server/http/traffic.js:1-13` |
 | 素材 URL 带**内容哈希**做长期缓存（`AssetIndex` 按内容算哈希、持久化在 `.cache/asset-hashes.json`；`SP_ASSET_INDEX=0` 可整体关掉） | `server/http/assetIndex.js:1,71,346-351` · `server/http/config.js:7-8,72-84` |
 | 文本类响应走 **brotli（quality 5）**，客户端不支持时回落 gzip-6；小文件缓存、大文件流式压 | `server/http/files.js:4-7,65-76` |
-| WebSocket 消息 **permessage-deflate**：1 KB 以上才压，`serverNoContextTakeover`、窗口 2 KB、`memLevel 7`（实测单人一局：173 KB 载荷 → 线上 60 KB） | `server/http/websocket.js:26-50`（`WS_DEFLATE`） |
+| WebSocket 消息 **permessage-deflate**：阈值 64 B、level 3 / memLevel 3，**上下文保持开着、窗口不声明**（实测：单人一局 173 KB 载荷 → 线上 60 KB；四人一局的 110 帧 PREP 混合流 24.1 KB → 2.8 KB，8.5 倍） | `server/http/websocket.js:45-57`（`WS_DEFLATE`） |
 
-⚠️ 其中**有一处缺省是我们的树改过的**：`perMessageDeflate` 从前是 `false`，0.2.6 起按上游的真实缺省开着 —— 理由与代价（`http://` 的局域网地址上浏览器不协商压缩，那类客户端只多挂一层 zlib 状态）写在 `server/http/websocket.js:35-43`；包仍可用 `pack.json.server.transport` **显式关掉**（§28.30）。
+⚠️ 其中**有一处缺省是我们的树改过的**：`perMessageDeflate` 从前是 `false`，0.2.6 起按上游的真实缺省开着 —— 理由与代价（`http://` 的局域网地址上浏览器不协商压缩，那类客户端只多挂一层 zlib 状态）写在 `server/http/websocket.js:35-43`；包仍可用 `pack.json.server.transport` **显式关掉**（§28.30）。**窗口刻意不声明**：声明窗口值等于向客户端提要求，`ws` 会对声明了更小窗口的 offer 回 400（握手失败，不是降级）；要省每连接那点 zlib 内存，才由部署或包去声明 `serverMaxWindowBits`（代价与实测见 [docs/NET-TUNING.md](docs/NET-TUNING.md) §2.2）。
 
 #### 和朋友一起玩（局域网）
 

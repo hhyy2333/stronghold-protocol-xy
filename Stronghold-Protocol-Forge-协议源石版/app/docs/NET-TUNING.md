@@ -38,7 +38,9 @@
 | 参数 | 我们的默认值 | 位置（文件:行） | 上游值 |
 | --- | --- | --- | --- |
 | WebSocket 单帧上限 `WS_MAX_PAYLOAD` | `64 * 1024` | `server/http/websocket.js:24`（导出处；用在 `:228` 的 `WebSocketServer` 构造） | 同值（`v0.2.4:server/http/websocket.js`） |
-| `perMessageDeflate` | **开**（0.2.6 起引擎缺省 `WS_DEFLATE`：`threshold:1024` / `serverNoContextTakeover:true` / `serverMaxWindowBits:11` / memLevel 7；可被 `pack.json.server.transport` 声明改） | `server/http/websocket.js:45-50`（`WS_DEFLATE`）、`:93-144`（`transportPolicy`） | 上游 `v0.2.4` 是 `false`，且没有这条声明通道 |
+| `perMessageDeflate` | **开**（引擎缺省 `WS_DEFLATE`：`threshold:64` / `level:3` / `memLevel:3` / `concurrencyLimit:32`，**不声明上下文与窗口** ⇒ 上下文保持开、窗口交给协商；可被 `pack.json.server.transport` 声明改） | `server/http/websocket.js:45-57`（`WS_DEFLATE`）、`:111-170`（`transportPolicy`） | 上游 `v0.2.4` 是 `false`，且没有这条声明通道 |
+| `serverMaxWindowBits`（**只有部署/包显式声明时才有**） | 缺省**不声明**（ws 用 15，按客户端 offer 自行收敛）。声明成 N 会把「窄 offer 的客户端」从**降级**变成**拒握手（400）**；省内存的那个旋钮就是它 —— 实测每连接 zlib 状态：不声明 ≈244 KB、13 ≈133 KB、11 ≈24 KB，而字节 8.5x / 7.7x / 3.2x | `server/http/websocket.js` `narrowDeflateOffer` | 上游无此参数 |
+| `threshold`（压缩阈值） | `64`。⚠️ **在本部署的档位下不起作用**：`ws` 只在 `*_no_context_takeover` 模式里读它（`node_modules/ws/lib/sender.js`），上下文保持开着时 1024/256/64/1/0 的字节数完全一样。写 64 是为了与线上部署、`test/ws-compression.test.js` 的实测基线对齐 | `server/http/websocket.js` `WS_DEFLATE` | 上游不设 |
 | 每连接令牌桶 `ratePerSec` / `rateBurst` | `40` / `40` | `server/net.js:50-51` | 同值 |
 | 重负载意图桶 `heavyPerSec` / `heavyBurst` | `2` / `6` | `server/net.js:61-62` | 同值 |
 | `HEAVY_TYPES`（额外吃重负载桶的意图） | `g.watch, g.publicFull, room.loadout, room.ownership, room.diy, room.spectate, room.queue` | `server/net.js:83`（集合；闸门在 `:652`） | 上游 `v0.2.4:server/net.js:70` 的 `HEAVY_TYPES` **少两个**：`room.queue`（野排匹配是我们加的，非本次优化）与 `g.publicFull`（**上游无此意图**，见 §2.1 `PUBLIC_FULL_ASK_MS`） |
