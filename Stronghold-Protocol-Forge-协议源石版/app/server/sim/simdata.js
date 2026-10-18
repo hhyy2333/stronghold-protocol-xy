@@ -216,6 +216,9 @@ export function normalizeChess(rec) {
     ...(rec.standInFor ? { standInFor: rec.standInFor } : null),
     // a 自选 piece (shared/diy.js): the slot's base id — `charId` is the operator's (absent otherwise)
     ...(rec.diyFor ? { diyFor: rec.diyFor } : null),
+    // a chess a workshop pack ADDED (shared/workshop.js applyWorkshop): its id has no kit of its own, so
+    // content/index.js kitKeyOf may fall back to the operator's charId kit.
+    ...(rec.packChess ? { kitFromChar: true } : null),
     raw: rec,
   };
 }

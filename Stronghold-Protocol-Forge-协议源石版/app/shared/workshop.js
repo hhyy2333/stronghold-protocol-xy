@@ -3791,7 +3791,12 @@ export function applyWorkshop(base, packs) {
         if (file === 'chess') looked.push({ pack: pack.id, id, rec });
         if (file === 'enemies') lookedEnemies.push({ pack: pack.id, id, rec });
         if (exists) push(report.overridden, file, id); else push(report.added, file, id);
-        return { record: exists ? mergeRecord(priorMap[id], rec) : rec, existed: exists };
+        // 包**新加**的棋子：这个 chess id 没有自己的技能实现（kit）。给它打一个来源标记，引擎查 kit 时就能按
+        // `charId` 回落到官方干员的完整实现（业主 2026-10-18：「mod 里的克莱门莎没有放逐舱，自选干员的有」）。
+        // 覆盖官方棋子的那条路**不打标**：官方棋子本来就有自己的 kit，回落会改变原版对局结果。
+        const record = exists ? mergeRecord(priorMap[id], rec)
+          : (file === 'chess' ? { ...rec, packChess: true } : rec);
+        return { record, existed: exists };
       });
       entry.files[file] = { added, overridden };
     }

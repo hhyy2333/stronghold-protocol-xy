@@ -90,6 +90,11 @@ export function kitKeyOf(def, reg) {
   if (isOtherBody(def)) return Object.prototype.hasOwnProperty.call(reg, def.charId) ? def.charId : null;
   const bare = String(def.baseId ?? def.id ?? '').replace(/_[ab]$/, '');
   for (const k of [def.baseId, def.id, bare]) if (reg[k] != null) return k;
+  // 工坊包**新加**的棋子（`packChess`，见 shared/workshop.js applyWorkshop）：这个 chess id 本来没有 kit，
+  // 于是按 charId 回落到官方干员的完整实现 —— 不然「把官方干员做成 mod 棋子」只能拿到通用 kit，
+  // 技能里的召唤物/位移/特殊判定（例如克莱门莎的放逐舱）全部缺失（业主 2026-10-18）。
+  // 只对包加的棋子生效：原版棋子永远走上面那三个键。
+  if (def.kitFromChar && def.charId && Object.prototype.hasOwnProperty.call(reg, def.charId)) return def.charId;
   return null;
 }
 
