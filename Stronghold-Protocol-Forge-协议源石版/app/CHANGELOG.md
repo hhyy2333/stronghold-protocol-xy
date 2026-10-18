@@ -16,6 +16,12 @@
 起就在，仍然「不声明就没有」）—— 按 `shared/constants.js` 那条口径（只有推送帧形状变了、旧页面会读错才抬），
 新增一条客户端消息不在其中。**不需要 `golden:update`**（没有改游戏规则、没有动 `server/sim/`）。
 
+### 修：标题界面的「导入素材包」在不能导入的页面上隐藏
+
+- **症状**（业主 2026-10-18）：线上是 http，「导入素材包」按钮下面永远挂着一句「导入需要 HTTPS 或 localhost」—— 按钮点了也做不了事，不如不画。
+- **修**：`ui/assetImport.js` 新增 `importButtonShown(support = importSupport())`（判据仍然是 `assetCache.js` 的 `importSupport()`：安全上下文 + Service Worker + Cache Storage + SubtleCrypto 四件套）；`AssetImportButton` 在 `!support.ok` 时直接 `return null`，同时删掉弹窗里那条永远到不了的「不能导入」分支与按钮下那句 hint。HTTPS / localhost 上按钮与提示原样恢复。
+- **验证**：新增 `test/ui/assetImport.test.js`（3 条：`importSupport` 的 insecure / unsupported / ok、`importButtonShown` 对四种输入、以及组件源码里那条守卫在且旧文案与旧分支已消失）。纯客户端改动，无 golden、无协议、无推送帧变化。
+
 ### 修：可露希尔大降价（`hex_bigdiscount`）只免费了第一次
 
 - **症状**（业主 2026-10-18）：「可露希尔大降价只免费第一次，刷新后都不免费」—— 拿到卡时那间商店的干员/装备确实是 0 费，刷新一次之后新商店又都要钱。

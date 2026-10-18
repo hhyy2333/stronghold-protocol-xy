@@ -64,6 +64,20 @@ async function walkHandle(dir, prefix, out) {
   }
 }
 
+/**
+ * Whether the title screen shows 导入素材包 at all.
+ *
+ * It is HIDDEN where an import cannot work — a plain-http page (no Service Worker; `importSupport` reports `insecure`)
+ * or a browser without Cache Storage / SubtleCrypto (`unsupported`) — because the entry's only action is an import the
+ * page has just been refused. It used to render disabled with 「导入需要 HTTPS 或 localhost。」, which reads like a
+ * permanent limitation of the feature instead of "this page cannot do it" (owner's instruction 2026-10-18
+ * 「隐藏该按钮」). On HTTPS or localhost it comes back unchanged.
+ * @param {{ ok?: boolean }|null} [support] importSupport()'s verdict
+ */
+export function importButtonShown(support = importSupport()) {
+  return !!(support && support.ok);
+}
+
 /** 导入素材包: the button, its hint line and the import dialog. */
 export function AssetImportButton() {
   const [open, setOpen] = useState(false);
@@ -107,6 +121,7 @@ export function AssetImportButton() {
     setOpen(false);
   };
   const support = importSupport();
+  if (!importButtonShown(support)) return null;
   const importText = importStatus(imported);
   const showImportCounts = ['complete', 'partial', 'empty', 'cancelled', 'error'].includes(imported.phase)
     && (imported.accepted + imported.rejected + imported.skipped + imported.failed) > 0;
@@ -190,13 +205,12 @@ export function AssetImportButton() {
   return html`<div class="title-assets__item">
     <${Button} variant="secondary" block=${true} size="sm" data-testid="asset-import" aria-describedby="title-asset-import-hint"
       onClick=${() => setOpen(true)}>${t('导入素材包')}<//>
-    <small id="title-asset-import-hint">${support.ok ? t('读取自己的素材包，美术不占服务器流量。') : t('导入需要 HTTPS 或 localhost。')}</small>
+    <small id="title-asset-import-hint">${t('读取自己的素材包，美术不占服务器流量。')}</small>
     <${Modal} open=${open} onClose=${close} title=${t('导入素材包')} class="asset-import-dialog" actions=${html`
       <${Button} onClick=${close}>${t('关闭')}<//>`}>
       <p class="t-lo">${t('从素材包 zip、完整包 zip 或自己的 public/assets 文件夹导入。只收下和服务器清单哈希一致的文件，不上传任何内容。')}</p>
       <p class="t-lo">${t('导入只从服务器读取素材清单，美术文件不走网络；没有导入的素材仍在用到时从服务器加载。')}</p>
-      ${support.ok ? html`
-        <div class="asset-import__row">
+      <div class="asset-import__row">
           <${Button} size="sm" data-testid="asset-import-folder" disabled=${importBusy} onClick=${() => void chooseFolder()}>${t('选择文件夹')}<//>
           <${Button} size="sm" data-testid="asset-import-zip" disabled=${importBusy} onClick=${() => zipRef.current?.click()}>${t('选择 zip')}<//>
           ${importBusy ? html`<${Button} size="sm" data-testid="asset-import-cancel" onClick=${() => assetImport.cancel()}>${t('取消导入')}<//>` : null}
@@ -208,12 +222,7 @@ export function AssetImportButton() {
           data-testid="asset-import-zip-input" onChange=${onZipInput} />
         <div class="asset-import__drop" onDragOver=${(event) => event.preventDefault()} onDrop=${(event) => void onDrop(event)}>
           ${t('或把文件夹 / zip 拖到这里')}
-        </div>
-      ` : html`<p class="asset-import__reason" data-testid="asset-import-unavailable">${
-        support.reason === 'insecure'
-          ? t('导入需要 HTTPS 或 localhost。当前是 http 地址，浏览器不允许 Service Worker，所以不能导入。')
-          : t('此浏览器不能导入本地素材。')
-      }</p>`}
+      </div>
       <p role="status" data-testid="asset-import-status" class="asset-import__status">${importText}</p>
       ${importBusy || (imported.total > 0 && imported.phase !== 'idle') ? html`<${ProgressBar} value=${imported.done} max=${imported.total || 1} label=${t('已完成 {done} / {total} 个文件', { done: imported.done, total: imported.total })} />` : null}
       ${showImportCounts ? html`<p data-testid="asset-import-counts">${t('已导入 {accepted} 个，校验不符 {rejected} 个，跳过 {skipped} 个，无法读取 {failed} 个', {
