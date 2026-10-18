@@ -6,6 +6,7 @@
 // the player state).
 
 import { pieceDir, parseDir, mergeTile } from '../board.js';
+import { matchSlotPolicy } from '../../../shared/morph.js';
 import { MAX_OFFER_SLOTS } from './common.js';
 import { onMerge } from '../botEmotes.js';
 
