@@ -19,7 +19,7 @@ const ROOM = read('public/js/screens/room.js');
 const CSS = read('public/css/screens/game.css');
 
 test('局内聊天面板常驻挂载，用 hidden 切换（不是条件挂载）', () => {
-  assert.match(GAME, /<div class="gm__chatlog" hidden=\$\{!chatOpen\}><\$\{ChatPanel\} \/><\/div>/,
+  assert.match(GAME, /<div class="gm__chatlog" hidden=\$\{!chatOpen\}><\$\{ChatPanel\}/,
     'game.js must mount the panel unconditionally with a hidden toggle');
   // 回归闸门：从前那种「条件挂载」不许回来
   assert.ok(!/chatOpen\s*\?\s*html`<div class="gm__chatlog">/.test(GAME),
@@ -45,5 +45,5 @@ test('全树只有 chat.js 订阅 chat.msg，且没有 store 侧缓冲 —— �
 
 test('房间屏与局内都挂了面板', () => {
   assert.match(ROOM, /<\$\{ChatPanel\} \/>/, 'the room screen mounts it');
-  assert.match(GAME, /<\$\{ChatPanel\} \/>/, 'the match screen mounts it');
+  assert.match(GAME, /<\$\{ChatPanel\}/, 'the match screen mounts it');
 });

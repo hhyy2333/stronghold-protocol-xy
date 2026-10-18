@@ -372,11 +372,13 @@
   background: color-mix(in srgb, var(--mint-800) 22%, transparent);
 }
 .chatp__empty { color: var(--text-lo); font-size: calc(.15 * var(--t)); }
-.chatp__row { display: flex; align-items: baseline; gap: .1rem; font-size: calc(.16 * var(--t)); line-height: 1.35; }
-.chatp__name { flex: 0 0 auto; max-width: 1.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mint-400); }
+/* 一行 = 名字 + 正文的**行内流**（不是 flex）：面板窄到 240px（局内）时，flex 的「名字定宽」会把正文压成一列一个字
+   —— owner's report 2026-10-18 的截图。名字与正文各自换行，长正文正常铺满整行。 */
+.chatp__row { font-size: calc(.16 * var(--t)); line-height: 1.4; }
+.chatp__name { margin-right: .12rem; color: var(--mint-400); }
 /* 观战者的消息：名字后跟一个小标签（业主 2026-10-16「观战不能聊天」；正本 repo 也把观战者标成「观战」）。 */
 .chatp__spec { margin-left: .06rem; font-size: calc(.12 * var(--t)); font-style: normal; color: var(--text-lo); }
-.chatp__text { flex: 1 1 auto; color: var(--text-hi); word-break: break-word; }
+.chatp__text { color: var(--text-hi); overflow-wrap: anywhere; }
 .chatp__quick { display: flex; flex-wrap: wrap; gap: .06rem; margin-top: .08rem; }
 .chatp__q {
   padding: .03rem .1rem; font-size: calc(.14 * var(--t)); cursor: pointer;
@@ -397,6 +399,18 @@
 }
 .chatp__go[disabled] { opacity: .45; cursor: default; }
 .chatp__note { margin-top: .1rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
+/* 局内聊天右上角的「收起」（只有 .chatp--compact 会画；房间屏的聊天是常驻的一块，没有收起的概念） */
+.chatp__close { display: grid; place-items: center; width: .3rem; height: .3rem; padding: 0; color: var(--text-lo); background: transparent; cursor: pointer; border: 1px solid var(--line-2); border-radius: .04rem; transition: color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out); }
+.chatp__close:hover { color: var(--mint-400); border-color: var(--mint-700); }
+.chatp__close .icon { width: .16rem; height: .16rem; }
+/* 局内形态（.chatp--compact，owner 2026-10-18「常态开启可隐藏」）：没有房间用的 micro 说明；快捷短语收成一行横向
+   滚动（不再占四行），把高度留给消息区。 */
+.chatp--compact .panel__head { padding: .1rem .16rem .08rem; align-items: center; }
+.chatp--compact .panel__title { font-size: calc(.17 * var(--t)); letter-spacing: .08em; }
+.chatp--compact .panel__body { padding: .12rem .14rem .14rem; }
+.chatp--compact .chatp__quick { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: .04rem; }
+.chatp--compact .chatp__quick::-webkit-scrollbar { display: none; }
+.chatp--compact .chatp__q { flex: 0 0 auto; white-space: nowrap; }
 
 /* 房主改集合用的是大厅那块挑选器的行（ui/modPicker.js ModList）：房间栏比创建面板窄，所以这里强制一列，
    行的高度与大厅一致，选中态 / 战斗警告也由 components.css 那份唯一样式提供。 */

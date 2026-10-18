@@ -121,7 +121,7 @@ import { BriefingScreen } from './briefing.js';
 import { BandDraftScreen } from './bandDraft.js';
 import { ResultScreen } from './result.js';
 import { net } from '../net.js';
-import { store, useStore, shallowEqual, serverNow, isSpectating } from '../store.js';
+import { store, useStore, shallowEqual, serverNow, isSpectating, loadPref, savePref } from '../store.js';
 import { battleRunner } from '../battle/runner.js';
 import '../ui/pluginFrame.js';
 import { isClientCombat, observeTarget, teammateProgress, cameraLayers, layerCamera, loneHalf, sidesOf, resumedWatch, followedScout } from '../battle/observe.js';
@@ -234,7 +234,21 @@ function MatchScreen() {
   const [emoteOpen, setEmoteOpen] = useState(false);
   // 局内聊天（业主 2026-10-16「局内聊天加回来」）：面板复用房间屏那个 ChatPanel（screens/chat.js），
   // 它本来就订阅本树的 `chat.msg` / `chat.history` 帧，所以这里只需要一个容器 + 一个开关。
-  const [chatOpen, setChatOpen] = useState(false);
+  // 局内聊天 (owner's call 2026-10-18: 常态开启、可隐藏): open by default, the toggle is remembered on this browser,
+  // and while it is hidden a new line lights the 💬 button (the panel stays mounted, so nothing is lost meanwhile).
+  const CHAT_OPEN_PREF = 'gameChatOpen';
+  const [chatOpen, setChatOpenState] = useState(() => loadPref(CHAT_OPEN_PREF, true) !== false);
+  const [chatUnread, setChatUnread] = useState(false);
+  const chatOpenRef = useRef(chatOpen);
+  chatOpenRef.current = chatOpen;
+  const setChatOpen = (next) => {
+    const v = typeof next === 'function' ? next(chatOpenRef.current) : next;
+    chatOpenRef.current = v;
+    setChatOpenState(v);
+    savePref(CHAT_OPEN_PREF, v);
+    if (v) setChatUnread(false);
+  };
+
   // 伤害统计 (ui/damageReport.js)：浮动报告面板、按哪个指标排序（伤害/承伤/治疗）、实时/已冻结开关，
   // 以及冻结时最后拿到的那份数字（冻结后不再跟着战斗动）
   const [dmgOpen, setDmgOpen] = useState(false);
@@ -1757,7 +1771,8 @@ function MatchScreen() {
             从前这里是 `chatOpen ? <ChatPanel/> : null` —— 面板一卸载，它那条 `net.on('chat.msg')` 订阅
             就没了（全树只有这一处订阅），关着面板期间别人的话**全部丢失**：重新打开是个新实例、
             记录从空开始，而服务端只在**重连**时补发 `chat.history`。常驻之后消息一直在收。 */ ''}
-      <div class="gm__chatlog" hidden=${!chatOpen}><${ChatPanel} /></div>
+      <div class="gm__chatlog" hidden=${!chatOpen}><${ChatPanel} compact=${true} onClose=${() => setChatOpen(false)}
+        onMessage=${() => { if (!chatOpenRef.current) setChatUnread(true); }} /></div>
 
       ${reportOpen ? html`<${DamageReportPanel} rows=${reportRows} total=${reportSum} metric=${dmgMetric} onMetric=${setDmgMetric}
         round=${reportRound} live=${dmgLive} cumulative=${cumulative}
@@ -1771,8 +1786,9 @@ function MatchScreen() {
         ${/* 测试场 (the owner's request of 2026-10-11): the panel's HUD toggle, only in a room created with test:true
               (m.public.test). It sits in the corner row, so a tester reaches it in every phase. */ ''}
         ${testField ? html`<${TestArenaButton} open=${testOpen} onToggle=${setTestOpen} />` : null}
-        <button type="button" class=${`gm__gear gm__chat${chatOpen ? ' is-on' : ''}`} aria-expanded=${chatOpen ? 'true' : 'false'}
-          aria-label=${t('发言')} title=${t('发言')} onClick=${() => setChatOpen((v) => !v)}><span aria-hidden="true">💬</span></button>
+        <button type="button" class=${`gm__gear gm__chat${chatOpen ? ' is-on' : ''}${chatUnread && !chatOpen ? ' has-unread' : ''}`} aria-expanded=${chatOpen ? 'true' : 'false'}
+          aria-label=${t('发言')} title=${t('发言')} onClick=${() => setChatOpen((v) => !v)}><span aria-hidden="true">💬</span>
+          ${chatUnread && !chatOpen ? html`<i class="gm__dot" aria-hidden="true"></i>` : null}</button>
         <${DamageReportButton} open=${reportOpen} onToggle=${setDmgOpen} count=${reportList.length} />
         ${showMetrics ? html`<button type="button" class="gm__gear gm__metrics" aria-label=${t('作战统计')} title=${t('作战统计')} aria-expanded=${metricsOpen}
           aria-controls="combat-metrics-panel" onKeyDown=${(e) => { if (e.key === ' ') e.stopPropagation(); }} onClick=${() => {

@@ -1288,6 +1288,8 @@
   "取消搜寻": "Cancel search",
   "快速匹配超时：没有等到足够的博士，请稍后再试": "Quick match timed out: not enough doctors were searching — try again shortly",
   "房内聊天": "Room chat",
+  "聊天": "Chat",
+  "收起聊天": "Collapse chat",
   "说点什么…": "Say something…",
   "发送": "Send",
   "该房间已关闭打字聊天": "Typing is disabled in this room",

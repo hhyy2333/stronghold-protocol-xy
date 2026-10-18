@@ -306,15 +306,27 @@
   display: flex; flex-direction: column; gap: .14rem; pointer-events: none;
 }
 .team--many {
-  gap: .14rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  /* 大房间（7 席以上）滚动，而不是缩小头像：滚动交给下面的 .team__rows，列本身不裁剪。 */
+  pointer-events: none;
+}
+/* 行自己滚动，列不裁剪。表情气泡挂在行的**右侧**（.team__bubble），如果让 .team 自己 overflow 滚动，
+   气泡会被裁掉并给整列加出横向滚动条（业主 2026-10-17「表情也在槽里还要往右了」）。所以：
+   .team__rows 是唯一的滚动容器；many 模式的气泡由 .team__bubbles 图层按行位置绘制（teamPanel.js placeBubbles）。 */
+.team__rows { display: flex; flex-direction: column; gap: .14rem; flex: 1 1 auto; min-height: 0; }
+.team--many .team__rows {
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
   padding-right: .04rem; padding-bottom: .06rem;
-  /* 大房间（7 席以上）滚动，而不是缩小头像：滚动条是控件，容器自己收 pointer，行本来就收。 */
+  /* 滚动条是控件，容器自己收 pointer，行本来就收。 */
   pointer-events: auto;
 }
-.team--many::-webkit-scrollbar { width: .08rem; }
-.team--many::-webkit-scrollbar-track { background: rgba(0, 0, 0, .25); }
-.team--many::-webkit-scrollbar-thumb { background: var(--line-3); }
+.team--many .team__rows::-webkit-scrollbar { width: .08rem; }
+.team--many .team__rows::-webkit-scrollbar-track { background: rgba(0, 0, 0, .25); }
+.team--many .team__rows::-webkit-scrollbar-thumb { background: var(--line-3); }
 .team--many .team__row { touch-action: pan-y; }
+.team__bubbles { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.team__bubble-slot { position: absolute; transform: translateY(-50%); }
+.team__bubble-slot .team__bubble,
+.team__bubbles .team__bubble-slot .team__bubble { position: static; left: auto; top: auto; transform: none; width: max-content; max-width: 3.2rem; }
 /* 窄屏（竖屏/手机）左下角那排按钮会折成两行，底部留白按两行算 */
 @media (max-width: 767px) {
   .team { bottom: calc(.24rem + max(1.22rem, 64px) + .12rem); }
@@ -421,9 +433,22 @@
 .gm__corner { position: absolute; left: .24rem; bottom: .24rem; display: flex; align-items: flex-end; gap: .1rem; }
 /* 局内聊天（业主 2026-10-16）：面板复用房间屏的 ChatPanel（screens/chat.js），钉在左下角、角落按钮行之上，
    由角落里的发言按钮切换（game.js 的 chatOpen）。定位用固定偏移，本树没有 --gm-corner-h。 */
-.gm__chatlog { position: absolute; left: .24rem; bottom: calc(.24rem + .66rem); width: max(2.6rem, 240px); }
+/* 局内聊天：默认展开（owner 2026-10-18「常态开启可隐藏」），收起来靠右上角的 ✕ 或角落的 💬（选择会记住）。 */
+.gm__chatlog { position: absolute; left: .24rem; bottom: calc(.24rem + .66rem); width: max(2.9rem, 300px); }
 .gm__chatlog[hidden] { display: none; }   /* 常驻挂载 + hidden 切换：display 会压过 [hidden]，必须显式写 */
-.gm__chatlog .chatp .chatp__list { max-height: max(1.4rem, 110px); }
+.gm__chatlog .chatp .chatp__list { max-height: max(1.7rem, 140px); }
+/* 边框优化（owner 2026-10-18）：一圈更细的薄荷线 + 收小的折角 + 毛玻璃底，压在战场上不抢画面；圆角只在这一层加。 */
+.gm__chatlog .panel {
+  border-color: rgba(78, 216, 175, .2);
+  border-radius: .06rem;
+  background: linear-gradient(180deg, rgba(18, 24, 22, .88), rgba(10, 14, 13, .9));
+  box-shadow: 0 .1rem .3rem rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .04);
+  backdrop-filter: blur(8px) saturate(1.1);
+}
+.gm__chatlog .panel::after { --bk-l: .1rem; --bk-w: 1px; opacity: .8; }
+/* 未读：收起状态下收到新消息，💬 按钮右上角一个小红点 */
+.gm__chat { position: relative; }
+.gm__dot { position: absolute; top: .05rem; right: .05rem; width: .1rem; height: .1rem; border-radius: 50%; background: var(--red-premium); box-shadow: 0 0 .2rem rgba(255, 84, 84, .85); }
 .gm__corner .gm__chat > span { font-size: max(.28rem, 17px); line-height: 1; }
 .gm__corner .gm__chat.is-on { color: var(--mint-400); border-color: var(--mint-700); }
 .gm__gear {

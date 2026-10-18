@@ -19,7 +19,7 @@
 // 环形缓冲在服务端内存里，房间没了它也就没了 —— 聊天永不落盘。
 
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { html, Panel } from '../ui/components.js';
+import { html, Panel, Icon } from '../ui/components.js';
 import { net } from '../net.js';
 import { useStore, shallowEqual, isSpectating } from '../store.js';
 import { t } from '../../../shared/i18n.js';
@@ -62,14 +62,23 @@ const line = (m) => ({
 
 /**
  * 房内聊天面板。挂在房间屏里；`room` 来自 store（`room.state` 的那一份）。
+ *
+ * `compact` = 局内那个形态（owner's call 2026-10-18 「常态开启可隐藏」）：标题只留「聊天」、不画房间用的 micro 说明、
+ * 快捷短语收成一行（CSS 横向滚动），并给一个「收起」按钮——局内默认展开，玩家随时可以收起来（偏好会记住）。
+ * `onClose` 只有局内会传（房间屏的聊天本来就是常驻的一块，没有收起的概念）；`onMessage` 让宿主在面板**收起**时亮红点，
+ * 而不是再订阅一次 `chat.msg` —— 订阅仍只有本文件这一处（test/ui/chatPanelMount.test.js 钉着这条）。
+ * @param {{ compact?: boolean, onClose?: (() => void)|null, onMessage?: ((m: any) => void)|null }} [props]
  */
-export function ChatPanel() {
+export function ChatPanel({ compact = false, onClose = null, onMessage = null } = {}) {
   const room = useStore((s) => s.room, shallowEqual);
   const me = useStore((s) => s.me, shallowEqual);
   const [lines, setLines] = useState([]);
   const [draft, setDraft] = useState('');
   const alive = useRef(true);
   const listRef = useRef(null);
+  // the host's "a line arrived" hook, read through a ref so a re-render never re-subscribes
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
 
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -77,6 +86,7 @@ export function ChatPanel() {
     const offMsg = net.on('chat.msg', (m) => {
       if (!alive.current || !m) return;
       setLines((prev) => [...prev, line(m)].slice(-200));
+      try { onMessageRef.current?.(m); } catch { /* a host hook must not break the panel */ }
     });
     // 重连补发：`chat.history` 只发给这一个会话，整体替换（服务端那份才是真源，不是「追加」）
     const offHist = net.on('chat.history', (m) => {
@@ -116,8 +126,9 @@ export function ChatPanel() {
   const quick = (id) => { net.request('room.quickMsg', { ids: id }).catch(() => {}); };
 
   return html`
-    <${Panel} title=${t('房内聊天')} class="chatp"
-      micro=${t(mode === 'open' ? '允许打字与快捷短语' : mode === 'quick' ? '只允许快捷短语' : '关闭聊天')}>
+    <${Panel} title=${compact ? t('聊天') : t('房内聊天')} class=${compact ? 'chatp chatp--compact' : 'chatp'}
+      actions=${onClose ? html`<button type="button" class="chatp__close" onClick=${onClose} aria-label=${t('收起聊天')} title=${t('收起聊天')}><${Icon} name="close" /></button>` : null}
+      micro=${compact ? undefined : t(mode === 'open' ? '允许打字与快捷短语' : mode === 'quick' ? '只允许快捷短语' : '关闭聊天')}>
       <div class="chatp__list" ref=${listRef}>
         ${lines.length === 0
           ? html`<div class="chatp__empty">${t('说点什么…')}</div>`
