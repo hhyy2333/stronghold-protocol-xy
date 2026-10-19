@@ -104,6 +104,34 @@ export const FORMAT = {
   enemyPersist: 'match',
 };
 
+// Thirteenth batch (2026-10-19) and fourteenth batch (2026-10-19) spec keys: every one is a battle script of
+// server/sim/content/hexcards/batch14a.js / batch14b.js (relic cards, page one) and batch15a.js / batch15b.js
+// (page two). ALL of them MUST stay in BATTLE_SPEC_KEYS (server/sim/content/hextech.js): each is an ownership-only
+// mechanic, so without the key the ref never reaches a battle and the card is silently inert.
+//   untouchable true                你摸不到: invulnerable for the skill's own window (skillStart → skillEnd)
+//   pearlglove { chance, mul }      珠光护手: each skill damage instance rolls `chance`% for `mul`% final damage
+//   physarts { spOnAttack, atkPctPerHit, atkPctCap }  物法皆修: +SP on every attack; +atk% per skill hit, capped
+//   quantum { every, atkPct, slowPct, slowSec, healPct }  量子计算: a periodic field-wide strike + slow + self heal
+//   tapdance { aspdPerHit, idleSec }  踢踏舞: one +aspd instance per attack, each lapsing after `idleSec`
+//   ultrefresh { cd }               终极刷新: a skill that just ended is re-cast once, per-operator cooldown `cd`
+//   omenpact { atkMaxPct, lifestealPct, hpCostPct }  不祥契约: ATK from missing HP (capped), lifesteal, HP cost/attack
+//   proteinshake { perHp, def, res }  蛋白粉奶昔: +def / +res per `perHp` of max HP
+//   frostghost { every, bindSec }    冰霜幽灵: bind every enemy for `bindSec` every `every` seconds
+//   heavyhitter { maxHpPct }        重量级打击手: each basic attack adds a separate phys hit of `maxHpPct`% max HP
+//   canlight { perHitPct, perHitRiskPct }  残光: carrier damage (1 + perHitPct% × attackCount); each attack rolls
+//                                   perHitRiskPct × attackCount % to take its own ATK as damage, zeroing the count
+//   glasscannon { dmgPct, hpPct }   玻璃大炮: own operators deal `dmgPct`% damage, max HP `hpPct`%
+//   heavyload { atkPctPerStatus }   身负重担: +atkPctPerStatus% damage per negative status on the enemy hit
+//   umbrellabreak { chance, reflectMul }  破伞: `chance`% of hits on an own operator are negated and answered
+//                                   with `reflectMul`% of that damage as ARTS damage on the attacker
+//   warding { cutPct }              加护: damage of the operator's OWN type is cut `cutPct`%
+//   voidreturn { atkPctPerLayer, dmgCutPerLayer }  万物归虚: +atk% and a flat damage cut per layer, layers being
+//                                   the operators the item removed from the reserve (备战区) when equipped
+//   corpsehill { atkPctPerKill, defPctPerKill, hpPctPerKill, blockPerKill, spRecPerKill, resPerKill, regenPct }
+//                                   尸山: executes every other own operator at battle start (no redeploy); each kill
+//                                   stacks the listed stats and heals `regenPct`% max HP a second
+//   oldpower { spCostPct, dmgPct }  旧日之力: own operators' skill SP cost ×(1 + spCostPct%), damage `dmgPct`%
+
 /**
  * The 51 player hexes (19 + 19 + 13 third/fourth batches; the second batch folded into the first block).
  *
@@ -1017,6 +1045,79 @@ export const PLAYER_HEXES = [
     desc: '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的物理伤害。',
     rarity: 'silver',
     effect: { heavyhitter: { maxHpPct: 10 } },
+  },
+  // ---- fourteenth batch (业主 2026-10-19, 原话照抄；机制脚本在 server/sim/content/hexcards/batch15a.js / batch15b.js) ----
+  // 残光 · 玻璃大炮 · 旧日之力（2 阶）· 破伞 · 万物归虚 · 尸山（3 阶）· 身负重担 · 加护（1 阶）
+  //
+  // 四张卡发装备（残光 / 加护 / 万物归虚 / 尸山）：装备本身只是 MARKER（tools/build-data.mjs CUSTOM_ITEMS，
+  // 没有 BY_ITEM 行为），真正的机制在这两个脚本里，靠 `carries` 认领装备者。
+  {
+    id: 'hex_canlight',
+    name: '残光',
+    desc: '获得装备【残光】：装备者伤害提升至（1 + 30% × x），x 为装备者本场战斗的攻击次数；每次攻击有 4x% 概率受到自身攻击力的一次伤害，触发后 x 归零。',
+    rarity: 'gold',
+    effect: {
+      onPick: { item: { id: 'chess_item_9_92_e_a', count: 1 } },
+      canlight: { perHitPct: 30, perHitRiskPct: 4 },
+    },
+  },
+  {
+    id: 'hex_glasscannon',
+    name: '玻璃大炮',
+    desc: '作战中，己方干员伤害提升至 150%，最大生命值下降至 80%。',
+    rarity: 'gold',
+    effect: { glasscannon: { dmgPct: 150, hpPct: 80 } },
+  },
+  {
+    id: 'hex_heavyload',
+    name: '身负重担',
+    desc: '作战中，己方干员攻击拥有负面状态的敌人时，伤害 +400% × 该敌人身上的负面状态数。',
+    rarity: 'silver',
+    effect: { heavyload: { atkPctPerStatus: 400 } },
+  },
+  {
+    id: 'hex_umbrellabreak',
+    name: '破伞',
+    desc: '作战中，己方干员被击中时有 30% 概率免受此次伤害，并对攻击方造成「此次伤害值 × 2」的法术伤害。',
+    rarity: 'prismatic',
+    effect: { umbrellabreak: { chance: 30, reflectMul: 200 } },
+  },
+  {
+    id: 'hex_warding',
+    name: '加护',
+    desc: '获得装备【加护】：该干员受到与自身伤害类型相同的伤害时，该次伤害减少 60%。',
+    rarity: 'silver',
+    effect: {
+      onPick: { item: { id: 'chess_item_9_93_e_a', count: 1 } },
+      warding: { cutPct: 60 },
+    },
+  },
+  {
+    id: 'hex_voidreturn',
+    name: '万物归虚',
+    desc: '获得装备【万物归虚】：装备时移除备战区所有干员。作战开始时，装备者获得「被移除干员数」层，每层 +20% 攻击力、减少 30 点受到的伤害。',
+    rarity: 'prismatic',
+    effect: {
+      onPick: { item: { id: 'chess_item_9_94_e_a', count: 1 } },
+      voidreturn: { atkPctPerLayer: 20, dmgCutPerLayer: 30 },
+    },
+  },
+  {
+    id: 'hex_corpsehill',
+    name: '尸山',
+    desc: '获得装备【尸山】：战斗开始时直接击杀其他所有己方干员（不可重部署）；每击杀 1 名干员，装备者获得 +20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命。',
+    rarity: 'prismatic',
+    effect: {
+      onPick: { item: { id: 'chess_item_9_95_e_a', count: 1 } },
+      corpsehill: { atkPctPerKill: 20, defPctPerKill: 20, hpPctPerKill: 20, blockPerKill: 1, spRecPerKill: 0.3, resPerKill: 5, regenPct: 3 },
+    },
+  },
+  {
+    id: 'hex_oldpower',
+    name: '旧日之力',
+    desc: '作战中，己方干员的技力消耗 +20%，伤害提升至 140%。',
+    rarity: 'gold',
+    effect: { oldpower: { spCostPct: 20, dmgPct: 140 } },
   },
 ];
 

@@ -27,16 +27,17 @@ test('data/hextech.json is what tools/build-hextech.mjs generates (run: node too
   assert.equal(fs.readFileSync(OUT_FILE, 'utf8'), hextechText(buildHextech()));
 });
 
-test('roster: 100 player + 38 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
+test('roster: 108 player + 38 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
   assert.deepEqual(validateHextech(buildHextech()), []);
   // tenth batch (the owner's list of 2026-10-15): 11 more player cards (79 -> 90) — 反击装甲 and 紧急拨款 are
   // REBALANCES of existing records, not additions, so they do not move the count.
   // thirteenth batch (业主 2026-10-19): 10 more player cards (90 -> 100).
-  assert.equal(PLAYER.length, 100);
+  // fourteenth batch (业主 2026-10-19): 8 more player cards (100 -> 108).
+  assert.equal(PLAYER.length, 108);
   // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
   assert.equal(ENEMY.length, 38);
   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
-  assert.equal(ids.size, 138);
+  assert.equal(ids.size, 146);
   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
   assert.deepEqual([...rarities], [...RARITY_ORDER]);
   for (const h of PLAYER) {
@@ -77,7 +78,7 @@ test('roster: 100 player + 38 enemy hexes, unique ids, known rarities and an eff
 test('every player hex has a registered hex: handler with onHexPick and onRoundStart (choices.test.js style)', () => {
   const reg = getDefaultRegistry();
   const ids = hexIds();
-  assert.equal(ids.length, 100);
+  assert.equal(ids.length, 108);
   for (const id of ids) {
     const h = reg.get(hexEffectKey(id));
     assert.ok(h, `hex:${id} handler`);
@@ -691,7 +692,7 @@ test('the eleventh batch: 79 player hexes, the owner’s names and tiers verbati
     assert.equal(rec.name, name, `${id} name`);
     assert.equal(rec.rarity, rarity, `${id} tier`);
   }
-  assert.equal(Object.keys(HEXTECH.playerHexes).length, 100, '100 player hexes after the thirteenth batch');
+  assert.equal(Object.keys(HEXTECH.playerHexes).length, 108, '108 player hexes after the fourteenth batch');
 });
 
 

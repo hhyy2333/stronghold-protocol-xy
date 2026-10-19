@@ -1866,6 +1866,30 @@ const CUSTOM_EFFECTS = Object.freeze({
     descRaw: '协议源石【恶魔形态】的凭证：装备者在作战中<@ba.vup>每秒攻击力 +10%</>（本场战斗内叠加，无上限）',
     buffs: [],
   },
+  eff_item_canlight: {
+    name: '残光',
+    desc: '装备者在作战中伤害提升至（1 + 30% × x），x 为装备者本场战斗的攻击次数；每次攻击有 4x% 概率受到自身攻击力的一次伤害，触发后 x 归零',
+    descRaw: '装备者在作战中伤害提升至（<@ba.vup>1 + 30% × x</>），x 为装备者本场战斗的攻击次数；每次攻击有<@ba.vup>4x%</> 概率受到自身攻击力的一次伤害，触发后 x 归零',
+    buffs: [],
+  },
+  eff_item_ward: {
+    name: '加护',
+    desc: '装备者受到与自身伤害类型相同的伤害时，该次伤害减少 60%',
+    descRaw: '装备者受到与自身伤害类型相同的伤害时，该次伤害<@ba.vup>减少 60%</>',
+    buffs: [],
+  },
+  eff_item_void: {
+    name: '万物归虚',
+    desc: '装备时移除备战区所有干员。作战开始时获得「被移除干员数」层：每层 +20% 攻击力、减少 30 点受到的伤害',
+    descRaw: '装备时移除备战区所有干员。作战开始时获得「被移除干员数」层：每层<@ba.vup>+20% 攻击力</>、<@ba.vup>减少 30 点受到的伤害</>',
+    buffs: [],
+  },
+  eff_item_corpsehill: {
+    name: '尸山',
+    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。每击杀 1 名干员，装备者获得 +20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命',
+    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。每击杀 1 名干员，装备者获得 <@ba.vup>+20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗</>，且<@ba.vup>每秒恢复自身 3% 最大生命</>',
+    buffs: [],
+  },
 });
 
 // ===== bonds ====================================================================================
@@ -2160,6 +2184,74 @@ const CUSTOM_ITEMS = Object.freeze({
     buffs: [],
     params: { atkPctPerSec: 10 },
     note: '本作自制装备：只由协议源石【恶魔形态】发放，商店不出售、不可合并',
+  },
+  // ---- 2026-10-19 batch: the four cards that hand out equipment (业主原话照抄进 roster.mjs) ----------------
+  // 残光: 「获得装备“残光”：装备者伤害提升至（1+30%x）。攻击时有4x%概率受到自身攻击，触发后x归零，x为攻击次数」
+  // The item is a MARKER (no `BY_ITEM` entry): the x counter lives in the CARD's battle half
+  // (server/sim/content/hexcards/batch15a.js), which needs the counter shared by every carrier of the card AND the
+  // item's holder, so it reads the item through `carries` and keeps the counter on the battle.
+  chess_item_9_92_e_a: {
+    name: '残光',
+    tier: 1,
+    price: 0,
+    shopSortId: 992,
+    identifier: 9003,
+    iconId: 'item_canlight',
+    desc: '装备者在作战中伤害提升至（1 + 30% × x），x 为装备者本场战斗的攻击次数；每次攻击有 4x% 概率受到自身攻击力的一次伤害，触发后 x 归零',
+    descRaw: '装备者在作战中伤害提升至（<@ba.vup>1 + 30% × x</>），x 为装备者本场战斗的攻击次数；每次攻击有<@ba.vup>4x%</> 概率受到自身攻击力的一次伤害，触发后 x 归零',
+    effectId: 'eff_item_canlight',
+    effectName: '残光',
+    buffs: [],
+    params: { perHitPct: 30, perHitRiskPct: 4 },
+    note: '本作自制装备：只由协议源石【残光】发放，商店不出售、不可合并',
+  },
+  // 加护: 「获得装备“加护”：该干员收到自身伤害类型的伤害减少60%」
+  chess_item_9_93_e_a: {
+    name: '加护',
+    tier: 1,
+    price: 0,
+    shopSortId: 993,
+    identifier: 9004,
+    iconId: 'item_ward',
+    desc: '装备者受到与自身伤害类型相同的伤害时，该次伤害减少 60%',
+    descRaw: '装备者受到与自身伤害类型相同的伤害时，该次伤害<@ba.vup>减少 60%</>',
+    effectId: 'eff_item_ward',
+    effectName: '加护',
+    buffs: [],
+    params: { cutPct: 60 },
+    note: '本作自制装备：只由协议源石【加护】发放，商店不出售、不可合并',
+  },
+  // 万物归虚: 「获得装备“万物归虚”效果为装备时 将移除备战区所有干员，战斗开始时获得‘移出干员数’层（20x%攻击力，减少30x点收到的伤害）」
+  chess_item_9_94_e_a: {
+    name: '万物归虚',
+    tier: 1,
+    price: 0,
+    shopSortId: 994,
+    identifier: 9005,
+    iconId: 'item_void',
+    desc: '装备时移除备战区所有干员。作战开始时获得「被移除干员数」层：每层 +20% 攻击力、减少 30 点受到的伤害',
+    descRaw: '装备时移除备战区所有干员。作战开始时获得「被移除干员数」层：每层<@ba.vup>+20% 攻击力</>、<@ba.vup>减少 30 点受到的伤害</>',
+    effectId: 'eff_item_void',
+    effectName: '万物归虚',
+    buffs: [],
+    params: { atkPctPerLayer: 20, dmgCutPerLayer: 30 },
+    note: '本作自制装备：只由协议源石【万物归虚】发放，商店不出售、不可合并',
+  },
+  // 尸山: 「获得装备“尸山”：战斗开始时直接击杀其他所有干员（不可重部署）。每击杀1名干员，该干员便获得20%攻击力，防御力，最大生命值，1阻挡数，0.3技力回复速度，5法抗。且每秒恢复自身3%最大生命」
+  chess_item_9_95_e_a: {
+    name: '尸山',
+    tier: 1,
+    price: 0,
+    shopSortId: 995,
+    identifier: 9006,
+    iconId: 'item_corpsehill',
+    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。每击杀 1 名干员，装备者获得 +20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命',
+    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。每击杀 1 名干员，装备者获得 <@ba.vup>+20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗</>，且<@ba.vup>每秒恢复自身 3% 最大生命</>',
+    effectId: 'eff_item_corpsehill',
+    effectName: '尸山',
+    buffs: [],
+    params: { atkPctPerKill: 20, defPctPerKill: 20, hpPctPerKill: 20, blockPerKill: 1, spRecPerKill: 0.3, resPerKill: 5, regenPct: 3 },
+    note: '本作自制装备：只由协议源石【尸山】发放，商店不出售、不可合并',
   },
 });
 

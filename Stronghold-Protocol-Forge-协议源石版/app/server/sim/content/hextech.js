@@ -47,6 +47,11 @@ import {
 import {
   installUntouchable, installPearlGlove, installPhysArts, installQuantum, installFrostGhost,
 } from './hexcards/batch14a.js';
+// fourteenth batch (业主 2026-10-19): 残光 / 玻璃大炮 / 身负重担 / 破伞 (batch15a.js) 与 加护 / 万物归虚 / 尸山 /
+// 旧日之力 (batch15b.js). Four of them grant their own equipment 残光 / 加护 / 万物归虚 / 尸山, which decides WHO the
+// battle half acts on (the `carries` rule 恶魔之契 already uses).
+import { installCanlight, installGlassCannon, installHeavyLoad, installUmbrellaBreak } from './hexcards/batch15a.js';
+import { installWarding, installVoidReturn, installCorpseHill, installOldPower } from './hexcards/batch15b.js';
 import { reviveNow, carries } from './items/battle.js';
 
 /** Player effect-ref key prefix (parallel to `choice:`). */
@@ -158,6 +163,9 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // fifth batch (2026-10-11): the four scripts of server/sim/content/hexcards/ — 精锐训练's per-round growth, 反击装甲's
   // riposte, 盾墙's adjacent-重装 split and 战争机器's 联防 aura. Each is dispatched by installHexCards() below.
   'drill', 'armor', 'shieldwall', 'warmachine',
+  // fourteenth batch (业主 2026-10-19): the eight scripts of hexcards/batch15a.js + batch15b.js. Ownership-only
+  // mechanics, so each key MUST be listed here or the ref never reaches a battle (the card would be silently inert).
+  'canlight', 'glasscannon', 'heavyload', 'umbrellabreak', 'warding', 'voidreturn', 'corpsehill', 'oldpower',
   // sixth batch (the owner's list of 2026-10-11): the other six scripts of hexcards/ — 人祭's 炎佑 on a knock-out,
   // 近大远小's distance multiplier, 雷区's mines, 破隐's reveal, 神经毒素's poison and 跳弹's ricochet. 债务 is the only
   // card of the batch with no battle part (its watcher lives in the prep phase: server/match/hextech.js `applyHexExtras`
@@ -1371,6 +1379,10 @@ export const HEX_SCRIPT_KEYS = Object.freeze({
     hex_quantum: 'quantum', hex_tapdance: 'tapdance', hex_ultrefresh: 'ultrefresh',
     hex_omenpact: 'omenpact', hex_proteinshake: 'proteinshake', hex_frostghost: 'frostghost',
     hex_heavyhitter: 'heavyhitter',
+    // fourteenth batch (业主 2026-10-19)
+    hex_canlight: 'canlight', hex_glasscannon: 'glasscannon', hex_heavyload: 'heavyload',
+    hex_umbrellabreak: 'umbrellabreak', hex_warding: 'warding', hex_voidreturn: 'voidreturn',
+    hex_corpsehill: 'corpsehill', hex_oldpower: 'oldpower',
 });
 
 function installHexCards(battle) {
@@ -1429,6 +1441,15 @@ function installHexCards(battle) {
   installPhysArts(gated);
   installQuantum(gated);
   installFrostGhost(gated);
+  // fourteenth batch (业主 2026-10-19) — same bundle, same gate
+  installCanlight(gated);
+  installGlassCannon(gated);
+  installHeavyLoad(gated);
+  installUmbrellaBreak(gated);
+  installWarding(gated);
+  installVoidReturn(gated);
+  installCorpseHill(gated);
+  installOldPower(gated);
 }
 
 /**

@@ -1,0 +1,233 @@
+// test/content/hexcards-15b.test.js — 第十四批后四张卡的战斗脚本（server/sim/content/hexcards/batch15b.js）。
+//
+// 覆盖的卡（业主原文见 batch15b.js 文件头）：
+//   hex_warding      加护     —— 装备者受到同类型伤害 -60%
+//   hex_voidreturn   万物归虚 —— 装备者按「移出备战区人数」层：+20% 攻击力/层、-30 点受伤/层
+//   hex_corpsehill   尸山     —— 战斗开始击杀其他己方干员（不可重部署），每杀 1 人叠一层
+//   hex_oldpower     旧日之力 —— 技力消耗 +20%，伤害 140%
+//
+// 与 hexcards-15a.test.js 同一套驱动：真实 Battle + 生产同源的 hexHooks(battle)。
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
+import { hexHooks } from '../../server/sim/content/hexcards/hooks.js';
+import {
+  installWarding, installVoidReturn, installCorpseHill, installOldPower,
+  WARDING_ITEM_KEY, VOIDRETURN_ITEM_KEY, CORPSEHILL_ITEM_KEY,
+} from '../../server/sim/content/hexcards/batch15b.js';
+
+const HEXTECH = JSON.parse(readFileSync(new URL('../../data/hextech.json', import.meta.url), 'utf8'));
+const ITEMS = JSON.parse(readFileSync(new URL('../../data/items.json', import.meta.url), 'utf8'));
+const IMPL = {
+  hex_warding: installWarding, hex_voidreturn: installVoidReturn,
+  hex_corpsehill: installCorpseHill, hex_oldpower: installOldPower,
+};
+
+const effectOf = (hexId) => {
+  const rec = HEXTECH.playerHexes[hexId];
+  assert.ok(rec, 'data/hextech.json has no ' + hexId);
+  return rec.effect;
+};
+const refOf = (hexId, extra = {}) => {
+  const rec = HEXTECH.playerHexes[hexId];
+  return {
+    id: 'hex:' + hexId, key: 'hex:' + hexId, name: rec.name, desc: rec.desc, iconKind: 'hex',
+    params: { ...rec.effect, hexId, rarity: rec.rarity, ...extra }, data: { hexId, rarity: rec.rarity },
+  };
+};
+
+const guard = (o = {}) => chessRec({
+  id: o.id ?? 'test_guard', profession: o.profession ?? 'WARRIOR',
+  stats: { maxHp: 2000, atk: 500, def: 200, res: 0, blockCnt: 1, spRecovery: 0, ...(o.stats || {}) },
+  skill: o.skill === undefined ? null : o.skill,
+});
+const dummy = (o = {}) => enemyRec({ key: o.key ?? 'enemy_dummy', hp: o.hp ?? 100000, atk: o.atk ?? 0, speed: o.speed ?? 0, ...o });
+const opsOf = (h) => h.battle.allyUnits.filter((u) => u && u.kind === 'op' && u.side === 'ally');
+const one = (h) => opsOf(h).find((u) => u.ownerId === 'p1') ?? opsOf(h)[0];
+
+function solo({ hexId = null, extra = {}, units = [], enemies = [], defs = {}, kits = null, timeLimit = 40 } = {}) {
+  const h = makeBattle({
+    defs: { chess: { test_guard: guard(), ...(defs.chess || {}) }, enemies: { enemy_dummy: dummy(), ...(defs.enemies || {}) }, ...defs },
+    units, playerEffects: [], enemies, kits, autoFinish: false, timeLimit,
+  });
+  if (!hexId) return h;
+  const player = (h.battle.players || []).find((p) => p && p.playerId === 'p1');
+  if (!Array.isArray(player.playerEffects)) player.playerEffects = [];
+  player.playerEffects.push(refOf(hexId, extra));
+  return h;
+}
+
+// =====================================================================================================================
+// data set guard
+// =====================================================================================================================
+
+test('batch15b: the four records carry the spec keys the scripts read, and their items exist', () => {
+  assert.deepEqual(effectOf('hex_warding').warding, { cutPct: 60 });
+  assert.deepEqual(effectOf('hex_voidreturn').voidreturn, { atkPctPerLayer: 20, dmgCutPerLayer: 30 });
+  assert.equal(effectOf('hex_corpsehill').corpsehill.atkPctPerKill, 20);
+  assert.deepEqual(effectOf('hex_oldpower').oldpower, { spCostPct: 20, dmgPct: 140 });
+  // the four granted items exist in data/items.json (build-data CUSTOM_ITEMS) and are never sold
+  for (const [hexId, itemId, key] of [
+    ['hex_warding', 'chess_item_9_93_e_a', WARDING_ITEM_KEY],
+    ['hex_voidreturn', 'chess_item_9_94_e_a', VOIDRETURN_ITEM_KEY],
+    ['hex_corpsehill', 'chess_item_9_95_e_a', CORPSEHILL_ITEM_KEY],
+  ]) {
+    assert.deepEqual(effectOf(hexId).onPick, { item: { id: itemId, count: 1 } }, hexId + ' grants its item');
+    assert.ok(ITEMS[itemId], itemId + ' exists in data/items.json');
+    assert.equal(ITEMS[itemId].hideInShop, true, itemId + ' is not sold');
+    assert.equal(key, itemId.replace(/_a$/, ''), 'the script key is the item id without _a');
+  }
+});
+
+test('batch15b: every installer is a no-op (returns 0) without its card or with a malformed bundle', () => {
+  const h = solo({ units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] });
+  for (const [hexId, install] of Object.entries(IMPL)) {
+    assert.equal(install(hexHooks(h.battle)), 0, hexId + ': no owner -> 0');
+    assert.equal(install(undefined), 0, hexId + ': undefined bundle -> 0');
+    assert.equal(install({}), 0, hexId + ': empty bundle -> 0');
+    assert.equal(install({ battle: h.battle }), 0, hexId + ': bundle missing ownersOf -> 0');
+  }
+});
+
+// =====================================================================================================================
+// 加护: 受到同类型伤害 -60%
+// =====================================================================================================================
+
+test('加护: a hit of the carrier\'s own damage type is cut 60 %; the other type is untouched', () => {
+  const h = solo({ hexId: 'hex_warding', units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_93_e_a'] }] });
+  h.run(0.1);
+  installWarding(hexHooks(h.battle));
+  const u = one(h);
+  const e = h.spawn('enemy_dummy', { pos: [11, 6] });
+  assert.equal(u.dmgType, 'phys', 'premise: the test operator is a physical attacker');
+  const phys = h.battle.makeDamage({ amount: 100, type: 'phys' });
+  h.battle.emit('hit', { source: e, target: u, dmg: phys });
+  assert.ok(Math.abs(phys.mul - 0.4) < 1e-9, 'same type -> x0.4, got ' + phys.mul);
+  const arts = h.battle.makeDamage({ amount: 100, type: 'arts' });
+  h.battle.emit('hit', { source: e, target: u, dmg: arts });
+  assert.equal(arts.mul, 1, 'a different damage type is not cut');
+});
+
+test('加护: the reduction needs the 加护 equipment on the carrier', () => {
+  const h = solo({ hexId: 'hex_warding', units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] });
+  h.run(0.1);
+  installWarding(hexHooks(h.battle));
+  const u = one(h);
+  const e = h.spawn('enemy_dummy', { pos: [11, 6] });
+  const phys = h.battle.makeDamage({ amount: 100, type: 'phys' });
+  h.battle.emit('hit', { source: e, target: u, dmg: phys });
+  assert.equal(phys.mul, 1, 'no equipment -> no reduction');
+});
+
+// =====================================================================================================================
+// 旧日之力: 技力消耗 +20%，伤害 140%
+// =====================================================================================================================
+
+const SP_KIT = () => ({ skill: { kind: 'instant', spCost: 10, spType: 'time', trigger: 'NEVER' } });
+
+test('旧日之力: own operators deal x1.4 and their skills cost 20 % more SP', () => {
+  const h = solo({
+    hexId: 'hex_oldpower',
+    units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }],
+    kits: { test_guard: SP_KIT },
+  });
+  h.run(0.1);
+  installOldPower(hexHooks(h.battle));
+  const u = one(h);
+  assert.ok(Math.abs(u.s.dmgDealtMul - 1.4) < 1e-9, 'damage x1.4, got ' + u.s.dmgDealtMul);
+  assert.ok(u.skill, 'premise: the operator has a skill');
+  assert.equal(u.skill.baseSpCost, 10, 'premise: base SP cost 10');
+  assert.equal(u.skill.spCost, 12, 'SP cost +20 % -> 12, got ' + u.skill.spCost);
+});
+
+test('旧日之力: an operator of a player without the card is untouched', () => {
+  const h = solo({ units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }], kits: { test_guard: SP_KIT } });
+  assert.equal(installOldPower(hexHooks(h.battle)), 0);
+  h.run(0.1);
+  const u = one(h);
+  assert.equal(u.s.dmgDealtMul, 1, 'no card -> plain damage');
+  assert.equal(u.skill.spCost, 10, 'no card -> base SP cost');
+});
+
+// =====================================================================================================================
+// 万物归虚: 层数（备战区被移除人数）→ +20% 攻击力/层、-30 点受伤/层
+// =====================================================================================================================
+
+test('万物归虚: each layer gives +20 % ATK and a flat -30 damage taken', () => {
+  const h = solo({
+    hexId: 'hex_voidreturn', extra: { voidLayers: 2 },
+    units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_94_e_a'] }],
+  });
+  h.run(0.1);
+  installVoidReturn(hexHooks(h.battle));
+  const u = one(h);
+  const e = h.spawn('enemy_dummy', { pos: [11, 6] });
+  // two layers: +40 % ATK
+  assert.ok(u.s.atk > 500, 'attack went up with the layers, got ' + u.s.atk);
+  // two layers: 60 flat off each hit. A 500 damage phys hit vs 200 DEF: mitigate -> max(500-200, 5%) = 300, then -60
+  const info = h.battle.makeDamage({ amount: 500, type: 'phys' });
+  h.battle.emit('hit', { source: e, target: u, dmg: info });
+  assert.ok(info.mul < 1, 'the flat reduction folded into the instance, mul = ' + info.mul);
+});
+
+test('万物归虚: no layers (nothing removed) and no equipment => nothing happens', () => {
+  const bare = solo({
+    hexId: 'hex_voidreturn',
+    units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_94_e_a'] }],
+  });
+  bare.run(0.1);
+  installVoidReturn(hexHooks(bare.battle));
+  const u = one(bare);
+  const e = bare.spawn('enemy_dummy', { pos: [11, 6] });
+  const info = bare.battle.makeDamage({ amount: 500, type: 'phys' });
+  bare.battle.emit('hit', { source: e, target: u, dmg: info });
+  assert.equal(info.mul, 1, 'zero layers -> no reduction');
+  const noItem = solo({ hexId: 'hex_voidreturn', units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] });
+  noItem.run(0.1);
+  installVoidReturn(hexHooks(noItem.battle));
+  assert.equal(one(noItem).s.atk, 500, 'no equipment -> no ATK bonus');
+});
+
+// =====================================================================================================================
+// 尸山: 战斗开始击杀其他己方干员，每杀 1 人叠一层
+// =====================================================================================================================
+
+test('尸山: at battle start the carrier executes every other own operator and stacks per kill', () => {
+  const h = solo({
+    hexId: 'hex_corpsehill',
+    units: [
+      { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_95_e_a'] },
+      { uid: 2, kind: 'chess', chessId: 'test_guard', row: 9, col: 7 },
+      { uid: 3, kind: 'chess', chessId: 'test_guard', row: 9, col: 8 },
+    ],
+    defs: { chess: { test_guard: guard() } },
+  });
+  h.run(0.2);
+  const inst = installCorpseHill(hexHooks(h.battle));
+  assert.ok(inst && inst.owners === 1, 'installed for the owner');
+  // battleStart already fired in h.run; drive the execute path the way the engine does
+  h.battle.emit('battleStart', {});
+  const alive = opsOf(h).filter((u) => u.alive);
+  assert.equal(alive.length, 1, 'only the carrier survives, got ' + alive.length);
+  const carrier = alive[0];
+  assert.ok(carrier.items.includes('chess_item_9_95_e_a'), 'the survivor is the equipment carrier');
+  assert.equal(inst.kills, 2, 'two operators executed');
+  // two kills: +40 % ATK, +2 block, +0.6 SP recovery, +10 RES, x1.4 max HP
+  assert.ok(carrier.s.blockCnt >= 3, 'block +1 per kill, got ' + carrier.s.blockCnt);
+  assert.ok(Math.abs(carrier.s.res - 10) < 1e-9, 'RES +5 per kill, got ' + carrier.s.res);
+});
+
+test('尸山: with no other own operator nothing is executed and no layer lands', () => {
+  const h = solo({
+    hexId: 'hex_corpsehill',
+    units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_95_e_a'] }],
+  });
+  h.run(0.2);
+  const inst = installCorpseHill(hexHooks(h.battle));
+  h.battle.emit('battleStart', {});
+  assert.equal(inst.kills, 0, 'nobody to execute');
+  assert.equal(opsOf(h).filter((u) => u.alive).length, 1, 'the carrier is untouched');
+});
+

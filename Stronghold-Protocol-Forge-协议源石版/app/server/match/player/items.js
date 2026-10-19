@@ -9,7 +9,7 @@ import { behaviourIsDefault } from '../../../shared/behaviour.js';
 import { tileKey, inField, parseDir } from '../board.js';
 import { offsetTile } from '../../sim/dir.js';
 import { itemKey } from '../gamedata.js';
-import { equipSlotsOf } from '../hextech.js';
+import { equipSlotsOf, applyVoidReturnLayers } from '../hextech.js';
 // 装备位语义（第 7 段）：策略对象来自 `shared/morph.js`（**同一格开关的另外半条**）。缺省档拿到的
 // `OFFICIAL_SLOT_POLICY` 是共享的冻结单例，每一个方法都逐字是引擎今天那条算术 ⇒ 下面三处的缺省路径逐字节不变。
 import { matchSlotPolicy } from '../../../shared/morph.js';
@@ -120,9 +120,25 @@ export class PlayerItems {
     this._attach(target, item, replaceUid);
     this.stats.itemsEquipped++;
     this.m.dispatchItem(this, item, target, 'onEquip', { item, target, golden: !!rec.isGolden, consumed: false });
+    // 万物归虚 (业主 2026-10-19): its card text is 「装备时 将移除备战区所有干员」 — the reserve is emptied when the item is
+    // EQUIPPED, not when it is granted. The count it removes is what the battle half reads (hextech.js
+    // applyVoidReturnLayers writes it into the card's ref; content/hexcards/batch15b.js installVoidReturn consumes it).
+    this._voidReturnOnEquip(item);
     this.checkItemMerges();
     this.recompute();
     return OK;
+  }
+
+  /**
+   * 万物归虚 (业主 2026-10-19): 「装备时 将移除备战区所有干员」. The equip path calls this after the item is on its carrier;
+   * the removal and the layer count live in server/match/hextech.js (applyVoidReturnLayers) so the prep half has one home.
+   * Only that one item id triggers it — every other equip is a no-op.
+   * @param {object} item the item piece just equipped
+   */
+  _voidReturnOnEquip(item) {
+    if (!item || item.id !== 'chess_item_9_94_e_a') return;
+    const hex = this.gd && this.gd.hex ? this.gd.hex('hex_voidreturn') : null;
+    if (hex) applyVoidReturnLayers(this.m, this, hex);
   }
 
   /**

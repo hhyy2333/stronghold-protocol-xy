@@ -2645,5 +2645,21 @@
   "房间插件「{names}」的文件在服务器上变了，请在插件面板中点「重新应用」": "The files of the room's plugin “{names}” changed on the server — open the Plugins panel and press “Apply again”",
   "房间的插件内容长时间无响应，本局模拟已结束": "The room's plugin content stopped responding; the simulation has ended",
   "房间的插件内容无法启动模拟": "The room's plugin content could not start the simulation",
-  "房间的插件内容出错，本局模拟已结束": "The room's plugin content failed; the simulation has ended"
+  "房间的插件内容出错，本局模拟已结束": "The room's plugin content failed; the simulation has ended",
+  "残光": "Fading Light",
+  "玻璃大炮": "Glass Cannon",
+  "身负重担": "Heavy Burden",
+  "破伞": "Broken Umbrella",
+  "加护": "Ward",
+  "万物归虚": "All Things Return to Void",
+  "尸山": "Mountain of Corpses",
+  "旧日之力": "Power of Old Days",
+  "获得装备【残光】：装备者伤害提升至（1 + 30% × x），x 为装备者本场战斗的攻击次数；每次攻击有 4x% 概率受到自身攻击力的一次伤害，触发后 x 归零。": "On pick you gain the equipment Fading Light: its carrier deals (1 + 30% × x) damage, x being that operator’s attack count this battle; every attack then has a 4x% chance to take a hit equal to its own ATK, which resets x to zero.",
+  "作战中，己方干员伤害提升至 150%，最大生命值下降至 80%。": "In battle your operators deal 150 % damage and have 80 % max HP.",
+  "作战中，己方干员攻击拥有负面状态的敌人时，伤害 +400% × 该敌人身上的负面状态数。": "In battle your operators deal +400 % damage per negative status on the enemy they hit.",
+  "作战中，己方干员被击中时有 30% 概率免受此次伤害，并对攻击方造成「此次伤害值 × 2」的法术伤害。": "In battle, 30 % of the hits on your operators are negated and answered with arts damage equal to twice that hit’s damage, dealt to the attacker.",
+  "获得装备【加护】：该干员受到与自身伤害类型相同的伤害时，该次伤害减少 60%。": "On pick you gain the equipment Ward: its carrier takes 60 % less damage from hits of its own damage type.",
+  "获得装备【万物归虚】：装备时移除备战区所有干员。作战开始时，装备者获得「被移除干员数」层，每层 +20% 攻击力、减少 30 点受到的伤害。": "On pick you gain the equipment All Things Return to Void: equipping it removes every operator from the reserve. At battle start its carrier gains one layer per removed operator — +20 % ATK and −30 damage taken per layer.",
+  "获得装备【尸山】：战斗开始时直接击杀其他所有己方干员（不可重部署）；每击杀 1 名干员，装备者获得 +20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命。": "On pick you gain the equipment Mountain of Corpses: at battle start it executes every other ally (they cannot redeploy); each kill gives its carrier +20 % ATK, DEF and max HP, +1 block, +0.3 SP recovery, +5 RES, and 3 % max HP regeneration a second.",
+  "作战中，己方干员的技力消耗 +20%，伤害提升至 140%。": "In battle your operators’ skills cost 20 % more SP and they deal 140 % damage."
 }

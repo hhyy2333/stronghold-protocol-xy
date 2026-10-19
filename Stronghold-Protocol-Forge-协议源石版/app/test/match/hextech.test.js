@@ -7,10 +7,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA, withoutHextech, give, giveItem, chessOfTier, legalTileFor } from './harness.js';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
-import { enemyHexMods, applyHex, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
+import { enemyHexMods, applyHex, applyVoidReturnLayers, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
 import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
 import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
+import { BATTLE_SPEC_KEYS, HEX_SCRIPT_KEYS, hasBattlePart } from '../../server/sim/content/hextech.js';
 
 /** Start a match and drive the humans to the 海克斯 draft of `round`. */
 function toHexDraft(h, round) {
@@ -1164,6 +1165,77 @@ test('可露希尔大降价: 三次刷新免费，且这三次刷新内的购买
   assert.ok(four.price > 0, `outside the window a purchase is priced again (${four.price})`);
   assert.equal(four.paid, four.price);
   h.invariants();
+  m.dispose();
+});
+
+// =====================================================================================================================
+// 第十四批（业主 2026-10-19）：集成门禁 + 万物归虚的备战期半边
+// =====================================================================================================================
+
+const BATCH15 = [
+  ['hex_canlight', 'canlight'], ['hex_glasscannon', 'glasscannon'], ['hex_heavyload', 'heavyload'],
+  ['hex_umbrellabreak', 'umbrellabreak'], ['hex_warding', 'warding'], ['hex_voidreturn', 'voidreturn'],
+  ['hex_corpsehill', 'corpsehill'], ['hex_oldpower', 'oldpower'],
+];
+
+test('batch15: all eight cards are wired end to end (record → BATTLE_SPEC_KEYS → HEX_SCRIPT_KEYS)', () => {
+  for (const [hexId, key] of BATCH15) {
+    const rec = DATA.hextech.playerHexes[hexId];
+    assert.ok(rec, hexId + ': the record exists');
+    assert.ok(rec.effect[key] !== undefined, hexId + ': carries its spec key ' + key);
+    assert.ok(BATTLE_SPEC_KEYS.includes(key), hexId + ': ' + key + ' is in BATTLE_SPEC_KEYS (or the ref never reaches a battle)');
+    assert.equal(HEX_SCRIPT_KEYS[hexId], key, hexId + ': HEX_SCRIPT_KEYS maps it to ' + key);
+    assert.ok(hasBattlePart({ [key]: rec.effect[key] }) || rec.effect.onPick, hexId + ': the card is battle-visible');
+  }
+});
+
+test('batch15: the four equipment-granting cards hand out items that exist and are never sold', () => {
+  for (const [hexId, itemId] of [
+    ['hex_canlight', 'chess_item_9_92_e_a'], ['hex_warding', 'chess_item_9_93_e_a'],
+    ['hex_voidreturn', 'chess_item_9_94_e_a'], ['hex_corpsehill', 'chess_item_9_95_e_a'],
+  ]) {
+    const spec = DATA.hextech.playerHexes[hexId].effect.onPick;
+    assert.deepEqual(spec, { item: { id: itemId, count: 1 } }, hexId + ' grants its own equipment');
+    const item = DATA.items[itemId];
+    assert.ok(item, hexId + ': ' + itemId + ' exists in data/items.json');
+    assert.equal(item.hideInShop, true, itemId + ' is not sold in the shop');
+    assert.equal(item.price, 0, itemId + ' costs nothing (granted only)');
+  }
+});
+
+test('万物归虚: picking the card empties the reserve (备战区) and banks the count on the ref', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 31, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  // operators in the RESERVE (the hand) are what the card removes — the 备战区 of the owner's wording
+  give(m, ps, chessOfTier(1)[0]);
+  give(m, ps, chessOfTier(1)[1]);
+  ps.recompute();
+  const before = (ps.hand || []).filter((x) => x && x.kind === 'chess').length;
+  assert.ok(before > 0, 'premise: there are operators in the reserve');
+  applyHex(m, ps, m.gd.hex('hex_voidreturn'));
+  const ref = (ps.effects || []).find((e) => e && e.id === 'hex:hex_voidreturn');
+  assert.ok(ref, 'the card ref exists');
+  assert.equal((ps.hand || []).filter((x) => x && x.kind === 'chess').length, 0, 'the reserve holds no operator any more');
+  assert.equal(Number(ref.params.voidLayers), before, 'the count of removed operators is banked on the ref, got ' + ref.params.voidLayers);
+  m.dispose();
+});
+
+test('万物归虚: the equipment it grants is in the hand and the battle half reads the banked layer count', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 32, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  give(m, ps, chessOfTier(1)[0]);
+  ps.recompute();
+  applyHex(m, ps, m.gd.hex('hex_voidreturn'));
+  const held = (ps.hand || []).concat(ps.temp || []).find((x) => x && x.kind === 'item' && x.id === 'chess_item_9_94_e_a');
+  assert.ok(held, 'the card handed out its equipment');
+  const ref = (ps.effects || []).find((e) => e && e.id === 'hex:hex_voidreturn');
+  assert.equal(ref.params.voidLayers, 1, 'one operator was removed');
   m.dispose();
 });
 

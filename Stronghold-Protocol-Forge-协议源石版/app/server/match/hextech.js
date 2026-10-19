@@ -44,6 +44,54 @@ export function enemyHexView(hex, drawRound = null) {
  * @param {import('./PlayerState.js').PlayerState} ps
  * @param {object} hex a data/hextech.json playerHexes record
  */
+
+/**
+ * 万物归虚's PREP half (业主 2026-10-19): 「获得装备「万物归虚」效果为装备时 将移除备战区所有干员，战斗开始时获得
+ * 「移出干员数」层（20x%攻击力，减少30x点收到的伤害）」.
+ *
+ * 「备战区」 is the players' word for the 整备区 (docs/history/0.2.0.md §25.22.7) — the HAND and the overflow queue. So
+ * "remove every operator in the reserve" empties this player's hand / temp of CHESS pieces (operators). Equipment and
+ * summons are not 干员 and stay; the removed operators go back to the pool exactly like a sell, minus the funds — the
+ * card pays no money for them. The count lands in the ref's `params.voidLayers`, which is what the battle half reads.
+ *
+ * [ASSUMED: 1) 「备战区」 = hand + overflow temp of THIS player (a team hex's other targets each run it on their own
+ *   hand through their own ctx — this card is not `team`); 2) the operators are removed, not sold: no funds, and they
+ *   return to the shared pool as a sell does; 3) their carried equipment returns to the hand (a sell's own rule);
+ *   4) "装备时" is the moment the ITEM is equipped, but the card hands the item out on pick and nothing forces the player
+ *   to equip it immediately — the card's own text says 装备时, so this runs when the item is equipped
+ *   (PlayerState equip → `applyVoidReturnOnEquip`), and a later re-equip counts again. The pick-time call below covers
+ *   the case where the item was granted and already equipped by the pick handler.]
+ * @param {import('./Match.js').Match} m
+ * @param {import('./PlayerState.js').PlayerState} ps
+ * @param {object} hex the 万物归虚 record
+ */
+export function applyVoidReturnLayers(m, ps, hex) {
+  if (!hex || hex.id !== 'hex_voidreturn' || !ps) return 0;
+  const ref = (ps.effects || []).find((e) => e && (e.id === 'hex:hex_voidreturn' || e.key === 'hex:hex_voidreturn'));
+  if (!ref) return 0;
+  let removed = 0;
+  // hand first, then the overflow queue: both are the 整备区
+  for (const list of [ps.hand || [], ps.temp || []]) {
+    for (let i = 0; i < list.length; i++) {
+      const piece = list[i];
+      if (!piece || piece.kind !== 'chess') continue;
+      const loc = ps.find ? ps.find(piece.uid) : null;
+      if (loc) ps._detach(loc); else list[i] = null;
+      ps.removeTokensOf?.(piece.uid);
+      for (const it of piece.items || []) ps.stow(it, { allowTemp: true });
+      piece.items = [];
+      ps.returnCopies?.(piece);
+      removed++;
+    }
+  }
+  try { ps.recompute(); } catch (e) { m.reportError?.('voidreturn recompute', e); }
+  const params = (ref.params ||= {});
+  const prev = Number.isFinite(Number(params.voidLayers)) ? Number(params.voidLayers) : 0;
+  params.voidLayers = prev + removed;
+  ps.dirty?.();
+  return removed;
+}
+
 export function applyHex(m, ps, hex, opts = {}) {
   const team = !!(hex.effect && hex.effect.team);
   const targets = team ? [ps, ...m.alivePlayers().filter((p) => p !== ps)] : [ps];
@@ -63,6 +111,10 @@ export function applyHex(m, ps, hex, opts = {}) {
     m.dispatch(p, 'onHexPick', ev, { skipKey: `hex:${hex.id}` });
     p.recompute();
   }
+  // 万物归虚 (业主 2026-10-19): 「装备时 将移除备战区所有干员」 —— the prep half of the card. The battle half
+  // (server/sim/content/hexcards/batch15b.js installVoidReturn) reads the count it writes into the ref, so the two halves
+  // stay in one place each. Runs AFTER the refs exist (addHexRef above), so it can write onto them.
+  applyVoidReturnLayers(m, ps, hex);
   applyHexExtras(m, ps, hex, opts);
   // 镜像协议 (owner report 2026-10-12): an armed copy is retried on EVERY gain, so the moment a teammate owns something
   // copyable the card pays out — including the gain that just happened inside this very call.
