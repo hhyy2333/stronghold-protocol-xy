@@ -27,7 +27,7 @@ test('data/hextech.json is what tools/build-hextech.mjs generates (run: node too
   assert.equal(fs.readFileSync(OUT_FILE, 'utf8'), hextechText(buildHextech()));
 });
 
-test('roster: 108 player + 38 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
+test('roster: 108 player + 43 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
   assert.deepEqual(validateHextech(buildHextech()), []);
   // tenth batch (the owner's list of 2026-10-15): 11 more player cards (79 -> 90) — 反击装甲 and 紧急拨款 are
   // REBALANCES of existing records, not additions, so they do not move the count.
@@ -35,9 +35,10 @@ test('roster: 108 player + 38 enemy hexes, unique ids, known rarities and an eff
   // fourteenth batch (业主 2026-10-19): 8 more player cards (100 -> 108).
   assert.equal(PLAYER.length, 108);
   // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
-  assert.equal(ENEMY.length, 38);
+  // fourteenth batch (业主 2026-10-19): 5 more enemy cards. 38 -> 43.
+  assert.equal(ENEMY.length, 43);
   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
-  assert.equal(ids.size, 146);
+  assert.equal(ids.size, 151);
   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
   assert.deepEqual([...rarities], [...RARITY_ORDER]);
   for (const h of PLAYER) {

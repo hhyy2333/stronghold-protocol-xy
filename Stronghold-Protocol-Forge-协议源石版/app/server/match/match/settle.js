@@ -10,6 +10,7 @@ import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 import { onSettle, resetRoundCounters } from '../botEmotes.js';
 import { creditedKillsOf } from '../../sim/spec.js';
+import { bankThiefPenalty } from '../hextech.js';
 
 export class MatchSettle {
   settle(plan, uniteResult) {
@@ -93,6 +94,9 @@ export class MatchSettle {
         this.dispatch(ps, 'onLayers', { bondId, from: before, to: ps.layers[bondId], reason: 'battle' });
       }
       this._charDamageTickers(ps, r);
+      // 窃贼 (业主 2026-10-19): the knock-outs this battle counted become next round's income penalty, capped. Banked
+      // per player BEFORE onBattleResult so a card that reads the bank sees the same number the income pass will.
+      try { bankThiefPenalty(this, ps, Number(r && r.deaths) || 0); } catch (e) { this.reportError('thief bank', e); }
       this.dispatch(ps, 'onBattleResult', { result: r, lpLoss: loss, perfect: counted === 0 && r.perfect !== false, unite: uniteResult || null });
       ps.recompute();
     }

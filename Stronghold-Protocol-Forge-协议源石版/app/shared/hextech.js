@@ -177,6 +177,12 @@ export const ENEMY_VERBS = Object.freeze([
   // 'records' (记录部抑制) is likewise not a battle script: it acts during the PREP phase of the match
   // (server/match/hextech.js enemyPrepLpCost), so the sim has nothing to install. Same reasoning as 'mosaic'.
   'records',       // 记录部抑制: deploying an operator in prep costs LP every N rounds
+  // fourteenth batch, enemy side (业主 2026-10-19) — five more verb cards:
+  'buffVoid',      // 增益无效: every N seconds the own operators lose all their BUFFS (属性增益) for a few seconds
+  'physDodge',     // 流星: enemies gain a physical dodge chance
+  'thief',         // 窃贼: an operator knocked out costs the NEXT round's income (stacking %, capped)
+  'wanted',        // 通缉令: each battle adds one random 惊变 bounty enemy (1–5 资金)
+  'jekyllSquad',   // 通厕大队: adds N 杰斯顿 at (2 + 6x)% of their stats, x = the round number
 ]);
 
 /** Whether `id` is a known enemy verb (the build-time check and the sim's own guard). */

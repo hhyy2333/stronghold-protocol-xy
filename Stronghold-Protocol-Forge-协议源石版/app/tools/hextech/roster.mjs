@@ -1441,7 +1441,49 @@ export const ENEMY_HEXES = [
     verb: 'originium',
     params: {"duration":200,"atkPct":50,"aspd":40,"dps":40},
   },
-];
+  // ---- fourteenth batch, enemy side (业主 2026-10-19): five verb cards ----------------
+  // Note: every one is a VERB (a script in server/sim/content/hextech.js installEnemyVerbs), not a `mods`
+  // multiplier — the numbers live in `params` so tuning is a roster edit.
+  {
+    id: 'ehex_buffvoid',
+    name: '增益无效',
+    desc: '每 20 秒，我方干员的属性增益失效 3 秒。',
+    rarity: 'prismatic',
+    verb: 'buffVoid',
+    params: { period: 20, seconds: 3 },
+  },
+  {
+    id: 'ehex_meteor',
+    name: '流星',
+    desc: '敌人获得 30% 物理闪避。',
+    rarity: 'prismatic',
+    verb: 'physDodge',
+    params: { chance: 0.3 },
+  },
+  {
+    id: 'ehex_thief',
+    name: '窃贼',
+    desc: '我方干员被击倒时，下回合的资金收入减少 2%（每场战斗内叠加，最多 30%）。',
+    rarity: 'gold',
+    verb: 'thief',
+    params: { perDeathPct: 2, capPct: 30 },
+  },
+  {
+    id: 'ehex_wanted',
+    name: '通缉令',
+    desc: '每场战斗额外加入 1 名随机「惊变」敌人（价值 1~5 资金）。',
+    rarity: 'gold',
+    verb: 'wanted',
+    params: { minCoin: 1, maxCoin: 5 },
+  },
+  {
+    id: 'ehex_jekyll',
+    name: '通厕大队',
+    desc: '战斗额外加入 3 个杰斯顿，其属性为原来的（2 + 6x）%（x 为当前回合数）。',
+    rarity: 'prismatic',
+    verb: 'jekyllSquad',
+    params: { count: 3, enemyKey: 'enemy_1516_jakill', basePct: 2, perRoundPct: 6 },
+  },];
 
 /**
  * The one piece of that third-party pack the project still unpacks: the two draft sound cues (tools/hextech-import.mjs,

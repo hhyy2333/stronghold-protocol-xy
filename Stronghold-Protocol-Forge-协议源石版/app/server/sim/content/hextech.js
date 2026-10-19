@@ -2105,6 +2105,174 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
    * is the card's whole shape. The per-second tick is an authored true-damage instance: the roster's own text hides
    * the bracketed numbers from the player, so the tuning lives in `params`.
    */
+  /**
+   * 增益无效 (业主 2026-10-19): 「每隔20s干员属性增益无效3s」.
+   *
+   * "属性增益" = the buffs that carry STAT modifiers (atk / def / hp / aspd / res …): a buff counts when its `mods`
+   * object has at least one key. Pure flag buffs (a shield's marker, 无敌, a status carrier) are left alone — the card
+   * says 属性增益, and stripping a shield or 无敌 would be a different (and much stronger) effect.
+   *
+   * HOW: every `period` seconds, for `seconds` seconds, every OWN operator's qualifying buffs are removed and put back
+   * afterwards. Removing + restoring (rather than a "muted" flag the aggregation would have to learn) is the same
+   * shape 幽魂形态's cap uses for a per-instance rule; the buffs are captured with their remaining time so a
+   * 3 s mute does not silently refresh a 10 s buff. A buff that ran out DURING the mute is not restored (its timeLeft
+   * reached 0 and its own expiry is the engine's business). [ASSUMED: 1) 「干员」 = the ALLY operators, not the enemies;
+   * 2) stat buffs only (a buff whose `mods` is null is not an 属性增益); 3) the mute is re-applied every period, and the
+   * first one lands one period in (not at battle start).]
+   */
+  buffVoid(battle, p) {
+    const period = pnum(p.period, 20);
+    const seconds = pnum(p.seconds, 3);
+    const KEY = 'hexverb:buffvoid';
+    let muted = false;
+    const atStart = (fn) => { if (battle.started) fn(); else battle.on('battleStart', fn); };
+    atStart(() => {
+      battle.every(period, () => {
+        if (muted) return;
+        muted = true;
+        const saved = [];
+        for (const u of alliesOf(battle)) {
+          if (!u || !u.alive || !u.deployed || u.kind !== 'op') continue;
+          const strip = [];
+          for (const b of [...(u.buffs || [])]) {
+            if (!b || !b.mods || b.pack) continue;          // pack buffs are a plugin's budget: never touched
+            if (b.key === KEY) continue;
+            strip.push(b);
+          }
+          for (const b of strip) {
+            saved.push({ u, b: { ...b, mods: b.mods, flags: b.flags }, timeLeft: b.timeLeft });
+            battle.removeBuff(u, b.key);
+          }
+        }
+        battle.after(seconds, () => {
+          muted = false;
+          for (const { u, b, timeLeft } of saved) {
+            if (!u || !u.alive || !u.deployed) continue;
+            if (!(timeLeft > 0)) continue;
+            battle.addBuff(u, { ...b, duration: timeLeft, timeLeft, refresh: 'replace', allowDead: false });
+          }
+        });
+      }, { immediate: false });
+    });
+  },
+
+  /**
+   * 窃贼 (业主 2026-10-19): 「干员被击倒时下回合减少2%金钱（最多30%）」.
+   *
+   * The battle half only COUNTS: every own operator knocked out during this battle is tallied onto the battle's own
+   * `battle._hexThiefDeaths`. The match reads it when the battle's result is released and charges the penalty on the
+   * NEXT round's income (server/match/hextech.js `applyThiefPenalty`, an `onIncome` handler) — income is match state,
+   * and the sim has no business touching it. Keeping the count on the battle (not on the match) means a re-simulation of
+   * the same field recounts the same number and the two paths cannot drift.
+   *
+   * `reason === 'killed'` is the same gate 亡语 uses: a leak / an expiry / a retreat is not 被击倒. [ASSUMED: 1) only
+   * the owners' operators count in a 联防 field (the card is the enemy side's, so every player it fights is a target —
+   * this counts EVERY ally operator, which is what the card's wording means on a shared field); 2) the percentage is
+   * applied to the next round's income only (it does not compound across rounds unless more are knocked out); 3) the cap
+   * is read from the roster's `params.capPct` (30).]
+   */
+  thief(battle, p) {
+    const perDeathPct = Number.isFinite(Number(p.perDeathPct)) ? Number(p.perDeathPct) : 2;
+    battle._hexThiefDeaths = 0;
+    battle._hexThiefPct = perDeathPct;
+    battle.on('death', ({ unit, reason }) => {
+      if (reason !== 'killed') return;
+      if (!unit || unit.side !== 'ally' || unit.kind !== 'op') return;
+      battle._hexThiefDeaths += 1;
+    });
+  },
+
+  /**
+   * 流星 (业主 2026-10-19): 「敌人获得30%物理闪避」.
+   *
+   * Every spawned enemy gets a persistent `dodgePhys` buff (`p.chance`, 0.3 by default). The engine already rolls
+   * `dodgePhys` for physical hits on ANY unit (damage.js dealDamage), which is why the official 流星-style kits read
+   * the same mod. [ASSUMED: 1) it is a buff, so a boss is covered too (the card names no exception); 2) arts / true
+   * damage is unaffected — 物理闪避 is physical only; 3) it stacks with an enemy's own dodge roll as the engine's
+   * independent-source rule does (aggregateMods).]
+   */
+  physDodge(battle, p) {
+    const chance = Math.max(0, Math.min(1, Number.isFinite(Number(p.chance)) ? Number(p.chance) : 0.3));
+    if (!(chance > 0)) return;
+    const KEY = 'hexverb:physdodge';
+    const apply = (e) => {
+      if (!e || !e.alive || e.side !== 'enemy' || e.findBuff(KEY)) return;
+      battle.addBuff(e, { key: KEY, duration: Infinity, persist: true, mods: { dodgePhys: chance }, tags: ['hexVerb'] });
+    };
+    for (const e of battle.enemies) apply(e);
+    battle.on('enemySpawn', ({ enemy }) => apply(enemy));
+  },
+
+  /**
+   * 通缉令 (业主 2026-10-19): 「每场战斗随机增加一个1~5块（惊变里的）的敌人」.
+   *
+   * 「惊变里的 1~5 块」 = the bounty cards of the 机变 draft, which carry a `coin` price of 1–5 (data/choices.json
+   * `cards`: 42 at 1, 40 at 2, 36 at 3, 5 at 4, 4 at 5). The card adds ONE such enemy to every battle.
+   *
+   * The choice has to be made by the MATCH (it owns choices.json and the seeded RNG), so the id arrives on the battle's
+   * flags as `flags.enemyHexWanted` (one enemyKey); this script only spawns it. A battle without the flag (a harness,
+   * a re-computation that did not get it) simply spawns nothing — never a random pick here, because a battle-local
+   * `Math.random` would break determinism (the rule server/sim lives by).
+   */
+  wanted(battle) {
+    const key = battle.flags && typeof battle.flags.enemyHexWanted === 'string' ? battle.flags.enemyHexWanted : '';
+    if (!key) return;
+    const atStart = (fn) => { if (battle.started) fn(); else battle.on('battleStart', fn); };
+    atStart(() => {
+      const route = battle._routeFor(0);
+      const start = route && Array.isArray(route.start) ? route.start : [battle.rect.r0, battle.rect.c1];
+      battle.spawnEnemy(key, { pos: start, routeIndex: 0 });
+    });
+  },
+
+  /**
+   * 通厕大队 (业主 2026-10-19): 「战斗增加3个杰斯顿属性为原来的（2+6x%，x为回合数）」.
+   *
+   * Three 杰斯顿·威廉姆斯 (`enemy_1516_jakill`, the boss-tagged 狱警) added at battle start. "属性为原来的 2 + 6x%" is
+   * read as a PERCENTAGE of the original stats: (2 + 6x)%, so R1 → 8 %, R5 → 32 %, R14 → 86 %. x is the round being
+   * fought (`battle.round`, the same reading 腐蚀领域 and 回响 use).
+   *
+   * The scaling rides `spawnEnemy`'s inline `def` (it normalises a plain data-shaped record), so the official
+   * record is untouched. The three land on route 0 at its start. [ASSUMED: 1) 「2+6x%」 is a percent, not "2 + 6x
+   * times" — a literal ×2 at R1 would already be a boss-grade wall in the first round; 2) HP/ATK/DEF/RES scale, move
+   * speed and attack interval do not (they are not 「属性」 in the sense that would make the card stronger); 3) the
+   * three are ordinary spawns: they can leak, be blocked and count toward the enemy total like any wave enemy.]
+   */
+  jekyllSquad(battle, p) {
+    const count = Math.max(1, Math.min(20, Math.trunc(pnum(p.count, 3))));
+    const key = typeof p.enemyKey === 'string' && p.enemyKey ? p.enemyKey : 'enemy_1516_jakill';
+    const basePct = Number.isFinite(Number(p.basePct)) ? Number(p.basePct) : 2;
+    const perRoundPct = Number.isFinite(Number(p.perRoundPct)) ? Number(p.perRoundPct) : 6;
+    // content is installed AFTER `start()` emitted battleStart (server/sim/Battle.js), so a verb that must act at battle
+    // start runs NOW when the battle has already started, and on the event otherwise (a harness, a future re-order).
+    const atStart = (fn) => { if (battle.started) fn(); else battle.on('battleStart', fn); };
+    atStart(() => {
+      const round = Number.isFinite(Number(battle.round)) && Number(battle.round) > 0 ? Number(battle.round) : 1;
+      const pct = Math.max(1, basePct + perRoundPct * round) / 100;
+      // the battle's own data source (server/sim/Battle.js `this.data`): getEnemy is the accessor every content reader uses
+      const rec = battle.data && typeof battle.data.getEnemy === 'function' ? battle.data.getEnemy(key) : null;
+      if (!rec) return;   // no record (a stripped data set): nothing to scale, nothing to spawn
+      // `rec` is ALREADY normalised (simdata.js normalizeEnemy), so the inline record is built in the FLAT shape
+      // normalizeEnemy reads (`st = e.stats ?? e`) — keep every field, scale the four stat axes, publish them flat.
+      // `rec` is the NORMALISED record (simdata.js normalizeEnemy), and spawnEnemy takes an ALREADY-normalised record
+      // as-is when it sees one (`opts.def.immune instanceof Set`) — so the scaled fields go on the record ITSELF, not in
+      // a nested `stats` object, or the copy would be treated as final and the scaling silently ignored.
+      const n = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : d);
+      const def = {
+        ...rec,
+        maxHp: Math.max(1, n(rec.maxHp, 1) * pct),
+        atk: n(rec.atk, 0) * pct,
+        def: n(rec.def, 0) * pct,
+        res: n(rec.res, 0) * pct,
+      };
+      const route = battle._routeFor(0);
+      const start = route && Array.isArray(route.start) ? route.start : [battle.rect.r0, battle.rect.c1];
+      for (let i = 0; i < count; i++) {
+        battle.spawnEnemy(key, { pos: [start[0], start[1] + i * 0.2], routeIndex: 0, def });
+      }
+    });
+  },
+
   originium(battle, p) {
     const duration = pnum(p.duration, 200);
     const atkPct = pnum(p.atkPct, 50) / 100;

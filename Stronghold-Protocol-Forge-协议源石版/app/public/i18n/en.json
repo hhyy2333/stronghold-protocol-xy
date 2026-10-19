@@ -2661,5 +2661,15 @@
   "获得装备【加护】：该干员受到与自身伤害类型相同的伤害时，该次伤害减少 60%。": "On pick you gain the equipment Ward: its carrier takes 60 % less damage from hits of its own damage type.",
   "获得装备【万物归虚】：装备时移除备战区所有干员。作战开始时，装备者获得「被移除干员数」层，每层 +20% 攻击力、减少 30 点受到的伤害。": "On pick you gain the equipment All Things Return to Void: equipping it removes every operator from the reserve. At battle start its carrier gains one layer per removed operator — +20 % ATK and −30 damage taken per layer.",
   "获得装备【尸山】：战斗开始时直接击杀其他所有己方干员（不可重部署）；每击杀 1 名干员，装备者获得 +20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命。": "On pick you gain the equipment Mountain of Corpses: at battle start it executes every other ally (they cannot redeploy); each kill gives its carrier +20 % ATK, DEF and max HP, +1 block, +0.3 SP recovery, +5 RES, and 3 % max HP regeneration a second.",
-  "作战中，己方干员的技力消耗 +20%，伤害提升至 140%。": "In battle your operators’ skills cost 20 % more SP and they deal 140 % damage."
+  "作战中，己方干员的技力消耗 +20%，伤害提升至 140%。": "In battle your operators’ skills cost 20 % more SP and they deal 140 % damage.",
+  "增益无效": "Buff Nullification",
+  "流星": "Meteor",
+  "窃贼": "Thief",
+  "通缉令": "Wanted Notice",
+  "通厕大队": "Toilet Squad",
+  "每 20 秒，我方干员的属性增益失效 3 秒。": "Every 20 seconds your operators’ stat buffs stop working for 3 seconds.",
+  "敌人获得 30% 物理闪避。": "Enemies gain a 30 % physical dodge chance.",
+  "我方干员被击倒时，下回合的资金收入减少 2%（每场战斗内叠加，最多 30%）。": "When one of your operators is knocked out, the next round’s income drops by 2 % (stacking within a battle, up to 30 %).",
+  "每场战斗额外加入 1 名随机「惊变」敌人（价值 1~5 资金）。": "Every battle adds one random 机变 bounty enemy worth 1–5 funds.",
+  "战斗额外加入 3 个杰斯顿，其属性为原来的（2 + 6x）%（x 为当前回合数）。": "The battle adds three Jesseltons at (2 + 6x)% of their original stats (x = the current round)."
 }

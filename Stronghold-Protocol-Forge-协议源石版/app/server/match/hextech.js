@@ -554,6 +554,91 @@ function ownedEnemyHexes(m) {
  * @param {import('./Match.js').Match} m
  * @returns {string[]} verb hex ids, data order
  */
+
+/**
+ * 通缉令 (业主 2026-10-19): 「每场战斗随机增加一个1~5块（惊变里的）的敌人」.
+ *
+ * Picks ONE enemy from the 机变 bounty cards whose `coin` price is in [minCoin, maxCoin] (data/choices.json `cards`:
+ * 42 at 1, 40 at 2, 36 at 3, 5 at 4, 4 at 5 — so "1~5 块" is a bounded, non-uniform pool). The pick is SEEDED off the
+ * match's own rngWaves stream so a replay draws the same enemy, and the result rides the battle's flags as
+ * `enemyHexWanted` (server/sim/content/hextech.js `wanted` spawns it).
+ *
+ * Returns undefined when the enemy side does not own the card or the data carries no usable bounty.
+ * @param {import('./Match.js').Match} m
+ * @returns {string|undefined} an enemyKey
+ */
+export function enemyHexWantedKey(m) {
+  const hex = ownedEnemyHexes(m).find((h) => h.verb === 'wanted');
+  if (!hex) return undefined;
+  const p = hex.params || {};
+  const minCoin = Number.isFinite(Number(p.minCoin)) ? Number(p.minCoin) : 1;
+  const maxCoin = Number.isFinite(Number(p.maxCoin)) ? Number(p.maxCoin) : 5;
+  // every bounty enemy of the 惊变 draft, once per KEY (two cards may share an enemy)
+  const keys = new Set();
+  const cards = m.gd && m.gd.choices ? m.gd.choices.cards : null;
+  const lists = Array.isArray(cards) ? cards : cards && typeof cards === 'object' ? Object.values(cards) : [];
+  for (const list of lists) {
+    for (const c of Array.isArray(list) ? list : []) {
+      if (!c || typeof c.enemyKey !== 'string' || !c.enemyKey) continue;
+      const coin = Number(c.coin);
+      if (!Number.isFinite(coin) || coin < minCoin || coin > maxCoin) continue;
+      if (m.gd.enemy && !m.gd.enemy(c.enemyKey)) continue;
+      keys.add(c.enemyKey);
+    }
+  }
+  if (!keys.size) return undefined;
+  const pool = [...keys].sort();   // deterministic order before the draw
+  const i = Math.min(pool.length - 1, Math.floor(m.rngWaves() * pool.length));
+  return pool[i];
+}
+
+/**
+ * 窃贼 (业主 2026-10-19): 「干员被击倒时下回合减少2%金钱（最多30%）」.
+ *
+ * The battle counted the knock-outs (`battle._hexThiefDeaths`, server/sim/content/hextech.js `thief`). This banks the
+ * percentage on the PLAYER for the next round's income, capped. Called from the result path (server/match/match/settle.js
+ * and the boss path) once per field release; the `onIncome` handler registered for the card's ref applies it.
+ *
+ * `ps.thiefPctLost` is the running percentage (match state, not sim state): it grows by `perDeathPct` per knock-out up to
+ * the cap and is consumed by the next `startRound`.
+ * @param {import('./Match.js').Match} m
+ * @param {import('./PlayerState.js').PlayerState} ps
+ * @param {number} deaths own operators knocked out in the battle just released
+ * @returns {number} the percentage banked (0 when the enemy side does not own the card)
+ */
+export function bankThiefPenalty(m, ps, deaths) {
+  if (!ps || !(deaths > 0)) return 0;
+  const hex = ownedEnemyHexes(m).find((h) => h.verb === 'thief');
+  if (!hex) return 0;
+  const p = hex.params || {};
+  const per = Number.isFinite(Number(p.perDeathPct)) ? Number(p.perDeathPct) : 2;
+  const cap = Number.isFinite(Number(p.capPct)) ? Number(p.capPct) : 30;
+  const cur = Number.isFinite(Number(ps.thiefPctLost)) ? Number(ps.thiefPctLost) : 0;
+  const next = Math.min(cap, cur + per * deaths);
+  ps.thiefPctLost = next;
+  ps.dirty?.();
+  return next - cur;
+}
+
+/**
+ * 窃贼's income half: cut the banked percentage off this round's income, then clear the bank (it applies to the NEXT
+ * round only). Called by PlayerState.startRound right after its `onIncome` dispatch — an ENEMY card is match state on
+ * `Match.enemyHexes`, not a player EffectRef, so there is no dispatcher handler to register it through.
+ * @param {import('./PlayerState.js').PlayerState} ps
+ * @param {{ income: number }} ev the onIncome event (mutated in place)
+ * @returns {boolean} whether anything was cut
+ */
+export function applyThiefIncomeCut(ps, ev) {
+  if (!ps || !ev) return false;
+  const pct = Number.isFinite(Number(ps.thiefPctLost)) ? Number(ps.thiefPctLost) : 0;
+  if (!(pct > 0)) return false;
+  const income = Number.isFinite(Number(ev.income)) ? Number(ev.income) : 0;
+  ev.income = Math.max(0, income * (1 - Math.min(100, pct) / 100));
+  ps.thiefPctLost = 0;
+  ps.dirty?.();
+  return true;
+}
+
 export function enemyVerbIds(m) {
   return ownedEnemyHexes(m).filter((h) => typeof h.verb === 'string' && h.verb).map((h) => h.id);
 }

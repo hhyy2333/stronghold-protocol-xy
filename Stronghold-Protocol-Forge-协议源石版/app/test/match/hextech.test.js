@@ -12,6 +12,7 @@ import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
 import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
 import { BATTLE_SPEC_KEYS, HEX_SCRIPT_KEYS, hasBattlePart } from '../../server/sim/content/hextech.js';
+import { enemyHexWantedKey, bankThiefPenalty, applyThiefIncomeCut } from '../../server/match/hextech.js';
 
 /** Start a match and drive the humans to the 海克斯 draft of `round`. */
 function toHexDraft(h, round) {
@@ -1236,6 +1237,71 @@ test('万物归虚: the equipment it grants is in the hand and the battle half r
   assert.ok(held, 'the card handed out its equipment');
   const ref = (ps.effects || []).find((e) => e && e.id === 'hex:hex_voidreturn');
   assert.equal(ref.params.voidLayers, 1, 'one operator was removed');
+  m.dispose();
+});
+
+// =====================================================================================================================
+// 通缉令 / 窃贼 的 match 层半边（server/match/hextech.js）
+// =====================================================================================================================
+
+test('通缉令: the match picks one 惊变 enemy whose coin price is 1..5', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 41, fake: true });
+  h.start();
+  const m = h.m;
+  m.enemyHexes.push({ id: 'ehex_wanted', round: 1 });
+  const key = enemyHexWantedKey(m);
+  assert.ok(typeof key === 'string' && key, 'an enemy key came back, got ' + key);
+  assert.ok(m.gd.enemy(key), 'and it is a real enemy record: ' + key);
+  // it is one of the bounty cards priced 1..5
+  const cards = m.gd.choices && m.gd.choices.cards ? m.gd.choices.cards : {};
+  const lists = Array.isArray(cards) ? cards : Object.values(cards);
+  const priced = new Set();
+  for (const list of lists) for (const c of Array.isArray(list) ? list : []) {
+    const coin = Number(c && c.coin);
+    if (c && typeof c.enemyKey === 'string' && coin >= 1 && coin <= 5) priced.add(c.enemyKey);
+  }
+  assert.ok(priced.has(key), 'the pick is a 1~5 块 bounty enemy');
+  m.dispose();
+});
+
+test('通缉令: without the card the match picks nothing', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 42, fake: true });
+  h.start();
+  assert.equal(enemyHexWantedKey(h.m), undefined);
+  h.m.dispose();
+});
+
+test('窃贼: knock-outs bank a capped income penalty that the next round consumes', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 43, fake: true });
+  h.start();
+  const m = h.m;
+  const ps = h.ps('p_0');
+  m.enemyHexes.push({ id: 'ehex_thief', round: 1 });
+  // three knock-outs -> 6%
+  assert.equal(bankThiefPenalty(m, ps, 3), 6);
+  assert.equal(ps.thiefPctLost, 6);
+  // the cap: 20 more deaths cannot push past 30%
+  bankThiefPenalty(m, ps, 20);
+  assert.equal(ps.thiefPctLost, 30, 'capped at 30%');
+  // the income cut applies and is consumed
+  const ev = { income: 100 };
+  assert.equal(applyThiefIncomeCut(ps, ev), true);
+  assert.equal(ev.income, 70, '100 income - 30% = 70, got ' + ev.income);
+  assert.equal(ps.thiefPctLost, 0, 'the bank is consumed by the next round');
+  assert.equal(applyThiefIncomeCut(ps, { income: 100 }), false, 'nothing left to cut');
+  m.dispose();
+});
+
+test('窃贼: without the card nothing is banked or cut', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 44, fake: true });
+  h.start();
+  const m = h.m;
+  const ps = h.ps('p_0');
+  assert.equal(bankThiefPenalty(m, ps, 5), 0);
+  assert.equal(ps.thiefPctLost, undefined);
+  const ev = { income: 100 };
+  assert.equal(applyThiefIncomeCut(ps, ev), false);
+  assert.equal(ev.income, 100, 'no card -> no cut');
   m.dispose();
 });
 

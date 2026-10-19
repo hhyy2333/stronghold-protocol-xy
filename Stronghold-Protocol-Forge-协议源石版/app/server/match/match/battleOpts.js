@@ -26,7 +26,7 @@
  * @param {{ ds: any, battleContent?: string, log?: object }} owner the Match (`this`)
  * @param {object} opts the round's own options (fieldId, kind, seed, …)
  */
-import { enemyVerbIds } from '../hextech.js';
+import { enemyVerbIds, enemyHexWantedKey } from '../hextech.js';
 
 export function baseBattleOpts(owner, opts = {}) {
   return { data: owner.ds, content: owner.battleContent, logger: owner.log, ...opts };
@@ -90,6 +90,12 @@ export function withEnemyHexes(owner, opts) {
   if (opts.flags && Array.isArray(opts.flags.enemyHexIds)) return opts;
   const ids = typeof enemyVerbIds === 'function' ? enemyVerbIds(owner) : [];
   if (ids.length) opts.flags = { ...(opts.flags || {}), enemyHexIds: ids };
+  // 通缉令 (业主 2026-10-19): the ONE extra 惊变 enemy this battle spawns. The MATCH picks it (it owns choices.json and
+  // the seeded RNG), the sim only spawns the id — a battle-local random pick would break determinism.
+  if (opts.flags && Array.isArray(opts.flags.enemyHexIds) && opts.flags.enemyHexIds.includes('ehex_wanted')) {
+    const wanted = typeof enemyHexWantedKey === 'function' ? enemyHexWantedKey(owner) : undefined;
+    if (wanted) opts.flags = { ...opts.flags, enemyHexWanted: wanted };
+  }
   return opts;
 }
 

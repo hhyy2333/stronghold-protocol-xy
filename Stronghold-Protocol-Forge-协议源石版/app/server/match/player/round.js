@@ -8,7 +8,7 @@
 
 import { boardOrder, pieceDir, tileKey } from '../board.js';
 import { computeBonds, bondSnapshot, activatedLayers, bondsWithGains, pieceBonds } from '../bondsMeta.js';
-import { ownsHex } from '../hextech.js';
+import { ownsHex, applyThiefIncomeCut } from '../hextech.js';
 
 export class PlayerRound {
   startRound(r) {
@@ -21,6 +21,9 @@ export class PlayerRound {
     const ev = { round: r, income: this.gd.income(r), pending: this.pendingFunds };
     this.pendingFunds = 0;
     this.m.dispatch(this, 'onIncome', ev);
+    // 窃贼 (业主 2026-10-19): an ENEMY card banks a percentage against the players' income when their operators are
+    // knocked out; it cuts THIS round's income and is consumed (server/match/hextech.js bankThiefPenalty / applyThiefIncomeCut).
+    applyThiefIncomeCut(this, ev);
     const nonNeg = (v) => (Number.isFinite(v) && v > 0 ? Math.trunc(v) : 0);
     this.addFunds(nonNeg(ev.income) + nonNeg(ev.pending), { reason: 'income' });
     // temp is NOT wiped here: the last prep's deadline resolved what the player could act on (endPrep); what overflowed
