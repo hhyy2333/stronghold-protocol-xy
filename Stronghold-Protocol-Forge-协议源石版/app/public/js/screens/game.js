@@ -362,9 +362,13 @@ function MatchScreen() {
   // the map's own window / rects (shared/layout.js): official 19×21 for an official stage, the map's own bands for a
   // big one — every rect / band / tile mapping below reads it (render/layout.js)
   const stageLayout = layoutOf(gd.stage(pub?.stageId));
+  // 最近一次确定的最终攻势半场：boss 回合里配对一时缺失（m.public 那一帧还没有 bossPairs、或刚有人退出正在重配）
+  // 时沿用它，绝不退回道中取景 —— 那等于整块棋盘跳 7 行（业主 2026-10-18 的录像，>4 人的房）。
+  // 声明在 deployField 之前：部署合法性、取景、以及商店折叠那条 effect 都读同一份「上次的半场」，三方同源。
+  const bossSideRef = useRef(null);
   // the field the own pieces are deployed on: the own board, or the player's half of the boss field in a boss round's
   // prep (user playtest #5 item 7: legality and the legal-tile highlights read THOSE tiles, like the server)
-  const deployField = deployFieldOf(pub, myId, stageLayout);
+  const deployField = deployFieldOf(pub, myId, stageLayout, alive ? bossSideRef.current : null);
   // the own pieces' records: a DIY slot the player filled is its 自选 operator (0.2.0, m.private.diy — position, range,
   // name; gameLogic/diy.js), every other chess its data record
   const ownChess = (id) => { const c = gd.chess(id); return ownDiyRecord(c, live.current.priv, { chess: data.get('chess'), backups: data.get('backups') }) || c; };
@@ -384,9 +388,6 @@ function MatchScreen() {
   // (research 09 §1.2: the right-hand player's board mirrored; gameLogic prepCamera). The DOM fallback view keeps the
   // own board's layout there (every coordinate the UI handles is a board coordinate either way) and draws the tiles of
   // that half (ui/fallbackField.js: the legal fence tiles are floor, not the normal field's walls; user playtest #5 item 7).
-  // 最近一次确定的最终攻势半场：boss 回合里配对一时缺失（m.public 那一帧还没有 bossPairs、或刚有人退出正在重配）
-  // 时沿用它，绝不退回道中取景 —— 那等于整块棋盘跳 7 行（业主 2026-10-18 的录像，>4 人的房）。
-  const bossSideRef = useRef(null);
   const prepCam = prepCamera(pub, myId, stageLayout, alive ? bossSideRef.current : null);
   if (prepCam.kind === 'bossPrep') bossSideRef.current = prepCam.opts.side;
   const prepCamKey = `${prepCam.kind}:${prepCam.opts.side}`;
@@ -780,6 +781,9 @@ function MatchScreen() {
     const next = foldCamera({
       pub, myId, folded: shopFolded, ownPrep: !!view && viewModeRef.current === 'prep' && showPrep,
       pen, busy: !!drag || !!facing, current: camRef.current, layout: stageLayout,
+      // 同一份「上次的半场」：这条 effect 与取景键 / 一致性兜底那条必须给出同一个答案，否则两条 effect 每帧互相纠正，
+      // 镜头就在 boss 半场与道中之间来回跳（业主 2026-10-19「视角会跳来跳去」）。
+      fallbackSide: alive ? bossSideRef.current : null,
     });
     if (next) setCam(next.kind, { ...next.opts, ms: FOLD_CAMERA_MS });
   }, [view, deployFold, shopFolded, showPrep, pen, !!drag, !!facing, prepCamKey]);

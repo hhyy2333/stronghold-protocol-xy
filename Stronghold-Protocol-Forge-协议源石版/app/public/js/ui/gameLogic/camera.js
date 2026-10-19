@@ -98,13 +98,17 @@ export function prepCameraFor(pub, myId, folded = false, layout = null, fallback
  * folds the shop itself and returns to the camera it left), deferred while a piece is dragged or its direction is chosen
  * (`busy`: the drop target and the wheel sit on tiles of the camera in use — the caller asks again once that ends), and
  * nothing when the current request (`current` { kind, opts }) already has that shop state.
+ * `fallbackSide` is the same "last known boss half" `prepCamera` takes: without it this path (asked by the shop
+ * fold / unfold effect) and the camera-key / reassert path would answer differently for the same state while a boss
+ * round's pairing is momentarily missing — two effects correcting each other is exactly the camera jumping the owner
+ * reported on 2026-10-19.
  * @param {{ pub: any, myId: string|null, ownPrep: boolean, folded: boolean, pen?: boolean, busy?: boolean,
- *   current?: { kind: string, opts?: { shop?: boolean } }|null, layout?: any }} s
+ *   current?: { kind: string, opts?: { shop?: boolean } }|null, layout?: any, fallbackSide?: 'L'|'R'|null }} s
  * @returns {{ kind: 'prep'|'bossPrep', opts: object }|null}
  */
 export function foldCamera(s) {
   if (!s || !s.ownPrep || s.pen || s.busy) return null;
-  const want = prepCameraFor(s.pub, s.myId, !!s.folded, s.layout || null);
+  const want = prepCameraFor(s.pub, s.myId, !!s.folded, s.layout || null, s.fallbackSide === 'L' || s.fallbackSide === 'R' ? s.fallbackSide : null);
   const cur = s.current;
   if (cur && cur.kind === want.kind && (cur.opts?.shop !== false) === want.opts.shop) return null;
   return want;
@@ -167,8 +171,8 @@ export function prepFieldMismatch(prepField, cam) {
  * with `field`) reads that field's tiles.
  * @returns {'normal'|'bossL'|'bossR'}
  */
-export function deployFieldOf(pub, myId, layout = null) {
-  const cam = prepCamera(pub, myId, layout);
+export function deployFieldOf(pub, myId, layout = null, fallbackSide = null) {
+  const cam = prepCamera(pub, myId, layout, fallbackSide);
   return cam.kind === 'bossPrep' ? (cam.opts.side === 'R' ? 'bossR' : 'bossL') : 'normal';
 }
 

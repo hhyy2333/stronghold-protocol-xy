@@ -50,8 +50,15 @@ built. The wire rules (`server/viewsDelta.js` builds a delta, `public/js/matchDe
   because every consumer reads such a field as "unset" (`p.fieldId ?? null`, `typeof p.bandId === 'string'`,
   `p.resolved == null`) — so a full frame and a delta agree, and no client has to tell data-`null` from absence inside a row.
 - **`serverNow` rides every frame** (the client's clock sync reads it) and is NOT part of the diffed state.
-- **Materialized state = the full view, field for field.** This is the acceptance point: `test/match/public-delta*.test.js`
-  replays a real match's frame stream through the browser's own merge and compares it with the full frames, at 4 and 40 seats.
+- **Materialized state = the full view, field for field — SHAPES INCLUDED.** This is the acceptance point:
+  `test/match/public-delta*.test.js` replays a real match's frame stream through the browser's own merge and compares it
+  with the full frames, at 4 and 40 seats. A materializer must copy by VALUE and keep the shape: a view's keys are not all
+  scalar (`bossPairs: [[playerId, playerId], …]`, and a row's `bonds` / `fields` lists), and a one-level `{ ...x }`
+  copy of an array turns each nested ARRAY into an object with numeric keys — `Array.isArray` then fails everywhere the
+  value is read. That is not a cosmetic difference: it silently changed the Final Assault prep camera (back to the own
+  board), the deploy field (`deployFieldOf` → `normal`, so placement legality checked the wrong half) and the team panel's
+  frames, on the client only — the server was still sending nested arrays, so every Node test stayed green. Fixed in
+  0.19.4+ (`clonePublic` → `copyValue`); the regression test lives in `test/match/public-delta.test.js`.
 - **Reset points (the next frame is FULL):** the first frame; any membership change — a join, a leave, a disconnect, a
   reconnect/resync, a spectator arriving (the ROOM shares one baseline, so the whole room gets a full frame, not just the
   member that lagged); a broadcast the sockets did not all take; and the keepalive, which turns every

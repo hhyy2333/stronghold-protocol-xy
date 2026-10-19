@@ -153,13 +153,38 @@ export function applyPublic(base, frame) {
   return { ok: true, state: clonePublic(frame) };
 }
 
-/** The materialized state of a FULL frame: the view without the wire fields, rows normalized, arrays copied. */
+/** How deep a JSON value of a FULL frame is copied (a view is shallow: the deepest thing the wire carries is
+ * `bossPairs: [[id, id], …]` — two levels — and the rows' own `bonds` / `fields` lists, one level below a row). */
+const COPY_DEPTH = 4;
+
+/**
+ * A by-value copy of one JSON value of a FULL frame, at most `depth` levels deep. Arrays stay ARRAYS and objects stay
+ * objects: the previous `{ ...x }` copy turned the nested `bossPairs: [[p_0, p_1], …]` into `{ 0: 'p_0', 1: 'p_1' }`,
+ * `Array.isArray(group)` became false, and with it every reader of the pairing — the Final Assault prep camera
+ * (`prepCamera` → back to the own board), the deploy field (`deployFieldOf` → 'normal', so placement legality read the
+ * wrong half) and the team panel's frames (`teamFrameIds` → none) (owner's report 2026-10-19: 「视角会跳来跳去」, the
+ * camera visibly flipping between the boss half and the own board).
+ *
+ * `undefined` is not a JSON value: a property holding it is dropped, exactly as the wire drops it (the same rule
+ * `publicBaseline` keeps on the server half).
+ */
+function copyValue(v, depth) {
+  if (depth <= 0 || v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map((x) => copyValue(x, depth - 1));
+  const proto = Object.getPrototypeOf(v);
+  if (proto !== Object.prototype && proto !== null) return v;   // not JSON data (a Map / Set / class): keep it as it is
+  const out = {};
+  for (const k of Object.keys(v)) { const x = v[k]; if (x !== undefined) out[k] = copyValue(x, depth - 1); }
+  return out;
+}
+
+/** The materialized state of a FULL frame: the view without the wire fields, rows normalized, every value copied. */
 export function clonePublic(frame) {
   const out = {};
   for (const [k, v] of Object.entries(frame)) {
     if (k === 't' || k === 'rid' || k === 'delta' || k === 'fieldsFull' || k === 'gone') continue;
-    if (k === 'players' && Array.isArray(v)) { out[k] = v.map(normalizeRow); continue; }
-    out[k] = Array.isArray(v) ? v.map((x) => (x && typeof x === 'object' ? { ...x } : x)) : v;
+    if (k === 'players' && Array.isArray(v)) { out[k] = v.map((row) => normalizeRow(copyValue(row, COPY_DEPTH))); continue; }
+    out[k] = copyValue(v, COPY_DEPTH);
   }
   return out;
 }
