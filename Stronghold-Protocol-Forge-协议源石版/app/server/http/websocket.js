@@ -186,7 +186,7 @@ export function createSessionStack(opts, { data, log, content = null, plugins = 
     registry, log, MatchClass: opts.MatchClass, getData: () => data, seedFn: opts.seedFn, content, plugins, hosts, options: lobbyOptions,
     // 面板可调的上限（业主 2026-10-16）：人机那两格也走它（lobby.addBot 的 BOT_LIMIT），与 net.js 是同一个 LiveLimits 实例
     limits: opts.limits || null,
-    // 对局战绩（docs/RECORDS.md §3）：null = 没有 SP_ACCOUNTS ⇒ 结算点不落盘。
+    // 对局战绩（docs/RECORDS.md §3）：null = 没有 SP_ACCOUNTS 且没有 SP_RECORDS ⇒ 结算点不落盘。
     records: opts.records || null,
     // 创意工坊 (docs/WORKSHOP.md): the behaviour layer of the installed packs travels with every match this lobby starts
     workshop: opts.workshop,

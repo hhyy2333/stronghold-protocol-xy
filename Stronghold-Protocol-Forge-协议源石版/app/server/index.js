@@ -144,7 +144,7 @@ export {
  *   ratePerSec?: number, rateBurst?: number, maxConnections?: number, maxRooms?: number,
  *   maxConnectionsPerAddr?: number, maxRoomsPerAddr?: number, maxMatchesPerAddr?: number, resyncMinGapMs?: number,
  *   heavyPerSec?: number, heavyBurst?: number, trustProxy?: 'auto' | boolean,
- *   accounts?: boolean, accountsFile?: string, recordsFile?: string,
+ *   accounts?: boolean, records?: boolean, accountsFile?: string, recordsFile?: string,
  *   wsLanes?: readonly import('./http/wsLanes.js').WsLane[],
  *   httpLanes?: readonly import('./http/httpLanes.js').HttpLane[],
  *   assetIndex?: boolean | { cacheFile?: string | null, delayMs?: number },
@@ -213,9 +213,9 @@ export async function startServer(opts = {}) {
   const workshopMeta = await loadMetaModules(loadedForPayloads, { log });
   // 包的**服务端模块**（`server.modules`, DESIGN §28.14）：与上面两条同一个裁剪点 —— 模块文件不在、import 失败、
   // 没有 `registerServer`、或者它挂了一个自己没声明的挂载点，都让**这个包**整份移出已加载集合。
-  // 账号与战绩（docs/RECORDS.md）。**开关是显式的 `SP_ACCOUNTS=1`**（业主裁令）：不能让「某个文件恰好存在」悄悄
-  // 改掉握手语义。没有它时下面两件**都不构造**，`Network` 收到 `accounts: null`、`Lobby` 收到 `records: null`，
-  // `hello` 与会话建立走的还是今天那条路，逐字节不变。
+  // 账号与战绩（docs/RECORDS.md）。**开关是显式的 `SP_ACCOUNTS=1`（账号+战绩）或 `SP_RECORDS=1`（只开战绩、
+  // 不开账号）**：不能让「某个文件恰好存在」悄悄改掉握手语义。没有开关时下面两件**都不构造**，`Network` 收到
+  // `accounts: null`、`Lobby` 收到 `records: null`，`hello` 与会话建立走的还是今天那条路，逐字节不变。
   //
   // 两个环境变量**刻意在 `server/accountConfig.js` 里读**，不在这里：`modModules.js` 的 `BOOT_CONFIG_ENV_KEYS`
   // 是**包能看见的**环境白名单，而 `test/packServerSurface.test.js` 用反射源码把「引擎读过的 SP_*」与它钉成
@@ -223,12 +223,15 @@ export async function startServer(opts = {}) {
   // 行为」）。为什么这样切，写在 `accountConfig.js` 的文件头。
   const accountConfig = resolveAccountConfig(opts, stateRoot);
   const accounts = accountConfig.enabled ? new AccountStore(accountConfig.accountsFile) : null;
-  const records = accountConfig.enabled ? new MatchRecords(accountConfig.recordsFile, log) : null;
+  // 战绩可以独立于账号开启（SP_RECORDS=1）：排行榜只需要 journal，不需要 `hello` 里的登录段。
+  const records = accountConfig.recordsEnabled ? new MatchRecords(accountConfig.recordsFile, log) : null;
   if (accountConfig.enabled) {
     // 生效值必须被**说出来**（与 resourcePolicy / transportPolicy 同一条纪律）：运维要能从启动日志确认
     // 「账号开着、库在哪」，而不是靠猜。
     log.info(`[accounts] enabled (SP_ACCOUNTS): ${accounts.byName.size} account(s) in ${accountConfig.accountsFile}; `
       + `match records in ${accountConfig.recordsFile}`);
+  } else if (accountConfig.recordsEnabled) {
+    log.info(`[records] enabled (SP_RECORDS, accounts off): match records in ${accountConfig.recordsFile} — leaderboard on, hello unchanged`);
   }
   const serverModules = await loadServerModules(loadedForPayloads, { log, stateRoot });
   // 包声明的**战斗逻辑**模块（`pack.json.server.battle`, DESIGN §28.17）：与上面三条同一个裁剪点 —— 源码里带非确定性

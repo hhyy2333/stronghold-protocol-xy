@@ -9,6 +9,13 @@
 
 ---
 
+### 新：只开战绩、不开账号（`SP_RECORDS=1`），排行榜不再要求登录
+
+- 业主 2026-10-19（「n18 排行榜在哪」）：排行榜 UI 与 `records.board` 早已在 0.19.3 里，但线上 `SP_ACCOUNTS` 没开（没有战绩文件 ⇒ 标签显示「排行榜不可用」）。而客户端**没有登录界面**，直接 `SP_ACCOUNTS=1` 会让所有新 `hello` 收到 `AUTH_REQUIRED` —— 等于把玩家挡在门外，所以不能只改环境变量。
+- 新增 **`SP_RECORDS=1`**：只构造 `MatchRecords`，`Network` 收到的 accounts 仍是 `null`（握手逐字节不变）；账号开着时战绩仍默认开（旧语义）。`server/index.js` 启动日志会点名 `[records] enabled (SP_RECORDS, accounts off)` 与 journal 路径。
+- `docs/RECORDS.md` §2/§7 写清两种开关与「为什么不能只开 SP_ACCOUNTS」；新增 `test/records-only.test.js` 两条：无 auth 的 `hello` 仍拿 welcome、`records.board` 能应答空榜。
+- 线上启用按 `05-部署/下一次发布清单-排行榜.md`：设 `SP_RECORDS=1`（**不要** `SP_ACCOUNTS`）后重启/蓝绿；n18 榜只从启用后的完整结算开始累积，不能补历史。
+
 ## 0.19.3 — 2026-10-18
 
 **协议等级 1–18 与按级分榜、房间/大厅的交互收口、WebSocket 压缩、工坊合并 JSON 的 br/gzip、后台网络面板，以及底栏/协议源石的重做。** 上游游戏本体仍是 **0.3.0**；

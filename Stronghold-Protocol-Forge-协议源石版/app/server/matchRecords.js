@@ -1,4 +1,4 @@
-// 对局战绩（`SP_ACCOUNTS=1` 时接线，docs/RECORDS.md §3）。
+// 对局战绩（`SP_ACCOUNTS=1` 或只开战绩的 `SP_RECORDS=1` 时接线，docs/RECORDS.md §3）。
 //
 // 一次**完整结算**写一条记录（`server/lobby.js` 的结算点调 `save`）。中途退出、服务关闭都不产生记录 —— 没有
 // 「补录」这回事，因为本文件只认结算那一刻给它的事件。

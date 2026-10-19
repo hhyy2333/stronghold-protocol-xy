@@ -676,8 +676,8 @@ export class Lobby {  /**
      */
     if (this.announcement === undefined) this.announcement = null;
     /**
-     * 对局战绩（`SP_ACCOUNTS=1`, server/matchRecords.js, docs/RECORDS.md §3）：每局**完整结算**时落一条。
-     * `null`（默认，也是没有 `SP_ACCOUNTS` 时的唯一取值）⇒ `onMatchEnd` 里那两行**一个字都不写**，
+     * 对局战绩（`SP_ACCOUNTS=1` 或只开战绩的 `SP_RECORDS=1`, server/matchRecords.js, docs/RECORDS.md §3）：每局**完整结算**时落一条。
+     * `null`（默认，两个开关都没开时的取值）⇒ `onMatchEnd` 里那两行**一个字都不写**，
      * `records.mine` 回一条 `record: null`。大厅对它是只读的，失败也只记日志 —— 一份战绩不该让一局游戏出问题。
      * @type {import('./matchRecords.js').MatchRecords | null}
      */

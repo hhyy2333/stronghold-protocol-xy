@@ -14,18 +14,32 @@
 
 中途退出、服务关闭**不产生**记录。旧版本从未持久保存的对局**无法补录** —— 落盘只认结算那一刻给的事件。
 
-## 2. 开关：`SP_ACCOUNTS=1`
+## 2. 开关：`SP_ACCOUNTS=1` 与 `SP_RECORDS=1`
 
-**这一层默认完全关闭，而且不是靠「文件存不存在」判的。** `server/index.js` 只在 `SP_ACCOUNTS` 匹配
-`1` / `true` / `yes`（大小写不敏感）时才构造 `AccountStore` 与 `MatchRecords`；否则两者都是 `null` 并且：
+**这一层默认完全关闭，而且不是靠「文件存不存在」判的。** `server/index.js` 只在环境变量匹配
+`1` / `true` / `yes`（大小写不敏感）时才构造：
+
+| 变量 | 构造 `AccountStore` | 构造 `MatchRecords` | 用途 |
+|---|---|---|---|
+| 都没设（默认） | 否 | 否 | 与旧版逐字节相同 |
+| `SP_ACCOUNTS=1` | 是 | 是 | 账号 + 战绩（旧语义） |
+| **`SP_RECORDS=1`** | **否** | **是** | **只开战绩/排行榜**，`hello` 不变 |
 
 * `Network` 收到 `accounts: null` ⇒ `hello` 里**没有**认证那一段。老客户端（不发 `auth` / `password`）照旧拿
   `welcome`，`playerId` 还是那 10 位十六进制的临时 id —— **握手逐字节不变**；
 * `Lobby` 收到 `records: null` ⇒ 结算点不落盘，`records.mine` 回 `{ record: null }`；
-* `GET /api/records/account/<NAME>` 回 **404**（功能不存在），不是「这个账号没有战绩」。
+* `Lobby` 收到 `records`（非 null）⇒ 每次**完整结算**落一条 `match-records.jsonl`，`records.board` 按
+  `(difficulty, level)` 分榜应答（`SP_ACCOUNTS=1` 或 `SP_RECORDS=1` 都够，不需要登录）；
+* `GET /api/records/account/<NAME>` 回 **404**（功能不存在），不是「这个账号没有战绩」。这条 HTTP 面仍只认
+  `SP_ACCOUNTS`；只开 `SP_RECORDS` 时排行榜走 WebSocket 的 `records.board`。
 
-这条不变量由 `test/accounts.test.js` 的第三个测试钉住。测试可以用 `startServer({ accounts: true })` 显式打开，
-它**不读**环境变量。
+**为什么需要 `SP_RECORDS` 单独存在**：排行榜 UI 已经在客户端里，但客户端**没有登录界面**；直接 `SP_ACCOUNTS=1`
+会让所有新连接在 `hello` 收到 `AUTH_REQUIRED`，等于把玩家挡在门外。只开战绩时 `Network` 收到的 accounts 仍是
+null，握手不变。
+
+这条不变量由 `test/records-only.test.js`（只开战绩：无 auth 的 hello 仍拿 welcome、`records.board` 能应答）与
+`test/accounts.test.js`（账号模式）钉住。测试可以用 `startServer({ accounts: true })` 或
+`startServer({ records: true, accounts: false })` 显式打开，它们**不读**环境变量。
 
 ## 3. 口令是怎么存与怎么验的（`server/accounts.js`）
 
@@ -106,7 +120,10 @@
 ## 7. 运维
 
 ```ini
-Environment=SP_ACCOUNTS=1
+# 账号 + 战绩（会要求登录；当前客户端没有登录界面，别在线上直接开）
+# Environment=SP_ACCOUNTS=1
+# 只开战绩/排行榜（推荐；hello 不变，不需要登录）
+Environment=SP_RECORDS=1
 # 可选：把战绩放到别的卷 / 会备份的地方
 # Environment=SP_RECORDS_FILE=/var/lib/sp/match-records.jsonl
 ```
