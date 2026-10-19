@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import { DATA } from '../match/harness.js';
 import { getDefaultRegistry } from '../../server/match/effectsMeta.js';
 import { buildHextech, hextechText, validateHextech, OUT_FILE } from '../../tools/build-hextech.mjs';
-import { hexIds, battleModsOf, BATTLE_SPEC_KEYS, hasBattlePart } from '../../server/sim/content/hextech.js';
+import { hexIds, battleModsOf, BATTLE_SPEC_KEYS, hasBattlePart, HEX_SCRIPT_KEYS } from '../../server/sim/content/hextech.js';
 import { applyEnemyHexes, enemyHexPayout } from '../../server/match/hextech.js';
 import {
   rollOffers, pickEnemyRarity, pickEnemyHex, sumEnemyMods, rarityFallbackOrder, RARITY_ORDER, HEX_ROUNDS, hexEffectKey,
@@ -27,15 +27,16 @@ test('data/hextech.json is what tools/build-hextech.mjs generates (run: node too
   assert.equal(fs.readFileSync(OUT_FILE, 'utf8'), hextechText(buildHextech()));
 });
 
-test('roster: 90 player + 38 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
+test('roster: 100 player + 38 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
   assert.deepEqual(validateHextech(buildHextech()), []);
   // tenth batch (the owner's list of 2026-10-15): 11 more player cards (79 -> 90) — 反击装甲 and 紧急拨款 are
   // REBALANCES of existing records, not additions, so they do not move the count.
-  assert.equal(PLAYER.length, 90);
+  // thirteenth batch (业主 2026-10-19): 10 more player cards (90 -> 100).
+  assert.equal(PLAYER.length, 100);
   // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
   assert.equal(ENEMY.length, 38);
   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
-  assert.equal(ids.size, 128);
+  assert.equal(ids.size, 138);
   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
   assert.deepEqual([...rarities], [...RARITY_ORDER]);
   for (const h of PLAYER) {
@@ -76,7 +77,7 @@ test('roster: 90 player + 38 enemy hexes, unique ids, known rarities and an effe
 test('every player hex has a registered hex: handler with onHexPick and onRoundStart (choices.test.js style)', () => {
   const reg = getDefaultRegistry();
   const ids = hexIds();
-  assert.equal(ids.length, 90);
+  assert.equal(ids.length, 100);
   for (const id of ids) {
     const h = reg.get(hexEffectKey(id));
     assert.ok(h, `hex:${id} handler`);
@@ -690,7 +691,42 @@ test('the eleventh batch: 79 player hexes, the owner’s names and tiers verbati
     assert.equal(rec.name, name, `${id} name`);
     assert.equal(rec.rarity, rarity, `${id} tier`);
   }
-  assert.equal(Object.keys(HEXTECH.playerHexes).length, 90, '90 player hexes after the batch');
+  assert.equal(Object.keys(HEXTECH.playerHexes).length, 100, '100 player hexes after the thirteenth batch');
+});
+
+
+// =====================================================================================================================
+// thirteenth batch (业主 2026-10-19): ten player cards whose whole mechanic is a battle script. What this block pins is
+// the INTEGRATION (the scripts themselves are driven on the real sim in hexcards-14a / hexcards-14b):
+//   * the record carries its spec key (a missing key gates the script off — silently);
+//   * the key is declared in BATTLE_SPEC_KEYS (without it, addHexRef marks the ref prep-only and the battle never sees it);
+//   * the id is wired in HEX_SCRIPT_KEYS to that same key (a typo there is the same silent no-op).
+test('the thirteenth batch: ten battle-script cards are wired end to end (record → BATTLE_SPEC_KEYS → HEX_SCRIPT_KEYS)', () => {
+  const BATCH = {
+    hex_untouchable: ['你摸不到', 'prismatic', 'untouchable'],
+    hex_pearlglove: ['珠光护手', 'prismatic', 'pearlglove'],
+    hex_physarts: ['物法皆修', 'prismatic', 'physarts'],
+    hex_quantum: ['量子计算', 'prismatic', 'quantum'],
+    hex_tapdance: ['踢踏舞', 'prismatic', 'tapdance'],
+    hex_ultrefresh: ['终极刷新', 'prismatic', 'ultrefresh'],
+    hex_omenpact: ['不祥契约', 'prismatic', 'omenpact'],
+    hex_proteinshake: ['蛋白粉奶昔', 'prismatic', 'proteinshake'],
+    hex_frostghost: ['冰霜幽灵', 'silver', 'frostghost'],
+    hex_heavyhitter: ['重量级打击手', 'silver', 'heavyhitter'],
+  };
+  for (const [id, [name, rarity, key]] of Object.entries(BATCH)) {
+    const rec = HEXTECH.playerHexes[id];
+    assert.ok(rec, id + ' is in the roster');
+    assert.equal(rec.name, name, id + ' name');
+    assert.equal(rec.rarity, rarity, id + ' tier');
+    assert.ok(rec.effect && rec.effect[key] !== undefined, id + ` record carries the '${key}' spec`);
+    assert.ok(BATTLE_SPEC_KEYS.includes(key), key + ' is declared in BATTLE_SPEC_KEYS');
+    assert.equal(HEX_SCRIPT_KEYS[id], key, id + ' is wired to its script key');
+    assert.ok(hasBattlePart(rec.effect), id + ' is battle-visible (hasBattlePart)');
+  }
+  // the card text itself (owner's wording) — a rewrite of the roster must not silently change it
+  assert.equal(HEXTECH.playerHexes.hex_frostghost.desc, '每 12 秒束缚全场敌人 3 秒。');
+  assert.equal(HEXTECH.playerHexes.hex_heavyhitter.desc, '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的物理伤害。');
 });
 
 test('转职大师 / 赌狗大师 / 人力部资源 / 博士投影: the four plain item grants name the owner’s items', () => {

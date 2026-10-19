@@ -4,7 +4,7 @@
 // and renamed its three rarity tiers 白银 / 黄金 / 棱彩 to 1阶 / 2阶 / 3阶 when the card art became the supplied 阶位
 // images. The internal keys stay `hextech` / `hex` / silver|gold|prismatic: display-only rename, no save break.)
 //
-// This is the source of truth of the feature's CONTENT: 66 player cards and 24 enemy cards, their rarity and the effect
+// This is the source of truth of the feature's CONTENT: 100 player cards and 38 enemy cards, their rarity and the effect
 // the engine applies. It names no art: the third-party mod's rune icons, rarity frames and button sprites were removed
 // from the project on 2026-10-12 (owner's decision) — their source pack carries no licence file, so the project has no
 // right to redistribute them. The card face is the owner's own 阶位 image (`hextech/tier`, not in this file);
@@ -944,6 +944,79 @@ export const PLAYER_HEXES = [
     desc: '作战中，每有一名与自身相同职业的己方干员，该干员攻击力与防御力 +10%。',
     rarity: 'silver',
     effect: { profResonance: { pct: 10 } },
+  },
+  // ---- thirteenth batch (业主 2026-10-19, 原话照抄；机制脚本在 server/sim/content/hexcards/batch14a.js / batch14b.js) ----
+  // 你摸不到 · 珠光护手 · 物法皆修 · 量子计算 · 踢踏舞 · 终极刷新 · 不祥契约 · 蛋白粉奶昔（3 阶）
+  // 冰霜幽灵 · 重量级打击手（1 阶）
+  {
+    id: 'hex_untouchable',
+    name: '你摸不到',
+    desc: '作战中，己方干员释放技能期间免疫伤害。',
+    rarity: 'prismatic',
+    effect: { untouchable: true },
+  },
+  {
+    id: 'hex_pearlglove',
+    name: '珠光护手',
+    desc: '作战中，己方干员的技能有 30% 几率造成 200% 伤害。',
+    rarity: 'prismatic',
+    effect: { pearlglove: { chance: 30, mul: 200 } },
+  },
+  {
+    id: 'hex_physarts',
+    name: '物法皆修',
+    desc: '作战中，己方干员每次攻击回复 1 点技力；技能每造成一次伤害，攻击力 +10%，最多 +300%。',
+    rarity: 'prismatic',
+    effect: { physarts: { spOnAttack: 1, atkPctPerHit: 10, atkPctCap: 300 } },
+  },
+  {
+    id: 'hex_quantum',
+    name: '量子计算',
+    desc: '每 10 秒对全场敌人造成一次物理伤害，伤害为场上攻击力最高干员的 300% 攻击力，并使其减速 30%、持续 3 秒，同时为己方干员回复 20% 最大生命值。',
+    rarity: 'prismatic',
+    effect: { quantum: { every: 10, atkPct: 300, slowPct: 30, slowSec: 3, healPct: 20 } },
+  },
+  {
+    id: 'hex_tapdance',
+    name: '踢踏舞',
+    desc: '作战中，己方干员每次攻击提升 7 点攻击速度，2 秒不攻击后失效。',
+    rarity: 'prismatic',
+    effect: { tapdance: { aspdPerHit: 7, idleSec: 2 } },
+  },
+  {
+    id: 'hex_ultrefresh',
+    name: '终极刷新',
+    desc: '作战中，己方干员施放技能后会再次施放一次（同一干员 30 秒冷却）。',
+    rarity: 'prismatic',
+    effect: { ultrefresh: { cd: 30 } },
+  },
+  {
+    id: 'hex_omenpact',
+    name: '不祥契约',
+    desc: '作战中，己方干员基于已损失生命值获得攻击力（最多 +150%）与 40% 吸血；每次攻击消耗当前生命值的 5%。',
+    rarity: 'prismatic',
+    effect: { omenpact: { atkMaxPct: 150, lifestealPct: 40, hpCostPct: 5 } },
+  },
+  {
+    id: 'hex_proteinshake',
+    name: '蛋白粉奶昔',
+    desc: '作战中，己方干员每 100 点最大生命值提升 10 点防御力与 0.1 点法术抗性。',
+    rarity: 'prismatic',
+    effect: { proteinshake: { perHp: 100, def: 10, res: 0.1 } },
+  },
+  {
+    id: 'hex_frostghost',
+    name: '冰霜幽灵',
+    desc: '每 12 秒束缚全场敌人 3 秒。',
+    rarity: 'silver',
+    effect: { frostghost: { every: 12, bindSec: 3 } },
+  },
+  {
+    id: 'hex_heavyhitter',
+    name: '重量级打击手',
+    desc: '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的物理伤害。',
+    rarity: 'silver',
+    effect: { heavyhitter: { maxHpPct: 10 } },
   },
 ];
 

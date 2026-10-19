@@ -39,6 +39,14 @@ import {
   installBlockwall, installSharePain, installTerraMourn, installDirectiveAtk,
   installDirectiveType, installRabbitHead, installProfResonance,
 } from './hexcards/batch10.js';
+// thirteenth batch (业主 2026-10-19): the battle halves of 踢踏舞 / 终极刷新 / 不祥契约 / 蛋白粉奶昔 / 重量级打击手.
+import {
+  installTapdance, installUltrefresh, installOmenpact, installProteinShake, installHeavyHitter,
+} from './hexcards/batch14b.js';
+// thirteenth batch (业主 2026-10-19): the battle halves of 你摸不到 / 珠光护手 / 物法皆修 / 量子计算 / 冰霜幽灵.
+import {
+  installUntouchable, installPearlGlove, installPhysArts, installQuantum, installFrostGhost,
+} from './hexcards/batch14a.js';
 import { reviveNow, carries } from './items/battle.js';
 
 /** Player effect-ref key prefix (parallel to `choice:`). */
@@ -174,6 +182,10 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // `layerGain` hook. The match stamps `lastDitch.active` into the ref at battle start (`onBattleStart.lastDitchArm`) —
   // the sim has no LP — and this key is what keeps the ref in the battle input in the first place.
   'lastDitch',
+  // thirteenth batch (业主 2026-10-19): every one of the ten new cards is a pure battle script (no prep half), so each
+  // key MUST be declared here or addHexRef marks the ref prep-only and the battle never sees the card.
+  'untouchable', 'pearlglove', 'physarts', 'quantum', 'tapdance',
+  'ultrefresh', 'omenpact', 'proteinshake', 'frostghost', 'heavyhitter',
 ]);
 
 /**
@@ -1338,10 +1350,12 @@ export function install(battle) {
  * single injection point keeps each module's own "absent card → no-op" reasoning true for BOTH kinds of absence: no ref,
  * and a ref whose record predates the key.
  */
-function installHexCards(battle) {
-  const h = hexHooks(battle);
-  /** hex id → the script key its record must carry for the module to run. */
-  const SCRIPT_KEY = {
+/**
+ * hex id → the script key its record must carry for the module to run. Module-scope and exported so the content test can
+ * pin every wired id: a typo in this map is a SILENT no-op (the module gates on a key no record carries), which is
+ * exactly the kind of failure the batch-13 tests exist to catch.
+ */
+export const HEX_SCRIPT_KEYS = Object.freeze({
     hex_drill: 'drill', hex_armor: 'armor', hex_shieldwall: 'shieldwall', hex_warmachine: 'warmachine',
     // sixth batch (the owner's list of 2026-10-11)
     hex_humanrite: 'humanRite', hex_rangedist: 'rangedist', hex_minefield: 'minefield', hex_breaker: 'breaker',
@@ -1352,7 +1366,16 @@ function installHexCards(battle) {
     hex_blockwall: 'blockwall', hex_sharepain: 'sharePain', hex_terramourn: 'deathBlast',
     hex_directive: 'directiveAtk', hex_directive2: 'directiveType',
     hex_rabbithead: 'rabbitHead', hex_profresonance: 'profResonance',
-  };
+    // thirteenth batch (业主 2026-10-19)
+    hex_untouchable: 'untouchable', hex_pearlglove: 'pearlglove', hex_physarts: 'physarts',
+    hex_quantum: 'quantum', hex_tapdance: 'tapdance', hex_ultrefresh: 'ultrefresh',
+    hex_omenpact: 'omenpact', hex_proteinshake: 'proteinshake', hex_frostghost: 'frostghost',
+    hex_heavyhitter: 'heavyhitter',
+});
+
+function installHexCards(battle) {
+  const h = hexHooks(battle);
+  const SCRIPT_KEY = HEX_SCRIPT_KEYS;
   /** The `params` of a player's own ref for `hexId`. */
   const paramsOf = (pid, hexId) => {
     const ps = battle.getPlayer ? battle.getPlayer(pid) : null;
@@ -1395,6 +1418,17 @@ function installHexCards(battle) {
   installDirectiveType(gated);
   installRabbitHead(gated);
   installProfResonance(gated);
+  // thirteenth batch (业主 2026-10-19): batch14b.js's five (batch14a.js's five are wired with them once it lands)
+  installTapdance(gated);
+  installUltrefresh(gated);
+  installOmenpact(gated);
+  installProteinShake(gated);
+  installHeavyHitter(gated);
+  installUntouchable(gated);
+  installPearlGlove(gated);
+  installPhysArts(gated);
+  installQuantum(gated);
+  installFrostGhost(gated);
 }
 
 /**
