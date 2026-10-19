@@ -76,13 +76,25 @@ test('every data file server/sim reads through gameData() is listed in SIM_DATA_
     `server/sim reads these data files through gameData() but the browser loader never fetches them: ${missing.join(', ')}`);
 });
 
+
+test('the loader and the re-exported list are ONE array (a second copy already lost hextech once)', async () => {
+  const loaderMod = await import('../../public/js/battle/simLoader.js');
+  const runnerMod = await import('../../public/js/battle/runner.js');
+  assert.equal(runnerMod.SIM_DATA_FILES, loaderMod.SIM_DATA_FILES,
+    'runner.js must re-export the loader\'s array, not keep a copy — the copy is what silently dropped hextech (§29.10)');
+  assert.ok(loaderMod.SIM_DATA_FILES.includes('hextech'), 'the loader itself fetches the 协议源石 roster');
+});
+
 test('the browser data path resolves the enemy verb records the way installEnemyVerbs does', () => {
   // The page's getData() is the shim over getSimData() — so what the loader injects IS what the sim sees.
   assert.match(DATA_SHIM_JS, /getSimData\(\)/, 'getData() proxies to getSimData()');
-  assert.match(read('public/js/battle/runner.js'), /setSimData\(raw\)/, 'the loader injects raw');
-  const runner = read('public/js/battle/runner.js');
+  // 0.3.0 moved the loader itself into ./simLoader.js; runner.js only re-exports it (and its list). Read the module
+  // that owns the fetch, and pin that runner really forwards it — a second copy of the list is how hextech got lost.
+  const loader = read('public/js/battle/simLoader.js');
+  assert.match(loader, /setSimData\(raw\)/, 'the loader injects raw');
+  assert.match(read('public/js/battle/runner.js'), /export \{ loadBrowserSim, SIM_DATA_FILES \} from '\.\/simLoader\.js'/);
   // the injected object is built from SIM_DATA_FILES only: every listed name becomes a key, and nothing else does
-  assert.match(runner, /SIM_DATA_FILES\.forEach\(\(n, i\) => \{ raw\[n\] = deepFreeze\(files\[i\]\); \}\)/);
+  assert.match(loader, /SIM_DATA_FILES\.forEach\(\(n, i\) => \{ raw\[n\] = deepFreeze\(files\[i\]\); \}\)/);
   // …so listing hextech is BOTH necessary and sufficient for gameData().hextech to exist in the browser
   const roster = JSON.parse(read('data/hextech.json'));
   for (const [id, rec] of Object.entries(roster.enemyHexes)) {

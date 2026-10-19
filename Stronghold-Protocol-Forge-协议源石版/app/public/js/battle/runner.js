@@ -128,11 +128,10 @@ export function compactHeld(list) {
   });
   return list.filter((x, i) => (x[0] === 'status' ? last.get(`s:${x[1]}:${x[2]}`) === i : x[0] === 'skill' ? last.get(`k:${x[1]}`) === i : true));
 }
-/** Data files the simulation reads (DataSource + content/support gameData()). */
-export const SIM_DATA_FILES = Object.freeze(['chess', 'enemies', 'tokens', 'stages', 'waves', 'bonds', 'items', 'garrisons', 'bands', 'effects', 'backups', 'hextech']);
-// The browser simulation loader lives in ./simLoader.js (0.3.0 moved it out of this module); re-exported here because
-// this is the module callers and tests have always imported it from, and the two must be the same function.
-export { loadBrowserSim } from './simLoader.js';
+// The browser simulation loader AND its data-file list live in ./simLoader.js (0.3.0 moved the loader out of this
+// module); both are re-exported here because callers and tests have always imported them from this module. ONE list:
+// a second copy had silently lost `hextech`, so the browser simulated battles with no enemy verb cards (§29.10).
+export { loadBrowserSim, SIM_DATA_FILES } from './simLoader.js';
 
 /**
  * 工坊行为层 (docs/WORKSHOP.md §4): build the per-battle kit maps from `spec.workshopKits` — the JSON-safe module list the

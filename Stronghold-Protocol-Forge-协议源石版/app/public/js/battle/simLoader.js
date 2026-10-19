@@ -1,5 +1,14 @@
 // Browser/Worker engine loader. Workers receive data and never fetch it (DESIGN §34.11).
-export const SIM_DATA_FILES = Object.freeze(['chess', 'enemies', 'tokens', 'stages', 'waves', 'bonds', 'items', 'garrisons', 'bands', 'effects', 'backups']);
+//
+// SIM_DATA_FILES is THE list: /js/battle/runner.js re-exports this very array (it used to keep a second copy, and the
+// copy here had lost `hextech` — every enemy verb card 隐匿 / 回响 / 铁壁 … then did nothing in a browser-simulated
+// battle while the Node tests, which read data/*.json off disk, all passed; the user reported it twice, §29.10).
+export const SIM_DATA_FILES = Object.freeze([
+  'chess', 'enemies', 'tokens', 'stages', 'waves', 'bonds', 'items', 'garrisons', 'bands', 'effects', 'backups',
+  // 协议源石: installEnemyVerbs resolves every enemy verb card through gameData().hextech, and the player-side battle
+  // scripts (hexcards/*) need the same roster paths. Without it the browser sim silently fights with no enemy verbs.
+  'hextech',
+]);
 
 function deepFreeze(root) {
   const stack = [root];
