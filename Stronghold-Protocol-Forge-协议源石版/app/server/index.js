@@ -576,8 +576,9 @@ export async function startServer(opts = {}) {
 
   // 网络流量计数（server/http/traffic.js）：/healthz?traffic=1 与后台面板的「网络」卡共用这一份。
   const traffic = createTrafficCounter();
-  // The read-only admin API. There is no code default for the token on purpose (see server/admin.js): without
-  // ADMIN_SECRET (or the option) `admin.enabled` is false and routes.js answers 404 for every /api/admin/* path.
+  // The admin API (read-mostly: the six operator writes are named in server/admin.js). There is no code default for the
+  // token on purpose (see server/admin.js): without ADMIN_SECRET (or the option) `admin.enabled` is false and routes.js
+  // answers 404 for every /api/admin/* path.
   const admin = new AdminService({
     lobby, network, registry, startedAt: Date.now(), traffic,
     buildTag: () => buildTag(),
@@ -717,7 +718,7 @@ export async function startServer(opts = {}) {
 // tree had no such block, so only the console's own pieces are added — an existing import of server/index.js sees
 // exactly the same module it did before.
 export {
-  // the read-only admin API (server/admin.js) — the panel's backend and its log ring
+  // the admin API (server/admin.js) — the panel's backend and its log ring
   AdminService, recordAdminLog,
   // 玩家反馈的落盘/读取
   createFeedbackStore,

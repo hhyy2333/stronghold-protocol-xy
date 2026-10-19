@@ -1,4 +1,4 @@
-// public/admin/admin.js — the read-only operational panel.
+// public/admin/admin.js — the operational panel (monitor + the few operator writes named below).
 //
 // i18n CHOICE (deliberate — see the task note): the panel keeps its own strings in the local `STRINGS` table below
 // instead of importing shared/i18n.js and wrapping them in t().
@@ -15,9 +15,10 @@
 // Everything else here follows the game client's spirit: native ES module, no framework, no dependency.
 //
 // NOT read-only any more: the operator writes are 全体公告 (pick up / put down a banner), 更新公告 (edit the live
-// revision), 封禁 IP (refuse a source, dropping the sockets it holds) and 删除一条玩家反馈 (prune one report). Each is
-// drawn as narrowly as its feature allows and none of them can touch a room, a match or a seat — see the SECURITY note
-// in server/admin.js, which is the authority on what this surface may do. There is still no drain, no shutdown and no
+// revision), 封禁 IP (refuse a source, dropping the sockets it holds), 删除一条玩家反馈 (prune one report) and 踢出房间
+// (remove one human from one room). Each is drawn as narrowly as its feature allows — the last one is the only write
+// that reaches a room, and it does exactly what a normal departure does and nothing else — see the SECURITY note in
+// server/admin.js, which is the authority on what this surface may do. There is still no drain, no shutdown and no
 // broadcast into a running match.
 //
 // It also shows things that are NOT in a JSON view on this process: the 蓝绿 other slot (server/peer.js, DEPLOY.md
@@ -30,7 +31,7 @@ const POLL_MS = 2000;
 /** One place for every string this page shows (see the i18n note above). */
 const STRINGS = {
   zh: {
-    subtitle: '只读运行监控面板',
+    subtitle: '运行监控与运营面板',
     connecting: '连接中…',
     live: '运行中',
     unauthorized: '令牌无效或已被锁定',
@@ -90,6 +91,16 @@ const STRINGS = {
     pollLabel: '每 2 秒刷新（只读）',
     modeSolo: '单人',
     modeCoop: '合作',
+    roomsHint: '把一名真人移出这间房（任何时刻都可以，包括对局进行中）。被移出的人看到的提示「你已被移出同盟」与他自己点离开完全相同；不封禁，他还能用房间号加回来——要挡住他请用下面的「封禁 IP」。房主被移出时，房主身份顺延给座位最靠前的那位。',
+    kickSeat: '移出',
+    kickSeatTitle: '把 {name} 移出这间房',
+    kickConfirm: '把 {name} 移出房间 {code}？',
+    kickConfirmOffline: '「{code}」里的 {name} 现在离线。把他移出后，等他下次打开页面时会看到「你已被移出同盟」，而不是立刻断线。确定吗？',
+    kickConfirmInMatch: '「{code}」正在对局中。把 {name} 移出等于他中途退出：他的座位会显示为离开，其余人继续打完。确定吗？',
+    kickBusy: '正在移出…',
+    kicked: '已把 {name} 移出房间 {code}。',
+    kickedDeferred: '已请求把 {name} 移出房间 {code}（这间房还有别的事情排在它前面，移出稍后生效）。',
+    kickFailed: '移出失败：{why}',
     announceTitle: '全体公告',
     announceHint: '发布后立即出现在所有在线玩家的页面顶部（大厅与对局中都能收到），滚动显示。会保存下来：之后才连上的人、以及服务器重启后，都还能看到这条公告，直到你发布下一条或点「撤回公告」。',
     announcePlaceholder: '在这里写公告…（最多 200 字）',
@@ -203,7 +214,7 @@ const STRINGS = {
     banPrefilled: '已填入 {addr}——确认后点「封禁」。',
   },
   en: {
-    subtitle: 'read-only operations monitor',
+    subtitle: 'operations & monitor panel',
     connecting: 'connecting…',
     live: 'running',
     unauthorized: 'invalid or locked-out token',
@@ -263,6 +274,16 @@ const STRINGS = {
     pollLabel: 'refreshes every 2 s (read-only)',
     modeSolo: 'solo',
     modeCoop: 'co-op',
+    roomsHint: 'Remove one human from this room — at any time, a running match included. The player sees the same 「你已被移出同盟」 notice as when they leave by themselves, and it does NOT ban them: they can rejoin with the code. To keep them out, use 封禁 IP below. If the host is removed, the host role passes to the lowest-seat remaining player.',
+    kickSeat: 'Remove',
+    kickSeatTitle: 'Remove {name} from this room',
+    kickConfirm: 'Remove {name} from room {code}?',
+    kickConfirmOffline: '{name} is offline in room {code}. Removing them means they see 「你已被移出同盟」 the next time they open the game — not an immediate disconnect. Continue?',
+    kickConfirmInMatch: 'Room {code} is in a match. Removing {name} is a mid-match exit: their seat is shown as departed and everyone else plays on. Continue?',
+    kickBusy: 'Removing…',
+    kicked: 'Removed {name} from room {code}.',
+    kickedDeferred: 'Asked to remove {name} from room {code} (that room still has other work queued ahead of it, so the removal lands shortly).',
+    kickFailed: 'Remove failed: {why}',
     announceTitle: 'Server announcement',
     announceHint: 'Appears at once at the top of every online player\'s page (the lobby and a running match alike), scrolling. It is SAVED: a player who connects later — and the server itself after a restart — still sees it, until you publish another or press Withdraw.',
     announcePlaceholder: 'Write the announcement… (200 characters max)',
@@ -1489,10 +1510,81 @@ function wireBans() {
 
   // 房间表里的座位：地址藏在悬停提示里，点一下把它填进上面的封禁框。
   // 这里是「看到捣乱的人 → 准备封他」最短的一条路，而**提交仍由操作员完成**——一次误点不该把在线玩家踢出去。
+  // 同一张表里还有「移出」按钮（踢出房间），它**自己**就是一个提交动作，所以必须先过一道确认框：见 kickFromPanel。
   $('rooms-body').addEventListener('click', (event) => {
+    const kick = event.target.closest('[data-kick-player]');
+    if (kick) { void kickFromPanel(kick); return; }
     const tag = event.target.closest('[data-ban-addr]');
     if (tag) fillBanField(tag.dataset.banAddr);
   });
+}
+
+// ---------------------------------------------------------------------------------------------------
+// 踢出房间 — POST /api/admin/rooms/kick (server/lobby.js `operatorKick`)
+// ---------------------------------------------------------------------------------------------------
+//
+// WHY it is a button in the room table and not a form: the operator's question is always about ONE person they can see
+// («这间房里那个人»), so the target must be the row itself — a free-text playerId field would be a way to mistype an id
+// and remove the wrong stranger. The button therefore carries the room code and the player id it was rendered from, and
+// the SERVER re-checks both (a seat that changed hands since the last 2 s poll is refused, exactly like room.kick).
+//
+// It is NOT a ban: the confirm dialog says so, because the two live side by side in this panel and telling them apart
+// is the operator's only chance to pick the right one.
+
+/** The per-seat 移出 button. `data-kick-*` is the only thing the row click handler reads. */
+function kickButton(room, { playerId, name, offline = false }) {
+  const btn = element('button', 'btn btn--ghost btn--tiny seat__kick', t('kickSeat'));
+  btn.type = 'button';
+  btn.dataset.kickPlayer = playerId;
+  btn.dataset.kickCode = String(room?.code ?? '');
+  btn.dataset.kickName = String(name ?? playerId);
+  btn.dataset.kickInMatch = room?.match ? '1' : '';
+  if (offline) btn.dataset.kickOffline = '1';
+  btn.title = t('kickSeatTitle', { name: name ?? playerId });
+  return btn;
+}
+
+/** @param {string} text @param {'ok'|'error'|'busy'|''} kind */
+function setRoomsStatus(text, kind) {
+  const el = $('rooms-status');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = `announce__status${kind ? ` is-${kind}` : ''}`;
+}
+
+/**
+ * The click handler of one 移出 button: confirm, POST, report. Every failure is named from the server's own answer
+ * (a stale row says the player is no longer in the room, not a generic "failed").
+ * @param {HTMLElement} btn the button the operator pressed
+ */
+async function kickFromPanel(btn) {
+  const code = btn.dataset.kickCode || '';
+  const playerId = btn.dataset.kickPlayer || '';
+  const name = btn.dataset.kickName || playerId;
+  if (!code || !playerId) return;
+  const inMatch = btn.dataset.kickInMatch === '1';
+  // The dialog spells out the three things an operator can get wrong: mid-match is an exit (not a pause), an offline
+  // player is told on their next resume (not disconnected now), and this is not a ban — the ban field is right below.
+  // `window.confirm` is good enough here: the panel is a single-page operator tool with no dialog stack.
+  const offline = btn.dataset.kickOffline === '1';
+  const which = inMatch ? 'kickConfirmInMatch' : offline ? 'kickConfirmOffline' : 'kickConfirm';
+  if (!window.confirm(t(which, { code, name }))) return;
+  btn.disabled = true;
+  setRoomsStatus(t('kickBusy'), 'busy');
+  try {
+    const r = await apiPost('/api/admin/rooms/kick', { code, playerId });
+    if (r.status === 200 && r.body?.ok) {
+      const k = r.body.kick || {};
+      setRoomsStatus(t(k.deferred ? 'kickedDeferred' : 'kicked', { name: k.name || name, code: k.room || code }), 'ok');
+      // The next 2 s poll redraws the table; an immediate refetch is what makes the seat visibly go away now.
+      void poll();
+    } else {
+      setRoomsStatus(t('kickFailed', { why: whyOf(r) }), 'error');
+    }
+  } catch {
+    setRoomsStatus(t('kickFailed', { why: 'network' }), 'error');
+  }
+  btn.disabled = false;
 }
 
 function renderRooms(rooms) {
@@ -1524,13 +1616,26 @@ function renderRooms(rooms) {
     const seats = element('td');
     const list = Array.isArray(room.seats) ? room.seats : [];
     if (!list.length) seats.append(element('span', 'muted', '—'));
-    for (const seat of list) seats.append(seatTag(seat));
+    for (const seat of list) {
+      seats.append(seatTag(seat));
+      // 踢出房间: a human seat that is STILL IN the room gets the button. A bot seat never does (the host's own
+      // room.removeBot owns AI seats), and neither does a seat the platform already released (`left`: a mid-match exit
+      // keeps the seat until the match ends) — the server refuses those by name, so offering the button would only
+      // produce an error the operator cannot act on.
+      if (seat && !seat.isBot && seat.playerId && !seat.left) {
+        seats.append(kickButton(room, { playerId: seat.playerId, name: seat.name, offline: !seat.connected }));
+      }
+    }
     row.append(seats);
 
     const spectators = element('td');
     const watchers = Array.isArray(room.spectators) ? room.spectators : [];
     if (!watchers.length) spectators.append(element('span', 'muted', '—'));
-    for (const w of watchers) spectators.append(element('span', 'tag', w.name ?? w.playerId ?? '—'));
+    for (const w of watchers) {
+      spectators.append(element('span', 'tag', w.name ?? w.playerId ?? '—'));
+      // A spectator is a person in the room too (server-side this ends up in the same removeMember).
+      if (w && w.playerId) spectators.append(kickButton(room, { playerId: w.playerId, name: w.name, offline: !w.connected }));
+    }
     row.append(spectators);
 
     row.append(perfCell(room.perf));
@@ -1769,5 +1874,5 @@ else showLogin(true);
 // named exports, so exporting here costs the page nothing; it is what lets the suites drive these reconcilers against
 // a DOM stand-in — the only way to assert "an open 诊断信息 survives a 2 s poll" and "a refresh never overwrites
 // typing" without a browser.
-export { renderFeedback, feedbackCard, renderNotes, syncNotesSize, renderRooms, perfCell, renderBans, banRow, renderSlots, slotCard, renderLimits };
+export { renderFeedback, feedbackCard, renderNotes, syncNotesSize, renderRooms, perfCell, renderBans, banRow, renderSlots, slotCard, renderLimits, kickButton, kickFromPanel };
 

@@ -23,6 +23,11 @@
 //     offline (with the result replay, as the grace timeout) —, so the reconnect token no longer leads back to the seat
 //     (it stays the player's identity: net.js sessions belong to players, not seats). ▸ No ban: the player may join
 //     again with the code.
+//   * Operator kick (后台踢人, `POST /api/admin/rooms/kick` → Lobby.operatorKick): the operator console removes one human
+//     from one room. Same mechanics as room.kick — one `removeMember`, one `room.closed {reason:'kicked'}`, no ban — but
+//     no session: it works at ANY point of the room's life, a running match included (it is then a 中途退出 for that
+//     player: the seat is kept as departed, everyone else plays on, and a kicked host hands the role on). Bots and
+//     already-departed seats are refused by name. See `operatorKick` for why this power exists at all.
 //   * Host migration: when the host leaves (or is removed), the lowest-seat remaining human (connected
 //     ones first) becomes host. A room without humans is disposed (bots never keep a room alive).
 //   * Disconnect in LOBBY: the seat shows connected=false and is freed after `lobbyGraceMs` (60 s); a
@@ -2200,6 +2205,92 @@ export class Lobby {  /**
     }
     this.log.info(`[lobby] ${room.code} ${target.name} removed by the host`);
     return OK;
+  }
+
+  /**
+   * 后台踢人 (the operator console's removal, `POST /api/admin/rooms/kick` → AdminService.kickFromRoom). Header:
+   * "Operator kick".
+   *
+   * WHY it exists: the host can already remove a guest before the match (room.kick), but an operator watching a room
+   * has no lever at all — the alternative is banning the address (a different, PERSISTENT decision that also takes the
+   * player off the whole server) or restarting the process (which ends every match). This is the one that matches the
+   * problem: take THIS player out of THIS room.
+   *
+   * It is deliberately the same mechanics as room.kick — one `removeMember`, one `room.closed {reason:'kicked'}`, no
+   * ban, no new frame — and it works at any point of the room's life, a running match included. During a match the
+   * removal is a 中途退出 for that player (removeMember: the seat is kept as departed, match.onLeave runs, everyone
+   * else plays on); a kicked host hands the role on through migrateHost, exactly as if they had left.
+   *
+   * A room whose messages are already backlogged behind a match host (header "Gameplay plugins", `queue.pending > 0`)
+   * orders the removal with its own queue, like any other room event — the answer says `deferred: true` then, because
+   * the platform could not know yet whether it landed. An idle room applies it at once and answers exactly. Every
+   * refusal is by name: no such room, that player is not in it, a bot seat, an already-departed seat.
+   *
+   * @param {{ code?: unknown, playerId?: unknown }} input the room code and the player the operator pointed at
+   * @returns {{ ok: true, room: string, playerId: string, name: string|null, seat: number|null, spectator: boolean,
+   *   inMatch: boolean, deferred: boolean } | { ok: false, error: string, detail?: string }}
+   */
+  operatorKick({ code, playerId } = {}) {
+    const norm = typeof code === 'string' ? code.trim().toUpperCase() : '';
+    if (norm.length !== ROOM_CODE_LEN || typeof playerId !== 'string' || !playerId) {
+      return { ok: false, error: ERR.BAD_MSG, detail: 'a room code and a player are required' };
+    }
+    const room = this.rooms.get(norm);
+    if (!room || room.disposed) return { ok: false, error: ERR.ROOM_NOT_FOUND };
+    const now = this.kickTargetOf(room, playerId);
+    if (!now.ok) return now;
+    const apply = () => {
+      // Re-checked inside the (possibly deferred) run: the room may have been disposed, or the seat may have changed
+      // hands, while the room's queue was busy. A stale run must not log a removal that never happened.
+      if (room.disposed) return { ok: false, error: ERR.ROOM_NOT_FOUND };
+      const again = this.kickTargetOf(room, playerId);
+      if (!again.ok) return again;
+      const session = this.registry.byId(playerId);
+      const wasHere = !!session && session.roomCode === room.code;
+      const replay = this.replayFor(room, playerId);
+      this.removeMember(room, playerId);
+      if (wasHere) {
+        // like room.kick: now, or on the next resume (with the result replay, as after the grace timeout)
+        if (session.connected) sendSession(session, { t: 'room.closed', reason: 'kicked' });
+        else { session.notice = 'kicked'; session.pendingResult = replay; }
+      }
+      this.log.info(`[lobby] ${room.code} ${again.name || playerId} removed by the operator`);
+      return again;
+    };
+    const answer = {
+      ok: true, room: room.code, playerId, name: now.name, seat: now.seat, spectator: now.spectator,
+      inMatch: !!room.match, deferred: false,
+    };
+    // The room's own order wins while something of it is already pending (a match host's messages, a queued event):
+    // the removal goes behind them, so the answer can only say it was REQUESTED. With nothing pending the queue would
+    // run it synchronously anyway, so it runs here and the answer is exact (a refusal on that path is the answer).
+    if (room.queue.pending > 0) {
+      this.queueEvent(room, apply);
+      answer.deferred = true;
+      return answer;
+    }
+    const done = apply();
+    return done && done.ok === false ? done : answer;
+  }
+
+  /**
+   * Which human of `room` the operator pointed at, and whether they may still be removed. Bots and already-departed
+   * seats are refused here (the operator console lists live seats, so a refusal means the picture it was looking at is
+   * stale — saying which of the two it was is more useful than one generic "no such player").
+   * @param {Room} room @param {string} playerId
+   * @returns {{ ok: true, name: string|null, seat: number|null, spectator: boolean }
+   *   | { ok: false, error: string, detail?: string }}
+   */
+  kickTargetOf(room, playerId) {
+    const seat = room.seatOf(playerId);
+    if (seat) {
+      if (seat.isBot) return { ok: false, error: ERR.BAD_TARGET, detail: 'seat holds an AI (not a human)' };
+      if (seat.left) return { ok: false, error: ERR.BAD_TARGET, detail: 'that player already left this room' };
+      return { ok: true, name: seat.name ?? null, seat: seat.seat, spectator: false };
+    }
+    const spec = room.spectatorOf(playerId);
+    if (spec) return { ok: true, name: spec.name ?? null, seat: null, spectator: true };
+    return { ok: false, error: ERR.NOT_IN_ROOM };
   }
 
   start(session) {

@@ -1,4 +1,6 @@
-// server/admin.js — the READ-ONLY operational API behind GET/HEAD /api/admin/* (server/http/routes.js).
+// server/admin.js — the operational API behind GET/HEAD /api/admin/* (server/http/routes.js). Read-mostly: the only
+// writes are the six the owner asked for by name (全体公告 / 更新公告 / 封禁 / 服务器人数上限 / 删除一条反馈 / 踢出房间),
+// each drawn as narrowly as its feature allows — see the SECURITY note below.
 //
 // SECURITY (the reason this module looks like this):
 //
@@ -12,13 +14,17 @@
 //   * Repeated wrong tokens from one client address lock that address out for a while. The lockout answers the same
 //     401 as a wrong token: it never confirms to the attacker that it is being throttled. The clock is injectable
 //     (`now`) so tests can drive the window instead of sleeping through it.
-//   * READ-ONLY except for TWO features. The 全体公告 (shared/announce.js) — publishing or withdrawing is one sanitized
-//     text frame to connected sessions plus one small file (server/announceStore.js), touching no room, no match and
-//     no seat — and 封禁 IP (server/bans.js, server/banStore.js), which additionally closes the sockets that address
-//     already holds. Both are drawn as narrowly as the feature allows; there is still no graceful drain, no shutdown
-//     control and no way to touch a running match: those need lobby hooks that do not exist yet and a separate design
-//     decision. A token that ends up in a browser tab, a screenshot or a proxy log must not be able to change the
-//     running server beyond putting a line on every screen (and taking it down again) and refusing a source.
+//   * The six writes, and why each is allowed: the 全体公告 (shared/announce.js) — publishing or withdrawing is one
+//     sanitized text frame to connected sessions plus one small file (server/announceStore.js), touching no room, no
+//     match and no seat; 更新公告 (server/notesStore.js), a file that the next page load reads; 封禁 IP (server/bans.js,
+//     server/banStore.js), which additionally closes the sockets that address already holds; 服务器人数上限
+//     (server/limits.js), which never disconnects anybody; 删除一条反馈 (server/feedback.js), one line of one file; and
+//     踢出房间 (`POST /api/admin/rooms/kick` → Lobby.operatorKick), which removes ONE human from ONE room with exactly
+//     the mechanics a normal departure uses. All six are drawn as narrowly as the feature allows; there is still no
+//     graceful drain, no shutdown control and no way to alter a running match: those need lobby hooks that do not
+//     exist yet and a separate design decision. A token that ends up in a browser tab, a screenshot or a proxy log
+//     must not be able to change the running server beyond putting a line on every screen (and taking it down again),
+//     refusing a source, lowering a ceiling, pruning one report, and removing a player from a room they are in.
 //   * The token travels in the `Authorization: Bearer …` header only — never in a query string (access logs and
 //     `Referer` leak those) and never in a cookie (the browser would attach it to any page the operator visits).
 //
@@ -84,6 +90,19 @@ const LIMITS_TEXT = {
   range: (lo, hi) => `超出允许范围（${lo}–${hi}）· Out of range (${lo}–${hi})`, // i18n-ignore: 管理面文案
   // 人机那两格的越界文案（0 合法 = 不限制，所以下限是 0，措辞要说清这一点）
   botsRange: (lo, hi) => `人机上限要在 ${lo}–${hi} 之间（0 = 不限制）· AI cap must be ${lo}–${hi} (0 = unlimited)`, // i18n-ignore: 管理面文案
+};
+
+/**
+ * 后台踢人（`POST /api/admin/rooms/kick`）的应答文案。与 BAN_TEXT 同一条理由：管理面文案不进 i18n 管道
+ * （public/admin/ 自带 STRINGS 表），每行按 docs/I18N.md 的规矩标 `// i18n-ignore`。
+ */
+const KICK_TEXT = {
+  disabled: '踢人功能不可用 · Room kicks unavailable', // i18n-ignore: 管理面文案
+  bad: '需要房间号与被踢的玩家 · A room code and a player are required', // i18n-ignore: 管理面文案
+  notFound: '找不到这个房间（可能已经解散）· No such room (it may already be gone)', // i18n-ignore: 管理面文案
+  notInRoom: '这个玩家不在这间房里 · That player is not in that room', // i18n-ignore: 管理面文案
+  badTarget: '只能踢真人：AI 座位不会经过这里，已离开的人也已经不在房里 · Only a human still in the room can be kicked', // i18n-ignore: 管理面文案
+  failed: '服务器没能完成这次操作 · The server could not complete the kick', // i18n-ignore: 管理面文案
 };
 
 /**
@@ -561,6 +580,10 @@ export class AdminService {
           isBot: !!s.isBot,
           ready: !!s.ready,
           connected: !!s.connected && !s.left,
+          // 已经永久离开这一局的人（对局中的中途退出：座位保留到本局结束，见 lobby.js removeMember）。与「掉线」是
+          // 两件事：掉线的座位还能被移出（宽限期一到也会自己释放），已经离开的座位再移出只会得到 BAD_TARGET ——
+          // 面板据此决定要不要画那颗按钮。对局外这个值永远是 false（lobby 直接释放座位）。
+          left: !!s.left,
           // 座位上的客户端地址（业主 2026-10-14：封禁要知道封谁）。面板平时不显示它，悬停才露出来（§8.6）——
           // 这不是新增采集，只是把服务器**已经持有**的地址交给持口令的运维；值与封禁匹配的完全相同。
           // A bot has none; a seat whose session was reaped keeps none either (null, never '?').
@@ -1007,6 +1030,68 @@ export class AdminService {
     recordAdminLog('warn', `封禁 ${r.entry.rule}${r.entry.until ? `（至 ${new Date(r.entry.until).toISOString()}）` : '（永久）'}${r.entry.reason ? `：${r.entry.reason}` : ''}`, { by, evicted });
     this.log.warn?.(`[admin] ban ${r.entry.rule} by ${by || '?'} (${evicted} socket(s) dropped)`);
     return { ok: true, entry: r.entry, added: r.added, evicted, size: r.size, persisted: r.persisted, bans: this.bans.list() };
+  }
+
+  // -------------------------------------------------------------------------------------------------
+  // 踢出房间 — the third mutating group (Lobby.operatorKick)
+  // -------------------------------------------------------------------------------------------------
+  //
+  // WHY this is allowed on this surface: the host already has room.kick for their own guests before the match, but an
+  // operator looking at a running room has no lever — the only other two are banning the address (a much broader,
+  // persistent decision that takes the player off the whole server) and restarting the process (which ends every
+  // match). Removing one human from one room is the narrow action that actually matches the problem.
+  //
+  // It is bounded the way the rest of this file is:
+  //   * it cannot create, move or alter a room, a seat or a match — it calls the SAME `removeMember` every normal
+  //     departure uses (leave, grace timeout, expiry), so a kicked player is indistinguishable from one who left;
+  //   * it cannot ban: the player may join the same room again (the operator has 封禁 for the persistent version);
+  //   * it names its target by room code AND playerId, so a stale panel row cannot remove whoever took that seat since;
+  //   * it can never touch a bot or an already-departed seat (refused by name), and there is no "kick everyone".
+
+  /**
+   * POST /api/admin/rooms/kick { code, playerId } — 把一名真人踢出一间房 (Lobby.operatorKick).
+   *
+   * Works at any point of the room's life, a running match included (that player is then a 中途退出: the seat is kept
+   * as departed, everyone else plays on, and a kicked host hands the role on). The player gets `room.closed
+   * {reason:'kicked'}` — now, or on their next resume when they are offline — which is the existing client notice
+   * 「你已被移出同盟」, so nothing on the player side is new.
+   *
+   * @param {{ code?: unknown, playerId?: unknown }} input
+   * @param {{ by?: string|null }} [opts] the CALLER's client address (the panel has no accounts); it only labels the
+   *   log line, exactly like the ban API's `by`
+   * @returns {{ ok: true, kick: object } | { ok: false, error: 'DISABLED'|'BAD_REQUEST'|'ROOM_NOT_FOUND'|'NOT_IN_ROOM'|'BAD_TARGET'|'FAILED', message: string, detail?: string }}
+   */
+  kickFromRoom(input, { by = null } = {}) {
+    if (!this.enabled) return { ok: false, error: 'DISABLED', message: KICK_TEXT.disabled };
+    if (!this.lobby || typeof this.lobby.operatorKick !== 'function') {
+      return { ok: false, error: 'DISABLED', message: KICK_TEXT.disabled };
+    }
+    const code = typeof input?.code === 'string' ? input.code.trim().toUpperCase() : '';
+    const playerId = typeof input?.playerId === 'string' ? input.playerId.trim() : '';
+    if (!code || !playerId) return { ok: false, error: 'BAD_REQUEST', message: KICK_TEXT.bad };
+    let r;
+    try {
+      r = this.lobby.operatorKick({ code, playerId });
+    } catch (e) {
+      this.log.error('[admin] operator kick failed', e);
+      return { ok: false, error: 'FAILED', message: KICK_TEXT.failed };
+    }
+    if (!r || !r.ok) {
+      const error = r?.error;
+      if (error === 'ROOM_NOT_FOUND') return { ok: false, error, message: KICK_TEXT.notFound };
+      if (error === 'NOT_IN_ROOM') return { ok: false, error, message: KICK_TEXT.notInRoom };
+      // WHY the specific reason goes into `message` and not only `detail`: the panel shows `message` (that is what
+      // every other admin write returns), so a bare "only a human can be kicked" would hide the two different causes
+      // this refusal exists to tell apart (an AI seat vs a seat the player has already left).
+      if (error === 'BAD_TARGET') {
+        return { ok: false, error, message: r.detail ? `${KICK_TEXT.badTarget} · ${r.detail}` : KICK_TEXT.badTarget, detail: r.detail };
+      }
+      return { ok: false, error: 'BAD_REQUEST', message: KICK_TEXT.bad, detail: r?.detail };
+    }
+    const who = r.name || r.playerId;
+    recordAdminLog('warn', `把 ${who} 踢出房间 ${r.room}${r.inMatch ? '（对局进行中）' : ''}`, { by });
+    this.log.warn?.(`[admin] kick ${r.room} ${who} by ${by || '?'}${r.inMatch ? ' (in match)' : ''}`);
+    return { ok: true, kick: r };
   }
 
   /**

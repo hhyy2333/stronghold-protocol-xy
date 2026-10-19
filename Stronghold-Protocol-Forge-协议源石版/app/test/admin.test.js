@@ -1,4 +1,5 @@
-// test/admin.test.js — the read-only admin API (server/admin.js, routed by server/http/routes.js).
+// test/admin.test.js — the admin API's read views (server/admin.js, routed by server/http/routes.js); the writes each
+// have their own suite (admin-kick / announce / admin-panel-slots-bans / limits / update-notes-server).
 //
 // Boots real servers in-process on random ports (startServer({ port: 0 })), like test/lobby.test.js. The two things
 // worth more than the happy path are the security ones: with no ADMIN_SECRET the surface must not exist at all (404,
@@ -241,6 +242,9 @@ describe('admin API with ADMIN_SECRET', () => {
     // the normal case for a local/LAN peer (a real internet player behind nginx gets the forwarded one instead).
     assert.deepEqual(seat, {
       seat: 0, playerId: client.id, name: 'AdminProbe', isBot: false, ready: false, connected: true,
+      // `left` = departed for good (a mid-match exit keeps the seat until the match ends). The panel needs it to know
+      // whether the 「移出」 button has anything left to remove (server/admin.js kickFromRoom refuses a departed seat).
+      left: false,
       addr: '127.0.0.1',
     });
     assert.deepEqual(room.spectators, []);

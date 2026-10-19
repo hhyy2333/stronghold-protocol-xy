@@ -10,9 +10,11 @@
   <link rel="stylesheet" href="/admin/admin.css" />
 </head>
 <body class="admin">
-  <!-- A plain static page over the read-only JSON API (GET /api/admin/overview|rooms|logs). It holds NO secret and no
-       capability of its own: the token is typed here and kept in sessionStorage, and the server is the only thing that
-       decides what it may see. There is deliberately no control that changes the server (no broadcast, no drain). -->
+  <!-- A plain static page over the operational JSON API (GET /api/admin/overview|rooms|logs, plus the operator writes).
+       It holds NO secret and no capability of its own: the token is typed here and kept in sessionStorage, and the
+       server is the only thing that decides what it may see or do. The writes are exactly the ones the server exposes
+       (全体公告, 更新公告, 封禁, 删除反馈, 把一个人踢出房间) — there is deliberately no drain, no shutdown and no control
+       over a running match. -->
   <header class="topbar">
     <div class="brand">
       <span class="brand__mark" aria-hidden="true">🛡️</span>
@@ -78,6 +80,10 @@
 
     <section class="panel">
       <h2 class="panel__head"><span data-t="roomsTitle"></span> <span class="count" id="rooms-count">0</span></h2>
+      <p class="muted announce__hint" data-t="roomsHint"></p>
+      <div class="announce__row">
+        <span id="rooms-status" class="announce__status" role="status" aria-live="polite"></span>
+      </div>
       <div class="table-wrap">
         <table class="table">
           <thead>

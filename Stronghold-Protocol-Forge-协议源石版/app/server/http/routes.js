@@ -87,7 +87,8 @@ const MAX_URL_LENGTH = 4096;
 // console for a scanner to find.
 //
 // The method gate below is what keeps this surface from widening access: only 公告 / 更新公告 / 封禁 / 人数上限 / 删除
-// 反馈 take POST, and each of those is drawn as narrowly as its feature allows (server/admin.js carries the detail).
+// 反馈 / 踢出房间 take POST, and each of those is drawn as narrowly as its feature allows (server/admin.js carries the
+// detail). 踢出房间 is the only one that reaches a room, and it does exactly what a normal departure does.
 // =====================================================================================================================
 
 /** The admin paths answered by GET / HEAD. Anything else under /api/admin/ is a 404. */
@@ -115,6 +116,13 @@ const ADMIN_LIMITS_PATH = '/api/admin/limits';
 /** Removing ONE player report (server/feedback.js `remove`): an operator action, as narrow as it can be. */
 const ADMIN_FEEDBACK_REMOVE_PATH = '/api/admin/feedback/remove';
 const ADMIN_FEEDBACK_BODY_MAX = 4 * 1024;
+/**
+ * 踢出房间 (server/lobby.js `operatorKick`): the ONE admin write that touches a room. It names a room code and a
+ * playerId and does exactly what every normal departure does (`removeMember` → `room.closed {reason:'kicked'}`) —
+ * it cannot create or move a room, alter a match, or ban anyone. Sized for `{ "code": "ABCD", "playerId": "p_…" }`.
+ */
+const ADMIN_ROOMS_KICK_PATH = '/api/admin/rooms/kick';
+const ADMIN_KICK_BODY_MAX = 1024;
 /** Cap of the limits request body: `{ "maxConnections": 400 }` and nothing else. */
 const ADMIN_LIMITS_BODY_MAX = 1024;
 /** Cap of the announcement request body (the text itself is capped at ANNOUNCE_MAX_LEN characters). */
@@ -434,8 +442,8 @@ export function createRequestHandler({
 
   /**
    * The admin API. Reads are GET / HEAD; the mutations are publishing / withdrawing the 全体公告 (shared/announce.js),
-   * the 更新公告 writes, 封禁 / 解封 (server/bans.js) and removing one player report (server/feedback.js). A disabled
-   * service is indistinguishable from a path that was never routed.
+   * the 更新公告 writes, 封禁 / 解封 (server/bans.js), removing one player report (server/feedback.js) and 踢出房间
+   * (server/lobby.js `operatorKick`). A disabled service is indistinguishable from a path that was never routed.
    * @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res
    * @param {{ rawPath: string, query: string }} parts
    */
@@ -455,13 +463,14 @@ export function createRequestHandler({
     const isBanRemove = req.method === 'POST' && parts.rawPath === ADMIN_BANS_REMOVE_PATH;
     const isFeedbackRemove = req.method === 'POST' && parts.rawPath === ADMIN_FEEDBACK_REMOVE_PATH;
     const isLimitsSave = req.method === 'POST' && parts.rawPath === ADMIN_LIMITS_PATH;
+    const isKick = req.method === 'POST' && parts.rawPath === ADMIN_ROOMS_KICK_PATH;
     // The method gate, exactly as strict as the rest of the server (405 + `Allow: GET, HEAD`). It runs before the path
     // and the token, so a mutating verb is refused on its own: PUT / DELETE can never reach a view, and its answer does
-    // not depend on (or reveal) the caller's token. POST is admitted for exactly the announcement, notes, ban and
-    // feedback-removal paths and is a 405 everywhere else, including every other /api/admin/ path.
-    if (!isRead && !isAnnounce && !isWithdraw && !isNotesSave && !isNotesClear && !isBanAdd && !isBanRemove && !isFeedbackRemove && !isLimitsSave) {
+    // not depend on (or reveal) the caller's token. POST is admitted for exactly the announcement, notes, ban,
+    // feedback-removal, limits and room-kick paths and is a 405 everywhere else, including every other /api/admin/ path.
+    if (!isRead && !isAnnounce && !isWithdraw && !isNotesSave && !isNotesClear && !isBanAdd && !isBanRemove && !isFeedbackRemove && !isLimitsSave && !isKick) {
       // Those paths are the only ones that also take POST, so their refusal (a PUT, say) advertises that.
-      const writable = [ADMIN_ANNOUNCE_PATH, ADMIN_ANNOUNCE_WITHDRAW_PATH, ADMIN_NOTES_PATH, ADMIN_NOTES_CLEAR_PATH, ADMIN_BANS_PATH, ADMIN_BANS_REMOVE_PATH, ADMIN_FEEDBACK_REMOVE_PATH, ADMIN_LIMITS_PATH];
+      const writable = [ADMIN_ANNOUNCE_PATH, ADMIN_ANNOUNCE_WITHDRAW_PATH, ADMIN_NOTES_PATH, ADMIN_NOTES_CLEAR_PATH, ADMIN_BANS_PATH, ADMIN_BANS_REMOVE_PATH, ADMIN_FEEDBACK_REMOVE_PATH, ADMIN_LIMITS_PATH, ADMIN_ROOMS_KICK_PATH];
       res.setHeader('Allow', writable.includes(parts.rawPath) ? 'GET, HEAD, POST' : 'GET, HEAD');
       sendError(req, res, 405, '不支持的请求方法 · Method not allowed');
       return;
@@ -483,6 +492,7 @@ export function createRequestHandler({
     if (isBanRemove) { await handleBanRemove(req, res, parts); return; }
     if (isFeedbackRemove) { await handleFeedbackRemove(req, res); return; }
     if (isLimitsSave) { await handleLimitsSave(req, res); return; }
+    if (isKick) { await handleKick(req, res); return; }
     if (parts.rawPath === '/api/admin/limits') { sendJson(req, res, 200, admin.getLimits()); return; }
     if (parts.rawPath === '/api/admin/overview') { sendJson(req, res, 200, admin.getOverview()); return; }
     if (parts.rawPath === '/api/admin/rooms') { sendJson(req, res, 200, admin.getRooms()); return; }
@@ -703,6 +713,43 @@ export function createRequestHandler({
     if (r.ok) { sendJson(req, res, 200, r); return; }
     // OUT_OF_RANGE is a 400 (the body is well-formed, the number is not); DISABLED is a 503 like the ban list's.
     sendJson(req, res, r.error === 'DISABLED' ? 503 : 400, { ok: false, error: r.error, message: r.message });
+  }
+
+  /**
+   * POST /api/admin/rooms/kick { code, playerId } — 把一名真人踢出一间房（server/lobby.js `operatorKick`）。
+   *
+   * The ONE admin write that reaches a room, and it is deliberately as narrow as a normal departure: one
+   * `removeMember`, one `room.closed {reason:'kicked'}`, no ban and no other state touched. It works at any point of
+   * the room's life, a running match included (the player is then a 中途退出: their seat is kept as departed and the
+   * other players carry on). The player's own client already knows `room.closed {kicked}` (「你已被移出同盟」), so
+   * this adds nothing new to their side of the wire.
+   *
+   * Statuses: 400 a malformed body / missing fields, 404 no such room, 409 the player is not in it (or is a bot /
+   * already left — the answer's `message` says which), 503 the surface is disabled, 500 the lobby threw.
+   * @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res
+   */
+  async function handleKick(req, res) {
+    const body = await readJsonBody(req, ADMIN_KICK_BODY_MAX);
+    if (!body.ok) {
+      const status = body.reason === 'too-large' ? 413 : 400;
+      const msg = body.reason === 'too-large' ? '内容过长 · Payload too large'
+        : body.reason === 'empty' ? '缺少内容 · Empty body' : '内容不是合法 JSON · Malformed JSON';
+      sendJson(req, res, status, { ok: false, error: body.reason, message: msg });
+      return;
+    }
+    if (!body.value || typeof body.value !== 'object' || Array.isArray(body.value)) {
+      sendJson(req, res, 400, { ok: false, error: 'bad-body', message: '需要一个 JSON 对象 · Expected a JSON object' });
+      return;
+    }
+    let by = null;
+    try { by = clientAddress(req, trustProxy).ip || null; } catch { by = null; }
+    const r = admin.kickFromRoom(body.value, { by });
+    if (r.ok) { sendJson(req, res, 200, r); return; }
+    const status = r.error === 'DISABLED' ? 503
+      : r.error === 'FAILED' ? 500
+        : r.error === 'ROOM_NOT_FOUND' ? 404
+          : (r.error === 'NOT_IN_ROOM' || r.error === 'BAD_TARGET') ? 409 : 400;
+    sendJson(req, res, status, { ok: false, error: r.error, message: r.message, ...(r.detail ? { detail: r.detail } : {}) });
   }
 
   return (req, res) => {

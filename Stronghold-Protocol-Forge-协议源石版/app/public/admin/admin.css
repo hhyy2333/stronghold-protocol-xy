@@ -2,8 +2,8 @@
    Self-contained on purpose: no /css/ file and no /fonts/ sheet is linked, so the panel renders during a half-finished
    deploy (or on a host whose asset pipeline never ran) instead of waiting on files the player client needs.
    Dark, dense and calm: it is read at a glance, next to the game. Colours follow the client's theme.
-   Everything here is read-only except the 全体公告 section (the one write, server/admin.js publishAnnouncement /
-   withdrawAnnouncement). */
+   The page is mostly read-only; the writes it offers (全体公告 / 更新公告 / 封禁 / 人数上限 / 删除反馈 / 移出房间) are
+   the ones server/admin.js exposes, and this sheet carries no colour literal of its own outside those sections. */
 
 :root {
   --bg: #0c0f0e;
@@ -466,4 +466,21 @@ main { padding: 16px 20px 32px; display: grid; gap: 16px; }
 .limits__value { font-family: var(--mono); font-size: 26px; line-height: 1; color: var(--mint); }
 .limits__value--full { color: var(--amber); }
 .limits__meta { font-size: 12px; }
+
+/* ---- 踢出房间（房间表里每个真人座位旁边那颗「移出」，server/lobby.js `operatorKick`）-------------------------
+   它坐在座次标签旁边，所以必须比标签更「安静」：默认只有极淡的边框，悬停才亮起来。**不用红色**（与 .limits 同
+   一条理由）：把人移出房间是一个常规的运营动作，不是故障；红色会让运维以为这一格是「封禁」，而这两件事在面板
+   里紧挨着，且后果完全不同（移出能立刻加回来，封禁不能）。
+   这一节只用面板既有 token（同上一节：test/admin-update-notes.test.js 会拦新的颜色字面量）。 ---- */
+
+.seat__kick {
+  margin: 0 6px 4px 0;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  vertical-align: top;
+  opacity: .55;
+}
+.seat__kick:hover { opacity: 1; border-color: var(--amber); color: var(--amber); }
+.seat__kick:disabled { opacity: .3; }
 
