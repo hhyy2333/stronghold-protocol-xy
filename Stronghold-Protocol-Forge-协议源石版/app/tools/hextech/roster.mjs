@@ -117,11 +117,14 @@ export const FORMAT = {
 //   omenpact { atkMaxPct, lifestealPct, hpCostPct }  不祥契约: ATK from missing HP (capped), lifesteal, HP cost/attack
 //   proteinshake { perHp, def, res }  蛋白粉奶昔: +def / +res per `perHp` of max HP
 //   frostghost { every, bindSec }    冰霜幽灵: bind every enemy for `bindSec` every `every` seconds
-//   heavyhitter { maxHpPct }        重量级打击手: each basic attack adds a separate phys hit of `maxHpPct`% max HP
+//   heavyhitter { maxHpPct }        重量级打击手: each basic attack adds a separate ARTS hit of `maxHpPct`% max HP;
+//                                   ARTS since the owner's correction of 2026-10-19 (it was phys / DEF-mitigated)
 //   canlight { perHitPct, perHitRiskPct }  残光: carrier damage (1 + perHitPct% × attackCount); each attack rolls
 //                                   perHitRiskPct × attackCount % to take its own ATK as damage, zeroing the count
 //   glasscannon { dmgPct, hpPct }   玻璃大炮: own operators deal `dmgPct`% damage, max HP `hpPct`%
-//   heavyload { atkPctPerStatus }   身负重担: +atkPctPerStatus% damage per negative status on the enemy hit
+//   heavyload { flatDamage }        身负重担: each hit on an enemy adds one separate ARTS instance of
+//                                   `flatDamage` × (its negative status count). A FLAT amount, not a percentage
+//                                   (owner's correction of 2026-10-19: 「额外造成400点法术伤害*状态数而不是400%」)
 //   umbrellabreak { chance, reflectMul }  破伞: `chance`% of hits on an own operator are negated and answered
 //                                   with `reflectMul`% of that damage as ARTS damage on the attacker
 //   warding { cutPct }              加护: damage of the operator's OWN type is cut `cutPct`%
@@ -1042,7 +1045,7 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_heavyhitter',
     name: '重量级打击手',
-    desc: '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的物理伤害。',
+    desc: '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的法术伤害。',
     rarity: 'silver',
     effect: { heavyhitter: { maxHpPct: 10 } },
   },
@@ -1071,9 +1074,11 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_heavyload',
     name: '身负重担',
-    desc: '作战中，己方干员攻击拥有负面状态的敌人时，伤害 +400% × 该敌人身上的负面状态数。',
+    desc: '作战中，己方干员攻击拥有负面状态的敌人时，额外造成 400 点法术伤害 × 该敌人身上的负面状态数。',
     rarity: 'silver',
-    effect: { heavyload: { atkPctPerStatus: 400 } },
+    // 业主修正 2026-10-19：不是「伤害 +400% × 状态数」，是「额外造成 400 点法术伤害 × 状态数」——
+    // 固定值（flatDamage）、独立一发法术伤害，不是倍率。
+    effect: { heavyload: { flatDamage: 400 } },
   },
   {
     id: 'hex_umbrellabreak',

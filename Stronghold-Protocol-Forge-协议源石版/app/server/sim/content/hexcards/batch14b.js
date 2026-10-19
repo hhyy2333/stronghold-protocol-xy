@@ -240,11 +240,13 @@ export function installProteinShake(hooks) {
 }
 
 /**
- * 重量级打击手 (hex_heavyhitter, 1 阶): 你的攻击造成相当于 10% 最大生命值的额外物理伤害。
+ * 重量级打击手 (hex_heavyhitter, 1 阶): 你的攻击造成相当于 10% 最大生命值的额外**法术**伤害。
  *
- * Reading: after one of the own operator's NORMAL attacks lands, every enemy that attack struck takes one separate phys
- * instance of `maxHpPct` of the operator's max HP. It is a plain 'phys' hit — mitigated by the target's DEF like any
- * physical damage — and its amount is read from max HP, never from the attack's own multiplier.
+ * Reading: after one of the own operator's NORMAL attacks lands, every enemy that attack struck takes one separate ARTS
+ * instance of `maxHpPct` of the operator's max HP. It is a plain 'arts' hit — mitigated by the target's RES like any
+ * arts damage — and its amount is read from max HP, never from the attack's own multiplier.
+ *
+ * 业主修正 (2026-10-19): 「把「重量级打手」改成法术伤害」 — 原来是 'phys'（按 DEF 减伤），现在按法抗减伤。
  *
  * Recursion: the bonus is dealt from the `attack` hook (not from `damaged`), so the extra instance cannot trigger
  * another bonus; it is tagged `hex:heavyhitter` and flagged for any other content that might answer it.
@@ -276,7 +278,7 @@ export function installHeavyHitter(hooks) {
     if (!(amount > 0)) return;
     for (const t of (ctx.targets || [])) {
       if (!t || t.side !== 'enemy' || !t.alive || t.removed) continue;
-      const info = battle.makeDamage({ amount, type: 'phys', isAttack: false, canDodge: false, tags: [HEAVY_TAG] });
+      const info = battle.makeDamage({ amount, type: 'arts', isAttack: false, canDodge: false, tags: [HEAVY_TAG] });
       info.hexHeavyHitter = true;
       fired++;
       battle.dealDamage(u, t, info);

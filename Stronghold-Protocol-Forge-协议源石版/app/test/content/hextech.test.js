@@ -728,7 +728,7 @@ test('the thirteenth batch: ten battle-script cards are wired end to end (record
   }
   // the card text itself (owner's wording) — a rewrite of the roster must not silently change it
   assert.equal(HEXTECH.playerHexes.hex_frostghost.desc, '每 12 秒束缚全场敌人 3 秒。');
-  assert.equal(HEXTECH.playerHexes.hex_heavyhitter.desc, '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的物理伤害。');
+  assert.equal(HEXTECH.playerHexes.hex_heavyhitter.desc, '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的法术伤害。');
 });
 
 test('转职大师 / 赌狗大师 / 人力部资源 / 博士投影: the four plain item grants name the owner’s items', () => {

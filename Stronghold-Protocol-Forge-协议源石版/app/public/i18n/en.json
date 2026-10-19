@@ -2671,5 +2671,6 @@
   "敌人获得 30% 物理闪避。": "Enemies gain a 30 % physical dodge chance.",
   "我方干员被击倒时，下回合的资金收入减少 2%（每场战斗内叠加，最多 30%）。": "When one of your operators is knocked out, the next round’s income drops by 2 % (stacking within a battle, up to 30 %).",
   "每场战斗额外加入 1 名随机「惊变」敌人（价值 1~5 资金）。": "Every battle adds one random 机变 bounty enemy worth 1–5 funds.",
-  "战斗额外加入 3 个杰斯顿，其属性为原来的（2 + 6x）%（x 为当前回合数）。": "The battle adds three Jesseltons at (2 + 6x)% of their original stats (x = the current round)."
+  "战斗额外加入 3 个杰斯顿，其属性为原来的（2 + 6x）%（x 为当前回合数）。": "The battle adds three Jesseltons at (2 + 6x)% of their original stats (x = the current round).",
+  "作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的法术伤害。": "In battle your operators’ attacks deal an extra amount of arts damage equal to 10 % of their own max HP."
 }

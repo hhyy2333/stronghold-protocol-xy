@@ -354,9 +354,9 @@ test('蛋白粉奶昔: no card installs nothing', () => {
 });
 
 // =====================================================================================================================
-// 5. 重量级打击手 — normal attacks add 10 % max HP physical damage
+// 5. 重量级打击手 — normal attacks add 10 % max HP ARTS damage (owner's correction 2026-10-19: it was phys)
 
-test('重量级打击手: every normal attack adds a separate 10 % max-HP physical instance', () => {
+test('重量级打击手: every normal attack adds a separate 10 % max-HP ARTS instance', () => {
   const defs = { chess: { test_op: opRec() }, enemies: { dummy: dummy('dummy') } };
   const h = field([seat('p1', 0, { effects: [refOf('hex_heavyhitter', { heavyhitter: { maxHpPct: 10 } })], units: [at(1, 10, 5)] })], { defs, enemies: [{ key: 'dummy', time: 0, pos: [10, 6] }] });
   const inst = installHeavyHitter(hexHooks(h.battle));
@@ -371,7 +371,7 @@ test('重量级打击手: every normal attack adds a separate 10 % max-HP physic
   assert.equal(body[0].amount, 500, 'premise: 500 ATK against 0 DEF');
   assert.equal(extra.length, 1, 'one extra instance');
   assert.equal(extra[0].amount, 200, '10 % of 2000 max HP');
-  assert.equal(extra[0].dmg.type, 'phys', '额外物理伤害');
+  assert.equal(extra[0].dmg.type, 'arts', '额外法术伤害（业主 2026-10-19 改成法术）');
   assert.equal(extra[0].dmg.isAttack, false, 'a separate instance, not the attack itself');
   assert.equal(foe.hp, 1e6 - 700, 'the enemy lost the body hit + the bonus');
   assert.equal(inst.fired, 1);

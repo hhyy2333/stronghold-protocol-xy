@@ -19,6 +19,8 @@ import { carries } from '../items/battle.js';
 export const CANLIGHT_ITEM_KEY = 'chess_item_9_92_e';
 /** 破伞 打出去的那一下的 tag。 */
 const UMBRELLA_TAG = 'hexUmbrellaBreak';
+/** 身负重担 的附加法术伤害的 tag。 */
+const HEAVYLOAD_TAG = 'hexHeavyLoad';
 
 /** 共用的“卡片存在 + 包形状对”守卫：没有卡（或 hooks 不是 hexHooks 的返回对象）时是个 no-op。 */
 function ownersOfCard(hooks, hexId) {
@@ -134,17 +136,20 @@ export function installGlassCannon(hooks) {
 }
 
 /**
- * 身负重担: 攻击拥有负面状态的敌人伤害 +400% × 状态数。
+ * 身负重担: 攻击拥有负面状态的敌人时，**额外造成 400 点法术伤害 × 状态数**。
  *
  * 业主原文（逐字）：「攻击拥有负面状态的敌人伤害+400*状态数」
+ * 业主修正（2026-10-19）：「「身负重担」应该是额外造成400点法术伤害*状态数而不是400%」。
  *
- * 口径：在 `hit` 钩子上看**被打的敌人**身上有几个负面状态（引擎里状态 buff 带 `status` 字段；
- * 负面状态表见本文件的 NEGATIVE_STATUSES），每有一个给这次伤害 +atkPctPerStatus%（400%）。
+ * 口径：每一次命中（`hit` 钩子）之后，看**被打的敌人**身上有几个负面状态（引擎里状态 buff 带 `status` 字段；
+ * 负面状态表见本文件的 NEGATIVE_STATUSES），每有一个就打一发 **`flatDamage` 点的独立法术伤害**。
+ * 这不是伤害倍率：主伤害按原样结算，额外那几发是分开的、各自走法术减伤（法抗）的实例。
  *
  * [ASSUMED: 1) 「负面状态」= 引擎状态表里的减益类（晕眩 / 冻结 / 寒冷 / 束缚 / 停顿 / 沉默 / 恐惧 / 战栗 /
  *   缴械 / 脆弱三兄弟 / 虚弱 / 攻速↓ / 防御↓ / 法抗↓ / 麻痹 / 睡眠 / 减速 …），不含增益与元素损伤槽；
- *   2) 按「状态种类数」算，不按层数（同一种状态挂多次只算一个）；3) 只对拥有者的己方干员的**普攻与技能**都生效
- *   —— 原文只说「攻击」，引擎里一次命中就是一次攻击；4) 加成是加法（+400% × n），不是乘法。]
+ *   2) 按「状态种类数」算，不按层数（同一种状态挂多次只算一个）；3) 一次命中一发（多状态就是 one instance 里
+ *   amount = flatDamage × n 的一发，而不是 n 发小的 —— 减伤对合并后的一发结算，与「每层 400 点」等价）；
+ *   4) 额外伤害的来源是出手的干员（击杀与伤害统计算给它），带 `hex:heavyload` 标记不会递归。]
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle
  * @returns {number} 0 when the card is absent
@@ -172,15 +177,22 @@ export function installHeavyLoad(hooks) {
   if (!owners) return 0;
   const { battle, specOf } = hooks;
   const owned = new Set(owners);
-  const perStatus = pos(specOf(owners[0], 'hex_heavyload', 'heavyload').atkPctPerStatus, 400);
+  // 每层 400 点（固定值，不是百分比）
+  const flat = pos(specOf(owners[0], 'hex_heavyload', 'heavyload').flatDamage, 400);
   battle.on('hit', (c) => {
     if (!c || !c.dmg || c.dmg.cancel) return;
+    // 本卡自己的附加伤害不再触发本卡（否则多状态会自己滚雪球）
+    if (c.dmg.heavyLoad) return;
     const src = c.source;
     if (!isOwnOp(src, owned)) return;
     const target = c.target;
-    if (!target || target.side !== 'enemy') return;
+    if (!target || target.side !== 'enemy' || !target.alive) return;
     const n = negativeStatusCount(target);
-    if (n > 0) c.dmg.mul *= 1 + (perStatus / 100) * n;
+    if (!(n > 0)) return;
+    const amount = flat * n;
+    const info = makeDamageInfo({ amount, type: 'arts', isSkill: true, canDodge: false, tags: [HEAVYLOAD_TAG] });
+    info.heavyLoad = true;
+    battle.dealDamage(src, target, info);
   });
   return [...new Set(owners)].reduce((n, pid) => n + ((hooks.opsOf ? hooks.opsOf(pid) : []) || []).length, 0);
 }

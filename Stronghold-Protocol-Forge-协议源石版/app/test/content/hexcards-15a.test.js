@@ -3,7 +3,7 @@
 // 覆盖的卡（业主原文见 batch15a.js 文件头）：
 //   hex_canlight       残光     —— 装备者伤害 (1 + 30% x)，每次攻击掷 4x% 自伤，触发后 x 归零
 //   hex_glasscannon    玻璃大炮 —— 己方干员伤害 x1.5、最大生命 x0.8
-//   hex_heavyload      身负重担 —— 打带负面状态的敌人 +400% x 状态数
+//   hex_heavyload      身负重担 —— 打带负面状态的敌人时额外 400 点法术伤害 x 状态数
 //   hex_umbrellabreak  破伞     —— 被击中 30% 免伤并反击 2 倍法术伤害
 //
 // 驱动方式与 hexcards-14a.test.js 相同：真实 Battle + 生产同源的 hexHooks(battle)；卡片 ref 在创建后注入，
@@ -70,7 +70,7 @@ test('batch15a: the four records carry the spec keys the scripts read', () => {
   assert.deepEqual(effectOf('hex_canlight').canlight, { perHitPct: 30, perHitRiskPct: 4 });
   assert.deepEqual(effectOf('hex_canlight').onPick, { item: { id: 'chess_item_9_92_e_a', count: 1 } });
   assert.deepEqual(effectOf('hex_glasscannon').glasscannon, { dmgPct: 150, hpPct: 80 });
-  assert.deepEqual(effectOf('hex_heavyload').heavyload, { atkPctPerStatus: 400 });
+  assert.deepEqual(effectOf('hex_heavyload').heavyload, { flatDamage: 400 });
   assert.deepEqual(effectOf('hex_umbrellabreak').umbrellabreak, { chance: 30, reflectMul: 200 });
 });
 
@@ -107,37 +107,44 @@ test('玻璃大炮: an operator of a player without the card is untouched', () =
 });
 
 // =====================================================================================================================
-// 身负重担: 打带负面状态的敌人 +400% x 状态数
+// 身负重担: 打带负面状态的敌人时额外 400 点法术伤害 x 状态数
 // =====================================================================================================================
 
-test('身负重担: +400% damage per negative status on the enemy hit (none = no bonus)', () => {
+test('身负重担: each negative status adds a FLAT 400-damage ARTS instance (not a multiplier)', () => {
   const h = solo({
     hexId: 'hex_heavyload',
     units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }],
     enemies: [],
   });
-  installHeavyLoad(hexHooks(h.battle));
   h.run(0.1);
+  installHeavyLoad(hexHooks(h.battle));
   const u = one(h);
   const e = h.spawn('enemy_dummy', { pos: [11, 6] });
   assert.ok(e && e.alive, 'premise: an enemy on the field');
-  const mul = () => {
+  /** Fire one hit; report the main instance's mul and the HP the extra instances removed. */
+  const hit = () => {
+    const before = e.hp;
     const info = h.battle.makeDamage({ amount: 100, type: 'phys', isAttack: true });
     h.battle.emit('hit', { source: u, target: e, dmg: info });
-    return info.mul;
+    return { mul: info.mul, extra: before - e.hp };
   };
-  // clean enemy: no bonus
-  assert.equal(mul([]), 1, 'no negative status -> no bonus');
-  // one negative status: x5 (1 + 400%)
+  // clean enemy: the main damage is never multiplied and nothing extra is dealt
+  const clean = hit();
+  assert.equal(clean.mul, 1, 'the main damage is never multiplied');
+  // one negative status: one extra 400-point arts instance (the dummy has 0 RES)
   h.battle.applyStatus(e, 'stun', { duration: 10, source: u });
   assert.ok(e.buffs.some((b) => b.status === 'stun'), 'premise: the stun landed');
-  assert.ok(Math.abs(mul() - 5) < 1e-9, 'one status -> x5, got ' + mul());
-  // two distinct negative statuses: x9 (1 + 800%)
+  const oneHit = hit();
+  assert.equal(oneHit.mul, 1, 'still no multiplier on the main hit');
+  assert.ok(Math.abs(oneHit.extra - clean.extra - 400) < 1, 'one status -> one extra 400-damage hit, got ' + (oneHit.extra - clean.extra));
+  // two distinct statuses: 800
   h.battle.applyStatus(e, 'cold', { duration: 10, source: u });
-  assert.ok(Math.abs(mul() - 9) < 1e-9, 'two statuses -> x9, got ' + mul());
+  const twoHit = hit();
+  assert.ok(Math.abs(twoHit.extra - clean.extra - 800) < 1, 'two statuses -> 800 extra, got ' + (twoHit.extra - clean.extra));
   // the same status twice does not double-count (kind, not layer)
   h.battle.applyStatus(e, 'stun', { duration: 10, source: u });
-  assert.ok(Math.abs(mul() - 9) < 1e-9, 'a repeated status does not stack the count, got ' + mul());
+  const againHit = hit();
+  assert.ok(Math.abs(againHit.extra - clean.extra - 800) < 1, 'a repeated status does not stack the extra, got ' + (againHit.extra - clean.extra));
 });
 
 test('身负重担: a hit from an operator of a player without the card gets no bonus', () => {
