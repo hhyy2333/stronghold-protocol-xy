@@ -673,6 +673,25 @@ export function specBounds(spec, gd = null) {
   }
   const derived = new Set();
   for (const k of keyCounts.keys()) for (const d of derivedKeys(gd, k)) derived.add(d);
+  // 协议源石敌方 verb 卡自己刷的敌人 (业主 2026-10-19). Two cards spawn bodies the wave never scheduled — 通缉令
+  // (`flags.enemyHexWanted`) and 通厕大队 (`params.enemyKey`) — and those bodies `counted: true`: they cost LP, break
+  // 完美作战, and they LEAK like any enemy. The spec's spawn list cannot carry them (the wave does not schedule them), so
+  // without this an HONEST client result is rejected as a forgery ('leak key') the moment one walks through and the whole
+  // battle falls back to a server re-simulation (measured: 4-human co-op seed 9114, 通厕大队 at R11; and a leaked 通缉令
+  // enemy on a timeout field). Same shape as the 回响 children below: keys content may add, bounded by maxTotal.
+  /** content key → how many bodies the card adds per battle (通缉令 1, 通厕大队 `params.count`) */
+  const contentKeys = new Map();
+  const addContentKey = (key, n) => contentKeys.set(key, Math.max(1, Math.min(20, Math.trunc(Number(n) || 1)), contentKeys.get(key) || 0));
+  const wantedKey = spec && spec.flags && typeof spec.flags.enemyHexWanted === 'string' ? spec.flags.enemyHexWanted : '';
+  if (wantedKey) addContentKey(wantedKey, 1);
+  for (const id of Array.isArray(spec && spec.flags && spec.flags.enemyHexIds) ? spec.flags.enemyHexIds : []) {
+    const rec = gd && typeof gd.hex === 'function' ? gd.hex(id) : null;
+    const params = rec && rec.params && typeof rec.params === 'object' ? rec.params : null;
+    if (!params) continue;
+    // every `enemy_…` string a verb card carries is a body it can spawn (通厕大队's `enemyKey`; a future card's own key)
+    for (const v of Object.values(params)) if (typeof v === 'string' && /^enemy_[A-Za-z0-9_]+$/.test(v)) addContentKey(v, params.count);
+  }
+  for (const k of contentKeys.keys()) if (!gd || typeof gd.enemy !== 'function' || gd.enemy(k)) derived.add(k);
   // 协议源石敌方动词「回响」(ehex_echo): a killed enemy splits into `params.count` copies of the SAME key that DO count
   // in the total (server/sim/content/hextech.js `echo`: countInTotal = unit.counted), so the wave's own count is not
   // the leak ceiling — a scheduled body that is killed leaves up to `count` children, each of which may leak, and a
@@ -704,6 +723,18 @@ export function specBounds(spec, gd = null) {
       const per = offspringPerParent(gd, s.enemyKey, d);
       const ks = `${d}|${s.sourcePlayerId}`;
       derivedSourceCounts.set(ks, Math.min(maxTotal, (derivedSourceCounts.get(ks) || 0) + (per == null ? maxTotal : n * per)));
+    }
+  }
+  // 联防: a content-spawned body (通缉令's, 通厕大队's) walks a route, so it carries the tile owner's `sourcePlayerId`
+  // and its leak is billed to that leaker — give every leaker that sent an enemy into this field the bodies the cards
+  // add, or an honest helper is rejected as 'leak source' the moment one of them walks through.
+  if (contentKeys.size && keySourceCounts.size) {
+    const leakers = new Set();
+    // only real leakers (a normal field's spawns carry no source: `${key}|`)
+    for (const ks of keySourceCounts.keys()) { const src = ks.slice(ks.indexOf('|') + 1); if (src) leakers.add(src); }
+    for (const [key, n] of contentKeys) {
+      if (!derived.has(key)) continue;   // a key the data does not know is rejected as before
+      for (const src of leakers) derivedSourceCounts.set(`${key}|${src}`, Math.max(n, derivedSourceCounts.get(`${key}|${src}`) || 0));
     }
   }
   for (const k of keyCounts.keys()) {

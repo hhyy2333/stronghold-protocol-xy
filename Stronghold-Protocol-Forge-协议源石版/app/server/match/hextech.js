@@ -563,18 +563,35 @@ function ownedEnemyHexes(m) {
  * match's own rngWaves stream so a replay draws the same enemy, and the result rides the battle's flags as
  * `enemyHexWanted` (server/sim/content/hextech.js `wanted` spawns it).
  *
+ * 业主 2026-10-19 追加的限制：「悬赏令前5回合不出现4，5块的怪」。`params.earlyRounds` / `params.earlyMaxCoin` 就是它：
+ * 这一场战斗的 `round` ≤ earlyRounds 时，上限从 `maxCoin` 收到 `earlyMaxCoin`（4 / 5 块的悬赏全部 3 阶精英，第一回合
+ * 就丢一个 75000 血的「迷路的巨像」是这一版最容易劝退的开局）。判据是**这场战斗的回合**而不是抽卡那一回合：R1 抽到
+ * 的卡到 R6 自然解禁，不需要记「这张卡是第几回合来的」。
+ *
+ * 确定性：无论回合怎么筛，这里**恰好抽一次** rngWaves —— 前 5 回合与之后消耗的随机流一样多，回放与复算不会因为
+ * 回合不同而错位。数据里一个 ≤ earlyMaxCoin 的悬赏都没有时（一套被裁剪过的数据）退回整个池子：宁可破一次限制，
+ * 也不能静默不刷怪。
+ *
  * Returns undefined when the enemy side does not own the card or the data carries no usable bounty.
  * @param {import('./Match.js').Match} m
+ * @param {number} [round] the battle's round (defaults to the match's own round)
  * @returns {string|undefined} an enemyKey
  */
-export function enemyHexWantedKey(m) {
+export function enemyHexWantedKey(m, round = null) {
   const hex = ownedEnemyHexes(m).find((h) => h.verb === 'wanted');
   if (!hex) return undefined;
   const p = hex.params || {};
   const minCoin = Number.isFinite(Number(p.minCoin)) ? Number(p.minCoin) : 1;
   const maxCoin = Number.isFinite(Number(p.maxCoin)) ? Number(p.maxCoin) : 5;
-  // every bounty enemy of the 惊变 draft, once per KEY (two cards may share an enemy)
-  const keys = new Set();
+  const earlyRounds = Number.isFinite(Number(p.earlyRounds)) ? Math.trunc(Number(p.earlyRounds)) : 0;
+  const earlyMaxCoin = Number.isFinite(Number(p.earlyMaxCoin)) ? Number(p.earlyMaxCoin) : maxCoin;
+  const r = Number.isFinite(Number(round)) && Number(round) > 0 ? Math.trunc(Number(round)) : Number(m.round) || 0;
+  const capped = earlyRounds > 0 && r > 0 && r <= earlyRounds;   // 前 5 回合：4/5 块的悬赏不许出现
+  const cap = capped ? Math.min(maxCoin, earlyMaxCoin) : maxCoin;
+  // every bounty enemy of the 惊变 draft, once per KEY (two cards may share an enemy), split by whether the coin cap
+  // admits it: `early` is the early-round pool (≤ earlyMaxCoin), `late` everything ≤ maxCoin that is not in it
+  const early = new Set();
+  const late = new Set();
   const cards = m.gd && m.gd.choices ? m.gd.choices.cards : null;
   const lists = Array.isArray(cards) ? cards : cards && typeof cards === 'object' ? Object.values(cards) : [];
   for (const list of lists) {
@@ -583,13 +600,22 @@ export function enemyHexWantedKey(m) {
       const coin = Number(c.coin);
       if (!Number.isFinite(coin) || coin < minCoin || coin > maxCoin) continue;
       if (m.gd.enemy && !m.gd.enemy(c.enemyKey)) continue;
-      keys.add(c.enemyKey);
+      if (coin <= cap) early.add(c.enemyKey); else late.add(c.enemyKey);
     }
   }
-  if (!keys.size) return undefined;
-  const pool = [...keys].sort();   // deterministic order before the draw
+  // ONE draw, then pick from the pool it admits: the rng stream advances by exactly one number whether the cap applies
+  // or not, so a replay / re-computation can never end up on a different draw because of a round's timing.
+  const pool = [...early, ...late].sort();   // deterministic order before the draw
+  if (!pool.length) return undefined;
   const i = Math.min(pool.length - 1, Math.floor(m.rngWaves() * pool.length));
-  return pool[i];
+  const picked = pool[i];
+  // the early-round cap: anything over `cap` is off the table until the battle round passes earlyRounds. Re-read the
+  // SAME draw against the admitted pool — still no extra rng call (the same index, wrapped) so determinism is untouched.
+  if (capped && early.size && !early.has(picked)) {
+    const earlyPool = [...early].sort();
+    return earlyPool[i % earlyPool.length];
+  }
+  return picked;
 }
 
 /**

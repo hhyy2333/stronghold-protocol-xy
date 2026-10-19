@@ -1476,10 +1476,13 @@ export const ENEMY_HEXES = [
   {
     id: 'ehex_wanted',
     name: '通缉令',
-    desc: '每场战斗额外加入 1 名随机「惊变」敌人（价值 1~5 资金）。',
+    // 业主 2026-10-19（第二次修正）：「悬赏令前5回合不出现4，5块的怪」。earlyRounds / earlyMaxCoin 就是这条限制：
+    // 第 1~5 回合只从 1~3 块的悬赏里抽，第 6 回合起才恢复 1~5 块。按**这场战斗的回合**算（不是抽卡那一回合）——
+    // R1 抽到的卡，到 R6 才有资格放 4/5 块的大怪。
+    desc: '每场战斗额外加入 1 名随机「惊变」敌人（价值 1~5 资金；前 5 回合只会是 1~3 资金）。',
     rarity: 'gold',
     verb: 'wanted',
-    params: { minCoin: 1, maxCoin: 5 },
+    params: { minCoin: 1, maxCoin: 5, earlyRounds: 5, earlyMaxCoin: 3 },
   },
   {
     id: 'ehex_jekyll',

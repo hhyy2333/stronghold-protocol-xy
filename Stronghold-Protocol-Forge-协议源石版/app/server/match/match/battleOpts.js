@@ -92,8 +92,11 @@ export function withEnemyHexes(owner, opts) {
   if (ids.length) opts.flags = { ...(opts.flags || {}), enemyHexIds: ids };
   // 通缉令 (业主 2026-10-19): the ONE extra 惊变 enemy this battle spawns. The MATCH picks it (it owns choices.json and
   // the seeded RNG), the sim only spawns the id — a battle-local random pick would break determinism.
+  // `opts.round` is THIS battle's round, and it decides the coin cap (业主 2026-10-19「悬赏令前5回合不出现4，5块的怪」):
+  // every path that comes through here carries the round in its options (真跑 `_normalOpts` / bossRounds / unite, and
+  // 客户端 `_ccField`), so the pick is the same one the re-computation reads back out of the spec's flags.
   if (opts.flags && Array.isArray(opts.flags.enemyHexIds) && opts.flags.enemyHexIds.includes('ehex_wanted')) {
-    const wanted = typeof enemyHexWantedKey === 'function' ? enemyHexWantedKey(owner) : undefined;
+    const wanted = typeof enemyHexWantedKey === 'function' ? enemyHexWantedKey(owner, opts.round) : undefined;
     if (wanted) opts.flags = { ...opts.flags, enemyHexWanted: wanted };
   }
   return opts;

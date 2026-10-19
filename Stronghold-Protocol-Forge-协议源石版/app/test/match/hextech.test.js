@@ -13,6 +13,7 @@ import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
 import { BATTLE_SPEC_KEYS, HEX_SCRIPT_KEYS, hasBattlePart } from '../../server/sim/content/hextech.js';
 import { enemyHexWantedKey, bankThiefPenalty, applyThiefIncomeCut } from '../../server/match/hextech.js';
+import { createRng } from '../../server/sim/rng.js';
 
 /** Start a match and drive the humans to the 海克斯 draft of `round`. */
 function toHexDraft(h, round) {
@@ -1244,23 +1245,74 @@ test('万物归虚: the equipment it grants is in the hand and the battle half r
 // 通缉令 / 窃贼 的 match 层半边（server/match/hextech.js）
 // =====================================================================================================================
 
+/** coin price of every bounty enemy the picker may return (the highest price any of its cards carries). */
+function bountyCoins(gd) {
+  const coinOf = new Map();
+  const cards = gd.choices && gd.choices.cards ? gd.choices.cards : {};
+  const lists = Array.isArray(cards) ? cards : Object.values(cards);
+  for (const list of lists) for (const c of Array.isArray(list) ? list : []) {
+    const coin = Number(c && c.coin);
+    if (!c || typeof c.enemyKey !== 'string' || !c.enemyKey || !Number.isFinite(coin)) continue;
+    coinOf.set(c.enemyKey, Math.max(coinOf.get(c.enemyKey) ?? 0, coin));
+  }
+  return coinOf;
+}
+
 test('通缉令: the match picks one 惊变 enemy whose coin price is 1..5', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 41, fake: true });
   h.start();
   const m = h.m;
   m.enemyHexes.push({ id: 'ehex_wanted', round: 1 });
-  const key = enemyHexWantedKey(m);
+  const key = enemyHexWantedKey(m, 9);
   assert.ok(typeof key === 'string' && key, 'an enemy key came back, got ' + key);
   assert.ok(m.gd.enemy(key), 'and it is a real enemy record: ' + key);
-  // it is one of the bounty cards priced 1..5
-  const cards = m.gd.choices && m.gd.choices.cards ? m.gd.choices.cards : {};
-  const lists = Array.isArray(cards) ? cards : Object.values(cards);
-  const priced = new Set();
-  for (const list of lists) for (const c of Array.isArray(list) ? list : []) {
-    const coin = Number(c && c.coin);
-    if (c && typeof c.enemyKey === 'string' && coin >= 1 && coin <= 5) priced.add(c.enemyKey);
+  const coin = bountyCoins(m.gd).get(key);
+  assert.ok(coin >= 1 && coin <= 5, 'the pick is a 1~5 块 bounty enemy, got ' + coin);
+  m.dispose();
+});
+
+test('通缉令: the first five rounds never draw a 4- or 5-coin bounty (业主 2026-10-19)', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 45, fake: true });
+  h.start();
+  const m = h.m;
+  m.enemyHexes.push({ id: 'ehex_wanted', round: 1 });
+  const priced = bountyCoins(m.gd);
+  // the picker draws once per battle, so a spread of seeds per round shows the cap without pretending to be exhaustive
+  for (const round of [1, 2, 3, 4, 5]) {
+    for (let seed = 1; seed <= 40; seed++) {
+      const mt = { gd: m.gd, round, enemyHexes: m.enemyHexes, rngWaves: createRng(seed * 7919 + round) };
+      const key = enemyHexWantedKey(mt, round);
+      const coin = priced.get(key);
+      assert.ok(coin >= 1 && coin <= 3, 'R' + round + ' picked ' + key + ' (' + coin + ' 块)');
+    }
   }
-  assert.ok(priced.has(key), 'the pick is a 1~5 块 bounty enemy');
+  // ...and R6 opens the 4/5-coin bounties again
+  const seen = new Set();
+  for (let seed = 1; seed <= 400; seed++) {
+    const mt = { gd: m.gd, round: 6, enemyHexes: m.enemyHexes, rngWaves: createRng(seed) };
+    seen.add(priced.get(enemyHexWantedKey(mt, 6)));
+  }
+  assert.ok([...seen].some((c) => c > 3), 'R6 can draw a 4/5 块 bounty, saw ' + [...seen].sort().join());
+  m.dispose();
+});
+
+test('通缉令: the BATTLE round decides the cap, and a capped round still advances the stream once', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 47, fake: true });
+  h.start();
+  const m = h.m;
+  m.enemyHexes.push({ id: 'ehex_wanted', round: 1 });
+  const priced = bountyCoins(m.gd);
+  const at = (round) => { const mt = { gd: m.gd, round, enemyHexes: m.enemyHexes, rngWaves: createRng(99) }; return enemyHexWantedKey(mt, round); };
+  // the same card drawn in R1 fights on: only the battle's own round matters
+  for (const round of [1, 3, 5]) assert.ok(priced.get(at(round)) <= 3, 'R' + round + ' drew ' + at(round));
+  assert.ok(priced.get(at(6)) >= 1, 'R6 still picks something');
+  // exactly one draw whether the cap applies or not (a replay / re-computation must not desync)
+  const draws = (round) => { let n = 0; const mt = { gd: m.gd, round, enemyHexes: m.enemyHexes, rngWaves: () => { n++; return 0.5; } }; enemyHexWantedKey(mt, round); return n; };
+  assert.equal(draws(3), 1, 'a capped round draws once');
+  assert.equal(draws(9), 1, 'an uncapped round draws once');
+  const a = { gd: m.gd, round: 4, enemyHexes: m.enemyHexes, rngWaves: createRng(123) };
+  const b = { gd: m.gd, round: 4, enemyHexes: m.enemyHexes, rngWaves: createRng(123) };
+  assert.equal(enemyHexWantedKey(a, 4), enemyHexWantedKey(b, 4), 'same seed + round -> same pick');
   m.dispose();
 });
 

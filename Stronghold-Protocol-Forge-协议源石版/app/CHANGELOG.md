@@ -9,7 +9,25 @@
 
 ---
 
-**协议源石扩充：十三张新卡（八张我方 + 五张敌方），玩家卡 100 → 108、敌方卡 38 → 43；修掉最终攻势休整期视角在 boss 半场与道中之间来回跳的根因（客户端物化 FULL 帧时把嵌套数组摊平了）；后台能把人踢出房间了。** 上游本体仍是 **0.3.0**；`UPSTREAM_VERSION`（`'0.3.0'`）、`PROTOCOL_VERSION`（`2`）、`MOD_API_VERSION`（`1`）都没动；发行 tag 是 `v0.19.5-0.3.0`。**不需要 `golden:update`**：新卡全部是 `server/sim/content/` 的新内容文件（没有改既有战斗规则），没有新增 C2S 消息，推送帧的形状一个字没变。
+**通缉令加了两道限制（业主 2026-10-19）：前 5 回合只刷 1~3 块的悬赏，4/5 块的大怪要第 6 回合起才会出现。另修掉同一批卡片带出来的一处服务端误判：通缉令 / 通厕大队额外刷出来的敌人漏掉时会话被当成伪造，整场战斗被服务端复算。**
+
+本节**还没有**版本号与 tag（`APP_VERSION` 仍是 `0.19.5`，发版时在最上面加一行 `## <版本> — <日期>` 即可）。`UPSTREAM_VERSION`（`'0.3.0'`）、`PROTOCOL_VERSION`（`2`）、`MOD_API_VERSION`（`1`）**一个都没动**：没有新增 C2S 消息，推送帧的形状一个字没变，**不需要 `golden:update`**（卡的数值在数据里，规则与证据见下面两节）。
+
+### 改：通缉令前 5 回合不刷 4/5 块的怪（业主 2026-10-19）
+
+- 业主原话：「给通缉令加个限制，至少最开始别刷四块五块的大怪」→「悬赏令前5回合不出现4，5块的怪」。
+- 数据：`ehex_wanted` 的 `params` 从 `{ minCoin: 1, maxCoin: 5 }` 变成 `{ minCoin: 1, maxCoin: 5, earlyRounds: 5, earlyMaxCoin: 3 }`，`desc` 补一句「前 5 回合只会是 1~3 资金」；`data/hextech.json` 由 `node tools/build-hextech.mjs` 重生成，`public/i18n/en.json` 同步。数值全在 `params` 里，改口径是改数据、不是改代码。
+- 机制（`server/match/hextech.js enemyHexWantedKey(m, round)`）：这一场**战斗的回合** ≤ `earlyRounds` 时，上限从 `maxCoin` 收到 `earlyMaxCoin`（4 / 5 块的悬赏全是 3 阶精英：迷路的巨像 75000 血、锏 28000、狼之主 35000、巨大的丑东西）。判据是战斗的回合而不是抽卡那一回合 —— R1 抽到的卡到 R6 自然解禁，不需要记「这张卡是第几回合来的」；`round` 由 `battleOpts.js withEnemyHexes` 从每一场战斗自己的选项传进来（真跑、复算、客户端三条路径都过这里）。
+- 确定性：无论有没有触发上限，这里**恰好抽一次** `rngWaves`（同一个 index 换到收缩后的池子里取），所以回放 / `SP_VERIFY` 复算不会因为回合不同而读到不同的随机流。
+- 分布实测（3000 次抽取 × 每回合）：R1~R5 只出 1/2/3 块（959 / 910 / 1131），R6 起 4/5 块才出现（132 / 120）；上限生效与不生效消耗的随机数都是 1 个。
+- 测试：`test/match/hextech.test.js` 的通缉令用例改成三条（1~5 块；前 5 回合从 40 个种子逐回合断言 ≤ 3 块且 R6 能抽到 4/5 块；同一张卡在不同回合按战斗回合判上限、一次抽取只推进一个随机数）。
+
+### 修：通缉令 / 通厕大队额外刷的敌人漏怪时被当成伪造结果（服务端复算）
+
+- 发现于上一条的回归：`test/match/clientCombat.test.js` 的「4 人真模拟打完整局」在种子 9114 出现 1 次 `verifyStats.rejected`。日志是 `n:p_0: rejected client result from p_0 (leak key)`。**这条在改动前就是红的**（同一条断言、同一个理由，`git stash` 后一样失败），只是没有人查到根因 —— 它不是这一条改动引入的，是同批卡片带出来的。
+- 根因：`server/match/fields.js specBounds` 只认识「波次表里排过的敌人 + 它们数据里提到的子孙」，而**卡片自己刷的敌人两个都不算**：通缉令刷 `flags.enemyHexWanted` 指定的那一个，通厕大队刷 3 个 `enemy_1516_jakill`。这些敌人 `counted: true` —— 会掉 LP、会破完美作战、也会**漏**；一漏，`validateClientResult` 就把这条 `leaked` 判成 `leak key`（伪造），整场战斗被服务端重算。4 人局之所以更容易撞上：场次多、杂兵多、漏怪概率高。
+- 修法：`specBounds` 把这两类 key 也算进 `derived`（内容可以加的敌人，上限沿用同一个 `maxTotal`）—— 通缉令那一个读 `flags.enemyHexWanted`，通厕大队那 3 个读卡片 `params` 里出现的 `enemy_…` 字符串，并按 `params.count` 记账；同一份账也补进联防的 `derivedSourceCounts`（每名 leaker 各有这几条命），否则联防里漏了会报 `leak source`。没有这两张卡的战斗，形状与从前逐字节相同。
+- 测试：`test/match/clientCombat-review.test.js` 新增一条（通缉令刷出来的敌人漏掉时结果被接受、没在 flag 里的 key 仍判伪造）；上面那条 4 人真模拟整局用例恢复绿（`clientCombat.test.js` 26 条全过）；相关套件 `clientCombat` + `clientCombat-review` + `match/hextech` 共 99 条全过。
 
 ## 0.19.5 — 2026-10-19
 

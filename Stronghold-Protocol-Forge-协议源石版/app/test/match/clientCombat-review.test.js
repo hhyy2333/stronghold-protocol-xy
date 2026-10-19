@@ -106,6 +106,30 @@ test('validation: leaks marked counted:false are only accepted for enemies that 
   assert.ok(validateClientResult(tagged, raw([{ enemyKey: plainKey, counted: false }], true), { gd }).ok, 'a schedule entry that does not count');
 });
 
+test('validation: 通缉令\'s extra 惊变 enemy may leak (it is content-spawned, never scheduled)', () => {
+  // 业主 2026-10-19: 通缉令 spawns ONE enemy the wave never schedules (flags.enemyHexWanted). It counts and it can
+  // leak, so before this the honest client result was rejected as a forgery ('leak key') and the whole battle fell
+  // back to a server re-simulation. The picker handed back a 1~3 块 bounty here (前 5 回合的上限).
+  const hex = 'enemy_1005_yokai';
+  assert.ok(gd.enemy(hex), 'the wanted key is a real enemy');
+  const spec = buildBattleSpec({ battleId: 'vw', fieldId: 'n:p', kind: 'normal', seed: 1, round: 3, timeLimit: 60,
+    players: [{ playerId: 'p', units: [], bonds: {} }], spawns: [{ enemyKey: plainKey, count: 1, time: 1 }],
+    flags: { enemyHexIds: ['ehex_wanted'], enemyHexWanted: hex } });
+  assert.ok(!specBounds(spec, gd).keyCounts.has(hex), 'premise: the wave does not schedule it');
+  assert.ok(specBounds(spec, gd).derived.has(hex), 'but content may add it');
+  const raw = { reason: 'timeout', time: 30, errors: 0,
+    perPlayer: { p: perPlayer({ total: 1, perfect: false, leaked: [{ enemyKey: plainKey, counted: true }, { enemyKey: hex, counted: true }] }) } };
+  const v = validateClientResult(spec, raw, { gd });
+  assert.ok(v.ok, 'the leaked wanted enemy is accepted: ' + v.reason);
+  assert.deepEqual(v.result.perPlayer.p.leaked.map((l) => l.enemyKey), [plainKey, hex]);
+  // a key the flags never named is still a forgery
+  const forged = { ...raw, perPlayer: { p: perPlayer({ total: 1, perfect: false, leaked: [{ enemyKey: uncountedKey, counted: true }] }) } };
+  assert.deepEqual(validateClientResult(spec, forged, { gd }), { ok: false, reason: 'leak key' });
+  // without the card's pick (a harness spec, a stripped flag) nothing is admitted
+  const bare = buildBattleSpec({ ...spec, flags: { enemyHexIds: ['ehex_wanted'] } });
+  assert.ok(!specBounds(bare, gd).derived.has(hex));
+});
+
 test('validation: IN_BATTLE layer gains only on bonds the lineup / band / effects / items name', () => {
   const chess = Object.values(DATA.chess).find((c) => c.visible && !c.isGolden && Array.isArray(c.bonds) && c.bonds.length);
   assert.ok(chess);
