@@ -1,5 +1,5 @@
 // test/match/hextech.test.js — the 海克斯 draft in a real match (DESIGN §29): a parallel 3-of-1 draft with one reroll
-// on rounds 1 / 6 / 11, and one enemy hex per draw that persists to the end of the match.
+// on rounds 1 / 3 / 6 / 11, and one enemy hex per draw that persists to the end of the match.
 //
 // The match runs on the virtual scheduler with the fake battle (test/match/harness.js), so a full round costs nothing.
 
@@ -78,7 +78,7 @@ test('one enemy hex per draw, of a rarity a player picked, never a repeat, and i
   const m = h.m;
   const pickedRarities = [];
   const seen = [];
-  for (const round of [1, 6, 11]) {
+  for (const round of [1, 3, 6, 11]) {
     toHexDraft(h, round);
     // the harness drives the human seats (g.hex idx 0); both humans answer
     const ok = h.drive(() => m.hex == null || m.phase !== 'HEX_DRAFT');
@@ -101,12 +101,12 @@ test('one enemy hex per draw, of a rarity a player picked, never a repeat, and i
     seen.length = 0;
     seen.push(...m.enemyHexes.map((e) => e.id));
   }
-  assert.equal(m.enemyHexes.length, 3);
+  assert.equal(m.enemyHexes.length, 4);
   // The enemy side is a MIX of shapes (DESIGN §29.10): `mods` cards feed the wave multipliers, `verb` cards drive
-  // battle scripts. With three draws the side may hold only verbs, so the guarantee is the union — every owned hex
+  // battle scripts. With four draws the side may hold only verbs, so the guarantee is the union — every owned hex
   // contributes something, and each one is one of the two known shapes.
   const owned = m.enemyHexes.map((e) => m.gd.hex(e.id));
-  assert.ok(owned.length === 3, 'three enemy hexes');
+  assert.ok(owned.length === 4, 'four enemy hexes');
   for (const rec of owned) {
     const hasMods = rec.mods && Object.keys(rec.mods).length > 0;
     assert.ok(hasMods || typeof rec.verb === 'string', `${rec.id} carries mods or a verb`);
@@ -156,15 +156,18 @@ test('the draft is a phase of its own: the round start reaches it, and the view 
   h.m.dispose();
 });
 
-test('a 9-round solo mode drafts on R1 and R6 only', () => {
+test('a 9-round solo mode drafts on R1, R3 and R6 only (no R11)', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', humans: 1, seed: 17, fake: true });
   h.start();
   toHexDraft(h, 1);
   toPrep(h, 1);
   assert.equal(h.m.round, 1);
+  // R3 is a draft round since 2026-10-19 (owner: 「在第三回合加一次选择协议源石」)
+  toHexDraft(h, 3);
+  toPrep(h, 3);
   toHexDraft(h, 6);
   toPrep(h, 6);
-  assert.equal(h.m.enemyHexes.length, 2);
+  assert.equal(h.m.enemyHexes.length, 3);
   h.m.dispose();
 });
 
@@ -1124,6 +1127,9 @@ test('the stats preview runs the battle-start cards without changing the match (
 test('可露希尔大降价: 三次刷新免费，且这三次刷新内的购买一律免费（业主 2026-10-18 的口径）', () => {
   const { h, m, ps } = solo1(151);
   ps.funds = 20;
+  // the R1 draft may already have handed this seat a 免费刷新 card (the harness auto-picks), so start from a clean shop
+  ps.shop.freeRefreshes = 0;
+  ps.shop.freeBuyWindow = 0;
   applyHex(m, ps, m.gd.hex('hex_bigdiscount'));
   assert.equal(ps.shop.freeRefreshes, 3, 'three free refreshes');
   assert.equal(ps.shop.freeBuyWindow, 3, 'the free-purchase window IS those three refreshes');

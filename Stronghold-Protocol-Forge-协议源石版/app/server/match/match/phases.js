@@ -383,7 +383,7 @@ export class MatchPhases {
   }
 
   afterRoundStart() {
-    // 协议源石 (Hextech) first (DESIGN §29): the draws of data/hextech.json format.rounds (1 / 6 / 11) happen before the
+    // 协议源石 (Hextech) first (DESIGN §29): the draws of data/hextech.json format.rounds (1 / 3 / 6 / 11) happen before the
     // prep phase, so the round's enemy hex is already known when the players shop for it. enterHexDraft continues the
     // round itself (afterHexDraft → 机变 or prep) even when it has no pool to offer, so a data set whose hexes are empty
     // still reaches that round's 机变 — skipping straight to prep here would silently swallow it.

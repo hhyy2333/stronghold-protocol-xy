@@ -94,7 +94,8 @@ export const RARITIES = [
 
 /** When a draft happens, how many options, how many rerolls, and how the enemy side is fed. */
 export const FORMAT = {
-  rounds: [1, 6, 11],
+  // R3 added 2026-10-19 (owner: 「在第三回合加一次选择协议源石」): four draws instead of three.
+  rounds: [1, 3, 6, 11],
   offer: 3,
   rerolls: 1,
   timerSec: 30,

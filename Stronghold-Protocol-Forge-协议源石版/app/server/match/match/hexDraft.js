@@ -1,6 +1,6 @@
 // server/match/match/hexDraft.js — Match methods: the 海克斯 draft (DESIGN §29). A PARALLEL draft: every alive player
 // is offered their own three hexes at the same time (no turn order, no shared pool, no SOLD_OUT) and picks one; each
-// has one reroll. The phase runs after ROUND_START on the rounds of data/hextech.json `format.rounds` (1 / 6 / 11).
+// has one reroll. The phase runs after ROUND_START on the rounds of data/hextech.json `format.rounds` (1 / 3 / 6 / 11).
 //
 // When everyone has picked (or the timer runs out — the leftovers are then drawn at random) the enemy side gains one
 // hex whose rarity is drawn at random among the rarities the players picked this round; enemy hexes persist for the
