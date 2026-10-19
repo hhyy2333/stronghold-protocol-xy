@@ -32,6 +32,9 @@
   `(difficulty, level)` 分榜应答（`SP_ACCOUNTS=1` 或 `SP_RECORDS=1` 都够，不需要登录）；
 * `GET /api/records/account/<NAME>` 回 **404**（功能不存在），不是「这个账号没有战绩」。这条 HTTP 面仍只认
   `SP_ACCOUNTS`；只开 `SP_RECORDS` 时排行榜走 WebSocket 的 `records.board`。
+* 排行榜（业主 2026-10-19）：默认显示**所有等级合并榜** —— `records.board { difficulty, level: 'all', limit }`
+  返回这个难度下每名真人的最好一条（等级高优先，再胜利 / 回合多 / 更早达成），按等级高→低排序，行里带 `level`，
+  最多 `limit` 条（服务端每榜上限 `BOARD_SIZE = 50`）。也可以传 `level: 0–18` 查单档榜。
 
 **为什么需要 `SP_RECORDS` 单独存在**：排行榜 UI 已经在客户端里，但客户端**没有登录界面**；直接 `SP_ACCOUNTS=1`
 会让所有新连接在 `hello` 收到 `AUTH_REQUIRED`，等于把玩家挡在门外。只开战绩时 `Network` 收到的 accounts 仍是

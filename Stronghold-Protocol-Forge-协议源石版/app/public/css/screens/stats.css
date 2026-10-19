@@ -82,6 +82,7 @@
 .st-ranks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .06rem; }
 .st-ranks__row { display: flex; align-items: baseline; gap: .14rem; padding: .06rem .1rem; font-size: max(.17rem, 12px); border-bottom: 1px solid var(--line); }
 .st-ranks__pos { width: 1.6em; color: var(--mint-400); }
+.st-ranks__level { min-width: 3.4em; color: var(--text-dim); white-space: nowrap; }
 .st-ranks__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-empty { margin: .6rem auto; text-align: center; font-size: max(.2rem, 13px); color: var(--text-lo); letter-spacing: .06em; }
 

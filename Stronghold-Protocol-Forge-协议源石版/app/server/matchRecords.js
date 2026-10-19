@@ -55,6 +55,23 @@ export const BOARD_SIZE = 50;
 
 const num = (value) => Math.max(0, Number(value) || 0);
 
+/** 合并榜：同一玩家在多个等级都有记录时哪一条更好 —— 等级优先，再胜利 / 回合多 / 更早达成。 */
+function betterEntry(a, b) {
+  if ((a.level || 0) !== (b.level || 0)) return (a.level || 0) > (b.level || 0);
+  if (a.victory !== b.victory) return a.victory;
+  if ((a.roundsPassed || 0) !== (b.roundsPassed || 0)) return (a.roundsPassed || 0) > (b.roundsPassed || 0);
+  return a.finishedAt < b.finishedAt;
+}
+
+/** 公开行：不含 playerId；合并榜要靠 level 区分同一玩家来自哪一档。 */
+const publicRow = (e) => ({
+  name: e.name,
+  level: e.level || 0,
+  victory: e.victory,
+  roundsPassed: e.roundsPassed,
+  finishedAt: e.finishedAt,
+});
+
 /**
  * 三档可见性。`PUBLIC` = 只凭房间号（seat + 是否本人），`MEMBER` = 同房（+ 昵称），`OWNER` = 本人（+ 购卡明细）。
  * @type {Readonly<{ PUBLIC: 'public', MEMBER: 'member', OWNER: 'owner' }>}
@@ -228,18 +245,45 @@ export class MatchRecords {
 
   /**
    * 一张榜（按 (难度, 协议等级) 分开，业主 2026-10-18）。`playerId` 不对外 —— 公开面只有名字与成绩。
-   * @param {{ difficulty: string, level?: number, limit?: number }} o
-   * @returns {{ difficulty: string, level: number, total: number, entries: Array<{ name: string, victory: boolean, roundsPassed: number, finishedAt: number }> }}
+   * `level: 'all'` = 这个难度下所有等级合并成一张榜（业主 2026-10-19「显示所有等级、只显示前 50」）：
+   * 每名真人只留最好的一条（**等级更高优先**，再按胜/回合/时间），排序也是等级高→低，行里带 `level`。
+   * 合并榜最多收前 `limit` 条（服务端总上限 BOARD_SIZE = 50）。
+   * @param {{ difficulty: string, level?: number|'all', limit?: number }} o
+   * @returns {{ difficulty: string, level: number|'all', total: number, levels?: number[], entries: Array<{ name: string, level: number, victory: boolean, roundsPassed: number, finishedAt: number }> }}
    */
-  board({ difficulty, level = 0, limit = 10 }) {
-    const lv = Number.isInteger(level) && level > 0 ? level : 0;
-    const list = this.boards.get(`${difficulty || 'UNKNOWN'}|${lv}`) || [];
+  board({ difficulty, level = 0, limit = 10 } = {}) {
+    const diff = difficulty || 'UNKNOWN';
     const cap = Number.isInteger(limit) && limit > 0 ? Math.min(limit, BOARD_SIZE) : 10;
+    if (level === 'all') {
+      const best = new Map();
+      for (const [key, list] of this.boards) {
+        if (!key.startsWith(`${diff}|`)) continue;
+        for (const e of list) {
+          const prev = best.get(e.playerId);
+          if (!prev || betterEntry(e, prev)) best.set(e.playerId, e);
+        }
+      }
+      const rows = [...best.values()].sort((a, b) => (
+        (b.level || 0) - (a.level || 0)
+        || (b.victory ? 1 : 0) - (a.victory ? 1 : 0)
+        || (b.roundsPassed || 0) - (a.roundsPassed || 0)
+        || a.finishedAt - b.finishedAt
+      ));
+      return {
+        difficulty: diff,
+        level: 'all',
+        total: rows.length,
+        levels: [...new Set(rows.map((e) => e.level || 0))].sort((a, b) => b - a),
+        entries: rows.slice(0, cap).map(publicRow),
+      };
+    }
+    const lv = Number.isInteger(level) && level > 0 ? level : 0;
+    const list = this.boards.get(`${diff}|${lv}`) || [];
     return {
-      difficulty: difficulty || 'UNKNOWN',
+      difficulty: diff,
       level: lv,
       total: list.length,
-      entries: list.slice(0, cap).map((e) => ({ name: e.name, victory: e.victory, roundsPassed: e.roundsPassed, finishedAt: e.finishedAt })),
+      entries: list.slice(0, cap).map(publicRow),
     };
   }
 

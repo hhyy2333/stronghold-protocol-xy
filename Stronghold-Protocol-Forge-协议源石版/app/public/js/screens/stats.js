@@ -488,18 +488,31 @@ function Replay({ rec, onBack }) {
  */
 function Ranks() {
   const [difficulty, setDifficulty] = useState('ABYSS');
-  const [level, setLevel] = useState(0);
+  // 业主 2026-10-19：默认显示**所有等级**的合并榜；只列前 50（服务端 BOARD_SIZE 也是 50）。
+  const [level, setLevel] = useState('all');
   const [board, setBoard] = useState(null);
   const [busy, setBusy] = useState(false);
   const shownLevel = difficulty === 'ABYSS' ? level : 0;
   useEffect(() => {
     let live = true;
     setBusy(true);
-    net.request('records.board', { difficulty, level: shownLevel, limit: 20 })
-      .then((res) => { if (live) setBoard(res && Array.isArray(res.entries) ? res : { entries: [], total: 0 }); })
-      .catch(() => { if (live) setBoard({ entries: [], total: 0, unavailable: true }); })
-      .finally(() => { if (live) setBusy(false); });
-    return () => { live = false; };
+    // records.board 的正文是**独立的推送帧**（server/lobby.js sendSession），不是 request 的 ok 回执；
+    // 订阅必须在发请求之前，否则空榜/本地缓存路径会丢帧。
+    const off = net.on('records.board', (msg) => {
+      if (!live || !msg) return;
+      if (msg.difficulty !== difficulty) return;
+      const sameLevel = shownLevel === 'all' ? msg.level === 'all' : Number(msg.level) === Number(shownLevel);
+      if (!sameLevel) return;
+      setBoard({
+        entries: Array.isArray(msg.entries) ? msg.entries : [],
+        total: Number(msg.total) || 0,
+        unavailable: !!msg.unavailable,
+      });
+      setBusy(false);
+    });
+    net.request('records.board', { difficulty, level: shownLevel, limit: 50 })
+      .catch(() => { if (live) { setBoard({ entries: [], total: 0, unavailable: true }); setBusy(false); } });
+    return () => { live = false; off(); };
   }, [difficulty, shownLevel]);
   return html`<${Section} title=${t('排行榜')} micro="LEADERBOARD">
     <div class="st-ranks__filters">
@@ -508,7 +521,8 @@ function Ranks() {
           ${DIFFICULTIES.map((d) => html`<option key=${d} value=${d}>${difficultyName(d)}</option>`)}
         </select></label>
       ${difficulty === 'ABYSS' ? html`<label><span>${t('协议等级')}</span>
-        <select value=${String(level)} onChange=${(e) => setLevel(Number(e.currentTarget.value))}>
+        <select value=${String(level)} onChange=${(e) => setLevel(e.currentTarget.value === 'all' ? 'all' : Number(e.currentTarget.value))}>
+          <option value="all">${t('全部等级')}</option>
           ${Array.from({ length: PROTOCOL_LEVEL_MAX + 1 }, (_, i) => i).map((n) => html`<option key=${n} value=${String(n)}>${n === 0 ? t('关闭') : t('等级 {n}', { n })}</option>`)}
         </select></label>` : null}
       ${busy ? html`<${Spinner} size="sm" />` : null}
@@ -518,6 +532,7 @@ function Ranks() {
       : board.entries.length ? html`<ol class="st-ranks">
           ${board.entries.map((row, i) => html`<li key=${i} class="st-ranks__row">
             <b class="num st-ranks__pos">${i + 1}</b>
+            ${shownLevel === 'all' ? html`<span class="st-ranks__level num">${row.level > 0 ? t('等级 {n}', { n: row.level }) : t('关闭')}</span>` : null}
             <span class="st-ranks__name">${row.name || t('博士')}</span>
             <span class=${row.victory ? 't-mint' : 't-lo'}>${row.victory ? t('成功卫戍') : t('模拟失败')}</span>
             <span class="num">${t('通过 {n} 回合', { n: row.roundsPassed || 0 })}</span>

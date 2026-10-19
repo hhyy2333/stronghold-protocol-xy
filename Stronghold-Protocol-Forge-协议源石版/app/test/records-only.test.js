@@ -49,6 +49,11 @@ test('records-only server: hello needs no auth, accounts is null, records.board 
       assert.equal(board.level, 18);
       assert.equal(board.total, 0);
       assert.deepEqual(board.entries, []);
+      const allReply = await c.request({ t: 'records.board', difficulty: 'ABYSS', level: 'all', limit: 50 });
+      assert.equal(allReply.t, 'ok', 'level:"all" passes protocol validation');
+      const all = await c.waitFor('records.board', (m) => m.level === 'all');
+      assert.equal(all.total, 0);
+      assert.deepEqual(all.entries, []);
     } finally { await c.close(); }
   } finally {
     await srv.close();

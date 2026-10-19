@@ -622,10 +622,11 @@ export const C2S = {
   // 给**请求者本人**。开着账号时它是「我这个账号的最近一局」；关着账号时按会话 playerId 查（每次连接的新 id，
   // 所以实际上只会拿到本会话打过的局）。它在 `server/net.js` 的 `HEAVY_TYPES` 里：一次廉价请求换一整份战绩。
   'records.mine': {},
-  // 排行榜 (owner's call 2026-10-18: 按协议等级分榜): one board per (difficulty, level); the level is optional (0 = off).
+  // 排行榜 (owner's call 2026-10-18 / 2026-10-19): one board per (difficulty, level), or level 'all' = 所有等级合并榜
+  // (each player's best row, higher level first, top 50). level is optional (0 = off).
   'records.board': {
     difficulty: (v) => DIFFICULTIES.includes(v),
-    level: (v) => v == null || isInt(v, 0, PROTOCOL_LEVEL_MAX),
+    level: (v) => v == null || v === 'all' || isInt(v, 0, PROTOCOL_LEVEL_MAX),
     limit: (v) => v == null || isInt(v, 1, 50),
     $optional: ['level', 'limit'],
   },

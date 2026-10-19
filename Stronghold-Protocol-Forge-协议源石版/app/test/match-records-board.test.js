@@ -61,3 +61,27 @@ test('a board is per (difficulty, level), one best row per player, rebuilt from 
   assert.deepEqual(again.board({ difficulty: 'ABYSS', level: 8 }).entries.map((e) => e.name), ['Cara']);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('level:"all" merges every level: one best row per player, sorted level-first, top 50 cap, rows carry level', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'sp-board-all-'));
+  const file = path.join(dir, 'records.jsonl');
+  const rows = [
+    record({ finishedAt: 10, level: 18, victory: false, roundsPassed: 3, players: [{ playerId: 'a', name: 'Alice' }] }),
+    record({ finishedAt: 11, level: 18, victory: true, roundsPassed: 14, players: [{ playerId: 'b', name: 'Bob' }] }),
+    record({ finishedAt: 12, level: 10, victory: true, roundsPassed: 14, players: [{ playerId: 'a', name: 'Alice' }] }),
+    record({ finishedAt: 13, level: 0, victory: true, roundsPassed: 14, players: [{ playerId: 'c', name: 'Cara' }] }),
+    record({ finishedAt: 14, level: 6, victory: true, roundsPassed: 14, players: [{ playerId: 'd', name: 'Dan' }] }),
+  ];
+  writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  const store = new MatchRecords(file, quiet);
+  const all = store.board({ difficulty: 'ABYSS', level: 'all', limit: 50 });
+  assert.equal(all.level, 'all');
+  assert.deepEqual(all.entries.map((e) => e.name), ['Bob', 'Alice', 'Dan', 'Cara'], 'level 18 first; Alice keeps her 18 row, not her 10 win');
+  assert.deepEqual(all.entries.map((e) => e.level), [18, 18, 6, 0]);
+  assert.deepEqual(all.levels, [18, 6, 0]);
+  assert.ok(!('playerId' in all.entries[0]), 'the public board carries no playerId');
+  const capped = store.board({ difficulty: 'ABYSS', level: 'all', limit: 2 });
+  assert.deepEqual(capped.entries.map((e) => e.name), ['Bob', 'Alice'], 'only the first N rows');
+  assert.equal(capped.total, 4, 'total is still the whole merged board');
+  rmSync(dir, { recursive: true, force: true });
+});

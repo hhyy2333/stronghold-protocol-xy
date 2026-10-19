@@ -1215,7 +1215,7 @@ export class Lobby {  /**
       case 'records.board': {
         const body = this.records
           ? this.records.board({ difficulty: msg.difficulty, level: msg.level ?? 0, limit: msg.limit })
-          : { difficulty: msg.difficulty, level: msg.level ?? 0, total: 0, entries: [] };
+          : { difficulty: msg.difficulty, level: msg.level ?? 0, total: 0, entries: [], unavailable: true };
         sendSession(session, { t: 'records.board', ...body });
         return OK;
       }
