@@ -120,17 +120,25 @@ export function normalizeHex(hex, myId = null, _players = []) {
   if (isObj(hex.rerollsLeft)) for (const [k, v] of Object.entries(hex.rerollsLeft)) if (Number.isFinite(v)) rerollsLeft.set(k, v);
   const mine = myId && offers.has(myId) ? offers.get(myId) : [];
   const decided = [...offers.keys()].every((pid) => picks.has(pid));
+  const myRerolls = myId && rerollsLeft.has(myId) ? rerollsLeft.get(myId) : 0;
   return {
     offers,
     picks,
     rerollsLeft,
     myOffer: mine,
     myPick: myId && picks.has(myId) ? picks.get(myId) : null,
-    myRerolls: myId && rerollsLeft.has(myId) ? rerollsLeft.get(myId) : 0,
-    // 单张刷新的次数（每张卡一次）。服务器没给这个键时退回「每张都能刷一次」——旧服务器 + 新客户端时界面不至于全灰。
+    myRerolls,
+    /**
+     * 单张刷新的次数（每张卡一次）。业主 2026-10-20「刷新次数用完的就不要有按钮了」：这个数组是**按钮画不画**、
+     * 而不是「按钮点不点得动」的判据 —— 次数 0 的卡干脆没有按钮，而不是留一颗灰的让玩家点了才被服务端拒绝
+     * （那样只会弹一句「刷新次数已用完」的 toast）。
+     *
+     * 服务器没下发 slotRerollsLeft 时（混合部署 / 旧服务器）退回**整批那一本账**：那时服务端确实只认一个共享次数，
+     * 所以每张卡的可刷次数就等于 myRerolls。绝不能填一个假的 1 —— 那会让按钮一直亮着、点下去必然 NO_REROLL。
+     */
     mySlotRerolls: myId && isObj(hex.slotRerollsLeft) && Array.isArray(hex.slotRerollsLeft[myId])
       ? hex.slotRerollsLeft[myId].map((n) => (Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0))
-      : mine.map(() => 1),
+      : mine.map(() => myRerolls),
     untimed: !!hex.untimed,
     turnDeadline: Number(hex.turnDeadline) || 0,
     timerSec: Number(hex.timerSec) || 0,

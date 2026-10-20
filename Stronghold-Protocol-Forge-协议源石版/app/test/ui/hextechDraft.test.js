@@ -105,6 +105,17 @@ test('HexCard renders a card (and a compact one for the enemy row)', () => {
   assert.ok(!JSON.stringify(compact).includes('hxcard__confirm'));
 });
 
+test('刷新次数用完的卡连按钮都不画（业主 2026-10-20「不要再有按钮了」）', () => {
+  // The spent card renders NO `.hxcard__reroll` at all — not a disabled one. A grey button would still be tappable-
+  // looking and its click can only be refused by the server (a 「刷新次数已用完」 toast).
+  const live = HexCard({ hex: HEX_VIEW.offers.p_0[0], onClick: () => {}, onReroll: () => {} });
+  assert.ok(JSON.stringify(live).includes('hxcard__reroll'), 'a card with budget left has the control');
+  const spent = HexCard({ hex: HEX_VIEW.offers.p_0[1], onClick: () => {} });   // onReroll omitted = spent
+  assert.ok(!JSON.stringify(spent).includes('hxcard__reroll'), 'a spent card has no control at all');
+  // and the label that used to say 「已经刷新过了」 is gone with it
+  assert.ok(!JSON.stringify(spent).includes('这张已经刷新过了'));
+});
+
 test('分别刷新 (业主 2026-10-20): each card can carry its own reroll control, as a SIBLING of the card button', () => {
   const rerolled = [];
   const card = HexCard({ hex: HEX_VIEW.offers.p_0[1], onClick: () => {}, onReroll: () => rerolled.push('r'), rerollTitle: '只刷新这一张（剩余 1 次）' });
