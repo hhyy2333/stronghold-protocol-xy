@@ -211,3 +211,19 @@ describe('wiring', () => {
     assert.ok(game.includes("}, [view, deployFold, shopFolded, showPrep, pen, !!drag, !!facing, prepCamKey]);"));
   });
 });
+
+describe('拖动取景不再飞缩放动画（业主 2026-10-22「休整期拖动时会缩放不好」）', () => {
+  test('拿起棋子时是瞬时切换，不是 350ms 的镜头飞行', () => {
+    const game = read('public/js/screens/game.js');
+    const deploy = game.slice(game.indexOf('if (deployFold) {'), game.indexOf('if (deployFold) {') + 900);
+    assert.ok(deploy.includes('setCam(want.kind, { ...want.opts, ms: 0 })'), 'the deploy re-frame is instant');
+    assert.ok(game.includes('if (next) setCam(next.kind, { ...next.opts, ms: FOLD_CAMERA_MS });'), 'foldCamera keeps FOLD_CAMERA_MS');
+    assert.ok(!deploy.includes('ms: FOLD_CAMERA_MS'), 'no flight animation inside the deploy branch');
+  });
+
+  test('拖动期间每帧都按指针重判位置与落点（镜头瞬切不会把棋子落在旧位置上）', () => {
+    const app = read('public/js/render/app.js');
+    assert.ok(app.includes("if (mode === 'prep' && drag.dragging) drag.refresh();"), 'every prep frame, not only while a camera flies');
+    assert.ok(!app.includes("if (flying && mode === 'prep' && drag.dragging) drag.refresh();"), 'the flying-only guard is gone');
+  });
+});

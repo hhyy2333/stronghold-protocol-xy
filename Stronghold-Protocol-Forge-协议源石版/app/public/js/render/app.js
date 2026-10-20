@@ -1954,9 +1954,11 @@ export async function createFieldView(host, options = {}) {
     try {
       const flying = !!camTo;
       stepCamera(now);
-      // a drag under a still pointer follows a camera flight — the shop-collapsed zoom of a deploy (GitHub #602) starts
-      // as the piece is picked up: the target tile and the dragged piece are judged again at the pointer
-      if (flying && mode === 'prep' && drag.dragging) drag.refresh();
+      // a drag under a still pointer follows the camera — a camera flight, or the INSTANT re-frame the deploy interaction
+      // does when the piece is picked up (game.js deployFold, 业主 2026-10-22「休整期拖动时会缩放不好」): the dragged
+      // piece and the tile it is over are re-judged from the pointer every prep frame while a drag is live, so a camera
+      // change can never leave the piece behind or the drop target off by a tile.
+      if (mode === 'prep' && drag.dragging) drag.refresh();
       if (board3d) {
         if (board3d.lost) onBoard3dLost();
         else board3d.render(cam, clock);

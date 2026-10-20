@@ -777,8 +777,12 @@ function MatchScreen() {
     if (deployFold) {
       const want = prepCameraFor(pub, myId, true, stageLayout, alive ? bossSideRef.current : null);
       const cur = camRef.current;
-      // the fold zoom flies with the short FOLD_CAMERA_MS, not a generic camera flight (render/app/tune.js)
-      if (cur.kind !== want.kind || cur.opts?.shop !== false) setCam(want.kind, { ...want.opts, ms: FOLD_CAMERA_MS });
+      // 业主 2026-10-22「休整期拖动时会缩放不好」：拿起棋子的这一刻**不再飞一段缩放动画**，直接切到折叠店铺的取景
+      // （ms: 0）。原来这里用 FOLD_CAMERA_MS=350ms 的镜头飞行：手指刚按住棋子，整个棋盘就在脚下缩 350ms，拖的过程里
+      // 画面还在动 —— 玩家说的「拖动时会缩放」。取景本身不变（public issue #602 的理由仍然成立：拖拽的目标格与方向轮
+      // 要落在当前取景的格子上），只是把它变成一次**瞬时**切换，拖动全程镜头是静的。
+      // 落子之后回到玩家自己的取景仍然走 FOLD_CAMERA_MS（那一下是收尾，不在拖拽过程中）。
+      if (cur.kind !== want.kind || cur.opts?.shop !== false) setCam(want.kind, { ...want.opts, ms: 0 });
       return;
     }
     const next = foldCamera({
