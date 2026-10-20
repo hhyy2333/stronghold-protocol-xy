@@ -496,6 +496,22 @@ export function mount(ctx) {
       closing = null;
       closeLayer.hidden = true;
     }
+    // 业主 2026-10-22（玩家反馈）：「手机端搞交易所，发现投不进钱，关上以后发现在悬赏页面选不了」。
+    //
+    // 两条症状同一个原因：这一层挂在 `screen.game.aside`（z-index 62），比机变 / 悬赏那一整屏的浮层（`.spov`，z 20）
+    // 还高，而它**收到任何一份 state 帧都会自动展开**（原来下面那两行是无条件的）。于是离开休整期之后面板仍然盖在
+    // 机变 / 战斗界面上：牌被面板挡住点不到（选不了），按买 / 卖又因为不在休整期被服务端拒掉（投不进钱）；
+    // 玩家手动收起它，下一帧行情回来它又自己弹开 —— 看起来就是「关上也没用」。
+    //
+    // 交易所本来就只在休整期能下单，所以非休整期整块收起来（连那颗标签一起）：不占屏、不挡任何界面；回到休整期
+    // 的那一帧照常自动展开（玩家自己收起过的仍然尊重 `userCollapsed`）。
+    const tradeable = data.phase === 'PREP' && !data.closed;
+    if (!tradeable) {
+      if (open) applyOpen(false, false);
+      root.hidden = true;
+      renderState(data);   // 数字照旧更新，回到休整期时直接是新的
+      return;
+    }
     root.hidden = false;
     if (!userCollapsed && !open) applyOpen(true, false);
     renderState(data);

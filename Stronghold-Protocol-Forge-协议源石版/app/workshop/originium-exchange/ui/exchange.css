@@ -418,6 +418,20 @@
   .oex { width: 300px; top: 76px; }
 }
 
+/* 矮屏（手机横屏 390~430 高）：业主 2026-10-22 玩家反馈「投不进钱」。实测 844×390 上面板只有 270px 高，而头部
+   （标题 / 总资产 / 每单手数 / 杠杆 / 脚注）是固定高度、又都不缩，于是 `flex: 1 1 auto` 的股票列表被压到 **21px** ——
+   六行 349px 的内容挤在一个 21px 的滚动窗口里，买 / 卖按钮根本按不到，脚本量出来的每一个按钮中心都被脚注接住。
+   所以按**高度**（不是宽度）另开一档：面板贴底、给到差不多整屏高，并给列表一个最小高度，让它至少露出三行。 */
+@media (max-height: 520px) {
+  .oex { top: auto; bottom: 8px; right: 8px; width: min(340px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
+  .oex__panel { max-height: calc(100vh - 16px); }
+  .oex__head { padding-top: 6px; padding-bottom: 4px; }
+  .oex__sum { padding-top: 4px; padding-bottom: 4px; }
+  .oex__qty, .oex__lev { padding-top: 3px; padding-bottom: 3px; }
+  .oex__foot { padding: 4px 10px 6px; }
+  .oex__list { min-height: 120px; }
+}
+
 @media (max-width: 640px) {
   .oex {
     width: calc(100vw - 20px);
@@ -426,7 +440,9 @@
     bottom: 10px;
     right: 10px;
   }
-  .oex__panel { max-height: 62vh; }
+  /* 面板贴底，所以能给多高就给多高：62vh 在手机横屏（高度 390）只剩 242px，六支股票的列表被压到两行，
+     最后一行的买 / 卖按钮落在滚动区外面 —— 按下去命中的是下面的脚注（玩家反馈的「投不进钱」有一半是它）。 */
+  .oex__panel { max-height: calc(100vh - 20px); }
   .oex__tab { top: auto; bottom: 26%; padding: 9px 6px; }   /* right / 圆角已在基础规则里（避开 HUD 那列） */
   .oex__title { font-size: 14px; }
 }
