@@ -593,17 +593,45 @@ function ownedEnemyHexes(m) {
  * @param {string|null} [fieldId] the battle's own field id (`n:p_0`, `u`, …) — with the round it seeds the pick
  * @returns {string|undefined} an enemyKey
  */
+/**
+ * 通缉令的「价值上限」按回合分档（业主 2026-10-22）：「前三回合只出 1 块，前 5 回合出 1 块 2 块，前 7 回合出 1 块 2 块 3 块，
+ * 其他回合 1-5 块」。
+ *
+ * 就是一条按回合递增的阶梯：round ≤ 3 → 1；≤ 5 → 2；≤ 7 → 3；8 回合起回到 `maxCoin`（5）。写成数据
+ * `params.coinTiers: [{ round, maxCoin }, …]`（升序，取第一个 `r <= round` 的档），以后调档不必改代码。
+ * 旧数据只有单档 `earlyRounds` / `earlyMaxCoin`（0.19.7 那版「前 5 回合不出现 4、5 块」）—— 没有 `coinTiers` 时仍按它
+ * 算，避免旧数据在升级那一瞬间行为跳变。`r` 未知（0）时用 `maxCoin`（不设限）。
+ * @param {any} p the card's params
+ * @param {number} r the BATTLE's round
+ * @param {number} maxCoin the card's own ceiling
+ * @returns {number} the highest coin value that may be drawn this round
+ */
+export function wantedCoinCap(p, r, maxCoin) {
+  const tiers = p && Array.isArray(p.coinTiers) ? p.coinTiers : null;
+  if (tiers && tiers.length && r > 0) {
+    for (const t of tiers) {
+      const upto = Number(t && t.round);
+      const c = Number(t && t.maxCoin);
+      if (Number.isFinite(upto) && Number.isFinite(c) && r <= upto) return Math.min(maxCoin, Math.max(0, c));
+    }
+    return maxCoin;   // past the last tier: the card's own ceiling
+  }
+  // legacy single-tier data (0.19.7 / 0.19.8 era)
+  const earlyRounds = Number.isFinite(Number(p && p.earlyRounds)) ? Math.trunc(Number(p.earlyRounds)) : 0;
+  const earlyMaxCoin = Number.isFinite(Number(p && p.earlyMaxCoin)) ? Number(p.earlyMaxCoin) : maxCoin;
+  return earlyRounds > 0 && r > 0 && r <= earlyRounds ? Math.min(maxCoin, earlyMaxCoin) : maxCoin;
+}
+
 export function enemyHexWantedKey(m, round = null, fieldId = null) {
   const hex = ownedEnemyHexes(m).find((h) => h.verb === 'wanted');
   if (!hex) return undefined;
   const p = hex.params || {};
   const minCoin = Number.isFinite(Number(p.minCoin)) ? Number(p.minCoin) : 1;
   const maxCoin = Number.isFinite(Number(p.maxCoin)) ? Number(p.maxCoin) : 5;
-  const earlyRounds = Number.isFinite(Number(p.earlyRounds)) ? Math.trunc(Number(p.earlyRounds)) : 0;
-  const earlyMaxCoin = Number.isFinite(Number(p.earlyMaxCoin)) ? Number(p.earlyMaxCoin) : maxCoin;
   const r = Number.isFinite(Number(round)) && Number(round) > 0 ? Math.trunc(Number(round)) : Number(m.round) || 0;
-  const capped = earlyRounds > 0 && r > 0 && r <= earlyRounds;   // 前 5 回合：4/5 块的悬赏不许出现
-  const cap = capped ? Math.min(maxCoin, earlyMaxCoin) : maxCoin;
+  // 业主 2026-10-22：按回合分档的价值上限（前 3 回合 1 块 / 前 5 回合 1~2 / 前 7 回合 1~3 / 之后 1~5）
+  const cap = wantedCoinCap(p, r, maxCoin);
+  const capped = cap < maxCoin;
   // every bounty enemy of the 惊变 draft, once per KEY (two cards may share an enemy), split by whether the coin cap
   // admits it: `early` is the early-round pool (≤ earlyMaxCoin), `late` everything ≤ maxCoin that is not in it
   const early = new Set();

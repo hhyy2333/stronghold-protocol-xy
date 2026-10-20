@@ -1319,29 +1319,44 @@ test('通缉令: the match picks one 惊变 enemy whose coin price is 1..5', () 
   m.dispose();
 });
 
-test('通缉令: the first five rounds never draw a 4- or 5-coin bounty (业主 2026-10-19)', () => {
+test('通缉令: 价值上限按回合分档（前 3 回合 1 块 / 前 5 回合 1~2 / 前 7 回合 1~3 / 之后 1~5，业主 2026-10-22）', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 45, fake: true });
   h.start();
   const m = h.m;
   m.enemyHexes.push({ id: 'ehex_wanted', round: 1 });
-  const priced = bountyCoins(m.gd);
-  // the pick is derived from (seed, round, fieldId) — one battle each — so a spread of seeds per round shows the cap
-  for (const round of [1, 2, 3, 4, 5]) {
+  // one enemy may be sold by several cards at different prices, so the admission test is
+  // 「这张卡（敌人）有没有一个 ≤ 上限的价格」，不是「它最贵的那个价格 ≤ 上限」。
+  const coinsOf = new Map();
+  const cards = m.gd.choices && m.gd.choices.cards ? m.gd.choices.cards : {};
+  for (const list of (Array.isArray(cards) ? cards : Object.values(cards))) {
+    for (const c of (Array.isArray(list) ? list : [])) {
+      const coin = Number(c && c.coin);
+      if (!c || typeof c.enemyKey !== 'string' || !c.enemyKey || !Number.isFinite(coin)) continue;
+      if (!coinsOf.has(c.enemyKey)) coinsOf.set(c.enemyKey, new Set());
+      coinsOf.get(c.enemyKey).add(coin);
+    }
+  }
+  const admitted = (key, cap) => {
+    const set = coinsOf.get(key);
+    return !!set && [...set].some((c) => c >= 1 && c <= cap);
+  };
+  // R1~3 只能是 1 块；R4~5 1~2；R6~7 1~3
+  for (const [round, cap] of [[1, 1], [2, 1], [3, 1], [4, 2], [5, 2], [6, 3], [7, 3]]) {
     for (let seed = 1; seed <= 40; seed++) {
       const mt = { gd: m.gd, round, seed, enemyHexes: m.enemyHexes };
       for (const fieldId of ['n:p_0', 'n:p_1', 'u']) {
         const key = enemyHexWantedKey(mt, round, fieldId);
-        const coin = priced.get(key);
-        assert.ok(coin >= 1 && coin <= 3, 'R' + round + ' ' + fieldId + ' picked ' + key + ' (' + coin + ' 块)');
+        assert.ok(admitted(key, cap), 'R' + round + ' ' + fieldId + ' picked ' + key + ' (' + [...(coinsOf.get(key) || [])].sort().join('/') + ' 块) over the ' + cap + '-coin cap');
       }
     }
   }
-  // ...and R6 opens the 4/5-coin bounties again
-  const seen = new Set();
+  // 第 8 回合起放开 4/5 块 —— 必须真的能抽到
+  const seen = new Map();
   for (let seed = 1; seed <= 400; seed++) {
-    seen.add(priced.get(enemyHexWantedKey({ gd: m.gd, round: 6, seed, enemyHexes: m.enemyHexes }, 6, 'n:p_0')));
+    const key = enemyHexWantedKey({ gd: m.gd, round: 8, seed, enemyHexes: m.enemyHexes }, 8, 'n:p_0');
+    seen.set(key, coinsOf.get(key));
   }
-  assert.ok([...seen].some((c) => c > 3), 'R6 can draw a 4/5 块 bounty, saw ' + [...seen].sort().join());
+  assert.ok([...seen.values()].some((set) => set && [...set].some((c) => c > 3)), 'R8 can reach a 4/5 块 bounty');
   m.dispose();
 });
 

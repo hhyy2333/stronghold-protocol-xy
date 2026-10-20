@@ -54,8 +54,11 @@ test('batch15 enemy: the five records carry their verb and params', () => {
   assert.equal(rec('ehex_thief').verb, 'thief');
   assert.deepEqual(rec('ehex_thief').params, { perDeathPct: 2, capPct: 30 });
   assert.equal(rec('ehex_wanted').verb, 'wanted');
-  // 业主 2026-10-19 追加：「悬赏令前5回合不出现4，5块的怪」—— earlyRounds / earlyMaxCoin 是那条限制
-  assert.deepEqual(rec('ehex_wanted').params, { minCoin: 1, maxCoin: 5, earlyRounds: 5, earlyMaxCoin: 3 });
+  // 业主 2026-10-22：「前三回合只出1块，前5回合出1块2块，前7回合出1块2块3块，其他回合1-5块」—— coinTiers 是这条阶梯
+  assert.deepEqual(rec('ehex_wanted').params, {
+    minCoin: 1, maxCoin: 5,
+    coinTiers: [{ round: 3, maxCoin: 1 }, { round: 5, maxCoin: 2 }, { round: 7, maxCoin: 3 }],
+  });
   assert.equal(rec('ehex_jekyll').verb, 'jekyllSquad');
   assert.equal(rec('ehex_jekyll').params.enemyKey, 'enemy_1516_jakill');
   assert.equal(rec('ehex_jekyll').params.count, 3);
