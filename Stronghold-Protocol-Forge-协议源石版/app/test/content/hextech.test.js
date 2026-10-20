@@ -206,6 +206,41 @@ test('盟约之主: the most numerous bond needs 1 fewer operator, and the bonus
   assert.deepEqual(ctx.bonuses, { [ids[1]]: 0, [ids[2]]: 1 }, 'the old bonus is cleared when the main bond moves');
 });
 
+// 业主 2026-10-20「这个盟约之主减少所需人数的判定是不是有问题」：两处错。
+//   1) 它会挑到机制盟约 —— 调和(maniShip) 门槛 [1]，减 1 之后**0 人就算激活**，而调和一激活就给每个有人的核心盟约 +1 人，
+//      等于这张卡白送所有核心盟约一档；独行(soloShip) 是「恰好一人」的向下盟约，减它没有意义。
+//   2) 「人数最多」用的是 `count`，而 `count` 已含调和给核心盟约的 +1 ⇒ 3 人的核心盟约显示成 4 人，会和真正 4 人的
+//      附加盟约打平，平手按数据顺序取第一个 —— 玩家看到的就是「不是人数最多的那个拿到了减免」。
+test('盟约之主: 机制盟约(调和/独行)不吃这份减免，且「人数最多」按真实人数比（扣掉调和的 +1）', () => {
+  const reg = getDefaultRegistry();
+  const h = reg.get(hexEffectKey('hex_overlord'));
+  const ids = Object.keys(DATA.bonds);
+  const mk = (rows) => {
+    const bonuses = {};
+    const counters = {};
+    const ctx = ctxStub({
+      counter: (k) => counters[k] || 0,
+      setCounter: (k, n) => { counters[k] = n; return n; },
+      setBondCountBonus: (id, n) => { bonuses[id] = n; },
+      bond: (id) => (rows[id] ? { count: rows[id].count, active: true, ...(rows[id].harmony ? { harmony: rows[id].harmony } : {}) } : null),
+      bonds: () => ({}),
+      gd: { ...DATA, bondIds: ids },
+    });
+    h.onRoundStart(ctx);
+    return bonuses;
+  };
+  // 1) 调和 5 人、炎 3 人：减免给炎，不给调和（否则调和 0 人激活）
+  assert.deepEqual(mk({ maniShip: { count: 5 }, yanShip: { count: 3 } }), { yanShip: 1 }, '调和 is never the target');
+  // 2) 独行 4 人、炎 3 人：同理
+  assert.deepEqual(mk({ soloShip: { count: 4 }, yanShip: { count: 3 } }), { yanShip: 1 }, '独行 is never the target');
+  // 3) 只有机制盟约有人时一个都不发（不能凭空给）
+  assert.deepEqual(mk({ maniShip: { count: 6 }, soloShip: { count: 6 } }), {}, 'no real bond -> no bonus at all');
+  // 4) 调和把 3 人核心盟约显示成 4 人：真人数 3 < 迅捷的 4 ⇒ 给迅捷
+  assert.deepEqual(mk({ yanShip: { count: 4, harmony: 1 }, swiftShip: { count: 4 } }), { swiftShip: 1 }, 'real member count wins the tie');
+  // 5) 真人数确实更多时照常给它
+  assert.deepEqual(mk({ yanShip: { count: 6 }, swiftShip: { count: 4 } }), { yanShip: 1 }, 'the genuinely biggest bond still wins');
+});
+
 // ---- third batch (0.3.0 playtest #3): the prep-side specs -------------------------------------------------------------
 
 test('因小失大: 附加盟约 need one fewer member, 核心盟约 one more (调和 and 独行 left out)', () => {

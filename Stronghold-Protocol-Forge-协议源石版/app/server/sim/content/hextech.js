@@ -452,18 +452,34 @@ function applySpec(ctx, spec, hex = null, hook = '') {
   }
   // 盟约之主: the own most-numerous bond needs N fewer operators (the 调和 mechanism, PlayerState.bondCountBonus). The
   // bonus is re-picked every round start: clear the previous one first, so it follows the board.
+  //
+  // 业主 2026-10-20「这个盟约之主减少所需人数的判定是不是有问题」: two things were wrong with the pick.
+  //
+  // 1) **机制盟约**不能当「你人数最多的盟约」。调和 (maniShip) 的门槛是 [1]，减 1 之后**0 人就算激活** —— 而它一激活
+  //    就给每个有人的核心盟约 +1 人，于是这一张卡等于白送所有核心盟约一档；独行 (soloShip) 是「恰好一人」的向下盟约，
+  //    把它的所需人数再减 1 语义上就是错的。兄弟卡 因小失大 早就把这两个排除掉了（见下面那段注释），这张卡漏了。
+  //
+  // 2) 「人数最多」要看**真实人数**，不是 `count`。`count` 里已经折进了调和给核心盟约的 +1（bondsMeta rawCount），
+  //    所以 3 人的核心盟约显示成 4 人，会和 4 人的附加盟约打平 —— 平手按数据顺序取第一个，玩家看到的就是
+  //    「不是人数最多的那个拿到了减免」。这里减去 `st.harmony` 再比。
+  //
+  // 平手仍然按 `gd.bondIds` 的数据顺序取第一个（确定性优先，与 盟约裂变 的并列规则一致）。
   if (isPos(spec.mainBondCount)) {
     const list = Array.isArray(ctx.gd.bondIds) ? ctx.gd.bondIds : [];
     for (const bondId of list) {
       const flag = `${HEX_KEY}${id}:main:${bondId}`;
       if (ctx.counter(flag) > 0) { ctx.setBondCountBonus(bondId, 0); ctx.setCounter(flag, 0); }
     }
+    const MECHANISM_BONDS = new Set(['maniShip', 'soloShip']);
     let best = null;
     let bestCount = 0;
     for (const bondId of list) {
+      if (MECHANISM_BONDS.has(bondId)) continue;
       const st = ctx.bond(bondId);
-      const c = st && Number.isFinite(st.count) ? st.count : 0;
-      if (c > bestCount) { bestCount = c; best = bondId; }
+      if (!st || !Number.isFinite(st.count)) continue;
+      // 真实人数：`count` 已含调和给核心盟约的 +1（本卡自己的减免在上一步已清零，不在里面）
+      const members = Math.max(0, st.count - (Number.isFinite(st.harmony) ? st.harmony : 0));
+      if (members > bestCount) { bestCount = members; best = bondId; }
     }
     if (best) { ctx.setBondCountBonus(best, spec.mainBondCount); ctx.setCounter(`${HEX_KEY}${id}:main:${best}`, 1); }
     did = true;
