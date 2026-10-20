@@ -358,9 +358,42 @@ const isPanelId = (v) => typeof v === 'string' && v.length > 0 && v.length <= 64
  * @returns {{ apply: (list: any) => { accepted: number },
  *   mounted: () => string[], wrapped: () => string[], refusals: () => Array<{ code: string, detail: string }>, dispose: () => void }}
  */
+/**
+ * 把一条**完整的** C2S 消息对象拆成 `Net.send(t, fields)` 要的两个参数。
+ *
+ * `public/js/net.js` 的 `Net.send(t, fields)` 第一个参数是**类型字符串**：
+ *   `net.send({ t:'pack.msg', … })` → `validateC2S` 判成 `unknown type [object Object]` → **帧一个字节都不落 socket**，
+ *   只在 console 留一句 warning，调用方只拿到 `false`。业主 2026-10-20 报的「源宝石证券交易所买/卖按钮点了没反应」
+ *   就是这一跳把消息吞了：面板没错、服务端没错，中间这段代码把整条消息当成了类型。
+ * @param {any} msg
+ * @returns {[string, Record<string, any>] | null} `[t, fields]`，或 null（不是一条能发的消息）
+ */
+export function c2sFrameArgs(msg) {
+  if (!msg || typeof msg !== 'object') return null;
+  const { t, ...fields } = msg;
+  if (typeof t !== 'string' || !t) return null;
+  return [t, fields];
+}
+
 export function createPanelRegistry(deps) {
   const store = deps.store;
   const net = deps.net || null;
+  /**
+   * 把一条**完整的** C2S 帧发出去。
+   *
+   * `public/js/net.js` 的 `Net.send(t, fields)` 第一个参数是**类型字符串**；面板门面拿到的是「一整条消息对象」，
+   * 直接 `net.send(msg)` 会把那个对象当成 `t`，`validateC2S` 判成 `unknown type [object Object]`，帧一个字节都不
+   * 落 socket —— 只在 console 留一句 warning。业主 2026-10-20 报的「源石证券交易所买/卖按钮点了没反应」就是这条：
+   * 面板没错、服务端没错，中间这一跳把消息吞了（`net.send` 也返回 false，门面又没有错误面可弹）。
+   * @param {{ t?: string } & Record<string, any>} msg
+   * @returns {boolean} 帧是否真的写进了 socket
+   */
+  const sendFrame = (msg) => {
+    if (!net || typeof net.send !== 'function') return false;
+    const args = c2sFrameArgs(msg);
+    if (!args) return false;
+    return net.send(args[0], args[1]);
+  };
   const log = deps.log || console;
   const notify = typeof deps.notify === 'function' ? deps.notify : () => {};
   const importModule = deps.importModule || ((url) => import(/* @vite-ignore */ url));
@@ -864,7 +897,7 @@ export function createPanelRegistry(deps) {
           refuse('CLIENT_SEND_BAD_SHAPE', `panel "${rec.key}" send("${type}") has a bad shape: ${bad}`);
           return false;
         }
-        return net.send(msg);
+        return sendFrame(msg);
       },
     });
     // 只读会话态的取数：每次读都重新取一次 store（面板挂上之后**不重挂**，一次性的值会变陈旧 —— 与
@@ -998,7 +1031,7 @@ export function createPanelRegistry(deps) {
           return false;
         }
         if (!net || typeof net.send !== 'function') return false;
-        return net.send({ t: 'pack.msg', pack: rec.pack, channel, ...(data === undefined ? {} : { data }) });
+        return sendFrame({ t: 'pack.msg', pack: rec.pack, channel, ...(data === undefined ? {} : { data }) });
       },
       sendResourceMessage: (msg) => (net && typeof net.sendResourceMessage === 'function' ? net.sendResourceMessage(msg) : false),
       /**
