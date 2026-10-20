@@ -21,7 +21,7 @@ test('one release version: package.json, package-lock.json and APP_VERSION', () 
   assert.equal(pkg.version, APP_VERSION);
   assert.equal(lock.version, APP_VERSION);
   assert.equal(lock.packages[''].version, APP_VERSION);
-  assert.equal(PROTOCOL_VERSION, 1, 'the wire protocol number is separate from the release version');
+  assert.equal(PROTOCOL_VERSION, 2, 'the wire protocol number is separate from the release version');
   assert.equal(pkg.private, true, 'never published to npm');
 });
 
@@ -35,7 +35,9 @@ test('CHANGELOG.md opens with the release version, and the README links it', () 
     const [a, b] = [num(first[1]), num(APP_VERSION)];
     assert.ok(a[0] < b[0] || (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] < b[2]))), `the newest entry ${first[1]} precedes ${APP_VERSION}`);
   } else assert.equal(first[1], APP_VERSION, 'the newest entry is the current version');
-  assert.match(log, /^## 0\.1\.0 — 2026-10-02/m, 'the first public release stays listed');
+  // The first public release is archived, not in the top-8 index any more (the index is cut by the announcement
+  // count, CHANGELOG.md's own header): it lives on in the per-minor volumes under docs/changelog/.
+  assert.match(read('docs/changelog/0.1.md'), /^## 0\.1\.0 — 2026-10-02/m, 'the first public release stays listed');
   const readme = read('README.md');
   assert.match(readme, /\[CHANGELOG\.md\]\(CHANGELOG\.md\)/);
   // shields.io escapes a '-' inside a badge field as '--'
@@ -54,7 +56,8 @@ test('the English title is the official one: Stronghold Protocol: Alliance (as i
   // EN client data, activity_table basicInfo.act2autochess.name = "Stronghold Protocol: Alliance" (CN 卫戍协议:盟约);
   // the project used to call it "Covenant". The Chinese title stays 卫戍协议：盟约; the repository keeps its name.
   const readme = read('README.md');
-  assert.match(readme.split('\n')[0], /^# 卫戍协议：盟约 · Stronghold Protocol: Alliance$/, 'README title');
+  // The repository renames itself to the 工坊编辑器 (the game body keeps the official title below the heading).
+  assert.match(readme.split('\n')[0], /^# Stronghold-Protocol-Forge · 卫戍协议工坊编辑器$/, 'README title');
   assert.match(readme, /mode \*Stronghold Protocol: Alliance\*/, 'README English summary');
   assert.match(read('server/http/boot.js'), /卫戍协议：盟约 · Stronghold Protocol: Alliance v/, 'boot banner');
   assert.equal(pkg.name, 'stronghold-protocol-alliance');
