@@ -215,10 +215,16 @@ describe('wiring', () => {
 describe('拖动取景不再飞缩放动画（业主 2026-10-22「休整期拖动时会缩放不好」）', () => {
   test('拿起棋子时是瞬时切换，不是 350ms 的镜头飞行', () => {
     const game = read('public/js/screens/game.js');
-    const deploy = game.slice(game.indexOf('if (deployFold) {'), game.indexOf('if (deployFold) {') + 900);
-    assert.ok(deploy.includes('setCam(want.kind, { ...want.opts, ms: 0 })'), 'the deploy re-frame is instant');
+    // 业主 2026-10-22「直接取消缩放」: the deploy interaction asks for NO camera at all — neither a flight nor a snap,
+    // so picking a piece up (or turning its facing) never rescales the board.
+    assert.ok(game.includes('if (deployFold) return;'), 'the deploy branch leaves the camera alone');
+    // …and between that guard and the ordinary fold / unfold there is no camera request at all
+    const from = game.indexOf('if (deployFold) return;');
+    const to = game.indexOf('const next = foldCamera({', from);
+    assert.ok(from > 0 && to > from, 'the guard sits before the ordinary fold branch');
+    assert.ok(!game.slice(from, to).includes('setCam('), 'no camera request inside the deploy branch');
+    // the ordinary fold / unfold still re-frames (the player's own 收起 / 展开 of the shop bar)
     assert.ok(game.includes('if (next) setCam(next.kind, { ...next.opts, ms: FOLD_CAMERA_MS });'), 'foldCamera keeps FOLD_CAMERA_MS');
-    assert.ok(!deploy.includes('ms: FOLD_CAMERA_MS'), 'no flight animation inside the deploy branch');
   });
 
   test('拖动期间每帧都按指针重判位置与落点（镜头瞬切不会把棋子落在旧位置上）', () => {

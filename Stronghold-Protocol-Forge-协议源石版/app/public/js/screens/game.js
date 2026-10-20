@@ -770,21 +770,15 @@ function MatchScreen() {
   // again, flown like any camera change. Never over the pen or a teammate's board or in battle; a hand-made fold is
   // deferred while a piece is dragged or its direction is chosen (the drop target and the wheel sit on tiles of the
   // camera in use) and this effect runs again when that ends (gameLogic foldCamera). Picking reads the camera of
-  // every frame (render/pick.js). A deploy interaction is the opposite (public issue #602, gameLogic
-  // deployFoldsShop): it zooms to the shop-collapsed camera as soon as the piece is picked up, for the drag and the
-  // wheel's whole duration, and the fold / unfold choice below restores the player's own shop state when it ends.
+  // every frame (render/pick.js).
+  //
+  // 业主 2026-10-22「休整期拖动时会缩放不好」→「直接取消缩放」：**deploy 交互不再改镜头**。它本来会切到折叠店铺的取景
+  // （public issue #602），先是一段 350ms 的飞行、后来改成瞬切 —— 两种都还是「拿起棋子画面就变一下」。现在这一段直接
+  // 不请求镜头：拖拽与方向轮全程沿用玩家当前这一份取景，落子之后也不需要飞回来（`foldCamera` 会发现当前镜头就是玩家
+  // 想要的那一个，返回 null）。店铺栏本身仍然在拖拽期间折起（那只是 HUD 让位，不改缩放），所以 #602 要的「目标格不被
+  // 店铺栏挡住」依然成立：落点按**当前**这一帧的相机计算，本来就是同一份。
   useEffect(() => {
-    if (deployFold) {
-      const want = prepCameraFor(pub, myId, true, stageLayout, alive ? bossSideRef.current : null);
-      const cur = camRef.current;
-      // 业主 2026-10-22「休整期拖动时会缩放不好」：拿起棋子的这一刻**不再飞一段缩放动画**，直接切到折叠店铺的取景
-      // （ms: 0）。原来这里用 FOLD_CAMERA_MS=350ms 的镜头飞行：手指刚按住棋子，整个棋盘就在脚下缩 350ms，拖的过程里
-      // 画面还在动 —— 玩家说的「拖动时会缩放」。取景本身不变（public issue #602 的理由仍然成立：拖拽的目标格与方向轮
-      // 要落在当前取景的格子上），只是把它变成一次**瞬时**切换，拖动全程镜头是静的。
-      // 落子之后回到玩家自己的取景仍然走 FOLD_CAMERA_MS（那一下是收尾，不在拖拽过程中）。
-      if (cur.kind !== want.kind || cur.opts?.shop !== false) setCam(want.kind, { ...want.opts, ms: 0 });
-      return;
-    }
+    if (deployFold) return;   // a deploy interaction leaves the camera exactly as it is
     const next = foldCamera({
       pub, myId, folded: shopFolded, ownPrep: !!view && viewModeRef.current === 'prep' && showPrep,
       pen, busy: !!drag || !!facing, current: camRef.current, layout: stageLayout,
