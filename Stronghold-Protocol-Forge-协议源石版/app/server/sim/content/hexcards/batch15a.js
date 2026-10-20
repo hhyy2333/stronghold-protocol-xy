@@ -183,6 +183,13 @@ export function installHeavyLoad(hooks) {
     if (!c || !c.dmg || c.dmg.cancel) return;
     // 本卡自己的附加伤害不再触发本卡（否则多状态会自己滚雪球）
     if (c.dmg.heavyLoad) return;
+    // 业主 2026-10-20「物理伤害加额外造成一段真实伤害试试」：这一卡只认干员的**攻击**，不认「对伤害的回答」。
+    // 以前它认得，于是和 反击装甲（造成伤害时回一发 200% 防御力的真实伤害）接成了环：
+    //   主伤害 → 本卡附伤(法术) → 反击装甲回一发真伤 → 本卡又把它当成一次攻击再加附伤 → 反击装甲再回…
+    // 实测 1 次物理攻击打出 **63 个伤害实例、26,920 伤害**（引擎的钩子深度上限才把它停住）。
+    // 反伤 / 反击 / 坚守荆棘 引擎已用 isRetaliation 标记；反击装甲自己的真伤 riposte 用的是 `hexRiposte`
+    // （它刻意没把自己加进 RETALIATION_TAGS，见 armor.js 注释），两个都要挡 —— 挡掉之后这条链就只剩一层。
+    if (isRetaliation(c.dmg) || c.dmg.hexRiposte) return;
     const src = c.source;
     if (!isOwnOp(src, owned)) return;
     const target = c.target;

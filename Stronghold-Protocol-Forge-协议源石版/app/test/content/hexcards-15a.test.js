@@ -17,6 +17,7 @@ import { hexHooks } from '../../server/sim/content/hexcards/hooks.js';
 import {
   installCanlight, installGlassCannon, installHeavyLoad, installUmbrellaBreak, CANLIGHT_ITEM_KEY,
 } from '../../server/sim/content/hexcards/batch15a.js';
+import { installArmor } from '../../server/sim/content/hexcards/armor.js';
 
 const HEXTECH = JSON.parse(readFileSync(new URL('../../data/hextech.json', import.meta.url), 'utf8'));
 const IMPL = {
@@ -61,6 +62,42 @@ function solo({ hexId = null, units = [], enemies = [], defs = {}, kits = null, 
   });
   return hexId ? inject(h, hexId, 'p1') : h;
 }
+
+// =====================================================================================================================
+// 身负重担 × 反击装甲: 两卡互相触发过一次（业主 2026-10-20「物理伤害加额外造成一段真实伤害试试」）
+//
+// 反击装甲（hex_armor）在己方干员**造成伤害**时回一发 200% 防御力的真实伤害。旧的身负重担把「对伤害的回答」也当成
+// 一次攻击，于是两条规则接成环：主伤害 → 附伤(法术) → 反击装甲回真伤 → 身负重担又加附伤 → …
+// 实测 1 次物理攻击打出 **63 个伤害实例、26,920 伤害**（靠引擎的钩子深度上限才停住）。现在身负重担挡掉
+// isRetaliation / hexRiposte，这条链只剩一层。
+// =====================================================================================================================
+
+test('身负重担 + 反击装甲: one physical hit stays bounded (no ping-pong between the two scripts)', () => {
+  const h = solo({
+    units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }],
+    enemies: [],
+  });
+  h.run(0.1);
+  // both cards on the same player, through the production installers
+  inject(h, 'hex_heavyload');
+  inject(h, 'hex_armor');
+  installHeavyLoad(hexHooks(h.battle));
+  installArmor(hexHooks(h.battle));
+  const u = one(h);
+  const e = h.spawn('enemy_dummy', { pos: [10, 6] });
+  assert.ok(e && e.alive, 'premise: an enemy on the field');
+  h.battle.applyStatus(e, 'stun', { duration: 10, source: u });
+  let instances = 0;
+  h.battle.on('hit', () => { instances += 1; });
+  const before = e.hp;
+  h.battle.dealDamage(u, e, h.battle.makeDamage({ amount: 1000, type: 'phys', canDodge: false, isAttack: true }));
+  const loss = before - e.hp;
+  // the chain is: main hit + our 400 arts + the armour's answer(s) — a handful, not dozens
+  assert.ok(instances <= 6, `bounded instance count, got ${instances}`);
+  assert.ok(loss < 5000, `bounded damage, got ${Math.round(loss)}`);
+  assert.ok(loss >= 1000, 'premise: at least the main hit landed');
+  h.invariants();
+});
 
 // =====================================================================================================================
 // data set guard
