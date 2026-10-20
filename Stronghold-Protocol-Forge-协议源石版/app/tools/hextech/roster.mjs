@@ -117,7 +117,9 @@ export const FORMAT = {
 //                                   (50 / 300 since the owner's rework of 2026-10-20: 「改成50%概率伤害提升至300％」)
 //   physarts { spOnAttack, atkPctPerHit, atkPctCap }  物法皆修: +SP on every attack; +atk% per skill hit, capped
 //   quantum { every, atkPct, slowPct, slowSec, healPct }  量子计算: a periodic field-wide strike + slow + self heal
-//   tapdance { aspdPerHit, idleSec }  踢踏舞: one +aspd instance per attack, each lapsing after `idleSec`
+//   tapdance { aspdPerHit, idleSec, maxStacks }  踢踏舞: each attack adds ONE stack (+aspdPerHit each) on a single
+//                                   `idleSec` timer that every attack RESETS; capped at `maxStacks` (owner 2026-10-20:
+//                                   the stacks are not independent — the whole buff lapses `idleSec` after the last hit)
 //   ultrefresh { cd }               终极刷新: a skill that just ended is re-cast once, per-operator cooldown `cd`
 //   omenpact { atkMaxPct, lifestealPct, hpCostPct }  不祥契约: ATK from missing HP (capped), lifesteal, HP cost/attack
 //   proteinshake { perHp, def, res }  蛋白粉奶昔: +def / +res per `perHp` of max HP
@@ -1017,9 +1019,11 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_tapdance',
     name: '踢踏舞',
-    desc: '作战中，己方干员每次攻击提升 7 点攻击速度，2 秒不攻击后失效。',
+    // 业主 2026-10-20:「不是每层独立 2 秒到期，不独立。加上上限（325）」—— 一层共享的 2 秒计时（每次攻击重置），
+    // 层数上限 325。卡面写清上限，免得玩家以为是无限叠。
+    desc: '作战中，己方干员每次攻击提升 7 点攻击速度，2 秒不攻击后失效，最多叠加 325 层。',
     rarity: 'prismatic',
-    effect: { tapdance: { aspdPerHit: 7, idleSec: 2 } },
+    effect: { tapdance: { aspdPerHit: 7, idleSec: 2, maxStacks: 325 } },
   },
   {
     id: 'hex_ultrefresh',

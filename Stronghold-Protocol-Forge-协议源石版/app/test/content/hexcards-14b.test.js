@@ -73,11 +73,12 @@ const opRec = (extra = {}) => chessRec({ id: 'test_op', stats: { maxHp: 2000, at
 const HEAVY = 'hex:heavyhitter';
 
 // =====================================================================================================================
-// 1. 踢踏舞 — every attack +7 ASPD, independent 2 s instances
+// 1. 踢踏舞 — every attack +1 stack (+7 ASPD each) on ONE shared 2 s timer that every attack resets; cap 325
+//    (owner 2026-10-20: 「不是每层独立 2 秒到期，不独立。加上上限（325）」)
 
-test('踢踏舞: each attack adds +7 ASPD; each instance lasts 2 s on its own (attacks-in-2s × 7), then all expire', () => {
+test('踢踏舞: each attack +1 stack on a SHARED 2 s timer (every hit resets it), capped at 325', () => {
   const defs = { chess: { test_op: opRec() } };
-  const h = field([seat('p1', 0, { effects: [refOf('hex_tapdance', { tapdance: { aspdPerHit: 7, idleSec: 2 } })], units: [at(1, 10, 5)] })], { defs });
+  const h = field([seat('p1', 0, { effects: [refOf('hex_tapdance')], units: [at(1, 10, 5)] })], { defs });
   const inst = installTapdance(hexHooks(h.battle));
   assert.equal(typeof inst, 'object', 'installTapdance returns the live tally handle');
   h.run(1);
@@ -85,21 +86,42 @@ test('踢踏舞: each attack adds +7 ASPD; each instance lasts 2 s on its own (a
   assert.equal(u.s.aspd, 100, 'premise: no attack yet, base ASPD');
 
   const swing = () => h.battle.emit('attack', { attacker: u, targets: [], isSkill: false });
+  const stacks = () => (u.buffs.find((b) => b.key === 'hex:tapdance') || { stacks: 0 }).stacks;
   swing(); swing(); swing();
-  assert.equal(u.buffs.filter((b) => b.key === 'hex:tapdance').length, 3, 'three attacks → three instances');
-  assert.equal(u.s.aspd, 100 + 3 * 7, 'the instances are additive');
+  assert.equal(u.buffs.filter((b) => b.key === 'hex:tapdance').length, 1, 'ONE buff, not one instance per attack');
+  assert.equal(stacks(), 3, 'three attacks → three stacks');
+  assert.equal(u.s.aspd, 100 + 3 * 7, 'additive mods scale with the stack count');
 
   h.run(1.5);
-  assert.equal(u.s.aspd, 100 + 3 * 7, 'still inside every 2 s window');
+  assert.equal(u.s.aspd, 100 + 3 * 7, 'still inside the 2 s window');
 
   swing(); // a fourth attack at t ≈ 2.5
-  h.run(1.5); // t ≈ 4.0: the three from t ≈ 1.0 have expired, the t ≈ 2.5 one has not
-  assert.equal(u.buffs.filter((b) => b.key === 'hex:tapdance').length, 1, 'only the attacks within 2 s remain');
-  assert.equal(u.s.aspd, 107);
+  h.run(1.5); // t ≈ 4.0: the SHARED clock was reset at 2.5, so nothing has lapsed
+  assert.equal(stacks(), 4, 'the stacks are NOT independent — the whole buff survived on the reset clock');
+  assert.equal(u.s.aspd, 100 + 4 * 7);
 
   h.run(0.6); // 2 s after its last attack
-  assert.equal(u.buffs.filter((b) => b.key === 'hex:tapdance').length, 0, '2 s without an attack clears everything');
+  assert.equal(u.buffs.filter((b) => b.key === 'hex:tapdance').length, 0, '2 s without an attack clears the whole buff');
   assert.equal(u.s.aspd, 100);
+  h.invariants();
+});
+
+test('踢踏舞: the stack count stops at 325 (the cap comes from the card data, not a code constant)', () => {
+  const defs = { chess: { test_op: opRec() } };
+  const h = field([seat('p1', 0, { effects: [refOf('hex_tapdance')], units: [at(1, 10, 5)] })], { defs });
+  installTapdance(hexHooks(h.battle));
+  h.run(1);
+  const u = ops(h)[0];
+  const rec = HEXTECH.playerHexes.hex_tapdance;
+  assert.equal(rec.effect.tapdance.maxStacks, 325, 'premise: the roster carries the 325 cap');
+  for (let i = 0; i < 400; i++) h.battle.emit('attack', { attacker: u, targets: [], isSkill: false });
+  const buff = u.buffs.find((b) => b.key === 'hex:tapdance');
+  assert.ok(buff, 'the buff is there');
+  assert.equal(buff.stacks, 325, 'clamped to the cap the card carries');
+  // The ENGINE has a lower ceiling of its own: units.js clamps ASPD to [20, ASPD_MAX] with ASPD_MAX = 600, so the
+  // stat saturates at 600 long before 325 stacks (100 + 72×7 > 600). The card cap is about the stack bookkeeping;
+  // the number a player feels stops at 600 either way.
+  assert.equal(u.s.aspd, 600, 'the engine\'s own ASPD_MAX (600) is what the stat saturates at');
   h.invariants();
 });
 

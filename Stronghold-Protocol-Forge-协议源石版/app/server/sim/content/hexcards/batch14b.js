@@ -15,22 +15,19 @@ import { isHpLoss } from '../../damage.js';
 const canHook = (battle) => !!battle && typeof battle.on === 'function';
 
 /**
- * 踢踏舞 (hex_tapdance, 3 阶): 干员每次攻击提升 7 攻击速度（2s 不攻击后失效）。
+ * 踢踏舞 (hex_tapdance, 3 阶): 干员每次攻击提升 7 攻击速度（2s 不攻击后失效，最多 325 层）。
  *
- * Reading: every attack an own operator makes adds ONE independent +ASPD stack with its own 2 s clock; the stacks are
- * additive in the engine, so the live reading is "attacks in the last `idleSec` s × `aspdPerHit`". Two seconds after
- * the operator's last attack every stack has expired (nothing refreshes them), which is exactly the owner's
- * 「2s 不攻击后失效」.
+ * 业主 2026-10-20 的裁决（两次）：「不是每层独立 2 秒到期，不独立。加上上限（325）」。所以是**一份** buff：
+ *   * `refresh: 'stack'` —— 每次攻击 +1 层，并把这一份的计时重置回 `idleSec`；
+ *   * 累加是引擎的既有语义（`aggregateMods`：additive mod × stacks），所以有效值 = 层数 × `aspdPerHit`；
+ *   * 计时是共享的 ⇒ 最后一次攻击后 `idleSec` 秒整体失效 —— 这正是「2 秒不攻击后失效」；
+ *   * 层数上限来自数据（`effect.tapdance.maxStacks`，325），不是代码里的常数。
  *
  * [ASSUMED] 「每次攻击」 covers a skill attack and a healer's heal action too — the engine's `attack` hook fires for
  *   both, and an attack-speed buff is useful to both.
- * [ASSUMED] One independent 2 s instance per attack (rather than one unbounded stack whose timer is reset): the owner's
- *   "final reading = attacks within 2 s × 7" is only true of the former.
- * [ASSUMED] `maxStacks` 100: the engine's 'independent' refresh needs a cap; at any real attack rate fewer than 100
- *   land inside 2 s, so the cap is never reached.
  */
 const TAPDANCE_KEY = 'hex:tapdance';
-const TAPDANCE_MAX = 100;
+const TAPDANCE_MAX_DEFAULT = 325;
 
 export function installTapdance(hooks) {
   const battle = hooks && hooks.battle;
@@ -50,11 +47,12 @@ export function installTapdance(hooks) {
     const spec = specOf(u.ownerId, 'hex_tapdance', 'tapdance');
     const per = optNumber(spec, 'aspdPerHit', 7);
     const idle = optNumber(spec, 'idleSec', 2);
+    const cap = Math.max(1, Math.trunc(optNumber(spec, 'maxStacks', TAPDANCE_MAX_DEFAULT)));
     battle.addBuff(u, {
       key: TAPDANCE_KEY,
       duration: idle,
-      refresh: 'independent',
-      maxStacks: TAPDANCE_MAX,
+      refresh: 'stack',          // ONE buff: stacks up, and every new hit resets the shared `idle` clock
+      maxStacks: cap,
       mods: { aspd: per },
       tags: ['hex', 'hexTapdance'],
     });
