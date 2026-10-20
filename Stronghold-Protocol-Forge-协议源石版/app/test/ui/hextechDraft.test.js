@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeHex, normalizeEnemyHexes } from '../../public/js/ui/gameLogic.js';
-import { HexCard, EnemyHexRow, EnemyHexStrip, EnemyHexList, keepsArmed, rarityName, rarityTierArt, refreshIconUrl, hexSfxUrl } from '../../public/js/ui/hexOverlay.js';
+import { HexCard, EnemyHexRow, EnemyHexStrip, EnemyHexList, keepsArmed, rarityName, rarityTierArt, refreshIconUrl, hexSfxUrl, hexOverlayRerollGates } from '../../public/js/ui/hexOverlay.js';
 import { Tooltip } from '../../public/js/ui/components.js';
 
 const HEX_VIEW = {
@@ -103,6 +103,24 @@ test('HexCard renders a card (and a compact one for the enemy row)', () => {
   assert.ok(markup.includes('hxcard__glyph'), 'the drawn plate carries the name\'s first character');
   // a display-only card (no handler) is a span without the pick strips
   assert.ok(!JSON.stringify(compact).includes('hxcard__confirm'));
+});
+
+test('一次单张刷新只锁那一张，别的卡按钮都还在（业主 2026-10-20「为什么刷新一个其他的都没了」）', async () => {
+  // The in-flight lock (`busyIdx`) used to gate EVERY card, so pressing one card's refresh made all three lose
+  // their button until the server answered. These are the component's own gating expressions, evaluated as the
+  // component evaluates them: a regression flips one of the cells to GONE.
+  const { hexOverlayRerollGates } = await import('../../public/js/ui/hexOverlay.js');
+  const H = { myPick: null, myRerolls: 1, mySlotRerolls: [1, 1, 1] };
+  const gates = (busy) => hexOverlayRerollGates(H, busy);
+  // nothing in flight: everything is available
+  assert.equal(gates(null).canReroll, true);
+  assert.deepEqual([0, 1, 2].map((i) => gates(null).canRerollSlot(i)), [true, true, true]);
+  // one card's reroll in flight: ONLY that card drops out, the batch button waits for it
+  assert.equal(gates(1).canReroll, false, 'the batch button waits (it would replace all three)');
+  assert.deepEqual([0, 1, 2].map((i) => gates(1).canRerollSlot(i)), [true, false, true], 'only card 1 is suspended');
+  // a whole-batch reroll in flight: every card waits
+  assert.equal(gates(-1).canReroll, false);
+  assert.deepEqual([0, 1, 2].map((i) => gates(-1).canRerollSlot(i)), [false, false, false]);
 });
 
 test('刷新次数用完的卡连按钮都不画（业主 2026-10-20「不要再有按钮了」）', () => {

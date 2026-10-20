@@ -237,6 +237,30 @@ export function EnemyHexList({ list, label = null, class: cls = '' }) {
  *   `onReroll(idx)` replaces that ONE card (业主 2026-10-20「把刷新按钮改成分别刷新每个」); without an index it replaces the
  *   whole batch (the header button). Both cost the same one reroll.
  */
+/**
+ * Which reroll controls are live right now — the ONE place that decision is made, so the component and its test
+ * cannot disagree.
+ *
+ * 业主 2026-10-20「为什么刷新一个其他的都没了」: the in-flight lock used to gate every card. A single-slot reroll only
+ * touches the card it refreshes, so only that card goes away while it is in flight; the whole-batch button waits for
+ * ANY reroll (it would replace all three), and every card waits while the batch one runs.
+ * @param {{ myPick?: number|null, myRerolls?: number, mySlotRerolls?: number[] }} hex
+ * @param {number|null} busyIdx `-1` = a whole-batch reroll is in flight, `>= 0` = that card's, null = idle
+ * @returns {{ canReroll: boolean, canRerollSlot: (idx: number) => boolean }}
+ */
+export function hexOverlayRerollGates(hex, busyIdx = null) {
+  const h = hex || {};
+  const waiting = h.myPick == null;
+  const myRerolls = Number(h.myRerolls) || 0;
+  const budget = Array.isArray(h.mySlotRerolls) ? h.mySlotRerolls : [];
+  const busyAll = busyIdx === -1;
+  const busySlot = Number.isInteger(busyIdx) && busyIdx >= 0 ? busyIdx : null;
+  return {
+    canReroll: waiting && myRerolls > 0 && busyIdx == null,
+    canRerollSlot: (idx) => waiting && !busyAll && busySlot !== idx && (budget[idx] || 0) > 0,
+  };
+}
+
 export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }) {
   const [armed, setArmed] = useState(null);
   /** 确认动画进行中的卡（idx）：动画放完才 onPick；期间不再接受点选。 */
@@ -259,10 +283,12 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   const picked = hex.myPick;
   const waiting = picked == null;
   // 整批刷新（header 那颗）与单张刷新（每张卡角上）各有各的次数：整批仍是一次/局，单张是**每张卡各一次**
-  // （业主 2026-10-20「单个刷新应该3个都能刷一次」）。busyIdx 期间两者都禁掉。
-  const canReroll = waiting && hex.myRerolls > 0 && busyIdx == null;
-  const slotBudget = Array.isArray(hex.mySlotRerolls) ? hex.mySlotRerolls : [];
-  const canRerollSlot = (idx) => waiting && busyIdx == null && (slotBudget[idx] || 0) > 0;
+  // （业主 2026-10-20「单个刷新应该3个都能刷一次」）。
+  //
+  // 业主 2026-10-20「为什么刷新一个其他的都没了」：`busyIdx` 是「有一次刷新在飞」的锁，原来它把**每一张卡**的按
+  // 钮都关掉了 —— 按下一张之后、服务端回包之前，三颗按钮会一起消失一下。锁只需要管住**正在刷的那一张**（以及
+  // header 那颗整批按钮，因为整批换的是全部三张）：别的卡既没被改、也没理由跟着变灰。
+  const { canReroll, canRerollSlot } = hexOverlayRerollGates(hex, busyIdx);
   /**
    * 二段点击（确认，owner 2026-10-18）：先放「卡牌化作数据流吸入屏幕中心 + 轻微震屏」的动画，
    * 动画结束才真正 onPick —— 否则服务器的回包会把卡牌提前换成已选状态，动画只播一个开头。
