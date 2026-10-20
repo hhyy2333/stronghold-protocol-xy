@@ -1,0 +1,428 @@
+/* ui/exchange.css —— 源石证券交易所面板的样式表（pack.json.client.panels[].styles）。
+ *
+ * 两条规矩：
+ *  1. **所有选择器都在 `.oex` 下**：包的样式表是页面级的（引擎把它注入 <head> 末尾，docs/WORKSHOP.md §1.9.5），
+ *     裸标签选择器会改到引擎自己的界面。这里除了 `.oex` 及其后代，不写任何全局规则。
+ *  2. 宿主是 `screen.game.aside` 那个固定浮层（引擎自己的 CSS：position: fixed / inset: 0 右侧 / z-index 62 /
+ *     pointer-events: none）。所以位置由这份样式自己给，点击只在自己的节点上打开。
+ *
+ * 配色跟游戏本体一致：暗底 + 薄荷绿状态色 + 交易所自己的金色。涨红跌绿（国内习惯）。
+ */
+
+.oex {
+  position: fixed;
+  top: 88px;
+  right: 10px;
+  z-index: 62;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #e6edf0;
+  pointer-events: none;
+}
+
+.oex[hidden] { display: none !important; }
+
+.oex > * { pointer-events: auto; }
+
+/* ---- 收起状态：贴右边缘的小标签 ---------------------------------------------------------------- */
+
+.oex__tab {
+  position: fixed;
+  top: 30%;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 7px;
+  appearance: none;
+  border: 1px solid rgba(240, 198, 116, 0.45);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: linear-gradient(160deg, rgba(22, 18, 10, 0.96), rgba(12, 14, 12, 0.96));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  color: #f0c674;
+  font: inherit;
+  cursor: pointer;
+  writing-mode: horizontal-tb;
+}
+.oex__tab:hover { border-color: rgba(240, 198, 116, 0.85); }
+.oex__tab-glyph { font-size: 14px; font-weight: 700; line-height: 1; }
+.oex__tab-text {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  writing-mode: vertical-rl;
+}
+.oex__tab[hidden] { display: none !important; }
+
+/* ---- 抽屉本体 ---------------------------------------------------------------------------------- */
+
+.oex__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100vh - 120px);
+  overflow: hidden;
+  border: 1px solid rgba(240, 198, 116, 0.32);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(240, 198, 116, 0.10), transparent 55%),
+    linear-gradient(165deg, rgba(12, 16, 18, 0.97), rgba(7, 10, 12, 0.98));
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(2px);
+}
+.oex__panel[hidden] { display: none !important; }
+
+/* ---- 头部 -------------------------------------------------------------------------------------- */
+
+.oex__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(240, 198, 116, 0.16);
+}
+.oex__head-titles { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.oex__kicker {
+  color: rgba(240, 198, 116, 0.75);
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  font-weight: 700;
+}
+.oex__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f4efe2;
+}
+.oex__round { color: #8fa0a8; font-size: 10px; }
+.oex__head-actions { display: flex; align-items: center; }
+.oex__collapse {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #c8d2d6;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.oex__collapse:hover { border-color: rgba(240, 198, 116, 0.5); color: #f0c674; }
+
+/* ---- 总览 -------------------------------------------------------------------------------------- */
+
+.oex__summary {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr 1fr;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.oex__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  background: rgba(9, 13, 15, 0.92);
+}
+.oex__metric--main { background: rgba(240, 198, 116, 0.07); }
+.oex__metric--debt .oex__metric-value { color: #8fd0b0; }
+.oex__metric--debt.is-warn { background: rgba(255, 107, 107, 0.08); }
+.oex__metric--debt.is-warn .oex__metric-value { color: #ff9b9b; }
+.oex__metric-label { color: #7d8d95; font-size: 9px; letter-spacing: 0.1em; }
+.oex__metric-value {
+  font-weight: 700;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #e8eef0;
+}
+.oex__metric--main .oex__metric-value { color: #f0c674; font-size: 15px; }
+
+/* ---- 新闻条 ------------------------------------------------------------------------------------ */
+
+.oex__news {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid rgba(240, 198, 116, 0.12);
+  border-bottom: 1px solid rgba(240, 198, 116, 0.12);
+  background: rgba(240, 198, 116, 0.055);
+}
+.oex__news-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e4d9bc;
+  font-size: 11px;
+}
+.oex__news-text.is-up { color: #ff8a8a; }
+.oex__news-text.is-down { color: #6ee7a8; }
+.oex__dividend { flex: none; color: #6ee7a8; font-size: 10px; font-variant-numeric: tabular-nums; }
+
+/* ---- 数量档位 ---------------------------------------------------------------------------------- */
+
+.oex__qty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.oex__qty-label { color: #7d8d95; font-size: 10px; }
+.oex__qty-buttons { display: flex; gap: 4px; }
+.oex__qty-btn {
+  appearance: none;
+  min-width: 26px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  background: transparent;
+  color: #b8c4c9;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.oex__qty-btn:hover { border-color: rgba(240, 198, 116, 0.5); color: #f0c674; }
+.oex__qty-btn.is-active {
+  border-color: rgba(240, 198, 116, 0.8);
+  background: rgba(240, 198, 116, 0.16);
+  color: #f0c674;
+  font-weight: 700;
+}
+
+/* ---- 杠杆档位 ---------------------------------------------------------------------------------- */
+
+.oex__lever {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(240, 198, 116, 0.03);
+}
+.oex__lev-btn { min-width: 30px; font-weight: 700; }
+.oex__lev-hint {
+  flex: 1;
+  text-align: right;
+  color: #7d8d95;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 股票列表 ---------------------------------------------------------------------------------- */
+
+.oex__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(240, 198, 116, 0.3) transparent;
+}
+.oex__list::-webkit-scrollbar { width: 6px; }
+.oex__list::-webkit-scrollbar-thumb { background: rgba(240, 198, 116, 0.28); border-radius: 3px; }
+
+.oex__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "id    id    price"
+    "chart hold  actions";
+  gap: 3px 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.oex__row:hover { background: rgba(255, 255, 255, 0.025); }
+.oex__row:last-child { border-bottom: 0; }
+
+.oex__id {
+  grid-area: id;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.oex__ticker {
+  flex: none;
+  color: #f0c674;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.oex__company {
+  overflow: hidden;
+  color: #cfd9dd;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oex__price-box {
+  grid-area: price;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.oex__price {
+  color: #eef4f2;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.oex__chg { font-size: 10px; font-variant-numeric: tabular-nums; }
+.oex__chg.is-up { color: #ff8a8a; }
+.oex__chg.is-down { color: #6ee7a8; }
+
+.oex__spark { grid-area: chart; align-self: center; color: #9fb2ba; }
+.oex__spark.is-up { color: #ff8a8a; }
+.oex__spark.is-down { color: #6ee7a8; }
+.oex__spark-fallback {
+  grid-area: chart;
+  width: 64px;
+  height: 18px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
+.oex__hold {
+  grid-area: hold;
+  align-self: center;
+  justify-self: start;
+  color: #8b9aa3;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.oex__actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.oex__trade {
+  appearance: none;
+  min-width: 40px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.12s ease, opacity 0.12s ease;
+}
+.oex__trade:hover:not(:disabled) { filter: brightness(1.12); }
+.oex__trade--buy { background: #ff6b6b; color: #20090a; }
+.oex__trade--sell { background: #4ade80; color: #06180d; }
+.oex__trade:disabled { opacity: 0.28; cursor: not-allowed; }
+
+/* ---- 提示 / 页脚 ------------------------------------------------------------------------------- */
+
+.oex__toast {
+  padding: 5px 12px;
+  font-size: 11px;
+  line-height: 1.35;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.oex__toast[hidden] { display: none !important; }
+.oex__toast.is-ok { color: #6ee7a8; background: rgba(74, 222, 128, 0.08); }
+.oex__toast.is-bad { color: #ff9b9b; background: rgba(255, 107, 107, 0.09); }
+
+.oex__foot {
+  padding: 6px 12px 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: #6f7f87;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+/* ---- 收盘结算层 -------------------------------------------------------------------------------- */
+
+.oex__close {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 10px;
+  overflow-y: auto;
+  background:
+    radial-gradient(100% 60% at 50% 0%, rgba(240, 198, 116, 0.14), transparent 60%),
+    rgba(7, 10, 12, 0.97);
+}
+.oex__close[hidden] { display: none !important; }
+.oex__close-head { display: flex; flex-direction: column; gap: 2px; }
+.oex__close-title { color: #f0c674; font-size: 16px; letter-spacing: 0.08em; }
+.oex__close-rank { color: #c8d2d6; font-size: 11px; }
+.oex__close-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.oex__close-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #b8c4c9;
+  font-size: 11px;
+}
+.oex__close-row.is-me {
+  background: rgba(240, 198, 116, 0.14);
+  color: #f4efe2;
+  font-weight: 700;
+}
+.oex__close-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oex__close-worth { flex: none; font-variant-numeric: tabular-nums; }
+.oex__close-foot { display: flex; justify-content: flex-end; }
+.oex__close-btn {
+  appearance: none;
+  padding: 4px 12px;
+  border: 1px solid rgba(240, 198, 116, 0.5);
+  border-radius: 6px;
+  background: transparent;
+  color: #f0c674;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.oex__close-btn:hover { background: rgba(240, 198, 116, 0.12); }
+
+/* ---- 窄屏 / 手机 ------------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .oex { width: 300px; top: 76px; }
+}
+
+@media (max-width: 640px) {
+  .oex {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    top: auto;
+    bottom: 10px;
+    right: 10px;
+  }
+  .oex__panel { max-height: 62vh; }
+  .oex__tab { top: auto; bottom: 26%; padding: 9px 6px; }
+  .oex__title { font-size: 14px; }
+}
