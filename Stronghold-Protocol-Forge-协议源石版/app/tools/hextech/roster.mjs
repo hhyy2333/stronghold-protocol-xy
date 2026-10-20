@@ -110,6 +110,7 @@ export const FORMAT = {
 // mechanic, so without the key the ref never reaches a battle and the card is silently inert.
 //   untouchable true                你摸不到: invulnerable for the skill's own window (skillStart → skillEnd)
 //   pearlglove { chance, mul }      珠光护手: each skill damage instance rolls `chance`% for `mul`% final damage
+//                                   (50 / 300 since the owner's rework of 2026-10-20: 「改成50%概率伤害提升至300％」)
 //   physarts { spOnAttack, atkPctPerHit, atkPctCap }  物法皆修: +SP on every attack; +atk% per skill hit, capped
 //   quantum { every, atkPct, slowPct, slowSec, healPct }  量子计算: a periodic field-wide strike + slow + self heal
 //   tapdance { aspdPerHit, idleSec }  踢踏舞: one +aspd instance per attack, each lapsing after `idleSec`
@@ -130,9 +131,10 @@ export const FORMAT = {
 //   warding { cutPct }              加护: damage of the operator's OWN type is cut `cutPct`%
 //   voidreturn { atkPctPerLayer, dmgCutPerLayer }  万物归虚: +atk% and a flat damage cut per layer, layers being
 //                                   the operators the item removed from the reserve (备战区) when equipped
-//   corpsehill { atkPctPerKill, defPctPerKill, hpPctPerKill, blockPerKill, spRecPerKill, resPerKill, regenPct }
-//                                   尸山: executes every other own operator at battle start (no redeploy); each kill
-//                                   stacks the listed stats and heals `regenPct`% max HP a second
+//   corpsehill { spRecovery, regenPct }   尸山: executes every other own operator at battle start (no redeploy) and the
+//                                   carrier ADDS UP their base stats (max HP / ATK / DEF / block / RES), plus a flat
+//                                   +`spRecovery` SP recovery and `regenPct`% max HP a second. Both flat numbers are
+//                                   awarded ONCE, not per kill (owner's rework of 2026-10-20)
 //   oldpower { spCostPct, dmgPct }  旧日之力: own operators' skill SP cost ×(1 + spCostPct%), damage `dmgPct`%
 
 /**
@@ -989,9 +991,10 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_pearlglove',
     name: '珠光护手',
-    desc: '作战中，己方干员的技能有 30% 几率造成 200% 伤害。',
+    // 业主改版 2026-10-20：「协议『珠光护手』改成50%概率伤害提升至300％」（初版 30% / 200%）
+    desc: '作战中，己方干员的技能有 50% 概率伤害提升至 300%。',
     rarity: 'prismatic',
-    effect: { pearlglove: { chance: 30, mul: 200 } },
+    effect: { pearlglove: { chance: 50, mul: 300 } },
   },
   {
     id: 'hex_physarts',
@@ -1110,11 +1113,15 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_corpsehill',
     name: '尸山',
-    desc: '获得装备【尸山】：战斗开始时直接击杀其他所有己方干员（不可重部署）；每击杀 1 名干员，装备者获得 +20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命。',
+    // 业主改版 2026-10-20：「三阶『尸山』，加成改成：获得其他干员属性（生命值，攻击力，阻挡数，防御力，法抗）和
+    // 技力回复+1，每秒回复1%最大生命」。逐字口径：击杀不变（不可重部署），加成从「每杀 1 人 +20%×5 项 + 0.3 技力
+    // + 3%回复」换成「把被击杀者的基础属性逐项加起来」；技力回复 +1 与每秒 1% 最大生命都是**固定值，全场只算一次**
+    // （业主 2026-10-20 选定），不随击杀数放大。
+    desc: '获得装备【尸山】：战斗开始时直接击杀其他所有己方干员（不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命。',
     rarity: 'prismatic',
     effect: {
       onPick: { item: { id: 'chess_item_9_95_e_a', count: 1 } },
-      corpsehill: { atkPctPerKill: 20, defPctPerKill: 20, hpPctPerKill: 20, blockPerKill: 1, spRecPerKill: 0.3, resPerKill: 5, regenPct: 3 },
+      corpsehill: { spRecovery: 1, regenPct: 1 },
     },
   },
   {
@@ -1242,10 +1249,14 @@ export const ENEMY_HEXES = [
   {
     id: 'ehex_toll',
     name: '过路费',
-    desc: '敌人最大生命值 +20%；你每漏掉 1 个敌人，下回合开始时得到 1 资金。',
+    // 业主 2026-10-20：「敌方协议'过路费'加钱不生效，然后给加钱加上限5，生命提升改成30%」。
+    // 钱那一半原来是**死代码**：`payout` 写得出来、`enemyHexPayout` 读得出来，但没有任何生产路径调用它，
+    // 所以这张卡实际只给了敌人 +20% 生命。现在 settle.js / bossRounds.js 会真的付钱（每漏 1 个 1 资金，
+    // 每场战斗上限 5）。生命那一半 20% → 30%。
+    desc: '敌人最大生命值 +30%；你每漏掉 1 个敌人，下回合开始时得到 1 资金（每场战斗最多 5）。',
     rarity: 'prismatic',
-    mods: { hpMul: 1.20 },
-    payout: { perLeak: 1 },
+    mods: { hpMul: 1.30 },
+    payout: { perLeak: 1, cap: 5 },
   },
   // ---- third batch (0.3.0 playtest #4): the first enemy VERBS (DESIGN §29.10) -------------------------
   // `verb` names a script in server/sim/content/hextech.js `installEnemyVerbs`; the ids ride into every battle on

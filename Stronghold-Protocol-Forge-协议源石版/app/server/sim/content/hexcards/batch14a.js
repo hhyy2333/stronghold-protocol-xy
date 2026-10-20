@@ -3,6 +3,7 @@
 // 业主原文（逐字照抄；每张卡都在各自函数的注释里再抄一遍）：
 //   1. 你摸不到（3阶）：释放技能时免疫伤害。
 //   2. 珠光护手（3阶）：你的技能有 30% 暴击几率造成 200% 伤害。
+//      ——业主改版 2026-10-20：「协议『珠光护手』改成50%概率伤害提升至300％」
 //   3. 物法皆修（3阶）：干员每次攻击回复 1 技力，技能每造成一次伤害攻击力 +10%（最高 300%）。
 //   4. 量子计算（3阶）：每 10 秒对全场敌人造成场上攻击力最高干员 300% 攻击力的物理伤害。施加 30 减速 3s，
 //      并给干员回复 20% 生命值。
@@ -96,19 +97,20 @@ export function installUntouchable(hooks) {
 }
 
 /**
- * 珠光护手: 你的技能有 30% 暴击几率造成 200% 伤害。
+ * 珠光护手: 你的技能有 50% 概率伤害提升至 300%（原 30% / 200%，业主 2026-10-20 改版）。
  *
- * 业主原文（逐字）：「你的技能有 30% 暴击几率造成 200% 伤害。」
+ * 业主原文（逐字）：初版「你的技能有 30% 暴击几率造成 200% 伤害。」；
+ *   改版（2026-10-20）「协议『珠光护手』改成50%概率伤害提升至300％」。
  *
  * 在 `hit`（伤害结算之前、会心/闪避/减伤之前）把 `dmg.mul` ×= mul/100 —— 这是引擎里唯一“在结算前改伤害”的
  * 钩子（damage.js：hit → dodge → mitigation → × source dmgDealtMul × target dmgTakenMul × dmg.mul）。乘的是最终
- * 伤害的倍率，等价于“这次伤害 ×2”；不是事后再补一段伤害，因此不引入第二段伤害、不吃两次减伤、也不会被反伤 /
+ * 伤害的倍率，等价于“这次伤害 ×3”；不是事后再补一段伤害，因此不引入第二段伤害、不吃两次减伤、也不会被反伤 /
  * 受击回复当成两次命中。
  *
  * [ASSUMED: 1) 「技能」= dmg.isSkill（引擎标记的、由技能造成的伤害实例；普通攻击、卡片伤害、流失、元素损伤不算）。
- *   2) 每个伤害实例独立掷一次 30%（多段技能每段各掷，不是每次施放只掷一次）；引擎没有“暴击”概念，[ASSUMED] 暴击
- *   即 200% 最终伤害。3) 只对拥有者的己方干员的技能伤害生效，且只打敌人（打友军 / 装置不掷）。4) 概率与倍率从
- *   卡片参数读（chance / mul），缺省 30 / 200。]
+ *   2) 每个伤害实例独立掷一次 50%（多段技能每段各掷，不是每次施放只掷一次）；引擎没有“暴击”概念，[ASSUMED] 暴击
+ *   即 300% 最终伤害。3) 只对拥有者的己方干员的技能伤害生效，且只打敌人（打友军 / 装置不掷）。4) 概率与倍率从
+ *   卡片参数读（chance / mul），缺省 50 / 300。]
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle
  * @returns {number|{owners:number, crits:number}} 0 when the card is absent
@@ -120,8 +122,8 @@ export function installPearlGlove(hooks) {
   const plan = new Map();
   for (const pid of owners) {
     const spec = typeof specOf === 'function' ? specOf(pid, 'hex_pearlglove', 'pearlglove') : {};
-    const chance = Math.max(0, Math.min(100, optNumber(spec, 'chance', 30))) / 100;
-    const mul = optNumber(spec, 'mul', 200) / 100;
+    const chance = Math.max(0, Math.min(100, optNumber(spec, 'chance', 50))) / 100;
+    const mul = optNumber(spec, 'mul', 300) / 100;
     plan.set(pid, { chance, mul });
   }
   let crits = 0;

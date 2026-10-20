@@ -12,7 +12,7 @@ import { buildBossWave, bountySpawns } from '../waves.js';
 import { pairPlayers, SharedBossPool, CreditPool, hiddenEligible, BOSS_HIT_STEPS } from '../finalAssault.js';
 // 协议源石那半（业主 2026-10-13）：领袖血池必须走 bossPoolHpFor —— 它把「总阶数 ÷ 人数 ÷ 2」的倍率一起算进去。
 // 本文件以前直接调 bossPoolHp(gd, id, n)，倍率那一半就丢了（移植时漏的 import）。
-import { bossPoolHpFor } from '../hextech.js';
+import { bossPoolHpFor, enemyHexPayoutFor } from '../hextech.js';
 import { FieldRunner, HeadlessPacer, syntheticResult, BOSS_SILENCE_MS, CATCHUP_TICKS_PER_INTERVAL } from '../fields.js';
 import { FLOW_TICKER_PRIORITY, BOSS_CLOCK_MS, DELAYS } from './common.js';
 
@@ -422,6 +422,9 @@ export class MatchBoss {
   _settleBossBounties(ps, pp, perfect) {
     let coins = Math.max(0, Math.trunc(Number(pp.coins) || 0));
     if (perfect) for (const b of ps.bounties) if (b.card.payout === 'perfect') coins += b.card.coin;
+    // 过路费 (业主 2026-10-20): a boss field pays it too — the card names no exception, and this is the same coin
+    // channel (pendingFunds, spent in the Hidden Core's prep). A leader / 器物 leak that costs no LP pays nothing.
+    coins += enemyHexPayoutFor(this, pp.leaked);
     if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }
     if (!ps.bounties.length) return;
     for (const b of ps.bounties) b.roundsLeft--;

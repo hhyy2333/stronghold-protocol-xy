@@ -719,8 +719,14 @@ export function bossPoolHpFor(m, bossId, players = null) {
 
 /**
  * What the enemy's hexes pay the players at settlement (`payout`, 过路费): `{ perLeak, cap }` per player, charged on the
- * player's own counted leaks (server/match/match/settle.js). The highest `perLeak` wins when several are owned (the
- * draws never repeat, so this is a safety net for a data set with two).
+ * player's own counted leaks (server/match/match/settle.js / bossRounds.js). The highest `perLeak` wins when several are
+ * owned (the draws never repeat, so this is a safety net for a data set with two); `cap` is the most one BATTLE pays.
+ *
+ * 业主 2026-10-20：「敌方协议'过路费'加钱不生效，然后给加钱加上限5」. The card was 死代码 until this fix: the record
+ * carried `payout`, this reader returned it, and NOTHING called the reader — so owning 过路费 only ever gave the enemies
+ * +20 % HP. `enemyHexPayoutFor` below is the caller's half: the one place that turns a battle's own leak count into the
+ * coins it pays, and the cap is applied THERE (per battle, not per round: the card reads 「每漏掉 1 个敌人」, and a round
+ * has exactly one battle for a normal field and one more for a 联防 one).
  * @param {import('./Match.js').Match} m
  * @returns {{ perLeak: number, cap: number }|null}
  */
@@ -762,4 +768,27 @@ export function enemyHexPayout(m) {
     if (!best || p.perLeak > best.perLeak) best = { perLeak: Math.trunc(p.perLeak), cap };
   }
   return best;
+}
+
+/**
+ * The coins ONE battle's leaks pay a player under the enemy's 过路费, capped. 0 when the enemy side owns no paying card,
+ * when nothing leaked, or when the leaks were all uncounted (`counted: false` — a boss / part / 器物 leak costs no LP,
+ * so it buys no funds either: the payout follows the same 「漏掉」 the LP charge does).
+ *
+ * `leaked` is a battle result's own per-player list (server/sim/battle/deploy.js: `{ enemyKey, counted, … }`); the
+ * caller (settle.js / bossRounds.js) credits the return to `pendingFunds` exactly the way bounty coins are.
+ *
+ * [ASSUMED: 1) in a 联防 round only the player's OWN field pays — the card reads 「你每漏掉 1 个敌人」, and what the
+ *   helpers' field let through costs the LEAKERS' LP, not the helper's; 2) the cap is per battle, not per round: a
+ *   round is one normal field (plus the 联防 field, which pays nobody) or one boss field.]
+ * @param {import('./Match.js').Match} m
+ * @param {Array<{ counted?: boolean }>} leaked
+ * @returns {number} coins, already capped
+ */
+export function enemyHexPayoutFor(m, leaked) {
+  const pay = enemyHexPayout(m);
+  if (!pay) return 0;
+  const n = (Array.isArray(leaked) ? leaked : []).filter((l) => l && l.counted !== false).length;
+  if (n <= 0) return 0;
+  return Math.min(pay.cap, pay.perLeak * n);
 }

@@ -6,12 +6,14 @@
 //      （20x% 攻击力，减少 30x 点受到的伤害）。
 //   7. 尸山（3阶）：获得装备「尸山」：战斗开始时直接击杀其他所有干员（不可重部署）。每击杀 1 名干员，该干员便
 //      获得 20% 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命。
+//      ——业主改版 2026-10-20：「三阶『尸山』，加成改成：获得其他干员属性（生命值，攻击力，阻挡数，防御力，法抗）和
+//      技力回复+1，每秒回复1%最大生命」
 //   8. 旧日之力（2阶）：干员技力消耗 +20%，伤害提升 140%。
 //
 // 同一个 `hexHooks(battle)` 契约；随机只用 battle.rng()，计时器只用 battle.every()。
 
 import { mitigate } from '../../damage.js';
-import { passiveBuff } from '../support/index.js';
+import { num, passiveBuff } from '../support/index.js';
 import { carries } from '../items/battle.js';
 
 /** 加护 / 万物归虚 / 尸山 的装备 key（items.json 里 strip 掉 `_a`）。 */
@@ -143,21 +145,27 @@ export function installVoidReturn(hooks) {
 }
 
 /**
- * 尸山: 获得装备「尸山」：战斗开始时直接击杀其他所有干员（不可重部署）。每击杀 1 名干员，该干员便获得 20%
- * 攻击力、防御力、最大生命值、1 阻挡数、0.3 技力回复速度、5 法抗，且每秒恢复自身 3% 最大生命。
+ * 尸山: 获得装备「尸山」：战斗开始时直接击杀其他所有干员（不可重部署），装备者获得他们的属性。
  *
- * 业主原文（逐字）：「获得装备「尸山」：战斗开始时直接击杀其他所有干员（不可重部署）。每击杀1名干员，该干员便
- * 获得20%攻击力，防御力，最大生命值，1阻挡数，0.3技力回复速度，5法抗。且每秒恢复自身3%最大生命」
+ * 业主原文（逐字）：初版「获得装备「尸山」：战斗开始时直接击杀其他所有干员（不可重部署）。每击杀1名干员，该干员便
+ * 获得20%攻击力，防御力，最大生命值，1阻挡数，0.3技力回复速度，5法抗。且每秒恢复自身3%最大生命」；
+ * 改版（2026-10-20）「三阶『尸山』，加成改成：获得其他干员属性（生命值，攻击力，阻挡数，防御力，法抗）和技力回复+1，
+ * 每秒回复1%最大生命」。
  *
- * 口径：`battleStart` 时，装备者的**其他己方干员**全部被击杀（`retreat(permanent: true)` —— 击杀而不是
- * 「倒下」，「不可重部署」）；每击杀 1 名给装备者叠一层：
- *   `atkPct/defPct/hpPct +20%`、`blockCnt +1`、`spRecoveryFlat +0.3`、`resFlat +5`，再加一个
- *   「每秒恢复 3% 最大生命」的常驻回复。
+ * 口径：`battleStart` 时，装备者的**其他己方干员**全部被击杀（`retreat(permanent: true)` —— 击杀而不是「倒下」，
+ * 「不可重部署」）；然后装备者把他们的属性**逐项累加**到自己身上：
+ *   * 生命值 → `hpFlat`（加在基础值上，随百分比一起放大 —— 引擎 units.js `_recalc` 的同一个桶）；
+ *   * 攻击力 → `atkFinal`（**最终加算**，加在所有百分比之后；与阿戈尔盟约的「吞噬」同一条口径 —— 被吃掉的干员给的
+ *     是 base 攻击力，不该再被装备者自己的 +ATK% 乘一遍）；
+ *   * 防御力 → `defFlat`；阻挡数 → `blockCnt`；法抗 → `resFlat`。
+ *   * 技力回复 +1 → `spRecoveryFlat`；每秒恢复 1% 最大生命 → `hpRegenRatio`。
+ * 后两项是**固定值，全场只算一次**（业主 2026-10-20 选定：不随击杀数放大）。
  *
  * [ASSUMED: 1)「其他所有干员」= 装备者以外的己方干员（同一玩家 + 联防场上队友的干员都算；召唤物不算）；
- *   2)「直接击杀」用永久退场（`permanent: true`），因此不能再部署 —— 这就是「不可重部署」；3)「每秒恢复 3% 最大生命」
- *   用 hpRegenRatio 常驻（= 0.03/s），叠层不叠加回复速度（原文只说「每秒恢复自身 3%」，是定值）；4) 叠层是加法
- *   （×击杀数），生命上限提升按引擎常规重算；5) 没有装备者 / 没有其他干员时什么都不做。]
+ *   2)「直接击杀」用永久退场（`permanent: true`），因此不能再部署 —— 这就是「不可重部署」；3)「获得其他干员属性」
+ *   读的是**基础面板**（`unit.base`，不含装备与增益），与「吞噬」同一条口径；4) 生命值是 `hpFlat`（吃百分比），
+ *   攻击力是 `atkFinal`（不吃百分比，与「吞噬」一致）；5)「技力回复+1」「每秒1%」是定值、不叠加；
+ *   6) 没有装备者 / 没有其他干员时什么都不做。]
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle
  * @returns {number} 0 when the card is absent, else the number of kills at battle start
@@ -168,31 +176,41 @@ export function installCorpseHill(hooks) {
   const { battle, specOf } = hooks;
   const owned = new Set(owners);
   const spec = specOf(owners[0], 'hex_corpsehill', 'corpsehill');
-  const atkPct = pos(spec.atkPctPerKill, 20) / 100;
-  const defPct = pos(spec.defPctPerKill, 20) / 100;
-  const hpPct = pos(spec.hpPctPerKill, 20) / 100;
-  const block = pos(spec.blockPerKill, 1);
-  const spRec = pos(spec.spRecPerKill, 0.3);
-  const res = pos(spec.resPerKill, 5);
-  const regenPct = pos(spec.regenPct, 3) / 100;
+  // 两项固定加成（不随击杀数放大）
+  const spRec = pos(spec.spRecovery, 1);
+  const regenPct = pos(spec.regenPct, 1) / 100;
   let kills = 0;
   battle.on('battleStart', () => {
     for (const carrier of battle.allyUnits) {
       if (!isOwnOp(carrier, owned) || !carrier.alive) continue;
       if (!carries(battle, carrier, CORPSEHILL_ITEM_KEY)) continue;
       const others = battle.allyUnits.filter((u) => u !== carrier && u.kind === 'op' && u.side === 'ally' && u.alive && !u.removed);
+      if (!others.length) continue; // 没人可吃 ⇒ 什么都没发生（也让重复 emit 天然幂等）
+      // 先把属性读下来 —— retreat 之后单位还活着，但读 base 更稳，也避免任何收尾逻辑改字段
+      let hp = 0, atk = 0, def = 0, block = 0, res = 0;
+      for (const u of others) {
+        hp += num(u.base?.maxHp, 0);
+        atk += num(u.base?.atk, 0);
+        def += num(u.base?.def, 0);
+        block += num(u.base?.blockCnt, 0);
+        res += num(u.base?.res, 0);
+      }
       for (const u of others) {
         battle.retreat(u, { reason: 'corpsehill', permanent: true });
         kills++;
       }
-      const n = others.length;
-      if (n <= 0) continue;
-      passiveBuff(battle, carrier, 'hex:corpsehill', {
-        atkPct: atkPct * n, defPct: defPct * n, hpMul: 1 + hpPct * n,
-        blockCnt: block * n, spRecoveryFlat: spRec * n, resFlat: res * n,
-      }, { tags: ['hex'] });
-      // 每秒恢复自身 3% 最大生命（常驻）
-      passiveBuff(battle, carrier, 'hex:corpsehill:regen', { hpRegenRatio: regenPct }, { tags: ['hex'] });
+      const mods = {};
+      if (hp > 0) mods.hpFlat = hp;
+      if (atk > 0) mods.atkFinal = atk;   // 最终加算，与「吞噬」一致
+      if (def > 0) mods.defFlat = def;
+      if (block > 0) mods.blockCnt = block;
+      if (res > 0) mods.resFlat = res;
+      if (Object.keys(mods).length) passiveBuff(battle, carrier, 'hex:corpsehill', mods, { tags: ['hex'] });
+      // 技力回复 +1 与每秒恢复 1% 最大生命：定值，不随击杀数叠加
+      const extra = {};
+      if (spRec > 0) extra.spRecoveryFlat = spRec;
+      if (regenPct > 0) extra.hpRegenRatio = regenPct;
+      if (Object.keys(extra).length) passiveBuff(battle, carrier, 'hex:corpsehill:regen', extra, { tags: ['hex'] });
     }
   });
   return { get kills() { return kills; }, get owners() { return owners.length; } };

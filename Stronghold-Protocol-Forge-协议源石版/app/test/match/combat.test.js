@@ -65,6 +65,41 @@ test('COMBAT: one battle per alive player with the board as input; watchers get 
   m.dispose();
 });
 
+test('SETTLE: the enemy’s 过路费 pays 1 fund per counted leak, capped at 5 a battle (业主 2026-10-20)', () => {
+  // It used to be dead code: the card carried `payout`, `enemyHexPayout` read it, and nothing called the reader — so
+  // owning 过路费 only ever gave the enemies +20 % HP. This drives a real SETTLE.
+  const h = makeMatch({
+    mode: 'coop', humans: 2, seed: 62, fake: true,
+    script: (b) => (b.round === 1 ? { leaks: { p_0: 3, p_1: 0 } } : b.round === 2 ? { leaks: { p_0: 9, p_1: 0 } } : {}),
+  }).start();
+  const m = h.m;
+  h.toPrep(1);
+  m.enemyHexes.push({ id: 'ehex_toll', round: 1 });
+  const [a, b] = [h.ps('p_0'), h.ps('p_1')];
+  h.drive(() => m.phase === PHASE.SETTLE);
+  assert.equal(a.pendingFunds, 3, '3 counted leaks → 3 funds, paid into the next prep');
+  assert.equal(b.pendingFunds, 0, 'a perfect battle pays nothing');
+  assert.equal(a.stats.fundsGained >= 3, true, 'and the stat says where it came from');
+  h.drive(() => m.phase === PHASE.PREP && m.round === 2);
+  assert.equal(a.funds, m.gd.income(2) + 3, 'credited at the next round start, like bounty coins');
+  assert.equal(a.pendingFunds, 0, 'the bank is consumed');
+  h.drive(() => m.phase === PHASE.SETTLE);
+  assert.equal(a.pendingFunds, 5, '9 leaks still pay only 5 — the per-battle cap');
+  checkInvariants(m);
+  m.dispose();
+});
+
+test('SETTLE: without the card the leaks pay nothing', () => {
+  const h = makeMatch({ mode: 'coop', humans: 2, seed: 63, fake: true, script: (bt) => (bt.round === 1 ? { leaks: { p_0: 4, p_1: 0 } } : {}) }).start();
+  const m = h.m;
+  h.toPrep(1);
+  const a = h.ps('p_0');
+  h.drive(() => m.phase === PHASE.SETTLE);
+  assert.equal(a.pendingFunds, 0, 'no 过路费 on the enemy side → no payout');
+  checkInvariants(m);
+  m.dispose();
+});
+
 test('SETTLE: LP −min(leaks, 10), bounty coins next round, IN_BATTLE layer gains applied, perfect rounds counted', () => {
   const h = makeMatch({
     mode: 'coop', humans: 2, seed: 32, fake: true,

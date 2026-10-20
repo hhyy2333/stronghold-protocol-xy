@@ -10,7 +10,7 @@ import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 import { onSettle, resetRoundCounters } from '../botEmotes.js';
 import { creditedKillsOf } from '../../sim/spec.js';
-import { bankThiefPenalty } from '../hextech.js';
+import { bankThiefPenalty, enemyHexPayoutFor } from '../hextech.js';
 
 export class MatchSettle {
   settle(plan, uniteResult) {
@@ -80,6 +80,10 @@ export class MatchSettle {
       ps.creditedKills += creditedKillsOf(r) + creditedKillsOf(up);
       // perfect-payout bounties (战术特训): own phase perfect
       for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += b.card.coin;
+      // 过路费 (业主 2026-10-20): the enemy card pays for what leaked — the same coin channel the bounties use (next
+      // prep's pendingFunds), capped per battle. Counted off the battle's OWN `leaked` list so the LP charge and the
+      // payment always speak about the same enemies (a 器物 / 首领漏怪 costs no LP and therefore buys no funds).
+      coins += enemyHexPayoutFor(this, r.leaked);
       if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }
       for (const b of ps.bounties) b.roundsLeft--;
       ps.bounties = ps.bounties.filter((b) => b.roundsLeft > 0);

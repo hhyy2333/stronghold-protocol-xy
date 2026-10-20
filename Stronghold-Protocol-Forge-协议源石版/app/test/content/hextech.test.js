@@ -12,7 +12,7 @@ import { DATA } from '../match/harness.js';
 import { getDefaultRegistry } from '../../server/match/effectsMeta.js';
 import { buildHextech, hextechText, validateHextech, OUT_FILE } from '../../tools/build-hextech.mjs';
 import { hexIds, battleModsOf, BATTLE_SPEC_KEYS, hasBattlePart, HEX_SCRIPT_KEYS } from '../../server/sim/content/hextech.js';
-import { applyEnemyHexes, enemyHexPayout } from '../../server/match/hextech.js';
+import { applyEnemyHexes, enemyHexPayout, enemyHexPayoutFor } from '../../server/match/hextech.js';
 import {
   rollOffers, pickEnemyRarity, pickEnemyHex, sumEnemyMods, rarityFallbackOrder, RARITY_ORDER, HEX_ROUNDS, hexEffectKey,
   ENEMY_VERBS,
@@ -394,13 +394,15 @@ test('sumEnemyMods multiplies the owned hexes, with the cumulative bound kept sa
   // a verb card carries no `mods` at all (DESIGN §29.10), so the HP sweep only looks at the multiplier cards
   const hp = ENEMY.filter((h) => h.mods && h.mods.hpMul).sort((a, b) => b.mods.hpMul - a.mods.hpMul);
   const merged = sumEnemyMods(hp.slice(0, 3));
-  // The worst three draws. This WAS 2.025 (1.35 × 1.25 × 1.20: 巨兽之魂 / 深渊灌注 / 过路费) with a 2.05 ceiling.
-  //
-  // 精英化 (the owner's list of 2026-10-15) enters at +30 % HP, so the new worst case is 1.35 × 1.30 × 1.25 = 2.19375
-  // and the ceiling moves to 2.20. That is a DELIBERATE widening, not a drift: the card was given as "+30 % ATK / DEF /
-  // HP" and it pays for it with 10 % fewer bodies (countSub), which is exactly the trade 虫群 makes in the other
-  // direction. Recorded here and in docs/BALANCE.md §8 so the next data change cannot move it silently.
-  assert.ok(merged.hpMul > 1 && merged.hpMul <= 2.20, `three HP hexes = ${merged.hpMul}`);
+  // The worst three draws. The history of this number, so the next data change cannot move it silently:
+  //   2.025  (1.35 × 1.25 × 1.20: 巨兽之魂 / 深渊灌注 / 过路费) with a 2.05 ceiling;
+  //   2.19375 (精英化 enters at +30 % HP on 2026-10-15 — 1.35 × 1.30 × 1.25) with a 2.20 ceiling. That widening was
+  //           DELIBERATE: 精英化 was given as "+30 % ATK / DEF / HP" and pays for it with 10 % fewer bodies (countSub),
+  //           exactly the trade 虫群 makes in the other direction;
+  //   2.2815 (1.35 × 1.30 × 1.30) now — 过路费's HP half moved 20 % → 30 % (业主 2026-10-20: 「生命提升改成30%」), so the
+  //           worst three are 巨兽之魂 / 精英化 / 过路费. Same rule: the ceiling follows the data, it is not a budget the
+  //           card had to fit into — it exists so an accidental extra +HP card shows up here instead of in a match.
+  assert.ok(merged.hpMul > 1 && merged.hpMul <= 2.29, `three HP hexes = ${merged.hpMul}`);
   assert.deepEqual(sumEnemyMods([]), {});
   assert.deepEqual(sumEnemyMods([{ mods: { atkMul: 1.1 } }, { mods: { atkMul: 1.2, speedMul: 1.1 } }]), { atkMul: 1.32, speedMul: 1.1 });
   // A verb card CAN carry a small trade-off multiplier (the ninth batch's 物转法 −30 % ATK, 势不可挡 −50 % speed), so
@@ -439,11 +441,23 @@ test('虫群 (countAdd) adds enemies to the normal groups and keeps the leader a
   assert.equal(applyEnemyHexes(spawns, null), spawns);
 });
 
-test('enemyHexPayout reads the enemy side’s paying hex (过路费)', () => {
+test('enemyHexPayout reads the enemy side’s paying hex (过路费), capped at 5 a battle', () => {
   const m = { gd: { hex: (id) => HEXTECH.enemyHexes[id] || null }, enemyHexes: [{ id: 'ehex_toll' }] };
-  assert.deepEqual(enemyHexPayout(m), { perLeak: 1, cap: Infinity });
+  // 业主 2026-10-20: 「给加钱加上限5」 — the record carries the cap now, so the reader hands it back
+  assert.deepEqual(enemyHexPayout(m), { perLeak: 1, cap: 5 });
   assert.equal(enemyHexPayout({ ...m, enemyHexes: [{ id: 'ehex_fury' }] }), null);
   assert.equal(enemyHexPayout({ ...m, enemyHexes: [] }), null);
+});
+
+test('enemyHexPayoutFor turns a battle’s own leaks into coins, capped and uncounted-leak-free', () => {
+  const m = { gd: { hex: (id) => HEXTECH.enemyHexes[id] || null }, enemyHexes: [{ id: 'ehex_toll' }] };
+  const leak = (n, counted = true) => Array.from({ length: n }, () => ({ enemyKey: 'e1', counted }));
+  assert.equal(enemyHexPayoutFor(m, leak(3)), 3, '1 fund per counted leak');
+  assert.equal(enemyHexPayoutFor(m, leak(12)), 5, 'capped at 5 a battle');
+  assert.equal(enemyHexPayoutFor(m, leak(3, false)), 0, 'a leak that costs no LP buys no funds');
+  assert.equal(enemyHexPayoutFor(m, leak(4).concat(leak(3, false))), 4, 'only the counted ones pay');
+  assert.equal(enemyHexPayoutFor(m, []), 0, 'a perfect battle pays nothing');
+  assert.equal(enemyHexPayoutFor({ ...m, enemyHexes: [] }, leak(3)), 0, 'no card, no money');
 });
 
 // ---- fourth batch (the owner's review of 2026-10-09): the 13 new player hexes ----------------------------------------

@@ -3,7 +3,7 @@
 // 覆盖的卡（业主原文见 batch15b.js 文件头）：
 //   hex_warding      加护     —— 装备者受到同类型伤害 -60%
 //   hex_voidreturn   万物归虚 —— 装备者按「移出备战区人数」层：+20% 攻击力/层、-30 点受伤/层
-//   hex_corpsehill   尸山     —— 战斗开始击杀其他己方干员（不可重部署），每杀 1 人叠一层
+//   hex_corpsehill   尸山     —— 战斗开始击杀其他己方干员（不可重部署），装备者累加他们的基础属性
 //   hex_oldpower     旧日之力 —— 技力消耗 +20%，伤害 140%
 //
 // 与 hexcards-15a.test.js 同一套驱动：真实 Battle + 生产同源的 hexHooks(battle)。
@@ -66,7 +66,7 @@ function solo({ hexId = null, extra = {}, units = [], enemies = [], defs = {}, k
 test('batch15b: the four records carry the spec keys the scripts read, and their items exist', () => {
   assert.deepEqual(effectOf('hex_warding').warding, { cutPct: 60 });
   assert.deepEqual(effectOf('hex_voidreturn').voidreturn, { atkPctPerLayer: 20, dmgCutPerLayer: 30 });
-  assert.equal(effectOf('hex_corpsehill').corpsehill.atkPctPerKill, 20);
+  assert.deepEqual(effectOf('hex_corpsehill').corpsehill, { spRecovery: 1, regenPct: 1 });
   assert.deepEqual(effectOf('hex_oldpower').oldpower, { spCostPct: 20, dmgPct: 140 });
   // the four granted items exist in data/items.json (build-data CUSTOM_ITEMS) and are never sold
   for (const [hexId, itemId, key] of [
@@ -191,14 +191,17 @@ test('万物归虚: no layers (nothing removed) and no equipment => nothing happ
 });
 
 // =====================================================================================================================
-// 尸山: 战斗开始击杀其他己方干员，每杀 1 人叠一层
+// 尸山: 战斗开始击杀其他己方干员（不可重部署），装备者累加他们的基础属性；
+//       技力回复 +1 与每秒回复 1% 最大生命是定值（不随击杀数放大）
 // =====================================================================================================================
 
-test('尸山: at battle start the carrier executes every other own operator and stacks per kill', () => {
+test('尸山: the carrier executes every other own operator and adds up their BASE stats', () => {
   const h = solo({
     hexId: 'hex_corpsehill',
     units: [
+      // 装备者：base 2000 HP / 500 ATK / 200 DEF / 1 阻挡 / 0 法抗
       { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_95_e_a'] },
+      // 另外两个：各 2000 / 500 / 200 / 1 / 0 → 累加后应 +4000 HP、+1000 ATK、+400 DEF、+2 阻挡
       { uid: 2, kind: 'chess', chessId: 'test_guard', row: 9, col: 7 },
       { uid: 3, kind: 'chess', chessId: 'test_guard', row: 9, col: 8 },
     ],
@@ -214,12 +217,17 @@ test('尸山: at battle start the carrier executes every other own operator and 
   const carrier = alive[0];
   assert.ok(carrier.items.includes('chess_item_9_95_e_a'), 'the survivor is the equipment carrier');
   assert.equal(inst.kills, 2, 'two operators executed');
-  // two kills: +40 % ATK, +2 block, +0.6 SP recovery, +10 RES, x1.4 max HP
-  assert.ok(carrier.s.blockCnt >= 3, 'block +1 per kill, got ' + carrier.s.blockCnt);
-  assert.ok(Math.abs(carrier.s.res - 10) < 1e-9, 'RES +5 per kill, got ' + carrier.s.res);
+  // stats: the carrier's own 2000 HP + 2000 + 2000, 500 ATK + 500 + 500, 200 DEF + 200 + 200, block 1 + 1 + 1, RES 0
+  assert.ok(Math.abs(carrier.s.maxHp - 6000) < 1e-6, 'max HP = 2000 + 2000 + 2000, got ' + carrier.s.maxHp);
+  assert.ok(Math.abs(carrier.s.atk - 1500) < 1e-6, 'ATK = 500 + 500 + 500 (最终加算), got ' + carrier.s.atk);
+  assert.ok(Math.abs(carrier.s.def - 600) < 1e-6, 'DEF = 200 + 200 + 200, got ' + carrier.s.def);
+  assert.ok(Math.abs(carrier.s.blockCnt - 3) < 1e-6, 'block = 1 + 1 + 1, got ' + carrier.s.blockCnt);
+  // the two FLAT numbers are awarded once, not per kill
+  assert.ok(Math.abs(carrier.s.spRecovery - 1) < 1e-9, 'SP recovery +1 once (not +2), got ' + carrier.s.spRecovery);
+  assert.ok(Math.abs(carrier.s.hpRegen - carrier.s.maxHp * 0.01) < 1e-6, '1 % max HP a second once, got ' + carrier.s.hpRegen);
 });
 
-test('尸山: with no other own operator nothing is executed and no layer lands', () => {
+test('尸山: with no other own operator nothing is executed and no bonus lands', () => {
   const h = solo({
     hexId: 'hex_corpsehill',
     units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_95_e_a'] }],
@@ -228,6 +236,26 @@ test('尸山: with no other own operator nothing is executed and no layer lands'
   const inst = installCorpseHill(hexHooks(h.battle));
   h.battle.emit('battleStart', {});
   assert.equal(inst.kills, 0, 'nobody to execute');
+  const carrier = opsOf(h).find((u) => u.alive);
   assert.equal(opsOf(h).filter((u) => u.alive).length, 1, 'the carrier is untouched');
+  assert.equal(carrier.s.maxHp, 2000, 'no stat bonus without a victim');
+  assert.equal(carrier.s.atk, 500, 'no ATK bonus without a victim');
+  assert.equal(carrier.s.spRecovery, 0, 'no SP recovery without a victim');
+});
+
+test('尸山: the equipment is what decides WHO eats — a carrier without it eats nobody', () => {
+  const h = solo({
+    hexId: 'hex_corpsehill',
+    units: [
+      { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }, // owner of the card, NO item
+      { uid: 2, kind: 'chess', chessId: 'test_guard', row: 9, col: 7 },
+    ],
+    defs: { chess: { test_guard: guard() } },
+  });
+  h.run(0.2);
+  const inst = installCorpseHill(hexHooks(h.battle));
+  h.battle.emit('battleStart', {});
+  assert.equal(inst.kills, 0, 'the card alone does not execute: the item does');
+  assert.equal(opsOf(h).filter((u) => u.alive).length, 2, 'both operators are still standing');
 });
 

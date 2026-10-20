@@ -2,7 +2,7 @@
 //
 // 覆盖的卡（业主原文见 batch14a.js 文件头）：
 //   hex_untouchable  你摸不到   —— 施放技能期间免疫伤害（skillStart 挂 invulnerable / skillEnd 摘）
-//   hex_pearlglove   珠光护手   —— 己方干员的技能伤害 30% 几率 x2（hit 里改 dmg.mul，结算前）
+//   hex_pearlglove   珠光护手   —— 己方干员的技能伤害 50% 几率 x3（hit 里改 dmg.mul，结算前）
 //   hex_physarts     物法皆修   —— 每次攻击 +1 技力；技能每造成一次伤害 +10% ATK（上限 +300%，30 层）
 //   hex_quantum      量子计算   —— 每 10s：最高攻干员 300% ATK 物理伤害 + 30% 减速 3s + 己方干员回 20% 最大生命
 //   hex_frostghost   冰霜幽灵   —— 每 12s 束缚全场敌人 3s
@@ -112,7 +112,7 @@ function pair({ hexId, units1, units2, defs = {}, enemies = [], kits = null, tim
 
 test('batch14a: the five records carry the spec keys the scripts read', () => {
   assert.equal(effectOf('hex_untouchable').untouchable, true, 'untouchable: true');
-  assert.deepEqual(effectOf('hex_pearlglove').pearlglove, { chance: 30, mul: 200 });
+  assert.deepEqual(effectOf('hex_pearlglove').pearlglove, { chance: 50, mul: 300 });
   assert.deepEqual(effectOf('hex_physarts').physarts, { spOnAttack: 1, atkPctPerHit: 10, atkPctCap: 300 });
   assert.deepEqual(effectOf('hex_quantum').quantum, { every: 10, atkPct: 300, slowPct: 30, slowSec: 3, healPct: 20 });
   assert.deepEqual(effectOf('hex_frostghost').frostghost, { every: 12, bindSec: 3 });
@@ -204,7 +204,7 @@ test('你摸不到: only the owner operators are protected on a 联防 field', (
 });
 
 // =====================================================================================================================
-// 珠光护手: 你的技能有 30% 暴击几率造成 200% 伤害
+// 珠光护手: 你的技能有 50% 概率伤害提升至 300%（原 30% / 200%，业主 2026-10-20 改版）
 // =====================================================================================================================
 
 /** Deal n physical instances from src to e and return the dealt amounts. */
@@ -214,7 +214,7 @@ function strike(b, src, e, n, isSkill) {
   return out;
 }
 
-test('珠光护手: skill damage crits for x2 about 30 % of the time — no extra damage instances', () => {
+test('珠光护手: skill damage crits for x3 about 50 % of the time — no extra damage instances', () => {
   const h = solo({
     hexId: 'hex_pearlglove', defs: { enemies: { enemy_dummy: dummy({ hp: 1e7 }) } },
     units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }],
@@ -228,15 +228,15 @@ test('珠光护手: skill damage crits for x2 about 30 % of the time — no extr
   const e = h.spawn('enemy_dummy', { pos: [11, 6] });
   const N = 1000;
   const rolls = strike(h.battle, u, e, N, true);
-  const crits = rolls.filter((v) => Math.abs(v - 200) < 1e-9).length;
-  assert.equal(crits + rolls.filter((v) => Math.abs(v - 100) < 1e-9).length, N, 'every instance is normal or x2, never a second added hit');
+  const crits = rolls.filter((v) => Math.abs(v - 300) < 1e-9).length;
+  assert.equal(crits + rolls.filter((v) => Math.abs(v - 100) < 1e-9).length, N, 'every instance is normal or x3, never a second added hit');
   assert.equal(damaged, N, 'one damaged event per input instance: the crit is the same instance');
-  assert.ok(crits > 220 && crits < 380, '30 % of 1000 -> ~300 crits (got ' + crits + '); battle.rng keeps this deterministic');
+  assert.ok(crits > 420 && crits < 580, '50 % of 1000 -> ~500 crits (got ' + crits + '); battle.rng keeps this deterministic');
   assert.equal(inst.crits, crits, 'the handle counts the same crits');
   assert.equal(h.battle.errorCount, 0);
 
   const plain = strike(h.battle, u, e, 200, false);
-  assert.ok(plain.every((v) => Math.abs(v - 100) < 1e-9), 'isSkill false -> never x2');
+  assert.ok(plain.every((v) => Math.abs(v - 100) < 1e-9), 'isSkill false -> never x3');
 });
 
 test('珠光护手: no card and other players operators are not critted (boundaries)', () => {
