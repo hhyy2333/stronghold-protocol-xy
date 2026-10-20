@@ -33,16 +33,19 @@ const PHASE_PREP = 'PREP';
  * （有几名玩家在玩这个盟约、叠了多少层），一个字节都不改官方数据。
  * `vol` 是个股波动倍率：越「故事多」的股票摆得越大。`base` 是开市价（3..8，理由见文件头）。
  *
- * 业主 2026-10-20：「股票的基础价格都减少 2」。原价 7/6/9/5/10/8 → 现价 5/4/7/3/8/6（3~8 块一股）。
- * 只动基础价：波动率 `vol`、手续费、分红率、杠杆与维持担保比例一格都没改 —— 便宜 2 块之后，同样的资金能多买一点。
+ * 业主 2026-10-20：「股票的基础价格都减少 2」：原价 7/6/9/5/10/8 → 5/4/7/3/8/6（3~8 块一股）。
+ * 业主 2026-10-20（同日）：「波动率增加」：每一支的 `vol` 统一 ×1.5（0.95/1.1/1.2/1.25/0.85/1.3 →
+ *   1.43/1.65/1.8/1.88/1.28/1.95），个股之间的相对性格不变（谢拉格最稳、阿戈尔最野）。
+ *   每回合单股的噪声项是 ±7×`vol`%，所以这一档把噪声从 ±6.7~9.1% 抬到 ±10.0~13.7%；其余规则（手续费 1%、
+ *   分红 1.2%、杠杆 2x/3x、70% 维持担保、单回合 ±25% 夹逼）一格没动。
  */
 const STOCKS = Object.freeze([
-  { id: 'yanShip', ticker: 'YAN', company: '尚蜀重工', bondName: '炎', base: 5, vol: 0.95 },
-  { id: 'victoriaShip', ticker: 'VIC', company: '伦蒂尼姆兵工', bondName: '维多利亚', base: 4, vol: 1.1 },
-  { id: 'siracusaShip', ticker: 'SIR', company: '叙拉古食品', bondName: '叙拉古', base: 7, vol: 1.2 },
-  { id: 'kazimierzShip', ticker: 'KAZ', company: '卡西米尔骑士竞技', bondName: '卡西米尔', base: 3, vol: 1.25 },
-  { id: 'kjeragShip', ticker: 'KJE', company: '谢拉格矿业', bondName: '谢拉格', base: 8, vol: 0.85 },
-  { id: 'egirShip', ticker: 'AEG', company: '阿戈尔深海科技', bondName: '阿戈尔', base: 6, vol: 1.3 },
+  { id: 'yanShip', ticker: 'YAN', company: '尚蜀重工', bondName: '炎', base: 5, vol: 1.43 },
+  { id: 'victoriaShip', ticker: 'VIC', company: '伦蒂尼姆兵工', bondName: '维多利亚', base: 4, vol: 1.65 },
+  { id: 'siracusaShip', ticker: 'SIR', company: '叙拉古食品', bondName: '叙拉古', base: 7, vol: 1.8 },
+  { id: 'kazimierzShip', ticker: 'KAZ', company: '卡西米尔骑士竞技', bondName: '卡西米尔', base: 3, vol: 1.88 },
+  { id: 'kjeragShip', ticker: 'KJE', company: '谢拉格矿业', bondName: '谢拉格', base: 8, vol: 1.28 },
+  { id: 'egirShip', ticker: 'AEG', company: '阿戈尔深海科技', bondName: '阿戈尔', base: 6, vol: 1.95 },
 ]);
 
 /**
