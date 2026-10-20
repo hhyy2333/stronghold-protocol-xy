@@ -190,6 +190,37 @@ test('万物归虚: no layers (nothing removed) and no equipment => nothing happ
   assert.equal(one(noItem).s.atk, 500, 'no equipment -> no ATK bonus');
 });
 
+// 业主 2026-10-22「协议『尸山』的装备『尸山』联防不生效」：联防把**自己那场已经倒下的干员**按 `carryState.down` 送进来，
+// 它们入场后立刻被强制退场 —— 到 `battleStart` 时 `alive === false`，对象却还在 `allyUnits` 里。原来按 `alive` 过滤，
+// 于是「其他己方干员」一个都不剩、装备者拿不到任何属性。下面这条钉住：已经倒下的队友，属性照样被吞掉。
+// （注：`opsOf` 只取活着的干员，所以断言的是「没人可杀、但两份属性都吃到了」。）
+test('尸山: 联防里已经倒下的队友（carryState.down）照样被吞掉属性，只是不再执行一次击杀', () => {
+  const h = makeBattle({
+    kind: 'unite', content: 'generic',
+    defs: { chess: { test_guard: guard() }, enemies: { enemy_dummy: dummy() } },
+    players: [
+      { playerId: 'p_0', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_corpsehill')],
+        units: [
+          { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_95_e_a'] },
+          { uid: 2, kind: 'chess', chessId: 'test_guard', row: 9, col: 7, carryState: { down: true } },
+        ] },
+      { playerId: 'p_1', seat: 1, side: 'L', colOffset: 8, bonds: {}, playerEffects: [],
+        units: [{ uid: 3, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, carryState: { down: true } }] },
+    ],
+    enemies: [{ key: 'enemy_dummy', time: 0, pos: [10, 6] }], autoFinish: false, timeLimit: 40,
+  });
+  // install BEFORE the first step: the handler runs on the engine's own `battleStart`
+  const inst = installCorpseHill(hexHooks(h.battle));
+  h.run(0.3);
+  const alive = opsOf(h).filter((u) => u.alive);
+  assert.equal(alive.length, 1, 'only the carrier is left standing, got ' + alive.length);
+  const carrier = alive[0];
+  assert.equal(inst.kills, 0, 'nobody was killed again (they were already down), got ' + inst.kills);
+  assert.ok(Math.abs(carrier.s.maxHp - 6000) < 1e-6, 'max HP = 2000 + 2000 + 2000, got ' + carrier.s.maxHp);
+  assert.ok(Math.abs(carrier.s.atk - 1500) < 1e-6, 'ATK = 500 x 3, got ' + carrier.s.atk);
+  assert.ok(Math.abs(carrier.s.spRecovery - 1) < 1e-9, 'SP recovery +1, got ' + carrier.s.spRecovery);
+});
+
 // =====================================================================================================================
 // 尸山: 战斗开始击杀其他己方干员（不可重部署），装备者累加他们的基础属性；
 //       技力回复 +1 与每秒回复 1% 最大生命是定值（不随击杀数放大）

@@ -180,12 +180,23 @@ export function installCorpseHill(hooks) {
   const spRec = pos(spec.spRecovery, 1);
   const regenPct = pos(spec.regenPct, 1) / 100;
   let kills = 0;
+  /** carriers that already ate (an explicit guard: the pool below now includes already-dead units, so "nobody to eat"
+   *  is no longer a reliable idempotency signal when a repeat battleStart is emitted). */
+  const eaten = new Set();
   battle.on('battleStart', () => {
     for (const carrier of battle.allyUnits) {
       if (!isOwnOp(carrier, owned) || !carrier.alive) continue;
       if (!carries(battle, carrier, CORPSEHILL_ITEM_KEY)) continue;
-      const others = battle.allyUnits.filter((u) => u !== carrier && u.kind === 'op' && u.side === 'ally' && u.alive && !u.removed);
-      if (!others.length) continue; // 没人可吃 ⇒ 什么都没发生（也让重复 emit 天然幂等）
+      const marker = carrier.uid != null ? `u${carrier.uid}` : `i${carrier.id}`;
+      if (eaten.has(marker)) continue;
+      // 业主 2026-10-22「协议『尸山』的装备『尸山』联防不生效」：联防场上**别人那场已经倒下的干员**是按
+      // `carryState.down` 送进来的 —— 入场后立刻被强制退场，所以到 `battleStart` 时它们 `alive === false`，但对象还在
+      // `allyUnits` 里。原来这里用 `u.alive` 过滤，于是「己方其他干员」一个都不剩 ⇒ 装备者拿不到任何基础属性，
+      // 看起来就是「联防不生效」。现在：属性从**所有还在场的己方干员**（含已经倒下的）累加，只对还活着的执行击杀 ——
+      // 已经倒下的人本来就已经被击杀过了。普通战斗里 battleStart 之前没有伤亡，所以口径不变。
+      const others = battle.allyUnits.filter((u) => u !== carrier && u.kind === 'op' && u.side === 'ally' && !u.removed);
+      if (!others.length) continue;
+      eaten.add(marker);
       // 先把属性读下来 —— retreat 之后单位还活着，但读 base 更稳，也避免任何收尾逻辑改字段
       let hp = 0, atk = 0, def = 0, block = 0, res = 0;
       for (const u of others) {
@@ -196,6 +207,7 @@ export function installCorpseHill(hooks) {
         res += num(u.base?.res, 0);
       }
       for (const u of others) {
+        if (!u.alive) continue;   // 已经倒下的（联防的 down）：不再执行一次，但它的基础属性照样被吞掉
         battle.retreat(u, { reason: 'corpsehill', permanent: true });
         kills++;
       }
