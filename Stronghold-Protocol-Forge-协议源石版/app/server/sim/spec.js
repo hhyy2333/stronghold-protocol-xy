@@ -595,6 +595,7 @@ export function damageReport(battle, playerId = null) {
         key, uid: Number.isInteger(owner.uid) ? owner.uid : null, defId: typeof owner.defId === 'string' ? owner.defId : null,
         name: typeof owner.name === 'string' ? owner.name : '', kind: typeof owner.kind === 'string' ? owner.kind : 'op',
         ownerId: owner.ownerId ?? null, dmg: 0, taken: 0, heal: 0, kills: 0, folded: 0,
+        phys: 0, arts: 0, true: 0, elem: 0, absorbed: 0,
         // what the client draws the row with (snapshot.js unitInfo carries the same three for a 补位 / 自选 piece)
         standInFor: typeof d.standInFor === 'string' ? d.standInFor : null,
         diy: d.diyFor && d.loadout && d.loadout.diy ? { ...d.loadout.diy } : null,
@@ -607,6 +608,13 @@ export function damageReport(battle, playerId = null) {
     row.dmg += Number(st.dmg) || 0;
     row.taken += Number(st.taken) || 0;
     row.heal += Number(st.heal) || 0;
+    // 业主 2026-10-20「伤害面板不够准确详细」：按类型拆开的 HP 伤害、灌进槽的 元素损伤、被护盾吃掉的量。后两项从来
+    // 不进 `dmg`（它们本来就不是 HP 伤害），所以从前整场只打元素、或整场在拆护盾的干员看起来什么都没做。
+    row.phys += Number(st.dmgPhys) || 0;
+    row.arts += Number(st.dmgArts) || 0;
+    row.true += Number(st.dmgTrue) || 0;
+    row.elem += Number(st.elem) || 0;
+    row.absorbed += Number(st.absorbed) || 0;
     row.kills += Math.max(0, Math.trunc(Number(st.kills) || 0));
     if (owner !== u) row.folded += 1;
   };
@@ -617,6 +625,10 @@ export function damageReport(battle, playerId = null) {
   const out = [];
   for (const row of rows.values()) if (row.dmg > 0 || row.taken > 0 || row.heal > 0) out.push(row);
   out.sort((a, b) => b.dmg - a.dmg || b.kills - a.kills || (a.uid ?? 0) - (b.uid ?? 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  for (const row of out) { row.dmg = Math.round(row.dmg); row.taken = Math.round(row.taken); row.heal = Math.round(row.heal); }
+  for (const row of out) {
+    row.dmg = Math.round(row.dmg); row.taken = Math.round(row.taken); row.heal = Math.round(row.heal);
+    row.phys = Math.round(row.phys); row.arts = Math.round(row.arts); row.true = Math.round(row.true);
+    row.elem = Math.round(row.elem); row.absorbed = Math.round(row.absorbed);
+  }
   return out;
 }

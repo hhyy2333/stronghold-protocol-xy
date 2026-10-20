@@ -254,6 +254,9 @@ function MatchScreen() {
   const [dmgOpen, setDmgOpen] = useState(false);
   const [dmgLive, setDmgLive] = useState(true);
   const [dmgMetric, setDmgMetric] = useState('dmg');
+  // 业主 2026-10-20「点击干员头像可以看他的详细伤害类型」：展开哪一行（一次只开一个，再点收起）。面板是不持有状态的
+  // 纯视图，所以这把开关放在这里，和 metric / live 一样；切到承伤 / 治疗时收起（那两栏没有类型构成可看）。
+  const [dmgDetailRow, setDmgDetailRow] = useState(null);
   const dmgFrozenRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
@@ -1778,7 +1781,9 @@ function MatchScreen() {
       <div class="gm__chatlog" hidden=${!chatOpen}><${ChatPanel} compact=${true} onClose=${() => setChatOpen(false)}
         onMessage=${() => { if (!chatOpenRef.current) setChatUnread(true); }} /></div>
 
-      ${reportOpen ? html`<${DamageReportPanel} rows=${reportRows} total=${reportSum} metric=${dmgMetric} onMetric=${setDmgMetric}
+      ${reportOpen ? html`<${DamageReportPanel} rows=${reportRows} total=${reportSum} metric=${dmgMetric}
+        onMetric=${(id) => { setDmgMetric(id); setDmgDetailRow(null); }}
+        detailRow=${dmgDetailRow} onDetail=${setDmgDetailRow}
         round=${reportRound} live=${dmgLive} cumulative=${cumulative}
         players=${cumulative ? null : reportPlayers} onClose=${() => setDmgOpen(false)} onToggleLive=${setDmgLive}
         getChess=${gd.chess} backups=${gd.backups} diyData=${{ chess: data.get('chess'), backups: data.get('backups') }} />` : null}

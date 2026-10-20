@@ -387,7 +387,9 @@ export function dealDamage(battle, source, target, dmgIn) {
     const counts = !(ts.flags.hitCountArts && !ts.flags.hitCount && type === 'phys');
     const instance = counts ? 1 : 0;
     const mark = officialDamageMark(instance, officialExpectedAmount(dmg, type, ts, target));
-    return applyHpLoss(battle, source, target, absorbShields(battle, target, instance, type), dmg, mark);
+    const passed = absorbShields(battle, target, instance, type);
+    if (instance > passed && source && source.stats && source.side !== target.side) source.stats.absorbed += instance - passed;
+    return applyHpLoss(battle, source, target, passed, dmg, mark);
   }
   // 无来源 damage (element bursts) takes nothing from its source's stats; the source still gets the credit below
   const ss = source && source.s && !dmg.sourceless ? source.s : null;
@@ -398,7 +400,11 @@ export function dealDamage(battle, source, target, dmgIn) {
   // 限伤: a leader's hit of ≥ BOSS_HIT_LIMIT in a boss / hidden battle is cancelled before it reaches shields / HP — what
   // ran before it (the attack, its SP, `hit` hook effects, separate element 损伤) stays; nothing after it happens
   if (final > 0 && leaderHitCancelled(battle, target, final)) return 0;
+  const preShield = final;
   final = absorbShields(battle, target, final, type);
+  // what the shields ate is not HP damage, so it never reached `stats.dmg` — but an operator who spent the fight
+  // breaking 屏障 did do work, and the report shows it (业主 2026-10-20「不够准确详细」)
+  if (preShield > final && source && source.stats && source.side !== target.side) source.stats.absorbed += preShield - final;
   // 伤判效果 after the barriers (header): a handler may lower what reaches the HP — never raise it (a 流失 skips this)
   if (final > 0 && battle._hooks.hpDamage) {
     const hctx = { source: hs, target, amount: final, dmg, credit: source };
@@ -443,6 +449,12 @@ export function applyHpLoss(battle, source, target, amount, dmg, mark) {
   // 史尔特尔 S3 …), friendly damage; `taken` and the kill credit do
   if (source && source.side !== target.side) {
     source.stats.dmg += dealt;
+    // the report's split (业主 2026-10-20): 物理 / 法术 / 真实, from the DamageInfo the hit carries. `loseHp` passes no
+    // `dmg` (a 流失 is typeless) — it lands in the 真实 bucket, which is what the panel labels 其他/真实.
+    const dt = dmg && dmg.type;
+    if (dt === 'phys') source.stats.dmgPhys += dealt;
+    else if (dt === 'arts') source.stats.dmgArts += dealt;
+    else source.stats.dmgTrue += dealt;
     if (source.side === 'ally' && source.ownerId != null) { const pp = battle._pp(source.ownerId); if (pp) pp.damageDealt += dealt; }
   }
   target.stats.taken += dealt;

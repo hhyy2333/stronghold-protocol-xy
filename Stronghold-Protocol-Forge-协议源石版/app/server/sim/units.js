@@ -97,7 +97,12 @@ export class Unit {
     // every deployment clears it (battle/deploy.js _deploy)
     this.downAtHome = false;
     this.trait = {};            // profession runtime state
-    this.stats = { dmg: 0, kills: 0, heal: 0, taken: 0, attacks: 0 };
+    // `dmg` / `taken` / `heal` / `attacks` / `kills` are the totals the results screen and the report share; the five
+    // below are the 伤害统计 panel's breakdown (业主 2026-10-20「伤害面板不够准确详细」): HP damage split by type, the
+    // 元素损伤 filled into a gauge (which never touches HP, so it used to be invisible), and the part of a hit that
+    // shields ate (also not HP damage, so an operator chewing through 屏障 read as doing nothing). Display-only:
+    // nothing in the sim branches on them, so goldens cannot move.
+    this.stats = { dmg: 0, kills: 0, heal: 0, taken: 0, attacks: 0, dmgPhys: 0, dmgArts: 0, dmgTrue: 0, elem: 0, absorbed: 0 };
     this.hidden = false;        // enemies inside a DISAPPEAR segment
     this.moving = false;        // enemies: walked this tick (drawn on the move clip; ai.js updateEnemy)
     this.form = null;           // the model's current form (content/enemies/helpers.js setForm, a 傀儡师's 替身 'doll' → snapshot.js unitInfo)

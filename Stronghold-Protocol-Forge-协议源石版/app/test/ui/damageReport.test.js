@@ -21,7 +21,7 @@ import { damageReport } from '../../server/sim/spec.js';
 import { damageView } from '../../server/sim/snapshot.js';
 import {
   snapshotDamageRows, cumulativeRows, normalizeRows, rankRows, filterByPlayers, reportTotal, shareFrac, sharePct,
-  fmtDamage, metricOf, methodLines, DamageReportPanel, DamageReportRow, DamageReportButton, REPORT_METRICS,
+  fmtDamage, metricOf, methodLines, DamageReportPanel, DamageReportRow, DamageReportButton, DamageTypeDetail, REPORT_METRICS,
   REPORT_MAX_ROWS,
 } from '../../public/js/ui/damageReport.js';
 
@@ -451,9 +451,36 @@ describe('wiring and CSS', () => {
     assert.match(game, /dmgListRef\.current = Array\.isArray\(snap\.dmg\) \? snap\.dmg : null;/);
     // the metric switch is wired, and the panel gets it
     assert.match(game, /const \[dmgMetric, setDmgMetric\] = useState\('dmg'\);/);
-    assert.match(game, /metric=\$\{dmgMetric\} onMetric=\$\{setDmgMetric\}/);
+    assert.match(game, /metric=\$\{dmgMetric\}/);
+    assert.match(game, /onMetric=\$\{\(id\) => \{ setDmgMetric\(id\); setDmgDetailRow\(null\); \}\}/);
+    // 业主 2026-10-20「点击干员头像可以看他的详细伤害类型」: the expanded row lives in the screen (the panel is a pure view)
+    assert.match(game, /const \[dmgDetailRow, setDmgDetailRow\] = useState\(null\);/);
+    assert.match(game, /detailRow=\$\{dmgDetailRow\} onDetail=\$\{setDmgDetailRow\}/);
     // Escape closes it, like the chat panel and the emote wheel
     assert.match(game, /else if \(L\.dmgOpen\) setDmgOpen\(false\);/);
+  });
+
+  test('点头像看详细伤害类型（业主 2026-10-20）：行内只有摘要，展开后每一类都有数值与占比', () => {
+    const row = {
+      key: 'u1', uid: 1, defId: 'char_1033_swire', name: '空弦', kind: 'op', dmg: 65330, taken: 2100, heal: 0, kills: 4,
+      phys: 52330, arts: 0, true: 13000, elem: 4200, absorbed: 8600, folded: 0,
+    };
+    // collapsed: no detail, and the row keeps its inline summary
+    const closed = JSON.stringify(DamageReportRow({ row, rank: 1, total: 65330, metric: 'dmg' }));
+    assert.ok(!closed.includes('damage-detail'), 'collapsed: no detail block');
+    assert.ok(closed.includes('元素损伤'), 'collapsed: the inline sub-figures are shown');
+    // expanded: the avatar is the toggle (and says so), and the detail block is rendered as its child
+    const open = JSON.stringify(DamageReportRow({ row, rank: 1, total: 65330, metric: 'dmg', detailOpen: true, onDetail: () => {} }));
+    assert.ok(open.includes('damage-detail-toggle') && open.includes('aria-expanded'), 'the avatar is the toggle');
+    assert.ok(!open.includes('dmgrow__extra'), 'expanded: the inline summary gives way to the detail block');
+    // the block itself is a pure function component, so its output can be read directly
+    const detail = JSON.stringify(DamageTypeDetail({ row }));
+    assert.ok(detail.includes('damage-detail'), 'the detail block exists');
+    assert.ok(detail.includes('物理') && detail.includes('52,330') && detail.includes('80.1%'), '物理 with its number and share');
+    assert.ok(detail.includes('真实') && detail.includes('13,000') && detail.includes('19.9%'), '真实 with its number and share');
+    assert.ok(!detail.includes('法术'), 'a type with zero damage is not listed');
+    assert.ok(detail.includes('元素损伤') && detail.includes('护盾吸收'), 'the two non-HP figures are in the detail');
+    assert.ok(detail.includes('击杀'), 'and the kill count');
   });
 
   test('the runner exposes damageReport (read-only, field-scoped)', () => {

@@ -231,7 +231,9 @@ export function rowRecord(row, getChess, backups, diyData = null) {
  */
 export const METHOD_LINES = Object.freeze({
   dmg: Object.freeze([
-    N_('实际伤害＝该单位从敌方身上扣掉的生命值：被护盾吸收、过量伤害、闪避、被取消的限伤都不计入'),
+    N_('实际伤害＝该单位从敌方身上扣掉的生命值：过量伤害、闪避、被取消的限伤都不计入；被护盾吸收的部分单列在「护盾吸收」'),
+    N_('伤害按 物理 / 法术 / 真实 拆成三段显示（占比条里的三段颜色）；「真实」也收下没有伤害类型的流失'),
+    N_('元素损伤灌进元素槽、不扣生命值，所以不并入实际伤害，单列在「元素损伤」'),
     N_('元素爆发本身无来源，但它的伤害记在填满元素槽的那名单位头上'),
     N_('召唤物的伤害并入部署它的干员；没有归属的召唤物与场地装置单独一行'),
     N_('自身流失与友方伤害不算造成伤害'),
@@ -260,29 +262,102 @@ export function methodLines(metric = 'dmg') {
  * value + share on the right (the official 干员 / 占比 · 数值 columns; the metric picks the number).
  * @param {{ row: any, rank: number, total: number, metric?: string, rec?: any }} props
  */
-export function DamageReportRow({ row, rank, total, metric = 'dmg', rec = null }) {
+/** The label of every figure the detail block shows (msgids, translated where drawn). */
+const TYPE_LABELS = Object.freeze({
+  phys: N_('物理'), arts: N_('法术'), true: N_('真实'), elem: N_('元素损伤'), absorbed: N_('护盾吸收'),
+  taken: N_('承伤'), heal: N_('治疗'), kills: N_('击杀'),
+});
+
+/**
+ * 一名干员的详细伤害类型（业主 2026-10-20「点击干员头像可以看他的详细伤害类型」）。
+ *
+ * 列表那一行只有一根三段条；点开头像展开这一块，把**每一类**都写成「名字 + 数值 + 占实际伤害的比例」：HP 伤害的
+ * 物理 / 法术 / 真实，另加两个从来不是 HP 伤害的量（元素损伤填的是元素槽、护盾吸收吃的是屏障），以及承伤 / 治疗 / 击杀。
+ * 纯展示：每个数字都是那一行的字段，不在这里做任何新计算。
+ * @param {{ row: any }} props
+ */
+export function DamageTypeDetail({ row }) {
+  const dmg = Number(row.dmg) || 0;
+  const items = [
+    { k: 'phys', v: Number(row.phys) || 0 },
+    { k: 'arts', v: Number(row.arts) || 0 },
+    { k: 'true', v: Number(row.true) || 0 },
+  ].filter((x) => x.v > 0);
+  const extras = [
+    { k: 'elem', v: Number(row.elem) || 0 },
+    { k: 'absorbed', v: Number(row.absorbed) || 0 },
+    { k: 'taken', v: Number(row.taken) || 0 },
+    { k: 'heal', v: Number(row.heal) || 0 },
+    { k: 'kills', v: Number(row.kills) || 0, count: true },
+  ].filter((x) => x.v > 0);
+  const pctOf = (v) => (dmg > 0 ? Math.round((v / dmg) * 1000) / 10 : 0);
+  return html`<span class="dmgdet" data-testid="damage-detail" data-key=${row.key}>
+    ${items.map((x) => html`<span key=${x.k} class=${`dmgdet__row dmgdet__row--${x.k}`}>
+      <span class="dmgdet__k"><i class=${`dmgdet__dot dmgdet__dot--${x.k}`} aria-hidden="true"></i>${t(TYPE_LABELS[x.k])}</span>
+      <span class="dmgdet__v num">${fmtDamage(x.v)}</span>
+      <span class="dmgdet__p num">${`${pctOf(x.v)}%`}</span>
+    </span>`)}
+    ${items.length === 0 ? html`<span class="dmgdet__row"><span class="dmgdet__k t-lo">${t('没有实际伤害')}</span></span>` : null}
+    ${extras.length ? html`<span class="dmgdet__sub">${extras.map((x) => html`<span key=${x.k} class=${`dmgdet__chip dmgdet__chip--${x.k}`}>
+      ${t(TYPE_LABELS[x.k])} <b class="num">${x.count ? x.v : fmtDamage(x.v)}</b></span>`)}</span>` : null}
+  </span>`;
+}
+
+export function DamageReportRow({ row, rank, total, metric = 'dmg', rec = null, detailOpen = false, onDetail = null }) {
   const m = metricOf(metric);
   const value = Number(row[m.field]) || 0;
   const frac = shareFrac(value, total);
   const pct = sharePct(frac);
   const name = row.name || row.defId || t('未知单位');
+  // 业主 2026-10-20「伤害面板不够准确详细」: a damage row is split into 物理 / 法术 / 真实 as three coloured segments of
+  // the same share bar, and 元素损伤 / 护盾吸收 / 击杀 are listed as sub-figures. The first two are NOT HP damage, so
+  // before this the operator who spent the field filling an element gauge or chewing through 屏障 looked idle.
+  const splitTotal = Number(row.phys) + Number(row.arts) + Number(row.true);
+  const split = metric === 'dmg' && splitTotal > 0
+    ? [{ k: 'phys', v: Number(row.phys) || 0 }, { k: 'arts', v: Number(row.arts) || 0 }, { k: 'true', v: Number(row.true) || 0 }]
+      .filter((s) => s.v > 0)
+    : null;
+  // the inline sub-figures are the summary; once the detail block is open they are printed there in full, so the row
+  // drops its own copies (otherwise the same three numbers appear twice in one row)
+  const extra = metric === 'dmg' && !detailOpen
+    ? [
+      Number(row.elem) > 0 ? { k: 'elem', v: row.elem, label: t('元素损伤') } : null,
+      Number(row.absorbed) > 0 ? { k: 'absorbed', v: row.absorbed, label: t('护盾吸收') } : null,
+      Number(row.kills) > 0 ? { k: 'kills', v: row.kills, label: t('击杀'), raw: true } : null,
+    ].filter(Boolean)
+    : [];
   return html`<li class=${cx('dmgrow', `dmgrow--${m.id}`, rank === 1 && 'is-top')} data-key=${row.key} data-metric=${m.id}>
     <span class="dmgrow__rank num">${rank}</span>
     <span class="dmgrow__art">
-      ${row.kind === 'op' || row.kind === 'token'
-        ? html`<${UnitThumb} kind=${row.kind === 'token' ? 'token' : 'chess'} id=${row.defId} golden=${row.golden} tier=${row.tier}
-            size="sm" showTier=${false} rec=${rec} />`
-        : html`<span class="dmgrow__dev" aria-hidden="true"><${GIcon} name="target" /></span>`}
+      ${onDetail ? html`<button type="button" class=${cx('dmgrow__artbtn', detailOpen && 'is-open')}
+          aria-expanded=${detailOpen ? 'true' : 'false'} aria-label=${t('查看 {name} 的详细伤害类型', { name })}
+          title=${t('查看 {name} 的详细伤害类型', { name })}
+          data-testid="damage-detail-toggle" data-key=${row.key}
+          onClick=${(e) => { e.stopPropagation(); onDetail(detailOpen ? null : row.key); }}>
+          ${row.kind === 'op' || row.kind === 'token'
+            ? html`<${UnitThumb} kind=${row.kind === 'token' ? 'token' : 'chess'} id=${row.defId} golden=${row.golden} tier=${row.tier}
+                size="sm" showTier=${false} rec=${rec} />`
+            : html`<span class="dmgrow__dev" aria-hidden="true"><${GIcon} name="target" /></span>`}
+        </button>`
+        : (row.kind === 'op' || row.kind === 'token'
+          ? html`<${UnitThumb} kind=${row.kind === 'token' ? 'token' : 'chess'} id=${row.defId} golden=${row.golden} tier=${row.tier}
+              size="sm" showTier=${false} rec=${rec} />`
+          : html`<span class="dmgrow__dev" aria-hidden="true"><${GIcon} name="target" /></span>`)}
     </span>
     <span class="dmgrow__who">
       <span class="dmgrow__name">${name}${row.folded > 0
         ? html`<span class="dmgrow__fold" title=${t('含 {n} 个召唤物的数据', { n: row.folded })}>${t('含召唤')}</span>` : null}</span>
       <span class="dmgrow__bar" aria-hidden="true"><span class="dmgrow__fill" style=${`width:${(frac * 100).toFixed(1)}%`}></span></span>
+      ${split ? html`<span class="dmgrow__split" aria-hidden="true">${split.map((s) => html`<span key=${s.k}
+        class=${`dmgrow__seg dmgrow__seg--${s.k}`} style=${`width:${((s.v / Math.max(1, splitTotal)) * 100).toFixed(1)}%`}></span>`)}</span>` : null}
+      ${extra.length ? html`<span class="dmgrow__extra">${extra.map((x) => html`<span key=${x.k} class=${`dmgrow__tag dmgrow__tag--${x.k}`}
+        title=${x.label}>${t(x.label)} <b class="num">${x.raw ? x.v : fmtDamage(x.v)}</b></span>`)}</span>` : null}
     </span>
     <span class="dmgrow__num">
       <b class="num">${fmtDamage(value)}</b>
       ${pct ? html`<span class="dmgrow__pct num">${pct}</span>` : null}
     </span>
+    ${detailOpen ? html`<${DamageTypeDetail} row=${row} />` : null}
   </li>`;
 }
 
@@ -307,8 +382,12 @@ export function reportCaption(round, live) {
  */
 export function DamageReportPanel({
   rows, total = null, metric = 'dmg', onMetric = null, round = null, live = true, cumulative = false, players = null,
+  detailRow = null, onDetail = null,
   onClose = null, onToggleLive = null, getChess = () => null, backups = null, diyData = null, rowRec = null, method = null,
 }) {
+  // 业主 2026-10-20「点击干员头像可以看他的详细伤害类型」：开的是哪一行由**调用方**记（`detailRow` / `onDetail`）——
+  // 面板是不持有状态的纯视图（和 metric / live 同一条规矩），这样测试可以直接把它当函数调。
+  const openKey = detailRow == null ? null : detailRow;
   const m = metricOf(metric);
   const list = rankRows(filterByPlayers(rows, players), m.id);
   const sum = Number.isFinite(total) ? total : reportTotal(list, m.id);  const lines = Array.isArray(method) && method.length ? method : methodLines(m.id);
@@ -347,7 +426,8 @@ export function DamageReportPanel({
 
     ${list.length
       ? html`<ul class="dmgrep__list">${list.map((r, i) => html`<${DamageReportRow} key=${r.key} row=${r} rank=${i + 1} total=${sum}
-          metric=${m.id} rec=${rowRec ? rowRec(r) : rowRecord(r, getChess, backups, diyData)} />`)}</ul>`
+          metric=${m.id} rec=${rowRec ? rowRec(r) : rowRecord(r, getChess, backups, diyData)}
+          detailOpen=${openKey === r.key} onDetail=${m.id === 'dmg' ? onDetail : null} />`)}</ul>`
       : html`<p class="dmgrep__empty t-lo">${t(cumulative ? '本局还没有统计数据' : '本次战斗还没有统计数据')}</p>`}
 
     <details class="dmgrep__method">

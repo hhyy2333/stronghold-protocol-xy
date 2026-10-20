@@ -455,10 +455,10 @@
   "精英": "정예",
   "领袖": "리더",
   "实际为生命值低于一半时提高治疗量，正好一半不提高（PRTS 修正，原文为“不高于”）": "HP가 절반 미만일 때만 치료량이 증가합니다. 정확히 절반일 때는 증가하지 않습니다(PRTS 정정: 원문의 ‘이하’와 다름).",
-  "物理": "물리",
-  "法术": "마법",
+  "物理": "Physical",
+  "法术": "Arts",
   "治疗": "치료",
-  "真实": "트루",
+  "真实": "True",
   "无": "없음",
   "攻击范围": "공격 범위",
   "全场": "전장 전체",
@@ -2363,5 +2363,13 @@
   "房间插件「{names}」的文件在服务器上变了，请在插件面板中点「重新应用」": "방 플러그인 「{names}」의 파일이 서버에서 바뀌었습니다. 플러그인 패널에서 「다시 적용」을 누르세요",
   "房间的插件内容长时间无响应，本局模拟已结束": "방의 플러그인 콘텐츠가 오랫동안 응답하지 않아 시뮬레이션이 종료되었습니다",
   "房间的插件内容无法启动模拟": "방의 플러그인 콘텐츠로 시뮬레이션을 시작할 수 없었습니다",
-  "房间的插件内容出错，本局模拟已结束": "방의 플러그인 콘텐츠에 오류가 생겨 시뮬레이션이 종료되었습니다"
+  "房间的插件内容出错，本局模拟已结束": "방의 플러그인 콘텐츠에 오류가 생겨 시뮬레이션이 종료되었습니다",
+  "实际伤害＝该单位从敌方身上扣掉的生命值：过量伤害、闪避、被取消的限伤都不计入；被护盾吸收的部分单列在「护盾吸收」": "Actual damage = the HP this unit removed from the other side. Overkill, dodges and a cancelled hit-cap hit do not count; whatever shields ate is listed separately under Shield absorb.",
+  "伤害按 物理 / 法术 / 真实 拆成三段显示（占比条里的三段颜色）；「真实」也收下没有伤害类型的流失": "Damage is split into Physical / Arts / True as three segments of the share bar; True also takes typeless HP drain.",
+  "元素损伤灌进元素槽、不扣生命值，所以不并入实际伤害，单列在「元素损伤」": "Element gauge damage fills an element gauge instead of removing HP, so it is not part of actual damage — it is listed separately under Element gauge.",
+  "元素损伤": "Element gauge",
+  "护盾吸收": "Shield absorb",
+  "击杀": "Kills",
+  "查看 {name} 的详细伤害类型": "Show {name}'s damage breakdown",
+  "没有实际伤害": "No actual damage"
 }

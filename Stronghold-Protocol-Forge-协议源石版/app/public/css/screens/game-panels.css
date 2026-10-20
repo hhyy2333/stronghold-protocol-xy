@@ -1094,6 +1094,46 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .dmgrow--heal .dmgrow__fill { background: linear-gradient(90deg, #2f8a5c, #7ce0a8); }
 .dmgrow--heal.is-top .dmgrow__rank { color: #7ce0a8; }
 .dmgrow--heal .dmgrow__num b { color: #7ce0a8; }
+/* 业主 2026-10-20「伤害面板不够准确详细」: the 伤害 row carries a second, thinner bar split into 物理 / 法术 / 真实, plus a
+   line of sub-figures (元素损伤 / 护盾吸收 / 击杀). Both live inside the same cell, so a row with neither (the 承伤 / 治疗
+   metrics, or a unit whose damage is one type) keeps exactly the height it had. */
+.dmgrow__split { display: flex; height: .05rem; margin-top: .03rem; overflow: hidden; }
+.dmgrow__seg { display: block; height: 100%; }
+.dmgrow__seg--phys { background: #c9d6e2; }
+.dmgrow__seg--arts { background: #7fb7ff; }
+.dmgrow__seg--true { background: #ffd166; }
+.dmgrow__extra { display: flex; flex-wrap: wrap; gap: .12rem; margin-top: .03rem; }
+.dmgrow__tag { font-size: calc(.17 * var(--t)); color: rgba(255, 255, 255, .55); letter-spacing: .02em; }
+.dmgrow__tag b { font-weight: 700; color: rgba(255, 255, 255, .8); }
+.dmgrow__tag--elem b { color: #b58cff; }
+.dmgrow__tag--absorbed b { color: #7fd6c2; }
+.dmgrow__tag--kills b { color: var(--gold); }
+/* 业主 2026-10-20「点击干员头像可以看他的详细伤害类型」: the avatar is the toggle, and the detail block is a second grid row
+   of the same <li> (the row switches to a two-column grid so the block can span the full width). */
+.dmgrow { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: .08rem; min-width: 0; }
+.dmgrow__artbtn { display: block; padding: 0; margin: 0; border: 0; background: none; cursor: pointer; border-radius: .04rem;
+  outline-offset: .02rem; }
+.dmgrow__artbtn.is-open, .dmgrow__artbtn:hover { box-shadow: 0 0 0 1px var(--mint-400); }
+.dmgdet { grid-column: 1 / -1; display: flex; flex-direction: column; gap: .03rem; margin: .04rem 0 .02rem .18rem;
+  padding: .06rem .08rem; background: rgba(0, 0, 0, .34); border-left: 2px solid var(--mint-700); }
+.dmgdet__row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .1rem;
+  font-size: calc(.18 * var(--t)); color: var(--text-hi); }
+.dmgdet__row--head { color: var(--text-lo); font-size: calc(.15 * var(--t)); letter-spacing: .06em; }
+.dmgdet__k { display: flex; align-items: center; gap: .05rem; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.dmgdet__v { font-weight: 700; }
+.dmgdet__p { min-width: .5rem; text-align: right; color: var(--text-lo); }
+.dmgdet__dot { flex: none; width: .06rem; height: .06rem; border-radius: 50%; background: currentColor; }
+.dmgdet__dot--phys, .dmgdet__row--phys .dmgdet__k { color: #c9d6e2; }
+.dmgdet__dot--arts, .dmgdet__row--arts .dmgdet__k { color: #7fb7ff; }
+.dmgdet__dot--true, .dmgdet__row--true .dmgdet__k { color: #ffd166; }
+.dmgdet__sub { display: flex; flex-wrap: wrap; gap: .1rem; margin-top: .03rem; padding-top: .04rem;
+  border-top: 1px solid rgba(255, 255, 255, .08); }
+.dmgdet__chip { font-size: calc(.16 * var(--t)); color: rgba(255, 255, 255, .55); }
+.dmgdet__chip b { color: rgba(255, 255, 255, .82); }
+.dmgdet__chip--elem b { color: #b58cff; }
+.dmgdet__chip--absorbed b { color: #7fd6c2; }
+.dmgdet__chip--kills b { color: var(--gold); }
 .dmgrow__num { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: .01rem; min-width: .8rem; }
 .dmgrow__num b { font-size: max(calc(.18 * var(--t)), 12px); color: #fff; }
 .dmgrow__pct { font-size: max(calc(.12 * var(--t)), 9px); color: var(--text-lo); }

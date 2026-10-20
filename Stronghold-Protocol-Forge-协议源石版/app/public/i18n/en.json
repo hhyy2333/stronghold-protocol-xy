@@ -2678,5 +2678,13 @@
   "我方干员被击倒时，下回合的资金收入减少 2%（每场战斗内叠加，最多 30%）。": "When one of your operators is knocked out, the next round’s income drops by 2 % (stacking within a battle, up to 30 %).",
   "每场战斗额外加入 1 名随机「惊变」敌人（价值 1~5 资金；前 5 回合只会是 1~3 资金）。": "Every battle adds one random 机变 bounty enemy worth 1–5 funds (only 1–3 in the first five rounds).",
   "战斗额外加入 3 个杰斯顿，其属性为原来的（2 + 6x）%（x 为当前回合数）。": "The battle adds three Jesseltons at (2 + 6x)% of their original stats (x = the current round).",
-  "作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的法术伤害。": "In battle your operators’ attacks deal an extra amount of arts damage equal to 10 % of their own max HP."
+  "作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的法术伤害。": "In battle your operators’ attacks deal an extra amount of arts damage equal to 10 % of their own max HP.",
+  "实际伤害＝该单位从敌方身上扣掉的生命值：过量伤害、闪避、被取消的限伤都不计入；被护盾吸收的部分单列在「护盾吸收」": "Actual damage = the HP this unit removed from the other side. Overkill, dodges and a cancelled hit-cap hit do not count; whatever shields ate is listed separately under Shield absorb.",
+  "伤害按 物理 / 法术 / 真实 拆成三段显示（占比条里的三段颜色）；「真实」也收下没有伤害类型的流失": "Damage is split into Physical / Arts / True as three segments of the share bar; True also takes typeless HP drain.",
+  "元素损伤灌进元素槽、不扣生命值，所以不并入实际伤害，单列在「元素损伤」": "Element gauge damage fills an element gauge instead of removing HP, so it is not part of actual damage — it is listed separately under Element gauge.",
+  "元素损伤": "Element gauge",
+  "护盾吸收": "Shield absorb",
+  "击杀": "Kills",
+  "查看 {name} 的详细伤害类型": "Show {name}'s damage breakdown",
+  "没有实际伤害": "No actual damage"
 }
