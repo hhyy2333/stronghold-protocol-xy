@@ -1852,7 +1852,7 @@ function MatchScreen() {
 
     ${hexDraft ? html`<${HexOverlay} hex=${hexDraft} enemy=${pub?.enemyHexes || []} busyIdx=${hexBusy}
       onPick=${async (i) => { setHexBusy(i); await actions.hex(i); setHexBusy(null); }}
-      onReroll=${async () => { setHexBusy(-1); await actions.hexReroll(); setHexBusy(null); }} />` : null}
+      onReroll=${async (idx) => { setHexBusy(-1); await actions.hexReroll(idx); setHexBusy(null); }} />` : null}
 
     ${banner ? html`<${PhaseBanner} key=${banner.key} mode="overlay" title=${banner.title} sub=${banner.sub} micro=${banner.micro}
       tone=${banner.tone} duration=${banner.duration || 1500} onDone=${() => setBanner(null)} />` : null}

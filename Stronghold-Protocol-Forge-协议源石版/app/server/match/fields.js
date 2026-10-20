@@ -899,10 +899,24 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         const mods = match ? modsOf(match) : parent ? modsOf(parent) : modsOf(src);
         let sourcePlayerId = typeof l.sourcePlayerId === 'string' ? l.sourcePlayerId : null;
         if (spec.kind === 'unite') {
-          if (!sourcePlayerId || !B.sources.has(sourcePlayerId)) sourcePlayerId = src && typeof src.sourcePlayerId === 'string' ? src.sourcePlayerId : null;
+          // 认不出来的 source 才回落到 spawn 计划。**已经有主**的（这一场里真实存在的玩家 id）不要动：
+          // 通厕大队 / 通缉令 这类敌方 verb 卡在战斗里自己刷的敌人，泄漏时带的是它走到的半场主人（一个 helper），
+          // 以前这里无条件改写成 spawn 计划里的 leaker，于是同一场战斗在客户端路径上变成「leaker 多扣 1 点」。
+          const knownPlayer = sourcePlayerId != null && B.players.has(sourcePlayerId);
+          if (!knownPlayer && (!sourcePlayerId || !B.sources.has(sourcePlayerId))) sourcePlayerId = src && typeof src.sourcePlayerId === 'string' ? src.sourcePlayerId : null;
           // whose LP a surviving enemy costs: never more of (key, leaker) than that leaker sent into the 联防 — or, for a
           // split / summon, than the enemies that leaker sent in can leave behind
-          if (!takeSource(key, sourcePlayerId) && !takeDerived(key, sourcePlayerId)) return bad('leak source');
+          if (!takeSource(key, sourcePlayerId) && !takeDerived(key, sourcePlayerId)) {
+            // 协议源石敌方 verb 卡在战斗里自己刷出来的敌人（通厕大队 / 通缉令）在联防里**没有 leaker**：它不是任何玩家漏
+            // 进来的。真跑那一路 Battle._recordLeak 记的是它走到的那个半场的主人 —— 在联防里是一个 helper —— 而
+            // settle 的 uniteSurvivors 只结算 plan.leakers，所以它一分 LP 都不扣。战报里它因此带着一个 helper 的 id，
+            // 以前这里会判定 `leak source` 把整份**诚实的**战报打回服务端复算，复算的结果又不扣任何人的 LP，于是两端
+            // 的口径对不上（业主报「战斗结果和服务端算的不一样」那类现象的同一个来源）。
+            // 只对**内容可以自己追加的 key** 放行，且 source 必须是这一场里真实存在的玩家：排定的敌人（真 leaker 的额度）
+            // 一律照旧，伪造者拿不到任何宽松。
+            const contentBody = B.derived.has(key) && sourcePlayerId != null && B.players.has(sourcePlayerId);
+            if (!contentBody) return bad('leak source');
+          }
         } else if (sourcePlayerId !== pid && !B.players.has(sourcePlayerId)) sourcePlayerId = pid;
         const lpr = finiteIn(l.lpr, 0, 1000) ? l.lpr : 1;
         const e = { enemyKey: key, mods, lpr, sourcePlayerId, tag: src ? (src.tag ?? null) : (typeof l.tag === 'string' ? l.tag : null), counted, spawned: true };

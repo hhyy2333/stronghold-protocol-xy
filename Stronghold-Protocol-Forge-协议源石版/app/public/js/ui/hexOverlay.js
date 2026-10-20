@@ -112,7 +112,7 @@ export function keepsArmed(target) {
 }
 
 /** One 协议源石 card: the tier's 阶位 art as its face, name / tier and effect text on top. */
-export function HexCard({ hex, armed = false, picked = false, faded = false, busy = false, compact = false, vanishing = false, vanishDir = 0, onClick = null }) {
+export function HexCard({ hex, armed = false, picked = false, faded = false, busy = false, compact = false, vanishing = false, vanishDir = 0, onClick = null, onReroll = null, rerollTitle = null }) {
   const rarity = hex.rarity || RARITY_DEFAULT;
   // The tier art is the card's face — the FULL card and the compact enemy chip alike. The enemy chips used to keep the
   // mod's rune plate "because a 阶位 numeral is illegible at .36rem"; that left the third-party mod's rune as the last
@@ -155,11 +155,22 @@ export function HexCard({ hex, armed = false, picked = false, faded = false, bus
   const glitch = compact ? null : html`<span class="hxcard__glitch" aria-hidden="true">${GLITCH_STREAM}</span>`;
   const bevel = compact ? null : html`<span class="hxcard__bevel" aria-hidden="true"></span>`;
   if (!onClick) return html`<span class=${cls} style=${style} title=${compact ? null : tip} data-hex=${hex.id || ''}>${bevel}${dotwave}${dotring}${glitch}${body}</span>`;
-  return html`<button type="button" class=${cls} style=${style} title=${tip} data-hex=${hex.id || ''} disabled=${busy} onClick=${onClick}>
+  // 分别刷新 (业主 2026-10-20「把刷新按钮改成分别刷新每个」): a card can carry its own reroll control. It is a SIBLING of the
+  // card button, not a child — a <button> inside a <button> is invalid HTML and the inner click would also arm/pick the
+  // card. The wrapper is what tilts/hovers; the card keeps its own gestures untouched.
+  const card = html`<button type="button" class=${cls} style=${style} title=${tip} data-hex=${hex.id || ''} disabled=${busy} onClick=${onClick}
+      data-testid=${`hex-card-${hex.idx}`}>
     <span class="hxcard__glow" aria-hidden="true"></span>${bevel}${dotwave}${dotring}${glitch}${body}
     ${armed ? html`<span class="hxcard__confirm" role="status"><b>${t('确认选择')}</b><small>${t('再次点击')}</small></span>` : null}
     ${busy ? html`<span class="hxcard__busy" role="status">${t('选择中')}</span>` : null}
   </button>`;
+  if (!onReroll) return card;
+  return html`<span class="hxcard-slot">${card}
+    <button type="button" class="hxcard__reroll" data-testid=${`hex-reroll-${hex.idx}`} title=${rerollTitle || t('只刷新这一张')}
+      aria-label=${rerollTitle || t('只刷新这一张')} onClick=${(e) => { e.stopPropagation(); onReroll(); }}>
+      <${Icon} name="refresh" />
+    </button>
+  </span>`;
 }
 
 /**
@@ -221,8 +232,10 @@ export function EnemyHexList({ list, label = null, class: cls = '' }) {
 
 /**
  * The draft overlay.
- * @param {{ hex: any, enemy?: any[], busyIdx?: number|null, onPick: (idx: number) => void, onReroll: () => void }} props
- *   hex: ui/gameLogic/draft.js normalizeHex(m.public.hex, myId, players); enemy: m.public.enemyHexes
+ * @param {{ hex: any, enemy?: any[], busyIdx?: number|null, onPick: (idx: number) => void, onReroll: (idx?: number) => void }} props
+ *   hex: ui/gameLogic/draft.js normalizeHex(m.public.hex, myId, players); enemy: m.public.enemyHexes.
+ *   `onReroll(idx)` replaces that ONE card (业主 2026-10-20「把刷新按钮改成分别刷新每个」); without an index it replaces the
+ *   whole batch (the header button). Both cost the same one reroll.
  */
 export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }) {
   const [armed, setArmed] = useState(null);
@@ -279,7 +292,10 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   // the game's own 刷新 button (ui/shopBar.js): the official shopPanel/refresh_icon sprite, the label and a badge — here
   // the rerolls left instead of the price. The mod's own button sprites are not used (user feedback: they read as a
   // foreign skin next to the shop's).
+  // 业主 2026-10-20：「把刷新按钮改成分别刷新每个」。一张刷新按次要标在**卡片自己**身上（每张卡的角上一颗小刷新），
+  // header 那颗留给整批（一次换掉三张）。两者的次数共享同一个 `myRerolls`（服务器只认 `g.hexReroll`，协议没变）。
   const rerollLabel = hex.myRerolls > 0 ? t('刷新（剩余 {n} 次）', { n: hex.myRerolls }) : t('刷新已用完');
+  const cardReroll = (idx) => { if (!canReroll) return; setArmed(null); onReroll(idx); };
   const armedName = armed != null ? (hex.myOffer.find((c) => c && c.idx === armed)?.name || null) : null;
   return html`<div class=${cx('spov', 'hxov', armed != null && 'has-armed', vanishing != null && 'is-vanishing')} role="dialog" aria-label=${t('协议源石')} onPointerDown=${onDown}>
     <div class="spov__veil" aria-hidden="true"></div>
@@ -297,7 +313,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
               title=${armedName ? t('确认选择「{armedName}」（再次点击卡牌亦可）', { armedName }) : t('确认选择')}
               onClick=${() => tap({ idx: armed })}>${t('确认选择')}<//>` : null}
           <button type="button" class="toolbtn toolbtn--amber hxov__reroll" disabled=${!canReroll} data-testid="hex-reroll"
-            aria-label=${rerollLabel} title=${rerollLabel}
+            aria-label=${t('刷新全部三张')} title=${rerollLabel}
             onClick=${() => { if (canReroll) { setArmed(null); onReroll(); } }}>
             <${Img} src=${refreshIconUrl()} class="toolbtn__img" fallback=${html`<${Icon} name="refresh" />`} />
             <span>${t('刷新')}</span>
@@ -309,7 +325,9 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
       <div class="spov__grid spov__grid--3">
         ${hex.myOffer.map((c) => html`<${HexCard} key=${`${c.id}:${c.idx}`} hex=${c}
           armed=${armed === c.idx} picked=${picked === c.idx} faded=${picked != null && picked !== c.idx}
-          busy=${busyIdx === c.idx} vanishing=${vanishing === c.idx} vanishDir=${c.idx} onClick=${() => tap(c)} />`)}
+          busy=${busyIdx === c.idx} vanishing=${vanishing === c.idx} vanishDir=${c.idx} onClick=${() => tap(c)}
+          onReroll=${canReroll ? () => cardReroll(c.idx) : null}
+          rerollTitle=${hex.myRerolls > 0 ? t('只刷新这一张（剩余 {n} 次）', { n: hex.myRerolls }) : t('刷新已用完')} />`)}
       </div>
       <footer class="hxov__foot">
         <span class="hxov__enemy">

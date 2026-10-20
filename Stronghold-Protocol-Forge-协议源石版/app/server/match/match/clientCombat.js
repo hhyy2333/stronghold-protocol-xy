@@ -46,7 +46,9 @@ export class MatchClientCombat {
     // the flag directly — the same `withEnemyHexes` the server paths use. Without it the browser fights an enemy
     // with no 协议源石 at all while the server re-computation (`_specBattle`, which DOES go through the helper)
     // fights with them, and the two outcomes diverge without either side reporting an error.
-    const spec = buildBattleSpec({ ...withEnemyHexes(this, { ...opts }), battleId, fieldId, kind, content: this.battleContent, boss, workshopKits: this.workshopKitModules, workshopBattle: this.workshopBattleModules, mods: this.mods, morphPairing: this.morphPairing, cs: this.cs, vs: this.vs });
+    // `fieldId` is part of the 通缉令 key (hextech.enemyHexWantedKey): the pick is derived from (seed, round, fieldId), so
+    // this path and 复算 / 真跑 agree on the enemy — see that function's header.
+    const spec = buildBattleSpec({ ...withEnemyHexes(this, { ...opts, fieldId }), battleId, fieldId, kind, content: this.battleContent, boss, workshopKits: this.workshopKitModules, workshopBattle: this.workshopBattleModules, mods: this.mods, morphPairing: this.morphPairing, cs: this.cs, vs: this.vs });
     let total = 0;
     for (const x of spec.spawns) if (x && x.tag !== 'boss' && x.tag !== 'part' && x.countInTotal !== false) total += Math.max(1, Math.floor(Number(x.count) || 1));
     return {

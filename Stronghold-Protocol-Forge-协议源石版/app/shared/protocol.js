@@ -812,7 +812,9 @@ export const C2S = {
   // 协议源石 (Hextech): the player's pick among their own offered hexes, and the one reroll of that offer.
   // Added by the hextech port; the engine has no such message of its own.
   'g.hex': { idx: (v) => isInt(v, 0, 5) },
-  'g.hexReroll': {},
+  // `idx` (optional, 业主 2026-10-20「把刷新按钮改成分别刷新每个」): replace ONLY that slot of the offer. Absent keeps the
+  // original meaning — replace all three — so an older client's request stays byte-for-byte the one it always sent.
+  'g.hexReroll': { idx: (v) => isInt(v, 0, 5), $optional: ['idx'] },
   // 测试场 (the owner's request of 2026-10-11): the in-match test panel of a room created with `room.create.test`. The
   // intents below are every one refused outside a test field (ERR.WRONG_PHASE) and only for the requesting player:
   //   g.testFunds { amount }    add that many funds (1…1,000,000; the panel buttons send 10 / 100 / 1000)

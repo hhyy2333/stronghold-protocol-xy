@@ -15,6 +15,7 @@
 import { sumEnemyMods, rollOffers, fissionBondIds as sharedFissionBondIds, fissionCap, fissionMul } from '../../shared/hextech.js';
 import { protocolLevelEnemyMods } from '../../shared/protocolLevels.js';
 import { hasBattlePart, DEBT_EFFECT_KEY } from '../sim/content/hextech.js';
+import { createRng, deriveSeed } from '../sim/rng.js';
 import { bossPoolHp } from './finalAssault.js';
 
 /** The client's view of one offered hex. No art field: the card face is the rarity's tier (client-side, from the local
@@ -450,13 +451,27 @@ export function fissionBondIds(ps, cap, bonds = null) {
   return sharedFissionBondIds(bonds || (ps && ps.bonds) || {}, cap, (ps && ps.bondOrder) || null);
 }
 
-/** 悬赏倍增: what a player's bounty income is multiplied by at settlement (1 without the hex). */
+/**
+ * 悬赏倍增: what a player's BOUNTY income is multiplied by at settlement (1 without the hex).
+ *
+ * 业主 2026-10-20：「协议『悬赏倍增』无效」。它和 过路费 是同一个病：reader 在，**没有任何结算路径调用它** ——
+ * `settle.js` / `bossRounds.js` 把悬赏资金原样记进 `pendingFunds`，这张卡自 0.19.x 起就只是一条 ref。现在两条结算
+ * 路径都乘一次（`bountyCoins * bountyMultiplier(ps)`）。
+ *
+ * 乘的是**悬赏**那部分：击杀悬赏（`r.coins`，Battle 的击杀赏金）+ 完美作战悬赏的 payout。它**不**乘 过路费（敌方卡发
+ * 的钱）、也不乘 战功簿 / 契约 / rebate 这类自己已经算好数的资金来源 —— 卡面说的是「你获得的悬赏资金」，不是「你获得
+ * 的所有资金」。 [ASSUMED: 1) 只乘悬赏（击杀 + 完美）而不是全部进账，理由如上；2) 取最高的那一张（抽卡不重复，这是
+ * 数据集里有两张时的安全网）；3) 非整数按截断处理，与其它资金口径一致。]
+ * @param {any} ps
+ * @returns {number} 1 without the hex
+ */
 export function bountyMultiplier(ps) {
+  let best = 1;
   for (const e of (ps && ps.effects) || []) {
     const spec = e && e.params && e.params.bountyMul;
-    if (Number.isFinite(spec) && spec > 1) return Math.trunc(spec);
+    if (Number.isFinite(spec) && spec > best) best = Math.trunc(spec);
   }
-  return 1;
+  return best;
 }
 
 /** 整装待发: how many equipment an operator of this player carries (the data's 2 without the hex). */
@@ -575,9 +590,10 @@ function ownedEnemyHexes(m) {
  * Returns undefined when the enemy side does not own the card or the data carries no usable bounty.
  * @param {import('./Match.js').Match} m
  * @param {number} [round] the battle's round (defaults to the match's own round)
+ * @param {string|null} [fieldId] the battle's own field id (`n:p_0`, `u`, …) — with the round it seeds the pick
  * @returns {string|undefined} an enemyKey
  */
-export function enemyHexWantedKey(m, round = null) {
+export function enemyHexWantedKey(m, round = null, fieldId = null) {
   const hex = ownedEnemyHexes(m).find((h) => h.verb === 'wanted');
   if (!hex) return undefined;
   const p = hex.params || {};
@@ -607,7 +623,13 @@ export function enemyHexWantedKey(m, round = null) {
   // or not, so a replay / re-computation can never end up on a different draw because of a round's timing.
   const pool = [...early, ...late].sort();   // deterministic order before the draw
   if (!pool.length) return undefined;
-  const i = Math.min(pool.length - 1, Math.floor(m.rngWaves() * pool.length));
+  // The draw is DERIVED from (seed, round, fieldId), not taken off any shared stream.
+  // 业主 2026-10-20：这条以前抽 `m.rngWaves`，而它**每场战斗抽一次** —— 一场比赛里战斗的个数两条执行路径并不一样
+  // （客户端战斗每个场地建一份 spec，还有接管与复算），于是同一颗种子在两条路上的波次流从第一次通缉令起就错开了：
+  // 客户端一局和服务端一局的出怪不一样，SP_VERIFY 也会把诚实战报判成不一致。抽法改成纯函数后，
+  // 预览 / 真打 / 接管 / 复算拿到的是同一个敌人，也不再消耗波次流（`rngWaves` 回到「一波一次」）。
+  const rng = createRng(deriveSeed(m.seed, `wanted:${r}:${typeof fieldId === 'string' ? fieldId : ''}`));
+  const i = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
   const picked = pool[i];
   // the early-round cap: anything over `cap` is off the table until the battle round passes earlyRounds. Re-read the
   // SAME draw against the admitted pool — still no extra rng call (the same index, wrapped) so determinism is untouched.

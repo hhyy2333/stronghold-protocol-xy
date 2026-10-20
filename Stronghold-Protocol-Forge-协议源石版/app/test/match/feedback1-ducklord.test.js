@@ -169,13 +169,21 @@ test('#7 pair fields of the Final Assault and the Hidden Core (real match path):
         assert.equal(f.players.length, 2);
         const wave = m.bossWaves.find((w) => w.players.join() === f.players.join()).wave;
         const sum = (list) => list.reduce((n, sp) => n + (sp.count || 1), 0);
-        // The enemy side's 协议源石 ride along (DESIGN §29): 虫群 (`countAdd`) adds that many enemies to every normal
-        // group, so compare against the wave PLUS that fold rather than the raw wave. With these seeds the enemy draws
-        // ehex_swarm, which is why the counts legitimately differ by 4 per group.
+        // The enemy side's 协议源石 ride along (DESIGN §29): 虫群 (`countAdd`) adds enemies to every normal group and
+        // 精英化 (`countSub`) takes one away, so compare against the wave PLUS that fold rather than the raw wave.
+        // The fold applies to BOSS fields too (bossRounds.js) — it used to stop at the normal ones, so the preparation
+        // preview and the fight disagreed; the fold is the same single `applyEnemyHexes` call every path makes.
         const hexMods = enemyHexMods(m);
         const add = Number.isFinite(hexMods.countAdd) ? Math.max(0, Math.trunc(hexMods.countAdd)) : 0;
-        const expected = wave.spawns.reduce((n, sp) => n + (sp.count || 1) + (sp.tag === 'boss' || !sp.mods ? 0 : add), 0);
-        assert.equal(sum(f.opts.spawns.filter((sp) => sp.tag !== 'bounty')), expected, `${kind}: same enemy count (虫群 +${add}/group)`);
+        const sub = Number.isFinite(hexMods.countSub) ? Math.max(0, Math.trunc(hexMods.countSub)) : 0;
+        // mirrors applyEnemyHexes: a leader and a group without mods are left alone, and a group never drops below 1
+        const fold = (sp) => {
+          const c = sp.count || 1;
+          if (sp.tag === 'boss' || !sp.mods) return c;
+          return Math.max(1, c + add - sub);
+        };
+        const expected = wave.spawns.reduce((n, sp) => n + fold(sp), 0);
+        assert.equal(sum(f.opts.spawns.filter((sp) => sp.tag !== 'bounty')), expected, `${kind}: same enemy count (虫群 +${add} / 精英化 −${sub} per group)`);
         assert.ok(f.opts.spawns.some((sp) => sp.tag === 'boss'), 'the leader stays');
         const ducks = f.opts.spawns.filter((sp) => DUCKS.includes(sp.enemyKey));
         for (const d of ducks) {

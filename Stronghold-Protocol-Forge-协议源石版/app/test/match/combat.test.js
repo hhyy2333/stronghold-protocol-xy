@@ -5,6 +5,7 @@ import { PHASE } from '../../shared/constants.js';
 import { GEO } from '../../shared/constants.js';
 import { FakeBattle } from './fakeBattle.js';
 import { DATA, makeMatch, give, checkInvariants, chessOfTier, legalTileFor } from './harness.js';
+import { applyHex, bountyMultiplier } from '../../server/match/hextech.js';
 
 const normalFields = () => FakeBattle.instances.filter((b) => b.kind === 'normal');
 
@@ -85,6 +86,38 @@ test('SETTLE: the enemy’s 过路费 pays 1 fund per counted leak, capped at 5 
   assert.equal(a.pendingFunds, 0, 'the bank is consumed');
   h.drive(() => m.phase === PHASE.SETTLE);
   assert.equal(a.pendingFunds, 5, '9 leaks still pay only 5 — the per-battle cap');
+  checkInvariants(m);
+  m.dispose();
+});
+
+test('SETTLE: 悬赏倍增 ×3 on the bounty half, and nothing else (业主 2026-10-20)', () => {
+  // Dead code until now: `bountyMultiplier` existed, nothing called it, so owning the card did nothing at all.
+  const h = makeMatch({
+    mode: 'coop', humans: 2, seed: 64, fake: true,
+    script: (b) => (b.round === 1 ? { coins: { p_0: 2, p_1: 2 } } : {}),
+  }).start();
+  const m = h.m;
+  h.toPrep(1);
+  const [a, b] = [h.ps('p_0'), h.ps('p_1')];
+  applyHex(m, a, m.gd.hex('hex_bountytriple'));
+  assert.equal(bountyMultiplier(a), 3);
+  assert.equal(bountyMultiplier(b), 1, 'the teammate has no card');
+  h.drive(() => m.phase === PHASE.SETTLE);
+  assert.equal(a.pendingFunds, 6, '2 bounty coins × 3');
+  assert.equal(b.pendingFunds, 2, 'the seat without the card is paid face value');
+  checkInvariants(m);
+  m.dispose();
+});
+
+test('SETTLE: 悬赏倍增 does NOT multiply 过路费 (the enemy card’s money is not a bounty)', () => {
+  const h = makeMatch({ mode: 'coop', humans: 2, seed: 65, fake: true, script: (b) => (b.round === 1 ? { leaks: { p_0: 3, p_1: 0 } } : {}) }).start();
+  const m = h.m;
+  h.toPrep(1);
+  const a = h.ps('p_0');
+  m.enemyHexes.push({ id: 'ehex_toll', round: 1 });
+  applyHex(m, a, m.gd.hex('hex_bountytriple'));
+  h.drive(() => m.phase === PHASE.SETTLE);
+  assert.equal(a.pendingFunds, 3, '3 leaked → 3 funds, not ×3');
   checkInvariants(m);
   m.dispose();
 });

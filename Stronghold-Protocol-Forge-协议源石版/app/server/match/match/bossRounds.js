@@ -12,7 +12,7 @@ import { buildBossWave, bountySpawns } from '../waves.js';
 import { pairPlayers, SharedBossPool, CreditPool, hiddenEligible, BOSS_HIT_STEPS } from '../finalAssault.js';
 // 协议源石那半（业主 2026-10-13）：领袖血池必须走 bossPoolHpFor —— 它把「总阶数 ÷ 人数 ÷ 2」的倍率一起算进去。
 // 本文件以前直接调 bossPoolHp(gd, id, n)，倍率那一半就丢了（移植时漏的 import）。
-import { bossPoolHpFor, enemyHexPayoutFor } from '../hextech.js';
+import { bossPoolHpFor, enemyHexPayoutFor, bountyMultiplier, applyEnemyHexes, matchEnemyMods } from '../hextech.js';
 import { FieldRunner, HeadlessPacer, syntheticResult, BOSS_SILENCE_MS, CATCHUP_TICKS_PER_INTERVAL } from '../fields.js';
 import { FLOW_TICKER_PRIORITY, BOSS_CLOCK_MS, DELAYS } from './common.js';
 
@@ -78,8 +78,12 @@ export class MatchBoss {
     this.fields = groups.map((g, i) => {
       const solo = this.isSolo || g.length === 1;
       const wave = reuse ? this.bossWaves[i].wave : buildBossWave(this.gd, this.rngWaves, this.factions, this.round, { bossId, solo }, this.stageId);
-      // one spawn list per field, shared by the field's players' onBattleStart handlers (edit it in place)
-      const spawns = wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined }));
+      // one spawn list per field, shared by the field's players' onBattleStart handlers (edit it in place).
+      // 协议源石敌方 hex 的 mods 半边（业主 2026-10-20）: a boss field used to build its list straight off the wave, so 虫群's
+      // countAdd / 精英化's countSub / the stat multipliers applied to every NORMAL round and to the preparation preview
+      // (views.nextEnemiesFor folds them for boss groups too) but NOT to the boss field itself — the preview said one
+      // thing, the fight did another. Folded here, the same single call the normal / 联防 paths use.
+      const spawns = applyEnemyHexes(wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined })), matchEnemyMods(this));
       // bounties with battles left (a multi-round card lasts MULTI_ROUND_BOUNTY_BATTLES) follow their player into the
       // boss field, on the player's half
       g.forEach((ps, j) => {
@@ -420,8 +424,12 @@ export class MatchBoss {
    * @param {boolean} perfect the player's own field was perfect and the team won (`_finishFinal`)
    */
   _settleBossBounties(ps, pp, perfect) {
-    let coins = Math.max(0, Math.trunc(Number(pp.coins) || 0));
-    if (perfect) for (const b of ps.bounties) if (b.card.payout === 'perfect') coins += b.card.coin;
+    // 悬赏倍增 (业主 2026-10-20): the same bounty-only multiplication settle.js does — a boss field's kill bounties
+    // and a perfect-payout card are 悬赏 too, so owning the card pays off here as well. 过路费 (below) keeps its own,
+    // unmultiplied number: it is the ENEMY card's money, not a bounty.
+    const bounty = (v) => Math.max(0, Math.trunc(Number(v) || 0)) * bountyMultiplier(ps);
+    let coins = bounty(pp.coins);
+    if (perfect) for (const b of ps.bounties) if (b.card.payout === 'perfect') coins += bounty(b.card.coin);
     // 过路费 (业主 2026-10-20): a boss field pays it too — the card names no exception, and this is the same coin
     // channel (pendingFunds, spent in the Hidden Core's prep). A leader / 器物 leak that costs no LP pays nothing.
     coins += enemyHexPayoutFor(this, pp.leaked);

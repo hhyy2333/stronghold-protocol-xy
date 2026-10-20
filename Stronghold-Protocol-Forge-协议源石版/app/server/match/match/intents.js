@@ -43,7 +43,7 @@ export class MatchIntents {
         ? this.pickPersonalChoice(ps, msg.idx, msg.choiceId)
         : this.pickCard(ps, msg.idx);
       case 'g.hex': return this.pickHex(ps, msg.idx);
-      case 'g.hexReroll': return this.rerollHex(ps);
+      case 'g.hexReroll': return this.rerollHex(ps, msg.idx);
       // 测试场 (opts.test, the owner's request of 2026-10-11): the test panel's intents — accepted in a test field in
       // ANY phase (the tester changes the field while watching), refused with WRONG_PHASE everywhere else. The two
       // `testEnemyHex*` ones also require a single human seat: the enemy side is match-global state (testField.js).

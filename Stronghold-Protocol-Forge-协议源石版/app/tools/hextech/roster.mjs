@@ -87,9 +87,13 @@
  * server/client lookup and every saved match uses, so a rename here is display-only.
  */
 export const RARITIES = [
-  { id: 'silver', name: '1阶', weight: 0.60, tier: 1 },
-  { id: 'gold', name: '2阶', weight: 0.30, tier: 2 },
-  { id: 'prismatic', name: '3阶', weight: 0.10, tier: 3 },
+  // 业主 2026-10-20：「增加2，3阶的抽取概率」。这一轮把 2 阶 / 3 阶的比重各抬一级（原 0.60 / 0.30 / 0.10）：
+  // 2 阶 30% → 38%，3 阶 10% → 16%，1 阶自然从 60% 降到 46%（三个权重仍然和 = 1，build-hextech 会校验）。
+  // 这一版的卡池本身已经明显偏重 2/3 阶（108 张我方卡里 1 阶只有约三成），所以抬的是**抽到那一档**的概率，
+  // 不是卡池构成。
+  { id: 'silver', name: '1阶', weight: 0.46, tier: 1 },
+  { id: 'gold', name: '2阶', weight: 0.38, tier: 2 },
+  { id: 'prismatic', name: '3阶', weight: 0.16, tier: 3 },
 ];
 
 /** When a draft happens, how many options, how many rerolls, and how the enemy side is fed. */

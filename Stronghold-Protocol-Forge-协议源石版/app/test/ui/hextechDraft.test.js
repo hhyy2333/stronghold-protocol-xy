@@ -92,6 +92,23 @@ test('HexCard renders a card (and a compact one for the enemy row)', () => {
   assert.ok(!JSON.stringify(compact).includes('hxcard__confirm'));
 });
 
+test('分别刷新 (业主 2026-10-20): each card can carry its own reroll control, as a SIBLING of the card button', () => {
+  const rerolled = [];
+  const card = HexCard({ hex: HEX_VIEW.offers.p_0[1], onClick: () => {}, onReroll: () => rerolled.push('r'), rerollTitle: '只刷新这一张（剩余 1 次）' });
+  // the slot wraps the card and the control: a <button> inside a <button> is invalid HTML, and the inner click would
+  // also arm / pick the card
+  const markup = JSON.stringify(card);
+  assert.ok(markup.includes('hxcard-slot'), 'the card is wrapped in its slot');
+  assert.ok(markup.includes('hxcard__reroll'), 'the card carries its own reroll control');
+  assert.ok(markup.includes('data-testid":"hex-reroll-1') || markup.includes('hex-reroll-1'), 'keyed by the slot index');
+  assert.ok(markup.includes('只刷新这一张'), 'its tooltip names the single-card reroll');
+  // the control is NOT a child of the card button: the card itself is still the pick target
+  assert.equal(countVnodes(card, 'button') > 1, true, 'card button + reroll button are two siblings');
+  // without a handler the control is not rendered at all (a picked / finished draft shows no reroll)
+  assert.ok(!JSON.stringify(HexCard({ hex: HEX_VIEW.offers.p_0[1], onClick: () => {} })).includes('hxcard__reroll'));
+  assert.ok(!JSON.stringify(HexCard({ hex: HEX_VIEW.offers.p_0[1] })).includes('hxcard__reroll'), 'a display-only card has none');
+});
+
 test('the art lookups fall back to null without the local-client manifest (the drawn plate / glyph then draw)', () => {
   assert.equal(rarityTierArt('gold'), null);
   assert.equal(refreshIconUrl(), null);

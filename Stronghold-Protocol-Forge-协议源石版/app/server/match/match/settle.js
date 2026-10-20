@@ -10,7 +10,7 @@ import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 import { onSettle, resetRoundCounters } from '../botEmotes.js';
 import { creditedKillsOf } from '../../sim/spec.js';
-import { bankThiefPenalty, enemyHexPayoutFor } from '../hextech.js';
+import { bankThiefPenalty, enemyHexPayoutFor, bountyMultiplier } from '../hextech.js';
 
 export class MatchSettle {
   settle(plan, uniteResult) {
@@ -64,11 +64,17 @@ export class MatchSettle {
       };
       mergeUnits(r.unitStats);
       if (r.perfect !== false && counted === 0) ps.stats.perfectRounds++;
-      // bounty coins (own battle + unite kills) are credited to the next prep
-      let coins = Math.max(0, Math.trunc(Number(r.coins) || 0));
+      // bounty coins (own battle + unite kills) are credited to the next prep.
+      // 悬赏倍增 (业主 2026-10-20): the BOUNTY half of this settlement is multiplied by the card's number. The reader
+      // existed since the card landed but NOTHING called it, so owning 悬赏倍增 only ever put a ref in the effects
+      // column — 「无效」. Everything that is not a bounty (过路费's leak money below, a card's own rebate) is added
+      // AFTER this, so it keeps its own number: the card reads 「你获得的悬赏资金」.
+      const bountyMul = bountyMultiplier(ps);
+      const bounty = (v) => Math.max(0, Math.trunc(Number(v) || 0)) * bountyMul;
+      let coins = bounty(r.coins);
       const up = uniteResult && uniteResult.perPlayer && uniteResult.perPlayer[ps.playerId];
       if (up) {
-        coins += Math.max(0, Math.trunc(Number(up.coins) || 0));
+        coins += bounty(up.coins);
         ps.stats.dmgDealt += Number(up.damageDealt) || 0;
         ps.stats.kills += Number(up.killed) || 0;
         // 本局累计伤害统计: the 联防 field's own per-unit numbers join the player's match-long totals (round.js _addCumStats).
@@ -79,7 +85,7 @@ export class MatchSettle {
       }
       ps.creditedKills += creditedKillsOf(r) + creditedKillsOf(up);
       // perfect-payout bounties (战术特训): own phase perfect
-      for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += b.card.coin;
+      for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += bounty(b.card.coin);
       // 过路费 (业主 2026-10-20): the enemy card pays for what leaked — the same coin channel the bounties use (next
       // prep's pendingFunds), capped per battle. Counted off the battle's OWN `leaked` list so the LP charge and the
       // payment always speak about the same enemies (a 器物 / 首领漏怪 costs no LP and therefore buys no funds).

@@ -96,7 +96,7 @@ export function withEnemyHexes(owner, opts) {
   // every path that comes through here carries the round in its options (真跑 `_normalOpts` / bossRounds / unite, and
   // 客户端 `_ccField`), so the pick is the same one the re-computation reads back out of the spec's flags.
   if (opts.flags && Array.isArray(opts.flags.enemyHexIds) && opts.flags.enemyHexIds.includes('ehex_wanted')) {
-    const wanted = typeof enemyHexWantedKey === 'function' ? enemyHexWantedKey(owner, opts.round) : undefined;
+    const wanted = typeof enemyHexWantedKey === 'function' ? enemyHexWantedKey(owner, opts.round, opts.fieldId) : undefined;
     if (wanted) opts.flags = { ...opts.flags, enemyHexWanted: wanted };
   }
   return opts;

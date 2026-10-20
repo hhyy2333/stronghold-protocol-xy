@@ -712,6 +712,27 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
    (`toolbtn toolbtn--amber`, game-shop.css — the shop bar's): only its badge differs. */
 .hxov__reroll .hex { --hex-h: .3rem; }
 
+/* 分别刷新 (业主 2026-10-20「把刷新按钮改成分别刷新每个」): each card sits in its own slot so it can carry a small refresh
+   control at its corner. The control is a SIBLING of the card button (never nested — a button inside a button is
+   invalid, and the inner click would also arm/pick the card). It is small and amber-tinted so it reads as a
+   sub-action of the card, not a second card; the overlay passes no handler once the player has picked, so it goes
+   away with the draft's own interactivity. */
+.hxcard-slot { position: relative; display: flex; min-width: 0; }
+.hxcard-slot > .hxcard { flex: 1; min-width: 0; }
+.hxcard__reroll {
+  position: absolute; top: -.14rem; right: -.14rem; z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: .44rem; height: .44rem; padding: 0; cursor: pointer;
+  border: 1px solid var(--amber, #e4bd60); border-radius: 50%;
+  background: rgba(12, 16, 20, .92); color: var(--amber, #e4bd60);
+  box-shadow: 0 .04rem .18rem rgba(0, 0, 0, .55);
+  transition: transform .12s ease, background .12s ease;
+}
+.hxcard__reroll .icon, .hxcard__reroll svg { width: .24rem; height: .24rem; }
+.hxcard__reroll:hover { background: var(--amber, #e4bd60); color: #0c1014; transform: rotate(-18deg); }
+.hxcard__reroll:active { transform: scale(.92); }
+@media (max-width: 900px) { .hxcard__reroll { width: .5rem; height: .5rem; top: -.12rem; right: -.12rem; } }
+
 /* the enemy's accumulated hexes + the rule line under the cards */
 .hxov__foot { flex: none; display: flex; align-items: center; gap: .24rem; padding-top: .14rem; border-top: 1px solid var(--line); }
 .hxov__enemy { display: inline-flex; align-items: center; gap: .12rem; }

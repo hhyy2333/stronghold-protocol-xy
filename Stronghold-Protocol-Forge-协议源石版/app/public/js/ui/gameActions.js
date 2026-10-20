@@ -123,7 +123,8 @@ export const actions = {
   // 协议源石 (Hextech, DESIGN §29): the local client's own cues (hextech/audio) play when installed; otherwise the
   // usual pick / refresh sounds (SUCCESS_SFX above) do.
   hex: (idx) => act('g.hex', { idx }, { sfx: 'pick', sfxUrl: hexCue('selectGold') }),
-  hexReroll: () => act('g.hexReroll', {}, { sfx: 'refresh', sfxUrl: hexCue('reroll') }),
+  // idx = 只刷新那一张（业主 2026-10-20「把刷新按钮改成分别刷新每个」）；不传 = 整批换三张（旧行为，请求逐字节不变）
+  hexReroll: (idx) => act('g.hexReroll', idx === undefined ? {} : { idx }, { sfx: 'refresh', sfxUrl: hexCue('reroll') }),
   // 测试场 (the owner's request of 2026-10-11): the test panel's own intents — refused with WRONG_PHASE outside a test
   // field (server/match/match/testField.js `_testGate`), so a stale panel cannot change a normal match. The enemy-side
   // pair edits match-global state, so the server also requires a single human seat (`_testGateEnemy`).

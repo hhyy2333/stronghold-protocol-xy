@@ -67,21 +67,39 @@ export class MatchHexDraft {
     return OK;
   }
 
-  /** g.hexReroll {} — one reroll per player per draft; the pick is not consumed by it. */
-  rerollHex(ps) {
+  /**
+   * g.hexReroll { idx? } — one reroll per player per draft; the pick is not consumed by it.
+   *
+   * 业主 2026-10-20「把刷新按钮改成分别刷新每个」: with `idx` only that slot of the offer is replaced (the other two
+   * cards stay), and it costs the same one reroll. Without `idx` it is the original whole-batch reroll — the request an
+   * older client sends, byte for byte. A card the player already owns or is currently offered never comes back either
+   * way (the same 2026-10-16 rule as below).
+   * @param {any} ps
+   * @param {number} [idx] the slot to replace, absent = the whole offer
+   */
+  rerollHex(ps, idx = undefined) {
     if (this.phase !== PHASE.HEX_DRAFT || !this.hex) return fail(ERR.WRONG_PHASE);
     if (!ps.alive) return fail(ERR.ELIMINATED);
     if (this.hex.picks[ps.playerId] != null) return fail(ERR.ALREADY);
     if (!(this.hex.rerolls[ps.playerId] > 0)) return fail(ERR.NO_REROLL);
+    // the slot is checked BEFORE the reroll is spent: a bad index must not cost the player their one reroll
+    if (Number.isInteger(idx) && (idx < 0 || idx >= this.hexOfferOf(ps.playerId).length)) return fail(ERR.BAD_TARGET);
     this.hex.rerolls[ps.playerId] -= 1;
     const gd = this.gd;
     // 刷新要把**这一批**也排除掉（业主 2026-10-16「刷新会有重复海克斯」）：`hexIdsOf` 只是玩家**已经拥有**的，
     // 不含当前 offer 的三张。只传 owned 的话，新抽的三张可能又是刚被换掉的那几张 —— 池子小的时候（测试/少人数局）
     // 几乎必然如此（实测：3 张卡的池子，20 个种子里 5 次刷出与原来完全相同的三张）。
     const offered = this.hexOfferOf(ps.playerId);
-    this.hex.offers[ps.playerId] = rollOffers(this.rngHex, {
-      pool: gd.hexPlayerPool(), owned: [...hexIdsOf(ps), ...offered], weights: gd.hexWeights(), count: gd.hexOfferCount(),
-    });
+    const pool = gd.hexPlayerPool();
+    const weights = gd.hexWeights();
+    if (Number.isInteger(idx)) {
+      // one slot: everything else about the batch is kept, so the other two cards must be excluded from the draw as well
+      const next = offered.slice();
+      next[idx] = rollOffers(this.rngHex, { pool, owned: [...hexIdsOf(ps), ...offered], weights, count: 1 })[0] || next[idx];
+      this.hex.offers[ps.playerId] = next;
+    } else {
+      this.hex.offers[ps.playerId] = rollOffers(this.rngHex, { pool, owned: [...hexIdsOf(ps), ...offered], weights, count: gd.hexOfferCount() });
+    }
     this.markPrivate(ps);
     this.markPublic();
     return OK;

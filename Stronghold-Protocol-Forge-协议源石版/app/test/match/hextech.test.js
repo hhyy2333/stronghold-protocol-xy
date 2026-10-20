@@ -75,6 +75,45 @@ test('the draft runs at R1/R6/R11, offers three hexes per player and allows exac
   m.dispose();
 });
 
+test('g.hexReroll { idx } replaces only that slot (业主 2026-10-20「把刷新按钮改成分别刷新每个」)', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 12, fake: true });
+  h.start();
+  toHexDraft(h, 1);
+  const m = h.m;
+  const before = m.hexOfferOf('p_0').slice();
+  assert.equal(before.length, 3);
+  const rerolls0 = m.hex.rerolls.p_0;
+  // an out-of-range slot is refused BEFORE the reroll is spent (checked while one is still available)
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 9 }), { error: 'BAD_TARGET' });
+  assert.equal(m.hex.rerolls.p_0, rerolls0, 'a refused slot costs nothing');
+  assert.deepEqual(m.hexOfferOf('p_0'), before, 'and changes nothing on the board');
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 1 }), { ok: true });
+  const after = m.hexOfferOf('p_0').slice();
+  assert.equal(m.hex.rerolls.p_0, rerolls0 - 1, 'a single-slot reroll costs one reroll');
+  assert.equal(after.length, 3, 'the offer still holds three cards');
+  assert.equal(new Set(after).size, 3, 'and three distinct ones');
+  assert.equal(after[0], before[0], 'slot 0 is untouched');
+  assert.equal(after[2], before[2], 'slot 2 is untouched');
+  assert.notEqual(after[1], before[1], 'only slot 1 was replaced');
+  assert.ok(!before.includes(after[1]), 'and the replaced card never comes back as the new one');
+  // the per-draft reroll is shared: the whole-batch form (the request older clients send, no idx) now has none left
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll' }), { error: 'NO_REROLL' });
+  m.dispose();
+});
+
+test('the whole-batch g.hexReroll (no idx) still replaces all three — the request an older client sends', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 13, fake: true });
+  h.start();
+  toHexDraft(h, 1);
+  const m = h.m;
+  const before = m.hexOfferOf('p_0').slice();
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll' }), { ok: true });
+  const after = m.hexOfferOf('p_0').slice();
+  assert.deepEqual(after.filter((id) => before.includes(id)), [], 'every card of the old batch is gone');
+  assert.equal(new Set(after).size, 3, 'and the new batch is three distinct cards');
+  m.dispose();
+});
+
 test('one enemy hex per draw, of a rarity a player picked, never a repeat, and it persists across rounds', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, bots: 0, seed: 23, fake: true });
   h.start();
@@ -1277,42 +1316,46 @@ test('通缉令: the first five rounds never draw a 4- or 5-coin bounty (业主 
   const m = h.m;
   m.enemyHexes.push({ id: 'ehex_wanted', round: 1 });
   const priced = bountyCoins(m.gd);
-  // the picker draws once per battle, so a spread of seeds per round shows the cap without pretending to be exhaustive
+  // the pick is derived from (seed, round, fieldId) — one battle each — so a spread of seeds per round shows the cap
   for (const round of [1, 2, 3, 4, 5]) {
     for (let seed = 1; seed <= 40; seed++) {
-      const mt = { gd: m.gd, round, enemyHexes: m.enemyHexes, rngWaves: createRng(seed * 7919 + round) };
-      const key = enemyHexWantedKey(mt, round);
-      const coin = priced.get(key);
-      assert.ok(coin >= 1 && coin <= 3, 'R' + round + ' picked ' + key + ' (' + coin + ' 块)');
+      const mt = { gd: m.gd, round, seed, enemyHexes: m.enemyHexes };
+      for (const fieldId of ['n:p_0', 'n:p_1', 'u']) {
+        const key = enemyHexWantedKey(mt, round, fieldId);
+        const coin = priced.get(key);
+        assert.ok(coin >= 1 && coin <= 3, 'R' + round + ' ' + fieldId + ' picked ' + key + ' (' + coin + ' 块)');
+      }
     }
   }
   // ...and R6 opens the 4/5-coin bounties again
   const seen = new Set();
   for (let seed = 1; seed <= 400; seed++) {
-    const mt = { gd: m.gd, round: 6, enemyHexes: m.enemyHexes, rngWaves: createRng(seed) };
-    seen.add(priced.get(enemyHexWantedKey(mt, 6)));
+    seen.add(priced.get(enemyHexWantedKey({ gd: m.gd, round: 6, seed, enemyHexes: m.enemyHexes }, 6, 'n:p_0')));
   }
   assert.ok([...seen].some((c) => c > 3), 'R6 can draw a 4/5 块 bounty, saw ' + [...seen].sort().join());
   m.dispose();
 });
 
-test('通缉令: the BATTLE round decides the cap, and a capped round still advances the stream once', () => {
+test('通缉令: the BATTLE round decides the cap, and the pick is a pure function of (seed, round, field)', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 47, fake: true });
   h.start();
   const m = h.m;
   m.enemyHexes.push({ id: 'ehex_wanted', round: 1 });
   const priced = bountyCoins(m.gd);
-  const at = (round) => { const mt = { gd: m.gd, round, enemyHexes: m.enemyHexes, rngWaves: createRng(99) }; return enemyHexWantedKey(mt, round); };
+  const at = (round, fieldId = 'n:p_0') => enemyHexWantedKey({ gd: m.gd, round, seed: 99, enemyHexes: m.enemyHexes }, round, fieldId);
   // the same card drawn in R1 fights on: only the battle's own round matters
   for (const round of [1, 3, 5]) assert.ok(priced.get(at(round)) <= 3, 'R' + round + ' drew ' + at(round));
   assert.ok(priced.get(at(6)) >= 1, 'R6 still picks something');
-  // exactly one draw whether the cap applies or not (a replay / re-computation must not desync)
-  const draws = (round) => { let n = 0; const mt = { gd: m.gd, round, enemyHexes: m.enemyHexes, rngWaves: () => { n++; return 0.5; } }; enemyHexWantedKey(mt, round); return n; };
-  assert.equal(draws(3), 1, 'a capped round draws once');
-  assert.equal(draws(9), 1, 'an uncapped round draws once');
-  const a = { gd: m.gd, round: 4, enemyHexes: m.enemyHexes, rngWaves: createRng(123) };
-  const b = { gd: m.gd, round: 4, enemyHexes: m.enemyHexes, rngWaves: createRng(123) };
-  assert.equal(enemyHexWantedKey(a, 4), enemyHexWantedKey(b, 4), 'same seed + round -> same pick');
+  // 业主 2026-10-20: the pick must be a PURE function of (seed, round, fieldId) — it used to draw off `rngWaves`, which
+  // is consumed once per battle and therefore diverged between the client-run and the server-run paths. Nothing is
+  // drawn off the match at all now: a stand-in whose rngWaves would blow up proves the split.
+  const mt = { gd: m.gd, round: 4, seed: 123, enemyHexes: m.enemyHexes, rngWaves: () => { throw new Error('the wanted pick must not touch rngWaves'); } };
+  const first = enemyHexWantedKey(mt, 4, 'n:p_0');
+  assert.equal(enemyHexWantedKey({ ...mt }, 4, 'n:p_0'), first, 'same seed + round + field -> same pick');
+  // no fieldId is its own (empty) field id — a different salt, but just as determined
+  assert.equal(enemyHexWantedKey({ ...mt }, 4), enemyHexWantedKey({ ...mt }, 4, ''), 'a missing fieldId === the empty one');
+  // a different field is allowed to draw differently (each battle is its own pick), but always from the same pool
+  for (const fieldId of ['n:p_0', 'n:p_1', 'n:ai_0', 'u', 'u0', 'U1']) assert.ok(priced.has(enemyHexWantedKey(mt, 4, fieldId)), fieldId);
   m.dispose();
 });
 
