@@ -99,6 +99,39 @@ test('身负重担 + 反击装甲: one physical hit stays bounded (no ping-pong 
   h.invariants();
 });
 
+test('身负重担 + 天马之枪: the extra TRUE damage of the item set does not chain either', () => {
+  // 天马之盔 + 天马之枪 = every damage instance the carrier deals also deals 30 % ATK true damage (tags ['item', …]).
+  // That proc used to re-enter 身负重担 the same way 反击装甲 did; the engine now marks a nested instance
+  // (`dmg.chained`) and the card skips it, so the chain stops after one round instead of running to the depth cap.
+  const PEGASUS = ['chess_item_5_09_e_a', 'chess_item_6_01_e_a'];
+  const h = makeBattle({
+    content: 'full',
+    defs: {
+      chess: { char_4064_mlynar: chessRec({ id: 'char_4064_mlynar', stats: { maxHp: 5000, atk: 1000, def: 300, res: 0, aspd: 10, bat: 1 }, skill: null }) },
+      enemies: { enemy_dummy: enemyRec({ key: 'enemy_dummy', hp: 1e7, atk: 0, def: 0, speed: 0 }) },
+    },
+    players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_heavyload')],
+      units: [{ uid: 1, kind: 'chess', chessId: 'char_4064_mlynar', row: 10, col: 4, dir: 'RIGHT', items: PEGASUS }] }],
+    enemies: [{ key: 'enemy_dummy', time: 0, pos: [10, 5] }],
+    autoFinish: false, captureNoisy: true, timeLimit: 60,
+  });
+  h.run(0.2);
+  const u = one(h);
+  const e = h.enemies()[0];
+  h.b.applyStatus(e, 'stun', { duration: 60, source: u });
+  h.b.applyStatus(e, 'slow', { duration: 60, source: u });
+  let instances = 0;
+  h.b.on('hit', () => { instances += 1; });
+  const before = e.hp;
+  h.b.dealDamage(u, e, h.b.makeDamage({ amount: 1000, type: 'phys', canDodge: false, isAttack: true }));
+  const loss = before - e.hp;
+  assert.ok(instances <= 6, `bounded instance count, got ${instances}`);
+  assert.ok(loss < 5000, `bounded damage, got ${Math.round(loss)}`);
+  // and the card still does its job: the extra 400 x 2 statuses is in there
+  assert.ok(loss > 1000 + 400 * 2 - 1, `the flat extra damage is still applied, got ${Math.round(loss)}`);
+  h.invariants();
+});
+
 // =====================================================================================================================
 // data set guard
 // =====================================================================================================================

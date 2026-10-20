@@ -346,10 +346,22 @@ function peekStats(unit) {
 
 /**
  * Full damage pipeline. Returns the HP actually removed (0 when dodged/cancelled/absorbed).
+ *
+ * 业主 2026-10-20「有的干员造成伤害时会额外造成伤害，还有天马套的额外真实伤害」: an instance dealt WHILE another is being
+ * resolved is a **rider / answer** (an item proc such as 天马之枪, a kit's extra hit, 反击装甲's riposte), not an
+ * independent hit. The two used to look identical, so content keyed on 「造成伤害」 (身负重担 …) answered the rider,
+ * whose damage answered IT again — a loop the hook-depth cap only truncated after dozens of instances (measured: one
+ * physical attack became 63 instances / 26,920 damage). A nested instance now carries `dmg.chained`, and content that
+ * means 「干员的攻击」 skips it via `isChained(dmg)`.
  */
 export function dealDamage(battle, source, target, dmgIn) {
   if (!target || !target.alive || target.removed || target.hidden || !target.deployed) return 0;
   const dmg = dmgIn && dmgIn._norm ? dmgIn : makeDamageInfo(dmgIn);
+  const depth = battle._dmgDepth || 0;
+  // stamped on the NORMALISED instance — that is the object every handler below sees
+  if (depth > 0) dmg.chained = true;
+  battle._dmgDepth = depth + 1;
+  try {
   if (dmg.type === 'element') return applyElement(battle, source, target, dmg);
   // 无来源 (dmg.sourceless, element bursts): hooks see no source — nothing keyed on "damage dealt by X" (ATK-up vs a
   // tag, 伤害提升 items / bonds / modules, reflect, "受到来自…的伤害") can recognise it; `credit` names the unit that still
@@ -411,7 +423,19 @@ export function dealDamage(battle, source, target, dmgIn) {
     battle.emit('hpDamage', hctx);
     if (Number.isFinite(hctx.amount)) final = Math.max(0, Math.min(final, hctx.amount));
   }
-  return applyHpLoss(battle, source, target, final, dmg, mark);
+    return applyHpLoss(battle, source, target, final, dmg, mark);
+  } finally {
+    battle._dmgDepth = depth;
+  }
+}
+
+/**
+ * Is this instance a rider/answer dealt inside another damage resolution? See `dealDamage`.
+ * @param {any} dmg
+ * @returns {boolean}
+ */
+export function isChained(dmg) {
+  return !!(dmg && dmg.chained);
 }
 
 /**
