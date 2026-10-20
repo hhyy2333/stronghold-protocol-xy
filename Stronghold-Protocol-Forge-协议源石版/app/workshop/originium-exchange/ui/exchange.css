@@ -33,10 +33,15 @@
 
 /* ---- 收起状态：贴右边缘的小标签 ---------------------------------------------------------------- */
 
+/* 业主 2026-10-22「手机上交易所会挡住状态栏」：屏幕右边缘是 HUD 自己的一列 —— `.gm__effects`（协议源石 / 效果磁贴）是
+   `right: .3rem`、每块 `.5rem`，所以那一列的左边缘在 `right: .8rem`。原来这个标签贴在 `right: 0`、宽度按 px 算，于是
+   正好压在那列磁贴上；手机横屏是 844px 宽、`≤640px` 那条媒体查询根本不生效，桌面窗口窄一点时同样会压住。
+   所以改成**任何宽度都停在那一列的左边**（横向固定间隙是唯一可靠的：列高取决于玩家有几个磁贴）。
+   离开屏幕边缘之后，右边框与四角圆角也要还原成完整的一颗。 */
 .oex__tab {
   position: fixed;
   top: 30%;
-  right: 0;
+  right: calc(.8rem + 6px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -44,8 +49,7 @@
   padding: 10px 7px;
   appearance: none;
   border: 1px solid rgba(240, 198, 116, 0.45);
-  border-right: 0;
-  border-radius: 10px 0 0 10px;
+  border-radius: 10px;
   background: linear-gradient(160deg, rgba(22, 18, 10, 0.96), rgba(12, 14, 12, 0.96));
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
   color: #f0c674;
@@ -423,6 +427,6 @@
     right: 10px;
   }
   .oex__panel { max-height: 62vh; }
-  .oex__tab { top: auto; bottom: 26%; padding: 9px 6px; }
+  .oex__tab { top: auto; bottom: 26%; padding: 9px 6px; }   /* right / 圆角已在基础规则里（避开 HUD 那列） */
   .oex__title { font-size: 14px; }
 }
