@@ -12,11 +12,11 @@
 // 引擎内部（同一份字节要在服务器上跑，就得自己带齐）。所有覆写都包在 try/catch 里：mod 的行情坏了最多是
 // 「交易所不动」，绝不允许把一局打崩。
 //
-// ===== 为什么股价是 3..8 块，以及为什么有杠杆（业主 2026-10-20 口径；基础价各减 2 之后的区间）=====
+// ===== 为什么股价是 1..6 块，以及为什么有杠杆（业主 2026-10-20 口径；基础价各减 2 之后的区间）=====
 // 引擎的经济是**每回合重置**的：`data/config.json` 的 `economy.income` 是 0/4/5/6/…/12，而且
 // `economy.leftoverFundsLost = true` —— 休整期结束时没用完的钱直接清零（只有 `band_cannot` 留得住）。
 // 所以「每股 100 块」在这个经济里是**一单都买不起**的摆设：整局总收入约 130，一单起步就 100。
-// 3..8 块让「每回合买 1~3 股」成为真选择；杠杆让「借钱建仓、以后用分红还」成为真赌注 ——
+// 1..6 块让「每回合买 1~3 股」成为真选择；杠杆让「借钱建仓、以后用分红还」成为真赌注 ——
 // 利息、维持担保比例、爆仓都在下面，全部由服务端裁决。
 
 /** 包 id（线上 `pack.msg` 的 `pack` 字段；必须与 pack.json 的 id 逐字相同）。 */
@@ -31,21 +31,24 @@ const PHASE_PREP = 'PREP';
 /**
  * 六支「盟约概念股」。`bond` 是官方 data/bonds.json 里的盟约 id —— 这里**只读**它判断冷热
  * （有几名玩家在玩这个盟约、叠了多少层），一个字节都不改官方数据。
- * `vol` 是个股波动倍率：越「故事多」的股票摆得越大。`base` 是开市价（3..8，理由见文件头）。
+ * `vol` 是个股波动倍率：越「故事多」的股票摆得越大。`base` 是开市价（1..6，理由见文件头）。
  *
- * 业主 2026-10-20：「股票的基础价格都减少 2」：原价 7/6/9/5/10/8 → 5/4/7/3/8/6（3~8 块一股）。
+ * 业主 2026-10-20：「股票的基础价格都减少 2」→ 7/6/9/5/10/8 → 5/4/7/3/8/6；同日「基础价格都再减 2」→
+ *   5/4/7/3/8/6 → **3/2/5/1/6/4**（1~6 块一股）。
+ *   注：KAZ 现在开市价正好等于 `PRICE_FLOOR`（1.00），也就是它**只会涨、不会跌** —— 这是价格地板撞上开市价的结果，
+ *   不是 bug；要让它能跌就把 PRICE_FLOOR 一起调低（业主没要求，先不动）。
  * 业主 2026-10-20（同日）：「波动率增加」：每一支的 `vol` 统一 ×1.5（0.95/1.1/1.2/1.25/0.85/1.3 →
  *   1.43/1.65/1.8/1.88/1.28/1.95），个股之间的相对性格不变（谢拉格最稳、阿戈尔最野）。
  *   每回合单股的噪声项是 ±7×`vol`%，所以这一档把噪声从 ±6.7~9.1% 抬到 ±10.0~13.7%；其余规则（手续费 1%、
  *   分红 1.2%、杠杆 2x/3x、70% 维持担保、单回合 ±25% 夹逼）一格没动。
  */
 const STOCKS = Object.freeze([
-  { id: 'yanShip', ticker: 'YAN', company: '尚蜀重工', bondName: '炎', base: 5, vol: 1.43 },
-  { id: 'victoriaShip', ticker: 'VIC', company: '伦蒂尼姆兵工', bondName: '维多利亚', base: 4, vol: 1.65 },
-  { id: 'siracusaShip', ticker: 'SIR', company: '叙拉古食品', bondName: '叙拉古', base: 7, vol: 1.8 },
-  { id: 'kazimierzShip', ticker: 'KAZ', company: '卡西米尔骑士竞技', bondName: '卡西米尔', base: 3, vol: 1.88 },
-  { id: 'kjeragShip', ticker: 'KJE', company: '谢拉格矿业', bondName: '谢拉格', base: 8, vol: 1.28 },
-  { id: 'egirShip', ticker: 'AEG', company: '阿戈尔深海科技', bondName: '阿戈尔', base: 6, vol: 1.95 },
+  { id: 'yanShip', ticker: 'YAN', company: '尚蜀重工', bondName: '炎', base: 3, vol: 1.43 },
+  { id: 'victoriaShip', ticker: 'VIC', company: '伦蒂尼姆兵工', bondName: '维多利亚', base: 2, vol: 1.65 },
+  { id: 'siracusaShip', ticker: 'SIR', company: '叙拉古食品', bondName: '叙拉古', base: 5, vol: 1.8 },
+  { id: 'kazimierzShip', ticker: 'KAZ', company: '卡西米尔骑士竞技', bondName: '卡西米尔', base: 1, vol: 1.88 },
+  { id: 'kjeragShip', ticker: 'KJE', company: '谢拉格矿业', bondName: '谢拉格', base: 6, vol: 1.28 },
+  { id: 'egirShip', ticker: 'AEG', company: '阿戈尔深海科技', bondName: '阿戈尔', base: 4, vol: 1.95 },
 ]);
 
 /**
@@ -156,7 +159,7 @@ export function stockHeat(holders, layers) {
 /**
  * 一支股票的下一价（纯函数，方便单测）：**两位小数**，夹在 1.00..60.00。
  *
- * 为什么不是整数：股价只有 3~8 块时，±7% 的噪声在整数上常常四舍五入成 0 —— 行情会变成一条直线，
+ * 为什么不是整数：股价只有 1~6 块时，±7% 的噪声在整数上常常四舍五入成 0 —— 行情会变成一条直线，
  * 「盟约冷热」也就没有意义了（实测：7 块的股票连涨 3 回合还是 7）。两位小数让 1 个百分点的波动看得见。
  */
 export function nextPrice(prev, pct) {
@@ -167,7 +170,7 @@ export function nextPrice(prev, pct) {
 /**
  * 分红（纯函数）：返回**万分之一元**的整数（不做最终取整）。
  *
- * 为什么要带上这个「分之一元」的单位：股价是 3~8 块、分红率 1.2%，5 元 × 12 股 × 1.2% = 0.72 元 ——
+ * 为什么要带上这个「分之一元」的单位：股价是 1~6 块、分红率 1.2%，5 元 × 12 股 × 1.2% = 0.72 元 ——
  * 直接 `floor` 就变成 0，**小额持仓永远吃不到分红**（2026-10-20 收益测试实测：满仓策略分红 0.0）。
  * 所以分红按这个最小单位算，由调用方**累计**（`dividendCarry`），攒够 1 元才真的发下去 ——
  * 小数不丢，长期收益仍然正确，而且同一份种子还是同一条账。
@@ -412,7 +415,7 @@ export function registerServer(host) {
         if (!st) {
           this._oexOpen();
           const opened = this._oexState();
-          this._oexTicker('【源石证交所】开市：六支盟约概念股挂牌，3~8 块一股，休整期可交易（支持 2x / 3x 杠杆）。');
+          this._oexTicker('【源石证交所】开市：六支盟约概念股挂牌，1~6 块一股，休整期可交易（支持 2x / 3x 杠杆）。');
           this._oexPushAll('open');
           if (opened) opened.openedRound = round;
           return;
