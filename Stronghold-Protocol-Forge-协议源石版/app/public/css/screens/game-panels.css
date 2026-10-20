@@ -720,7 +720,12 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .hxcard-slot { position: relative; display: flex; min-width: 0; }
 .hxcard-slot > .hxcard { flex: 1; min-width: 0; }
 .hxcard__reroll {
-  position: absolute; top: -.14rem; right: -.14rem; z-index: 2;
+  /* INSIDE the card's own box (业主 2026-10-20「显示不完全」): it used to sit at -.14rem/-.14rem, i.e. 7 px OUTSIDE the
+     slot — and `.spov__grid` is `overflow-y: auto`, so the grid clipped the top/right edge of every button. The card's
+     top-right corner is free (the name and the 阶位 chip are top-LEFT, the effect text is at the bottom), so the
+     control lives there instead of hanging off the side. `overflow: visible` on the slot keeps a hover rotation from
+     being clipped by the card itself, which is a SIBLING (a <button> cannot nest in one). */
+  position: absolute; top: .06rem; right: .06rem; z-index: 2;
   display: inline-flex; align-items: center; justify-content: center;
   width: .44rem; height: .44rem; padding: 0; cursor: pointer;
   border: 1px solid var(--amber, #e4bd60); border-radius: 50%;
@@ -835,7 +840,10 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 /* the 协议源石 draft grid: three LANDSCAPE tier cards (each takes its art's own ratio via --hx-tier-ar, ~4.3 × 3.4rem),
    so it uses the shell's full three-column width instead of the old portrait 2.9rem slivers. Cards do not stretch to the
    row (align-self: start on .has-tier), so the row is sized by content. */
-.hxov .spov__grid--3 { grid-template-columns: repeat(3, minmax(0, 4.3rem)); grid-template-rows: auto; gap: .3rem; margin-top: .2rem; }
+/* 业主 2026-10-20「把卡片下移」: the cards used to start 19 px under the header's last line, so the whole block read as
+   crowding the title (and the card's own corner control sat in that gap). The grid keeps its geometry and only gains
+   breathing room above it — the same value on a phone, scaled by the same rem the rest of the overlay uses. */
+.hxov .spov__grid--3 { grid-template-columns: repeat(3, minmax(0, 4.3rem)); grid-template-rows: auto; gap: .3rem; margin-top: .42rem; }
 
 /* the compact card of the enemy rows (top bar / 敌方情报 tab / the overlay footer): a miniature of the same card —
    the tier's 阶位 art, like the full card and the effects tile. The chip used to keep the mod's rune plate "because the
@@ -899,7 +907,7 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 @media (max-height: 431.98px) {
   .hxcard__name { font-size: calc(.23 * var(--t)); }
   .hxcard__desc { font-size: calc(.17 * var(--t)); -webkit-line-clamp: 4; }
-  .hxov .spov__grid--3 { grid-template-columns: repeat(3, minmax(0, 3.6rem)); gap: .2rem; margin-top: .1rem; }
+  .hxov .spov__grid--3 { grid-template-columns: repeat(3, minmax(0, 3.6rem)); gap: .2rem; margin-top: .26rem; }
   /* the tier face is landscape and short; on a phone the grid may have to scroll rather than clip the effect text */
   .hxcard.has-tier .hxcard__desc { font-size: calc(.16 * var(--t)); -webkit-line-clamp: 3; }
   .hxov__foot { gap: .14rem; padding-top: .1rem; }
