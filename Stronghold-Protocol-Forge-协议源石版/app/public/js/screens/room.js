@@ -60,7 +60,7 @@ import { data, useData } from '../data.js';
 import { chessAvatarUrl } from '../ui/assetUrls.js';
 import { CARD_PREF, cardOperators, seatPortrait } from '../ui/seatArt.js';
 import { C2S } from '../../../shared/protocol.js';
-import { difficultyInfo, ProtoCard, serverSeatMaxOf } from './lobby.js';
+import { difficultyInfo, ProtoCard, serverSeatMaxOf, rememberPlayedDifficulty } from './lobby.js';
 import { ModList, LAYER_TEXT, useModNames } from '../ui/modPicker.js';
 import { ProtocolScene } from '../ui/protocolScene.js';
 import { SearchPanel, FoundPanel } from '../ui/matchFlow.js';
@@ -860,8 +860,13 @@ export function RoomScreen() {
   const addBot = () => run('add', () => net.request('room.addBot', {}));
   const removeBot = (seat) => run(`rm${seat}`, () => net.request('room.removeBot', { seat }));
   // 「选择模拟协议」只改难度；协议等级在底栏的滑块上（owner 2026-10-18）。难度离开终极模拟时服务端会把等级归零。
+  // 业主 2026-10-20: 这是同盟模拟里**唯一**能改难度的地方（创建同盟那张卡上没有难度可选），所以它也要落盘 —— 从前只改
+  // 房间、不写偏好，于是下次再建房又回到 FUNNY（见 screens/lobby.js rememberPlayedDifficulty）。
   const setProtocol = (difficulty) => run('diff', async () => {
-    if (difficulty !== room.difficulty) await net.request('room.setDifficulty', { difficulty });
+    if (difficulty !== room.difficulty) {
+      await net.request('room.setDifficulty', { difficulty });
+      rememberPlayedDifficulty(difficulty, { random: room.random === true });
+    }
     setPicker(false);
   });
   /**

@@ -174,10 +174,50 @@ export function lobbySimulationPreference() {
   return loadPref('lobby.mode', 'coop') === 'solo' ? 'solo' : 'coop';
 }
 
-function preferredDifficulty(simulation) {
+/**
+ * The difficulty the start sheet opens on for `simulation`: this mode's own remembered pick, else the last difficulty
+ * this browser actually PLAYED (`lastDifficulty`), else 标准. Exported so the default is testable without mounting the
+ * screen (test/ui/difficulty-remember.test.js).
+ * @param {string} simulation 'solo' | 'coop' | 'firepower' | 'test'
+ * @returns {string} one of DIFFICULTIES
+ */
+export function startDifficulty(simulation) {
   const key = simulation === 'firepower' ? 'lobby.firepowerDifficulty' : 'lobby.difficulty';
-  const d = loadPref(key, 'FUNNY');
+  const d = loadPref(key, lastDifficulty());
   return DIFFICULTIES.includes(d) ? d : 'FUNNY';
+}
+const preferredDifficulty = startDifficulty;
+
+/**
+ * The last difficulty this browser actually STARTED a match on (`sp.pref.lobby.lastDifficulty`), FUNNY when it never
+ * did. It is the fallback for a mode that was never picked in the start sheet — see `rememberPlayedDifficulty`.
+ */
+export function lastDifficulty() {
+  const d = loadPref('lobby.lastDifficulty', null);
+  return DIFFICULTIES.includes(d) ? d : 'FUNNY';
+}
+
+/**
+ * 业主 2026-10-20：「手机上每次退出重开，都要重新选择难度，不知道为什么默认最低难度」。
+ *
+ * 根因有两半，都在**同盟模拟**这条路上（独立模拟一直是好的 —— 它的难度卡就在开局面板里，点一次就 `pickDifficulty`
+ * 落盘）：
+ *   1. 选择同盟方式 那张卡上没有难度可选，只写着「难度：{name}（可在同盟内更改）」。房主点「创建同盟」时用的是
+ *      `difficulty` 这个**内存 state**，直接 `room.create` —— 从没经过 `pickDifficulty`，所以哪怕他每次都把难度改成
+ *      终极，存进 localStorage 的仍然是上一次在开局面板里点过的那个值（第一次装机时就是 FUNNY）。
+ *   2. 唯一的改法是在房间里点底栏的房子图标（`room.setDifficulty`），而那条路径同样**只改房间、不写偏好**。
+ * 于是手机上（App 每次冷启动都比桌面标签页重开得多得多）就是「每次退出重开都要重新选一遍，而且默认最低难度」。
+ *
+ * 所以落盘要在**真正开局**的那一刻做：`create()` / `queueMatch()` / `quickMatch()`（开始模拟、创建同盟、快速匹配）与
+ * 房内的 `room.setDifficulty` 都调这里，`lastDifficulty` 同时更新 —— 它让「从没在这个模式下选过」也有一个像样的
+ * 兜底（玩过什么就默认什么），而不是永远回到 FUNNY。
+ * @param {string} d one of DIFFICULTIES
+ * @param {{ random?: boolean }} [o] `random` = the 无限火力 branch keeps its own key (it has its own cards)
+ */
+export function rememberPlayedDifficulty(d, { random = false } = {}) {
+  if (!DIFFICULTIES.includes(d)) return;
+  savePref(random ? 'lobby.firepowerDifficulty' : 'lobby.difficulty', d);
+  savePref('lobby.lastDifficulty', d);
 }
 
 /** Keep the explanation tied to the shared balance configuration. */
@@ -1108,23 +1148,31 @@ export function LobbyScreen() {
 
   // 本房座位上限 (业主裁决 B5) + 本房模组 (W-A): the host's own cap rides along only when it is a real choice — an
   // untouched slider (and every solo room) adds no key, so this request is the one this client always sent.
-  const create = () => run('create', () => net.request('room.create', {
-    ...roomMods.buildCreatePayload(roomMode, difficulty),
-    ...seatCapPayload(roomMode, seatValue, seatMax),
-    random: randomMode, private: roomMode !== 'solo' && privateRoom, ...(randomMode ? { variant } : {}),
-    // 测试场: a room flag fixed for the room's lifetime (server/lobby.js Room.test). Absent for every other mode,
-    // so their request is byte-for-byte what it always was.
-    ...(testMode ? { test: true } : {}),
-    // 协议等级 (owner 2026-10-18): only the highest difficulty sends it; 0/off sends NO key (the request stays the one
-    // this client always sent).
-    ...(levelFor(difficulty) > 0 ? { level: levelFor(difficulty) } : {}),
-  }));
-  const queueMatch = () => run('queue', () => net.request('match.queue', { mode: roomMode, difficulty, random: randomMode, ...(randomMode ? { variant } : {}), fillBots: false }));
+  const create = () => run('create', () => {
+    // 业主 2026-10-20: 创建同盟 / 开始模拟 用的就是这张卡的难度，而这条路上从前没人写偏好 —— 见 rememberPlayedDifficulty
+    rememberPlayedDifficulty(difficulty, { random: randomMode });
+    return net.request('room.create', {
+      ...roomMods.buildCreatePayload(roomMode, difficulty),
+      ...seatCapPayload(roomMode, seatValue, seatMax),
+      random: randomMode, private: roomMode !== 'solo' && privateRoom, ...(randomMode ? { variant } : {}),
+      // 测试场: a room flag fixed for the room's lifetime (server/lobby.js Room.test). Absent for every other mode,
+      // so their request is byte-for-byte what it always was.
+      ...(testMode ? { test: true } : {}),
+      // 协议等级 (owner 2026-10-18): only the highest difficulty sends it; 0/off sends NO key (the request stays the one
+      // this client always sent).
+      ...(levelFor(difficulty) > 0 ? { level: levelFor(difficulty) } : {}),
+    });
+  });
+  const queueMatch = () => run('queue', () => {
+    rememberPlayedDifficulty(difficulty, { random: randomMode });
+    return net.request('match.queue', { mode: roomMode, difficulty, random: randomMode, ...(randomMode ? { variant } : {}), fillBots: false });
+  });
   const cancelMatch = () => run('cancel', () => net.request('match.cancel'));
   // 野排匹配 (server/matchmaking.js, docs/META.md §1.6): enter the queue with the difficulty cards' pick (the server
   // refuses `solo` — a queue of strangers forms a co-op room). `mods` is the same digest gate `room.create` carries;
   // `modIds` is deliberately NOT sent — a quick-matched room runs the server's default set.
   const quickMatch = () => run('queue', async () => {
+    rememberPlayedDifficulty(difficulty, { random: randomMode });
     const set = roomMods.currentModSet();
     const payload = { mode: 'coop', difficulty, ...(set ? { mods: set.digest } : {}), ...(levelFor(difficulty) > 0 ? { level: levelFor(difficulty) } : {}) };
     await net.request('room.queue', payload, { timeout: 20000 });
