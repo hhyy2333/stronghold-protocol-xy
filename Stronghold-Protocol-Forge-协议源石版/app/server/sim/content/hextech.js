@@ -22,6 +22,41 @@ import { gameData, directMods, passiveBuff, unitBonds, bondActive, bondLayers, i
 import { fissionBondIds as sharedFissionBondIds, fissionCap } from '../../../shared/hextech.js';
 import { elem, hurt, areaAlliesInTiles, spawnChildren, isHitCount, abOf } from './enemies/helpers.js';
 import { hexHooks } from './hexcards/hooks.js';
+
+/**
+ * Which lane a script-spawned enemy should take when the field offers several.
+ *
+ * 业主 2026-10-20「联防时敌方协议悬赏令的怪路径有问题」：联防场把**每一条**漏怪波次的路线都带进来，`routes[0]` 常常是
+ * 飞行道（FLY）。一条路线就是一串折线，引擎**不**沿着地形寻路，所以把地面怪放上飞行道＝直接穿过悬崖和岩石。
+ * 这里按 spawn 自己的 motion 挑：飞行怪优先挑 FLY 道，地面怪挑非 FLY 道；挑不到就退回 0（没有更好的选择）。
+ * @param {any} battle
+ * @param {string} enemyKey
+ * @returns {number} route index
+ */
+/**
+ * 这个单位在引擎里**永远不能被阻挡**吗（`battle/blocking.js _checkBlock` 的那四个 flag）。
+ *
+ * 隐腻/隐匿 这类「被阻挡才解除」的效果要问这个问题：解不掉 = 一整场都点不到。
+ * @param {any} unit
+ * @returns {boolean}
+ */
+function cannotBeBlocked(unit) {
+  const f = unit && unit.s && unit.s.flags;
+  if (!f) return false;
+  return !!(f.unblockable || f.levitate || f.fear || f.sleep);
+}
+
+function routeIndexForMotion(battle, enemyKey) {
+  const routes = Array.isArray(battle && battle.routes) ? battle.routes : [];
+  if (!routes.length) return 0;
+  let def = null;
+  try { def = battle.data && typeof battle.data.getEnemy === 'function' ? battle.data.getEnemy(enemyKey) : null; } catch { def = null; }
+  const flies = !!def && def.motion === 'FLY';
+  const isFly = (r) => !!r && r.motion === 'FLY';
+  const wantFly = flies;
+  const hit = routes.findIndex((r) => isFly(r) === wantFly);
+  return hit >= 0 ? hit : 0;
+}
 import { installDrill } from './hexcards/drill.js';
 import { installArmor } from './hexcards/armor.js';
 import { installShieldwall } from './hexcards/shieldwall.js';
@@ -1731,6 +1766,13 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
       if (!enemy || !enemy.alive || enemy.findBuff('ab:stealth')) return;
       if (enemy.tag === 'boss' || enemy.isBoss || enemy.isFlying) return;
       if (isHitCount(enemy)) return;
+      // 业主 2026-10-20「隐匿不应该把不能阻挡的怪隐匿」: the ONLY way this card lifts stealth is 被阻挡, so an enemy the
+      // engine refuses to block can never be revealed — it would be untargetable for the whole field. The four flags
+      // are exactly the ones `battle/blocking.js _checkBlock` refuses (`unblockable | levitate | fear | sleep`; 无法阻挡
+      // / BLOCK_FREE, 浮空, 恐惧, 沉睡). Innate ones are already on the unit here: the kit dispatcher runs at priority
+      // 100, ahead of this handler (the same ordering the 次数怪 gate relies on), so `ab:unblockable` / 自缚 / 浮空 from
+      // a kit is visible at spawn. Transient fear/levitate still resolve afterwards like any other buff.
+      if (cannotBeBlocked(enemy)) return;
       // 中途变形 (owner report 2026-10-15): the airborne test above reads the unit ONCE, at spawn — but
       // `Unit.isFlying` is a live getter over `motion` / `flags.float` / `flags.levitate`, and 守墓石像
       // (enemy_1172_dugago) TAKES OFF mid-battle: its `statue()` kit runs `e.motion = 'FLY'` when the stone form
@@ -2213,15 +2255,20 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
    * flags as `flags.enemyHexWanted` (one enemyKey); this script only spawns it. A battle without the flag (a harness,
    * a re-computation that did not get it) simply spawns nothing — never a random pick here, because a battle-local
    * `Math.random` would break determinism (the rule server/sim lives by).
+   *
+   * 业主 2026-10-20「联防时敌方协议悬赏令的怪路径有问题」: this used to spawn on `routeIndex: 0` unconditionally. A 联防
+   * field carries the routes of **every** leaked wave, and the first one is routinely a FLY lane — so a ground monster
+   * was handed a flyer's straight-line path and walked over cliffs and rocks (measured: 482 ticks on non-walkable
+   * tiles, while a WALK unit on a WALK route had 0). A route is now chosen to match the spawn's own motion: a flyer
+   * prefers a FLY lane, a walker takes a non-FLY one. No route of the right kind ⇒ index 0 as before (nothing better
+   * exists; the engine never pathfinds route polylines, it just walks them).
    */
   wanted(battle) {
     const key = battle.flags && typeof battle.flags.enemyHexWanted === 'string' ? battle.flags.enemyHexWanted : '';
     if (!key) return;
     const atStart = (fn) => { if (battle.started) fn(); else battle.on('battleStart', fn); };
     atStart(() => {
-      const route = battle._routeFor(0);
-      const start = route && Array.isArray(route.start) ? route.start : [battle.rect.r0, battle.rect.c1];
-      battle.spawnEnemy(key, { pos: start, routeIndex: 0 });
+      battle.spawnEnemy(key, { routeIndex: routeIndexForMotion(battle, key) });
     });
   },
 
