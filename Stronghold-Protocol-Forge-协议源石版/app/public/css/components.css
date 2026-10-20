@@ -1231,21 +1231,28 @@
   /* local alias so the rows and the frame cannot drift apart */
   --mod-line: rgba(255, 255, 255, .1);
   display: flex; flex-direction: column; gap: .08rem;
-  padding: .1rem .12rem .1rem .14rem;
+  min-width: 0;
+}
+/* 业主 2026-10-20「mod 选择界面占空间，变成一个按钮」: the picker is ONE row now. It reports the count and opens the
+   full list in a Modal (`.mod-picker` itself keeps no frame — the frame belongs to the dialog). Same near-black
+   panel, 1px lines, mint accent as the neighbouring pills; the chevron is what says `this opens something`. */
+.mod-open {
+  display: flex; align-items: center; gap: .08rem; width: 100%; min-width: 0; padding: .05rem .1rem;
+  font: inherit; color: var(--text-md); text-align: left; cursor: pointer;
   background: linear-gradient(180deg, rgba(8, 12, 10, .72), rgba(8, 12, 10, .38));
-  border: 1px solid var(--mod-line);
-  border-left: 2px solid var(--mint-700);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+  border: 1px solid var(--mod-line); border-left: 2px solid var(--mint-700);
+  transition: border-color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out);
 }
-.mod-picker__head { display: flex; align-items: center; gap: .1rem; min-width: 0; }
-.mod-picker__head .micro { flex: none; }
-.mod-picker__title {
-  min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: calc(.16 * var(--t)); font-weight: 700; letter-spacing: .03em; color: var(--text-md);
-}
-.mod-picker__count { flex: none; margin-left: auto; font-size: calc(.2 * var(--t)); line-height: 1; letter-spacing: .04em; color: var(--text-lo); }
-.mod-picker__count b { font-weight: 800; color: var(--mint-400); }
-.mod-picker__count i { font-style: normal; font-size: .72em; }
+.mod-open:hover { border-color: var(--mint-700); background: rgba(78, 216, 175, .08); }
+.mod-open:focus-visible { outline: 2px solid var(--mint-400); outline-offset: 1px; border-color: var(--mint-500); }
+.mod-open__icon { flex: none; display: grid; place-items: center; width: .24rem; height: .24rem; color: var(--mint-400); }
+.mod-open__icon .icon { width: 100%; height: 100%; }
+.mod-open__body { display: flex; align-items: baseline; gap: .06rem; min-width: 0; }
+.mod-open__label { flex: none; font-size: calc(.15 * var(--t)); font-weight: 700; letter-spacing: .03em; color: var(--text-md); }
+.mod-open__state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(.13 * var(--t)); color: var(--text-lo); }
+.mod-open__cue { flex: none; margin-left: auto; display: grid; place-items: center; width: .16rem; height: .16rem; color: var(--text-dim); }
+.mod-open__cue .icon { width: 100%; height: 100%; }
+.mod-open[aria-expanded="true"] { border-color: var(--mint-500); }
 
 .mod-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(2.8rem, 1fr)); gap: .06rem; margin: 0; padding: 0; list-style: none; }
 .mod-list > li { display: flex; min-width: 0; }
@@ -1298,7 +1305,10 @@
   font-size: calc(.12 * var(--t)); line-height: 1.5; letter-spacing: .01em; color: var(--text-lo);
 }
 .mod-picker__status > .icon { flex: none; width: 1.15em; height: 1.15em; margin-top: .08em; color: var(--mint-700); }
+.mod-picker__status { margin-top: .06rem; }
 .mod-picker__acts { flex: none; display: flex; gap: .04rem; margin-left: auto; }
+.mod-act--done { color: var(--text-on-mint); background: var(--mint-600); border-color: var(--mint-500); }
+.mod-act--done:hover:not(:disabled) { color: var(--text-on-mint); background: var(--mint-500); border-color: var(--mint-400); }
 .mod-act {
   padding: .02rem .07rem; font: inherit; font-size: calc(.12 * var(--t)); line-height: 1.5; letter-spacing: .02em;
   color: var(--text-md); cursor: pointer; background: rgba(255, 255, 255, .03); border: 1px solid var(--line-2);

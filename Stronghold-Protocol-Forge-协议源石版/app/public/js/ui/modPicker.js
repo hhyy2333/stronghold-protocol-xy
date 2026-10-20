@@ -13,7 +13,7 @@
 // ▸ Nothing here decides which ids are legal: `roomMods.js` is that one truth (`availableMods` / `setSelectedModIds`
 //   drop unknown ids), and the server refuses MOD_UNKNOWN regardless. This module only renders and reports clicks.
 import { useEffect, useState } from '../../vendor/hooks.module.js';
-import { html, Icon, MicroLabel } from './components.js';
+import { html, Icon, Modal } from './components.js';
 import { t, N_ } from '../../../shared/i18n.js';
 import { useStore, shallowEqual } from '../store.js';
 import { loadCatalog } from '../mods/align.js';
@@ -128,6 +128,7 @@ export function ModList({ packs, selected, onToggle, names = {} }) {
 export function ModPicker({ selected, onToggle, onSelect }) {
   const { available } = useStore((s) => s.roomMods, shallowEqual);
   const names = useModNames(available);
+  const [open, setOpen] = useState(false);
   if (!available.length) return null;
   const on = Array.isArray(selected) ? selected : [];
   const total = available.length;
@@ -141,26 +142,43 @@ export function ModPicker({ selected, onToggle, onSelect }) {
   };
   const selectAll = () => emit(allOn ? [] : ids);
   const clearAll = () => emit([]);
-  return html`<section class="mod-picker" aria-label=${t('本房间使用的模组')}>
-    <div class="mod-picker__head">
-      <${MicroLabel} tone="mint">ROOM MODS<//>
-      <h3 class="mod-picker__title">${t('本房间使用的模组')}</h3>
-      <span class="mod-picker__count num" aria-label=${t('已选 {n} / {m}', { n: count, m: total })}>
-        <b>${count}</b><i>/${total}</i>
+  // 业主 2026-10-20「mod 选择界面占空间，变成一个按钮，点击后出现 mod 选择界面」：这张面板从前在开局/同盟两张卡上
+  // 一直摊开，勾选一多就把「开始模拟」往下挤。现在它是一个**行内按钮**（只报数量与状态），点开才出现整份选择界面。
+  // 用 Modal 而不是自绘：它有现成的 Esc、背板点击、焦点陷阱与 inert 处理，而开局面板自己的 Esc 处理器会
+  // 因为 `.modal` 存在而让路（lobby.js 的 `!document.querySelector('.modal, .guide')`）。
+  const label = count === total && total > 0 ? t('全部启用') : count ? t('已启用 {n} / {m}', { n: count, m: total }) : t('不启用模组');
+  return html`<div class="mod-picker">
+    <button type="button" class="mod-open" aria-expanded=${open ? 'true' : 'false'} aria-haspopup="dialog"
+      title=${t('本房间使用的模组')} onClick=${() => setOpen(true)}>
+      <span class="mod-open__icon"><${Icon} name="dots" /></span>
+      <span class="mod-open__body">
+        <span class="mod-open__label">${t('模组')}</span>
+        <span class="mod-open__state num">${label}</span>
       </span>
-    </div>
-    <${ModList} packs=${available} selected=${on} onToggle=${onToggle} names=${names} />
-    <div class="mod-picker__foot">
+      <span class="mod-open__cue"><${Icon} name="chevronRight" /></span>
+    </button>
+    <${Modal} open=${open} title=${t('本房间使用的模组')} micro="ROOM MODS" tone="mint" width="min(94vw, 8.6rem)"
+      onClose=${() => setOpen(false)}
+      actions=${html`<${ModalActions} count=${count} total=${total} allOn=${allOn} onAll=${selectAll} onClear=${clearAll} onDone=${() => setOpen(false)} />`}>
+      <${ModList} packs=${available} selected=${on} onToggle=${onToggle} names=${names} />
       <p class="mod-picker__status" role="status" aria-live="polite">
         <${Icon} name="info" />
         ${count
           ? html`<span>${t('本房间将声明 {n} 个模组：只运行勾选的模组', { n: count })}</span>`
           : html`<span>${t('不勾选 = 本房间不声明模组（模拟仍按服务器加载的全部模组运行）')}</span>`}
       </p>
-      ${total > 1 ? html`<span class="mod-picker__acts">
-        <button type="button" class="mod-act" disabled=${allOn} onClick=${selectAll}>${t('全选')}</button>
-        <button type="button" class="mod-act" disabled=${count === 0} onClick=${clearAll}>${t('清空')}</button>
-      </span>` : null}
-    </div>
-  </section>`;
+    <//>
+  </div>`;
+}
+
+/**
+ * The modal's footer: 全选 / 清空 on the left, 完成 on the right. Ticks are applied LIVE (every click already travels
+ * through `onToggle` / `onSelect`), so 完成 only closes — there is no draft state to lose.
+ */
+export function ModalActions({ count, total, allOn, onAll, onClear, onDone }) {
+  return html`<span class="mod-picker__acts">
+    ${total > 1 ? html`<button type="button" class="mod-act" disabled=${allOn} onClick=${onAll}>${t('全选')}</button>` : null}
+    ${total > 1 ? html`<button type="button" class="mod-act" disabled=${count === 0} onClick=${onClear}>${t('清空')}</button>` : null}
+    <button type="button" class="mod-act mod-act--done" onClick=${onDone}>${t('完成')}</button>
+  </span>`;
 }

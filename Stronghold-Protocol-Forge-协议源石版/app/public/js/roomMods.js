@@ -43,13 +43,19 @@ const SELECTED_PREF = 'roomMods.selected';
 /**
  * The remembered ticks, filtered against THIS server's catalogue (sorted like `setSelectedModIds`). Read from the
  * preference on every welcome: a reload, a reconnect and a different room all come through here.
+ *
+ * 业主 2026-10-20「mod 默认开启」: **没有任何偏好**（第一次装、换了浏览器、清过 storage）时默认全选，也就是这台服务器
+ * 声明的每一个包都算进房间里。`loadPref` 的第三个参数是 `null` 而不是 `[]` 就是为了把这两种情况分开：没有这条偏好 =
+ * 全开；玩家自己点过「清空」= 空（`[]` 是**表态**，不能被「默认全开」覆盖回去）。
  * @returns {string[]}
  */
 function rememberedSelection() {
-  const saved = loadPref(SELECTED_PREF, []);
-  if (!Array.isArray(saved)) return [];
-  const known = new Set(availableMods().map((p) => p.id));
-  return saved.filter((id) => typeof id === 'string' && known.has(id)).sort();
+  const saved = loadPref(SELECTED_PREF, null);
+  const known = [...availableMods().map((p) => p.id)].sort();
+  if (saved === null) return known;   // never chosen: mods default ON
+  if (!Array.isArray(saved)) return known;
+  const have = new Set(known);
+  return saved.filter((id) => typeof id === 'string' && have.has(id)).sort();
 }
 
 /** Back to "this client has been told about no mods" (a fresh connection, or a test). */

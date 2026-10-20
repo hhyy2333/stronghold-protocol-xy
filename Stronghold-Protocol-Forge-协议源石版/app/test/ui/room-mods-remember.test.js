@@ -3,6 +3,9 @@
 // 旧行为：勾完建了一间房，下一次建房 / 刷新页面 / 重连之后又得从头勾（main.js 进房时清空 + 模块状态只在内存里）。
 // 现在：勾选写进 localStorage（sp.pref.roomMods.selected），每次 welcome 按这台服务器**真有的**包过滤后套用；
 // 进房、断线、换房间都不清。这个测试钉住这四条，以及「服务器没有模组时不会误报/误发」。
+//
+// 业主 2026-10-20「mod 默认开启」：**没有这条偏好**（第一次装 / 清过 storage）时默认全选这台服务器声明的每一个包；
+// 而玩家自己点过的「清空」是**表态**，不会被默认值覆盖回去 —— 这两条是同一条 `loadPref(key, null)` 的两半。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as roomMods from '../../public/js/roomMods.js';
@@ -22,7 +25,8 @@ test('ticks survive a reset/welcome (reload, reconnect, another room) and are fi
   try {
     roomMods.reset();
     roomMods.setWelcomeMods(welcome('d1', ['a', 'b']));
-    assert.deepEqual(roomMods.getSelectedModIds(), [], 'a fresh client starts with nothing ticked');
+    assert.deepEqual(roomMods.getSelectedModIds(), ['a', 'b'], 'a fresh client starts with EVERY pack ticked (mods default on)');
+    assert.deepEqual(pref(), null, 'and the default is not written as a preference — nothing was chosen yet');
     roomMods.setSelectedModIds(['b']);
     assert.deepEqual(pref(), ['b'], 'the tick is a persisted preference');
 
