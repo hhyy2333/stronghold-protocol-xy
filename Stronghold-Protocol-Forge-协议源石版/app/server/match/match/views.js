@@ -144,6 +144,9 @@ export class MatchViews {
         offers,
         picks: { ...s.picks },
         rerollsLeft: { ...s.rerolls },
+        // 单张刷新：每张卡自己的一次（业主 2026-10-20「单个刷新应该3个都能刷一次」）。键 = playerId，值 = 与 offer 等长的
+        // 次数数组；老客户端不认识这个键，只读 rerollsLeft，所以整批刷新的语义不变。
+        slotRerollsLeft: Object.fromEntries(Object.entries(s.slotRerolls || {}).map(([pid, a]) => [pid, Array.isArray(a) ? a.slice() : []])),
         untimed: !!s.untimed,
         turnDeadline: s.turnDeadline || 0,
         timerSec: s.untimed ? 0 : (this.gd.hexTimer() || 0),

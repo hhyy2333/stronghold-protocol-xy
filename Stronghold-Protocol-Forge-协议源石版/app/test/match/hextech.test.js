@@ -87,16 +87,25 @@ test('g.hexReroll { idx } replaces only that slot (业主 2026-10-20「把刷新
   assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 9 }), { error: 'BAD_TARGET' });
   assert.equal(m.hex.rerolls.p_0, rerolls0, 'a refused slot costs nothing');
   assert.deepEqual(m.hexOfferOf('p_0'), before, 'and changes nothing on the board');
+  assert.equal(m.hex.slotRerolls.p_0.length, 3, 'one budget per card');
+  assert.deepEqual(m.hex.slotRerolls.p_0, [1, 1, 1], 'every card may be rerolled once (业主 2026-10-20「3个都能刷一次」)');
   assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 1 }), { ok: true });
   const after = m.hexOfferOf('p_0').slice();
-  assert.equal(m.hex.rerolls.p_0, rerolls0 - 1, 'a single-slot reroll costs one reroll');
+  assert.deepEqual(m.hex.slotRerolls.p_0, [1, 0, 1], 'only slot 1 spent its reroll');
+  assert.equal(m.hex.rerolls.p_0, rerolls0, 'the whole-batch reroll is a SEPARATE budget and was not touched');
   assert.equal(after.length, 3, 'the offer still holds three cards');
   assert.equal(new Set(after).size, 3, 'and three distinct ones');
   assert.equal(after[0], before[0], 'slot 0 is untouched');
   assert.equal(after[2], before[2], 'slot 2 is untouched');
   assert.notEqual(after[1], before[1], 'only slot 1 was replaced');
   assert.ok(!before.includes(after[1]), 'and the replaced card never comes back as the new one');
-  // the per-draft reroll is shared: the whole-batch form (the request older clients send, no idx) now has none left
+  // that one card is spent now; the other two still each have theirs
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 1 }), { error: 'NO_REROLL' });
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 0 }), { ok: true }, 'slot 0 still has its own');
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 2 }), { ok: true }, 'so does slot 2');
+  assert.deepEqual(m.hex.slotRerolls.p_0, [0, 0, 0], 'all three cards have now been rerolled once each');
+  // the whole-batch form (the request older clients send, no idx) is still available — its own budget, untouched
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll' }), { ok: true });
   assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll' }), { error: 'NO_REROLL' });
   m.dispose();
 });

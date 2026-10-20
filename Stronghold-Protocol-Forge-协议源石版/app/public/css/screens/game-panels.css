@@ -717,7 +717,13 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
    invalid, and the inner click would also arm/pick the card). It is small and amber-tinted so it reads as a
    sub-action of the card, not a second card; the overlay passes no handler once the player has picked, so it goes
    away with the draft's own interactivity. */
-.hxcard-slot { position: relative; display: flex; min-width: 0; }
+/* 业主 2026-10-20「悬停时卡片有个动效而按钮没有跟着动」: the lift used to be on `.hxcard` alone, and the reroll
+   control is its SIBLING (a <button> cannot nest inside one) — so the card rose by .06rem and the button stayed put,
+   leaving a visible seam. The transform lives on the slot now: both move as one piece, and the card keeps only its
+   border/shadow change. */
+.hxcard-slot { position: relative; display: flex; min-width: 0;
+  transition: transform var(--t-fast) var(--ease-out); }
+.hxcard-slot:hover { transform: translateY(-.06rem); }
 .hxcard-slot > .hxcard { flex: 1; min-width: 0; }
 .hxcard__reroll {
   /* INSIDE the card's own box (业主 2026-10-20「显示不完全」): it used to sit at -.14rem/-.14rem, i.e. 7 px OUTSIDE the
@@ -736,7 +742,7 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .hxcard__reroll .icon, .hxcard__reroll svg { width: .24rem; height: .24rem; }
 .hxcard__reroll:hover { background: var(--amber, #e4bd60); color: #0c1014; transform: rotate(-18deg); }
 .hxcard__reroll:active { transform: scale(.92); }
-@media (max-width: 900px) { .hxcard__reroll { width: .5rem; height: .5rem; top: -.12rem; right: -.12rem; } }
+@media (max-width: 900px) { .hxcard__reroll { width: .5rem; height: .5rem; top: .08rem; right: .08rem; } }
 
 /* the enemy's accumulated hexes + the rule line under the cards */
 .hxov__foot { flex: none; display: flex; align-items: center; gap: .24rem; padding-top: .14rem; border-top: 1px solid var(--line); }
@@ -783,7 +789,7 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
     rgba(4, 7, 9, 0) 62%, rgba(4, 7, 9, .55) 80%, rgba(4, 7, 9, .92) 100%);
 }
 .hxcard.is-tappable { cursor: pointer; }
-.hxcard.is-tappable:hover { transform: translateY(-.06rem); border-color: var(--hx-c); box-shadow: 0 0 0 1px var(--hx-c), 0 .1rem .3rem rgba(0, 0, 0, .45); }
+.hxcard.is-tappable:hover { border-color: var(--hx-c); box-shadow: 0 0 0 1px var(--hx-c), 0 .1rem .3rem rgba(0, 0, 0, .45); }
 .hxcard.has-tier.is-tappable:hover { border: 0; box-shadow: 0 0 0 2px var(--hx-c), 0 .12rem .32rem rgba(0, 0, 0, .7); }
 .hxcard:disabled { cursor: default; }
 /* the head holds the drawn plate and the title */
@@ -1236,7 +1242,7 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
    上下压暗的 scrim，不加任何滤镜。 */
 .hxcard.has-tier .hxcard__glow { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .hxcard.is-tappable:hover {
-  transform: translateY(-.06rem); border-color: rgba(0, 255, 255, .7);
+  border-color: rgba(0, 255, 255, .7);
   box-shadow: 0 0 0 1px rgba(0, 255, 255, .55), 0 0 .34rem rgba(0, 255, 255, .38), 0 .14rem .32rem rgba(0, 0, 0, .58);
 }
 .hxcard.has-tier.is-tappable:hover {

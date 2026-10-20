@@ -127,6 +127,10 @@ export function normalizeHex(hex, myId = null, _players = []) {
     myOffer: mine,
     myPick: myId && picks.has(myId) ? picks.get(myId) : null,
     myRerolls: myId && rerollsLeft.has(myId) ? rerollsLeft.get(myId) : 0,
+    // 单张刷新的次数（每张卡一次）。服务器没给这个键时退回「每张都能刷一次」——旧服务器 + 新客户端时界面不至于全灰。
+    mySlotRerolls: myId && isObj(hex.slotRerollsLeft) && Array.isArray(hex.slotRerollsLeft[myId])
+      ? hex.slotRerollsLeft[myId].map((n) => (Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0))
+      : mine.map(() => 1),
     untimed: !!hex.untimed,
     turnDeadline: Number(hex.turnDeadline) || 0,
     timerSec: Number(hex.timerSec) || 0,

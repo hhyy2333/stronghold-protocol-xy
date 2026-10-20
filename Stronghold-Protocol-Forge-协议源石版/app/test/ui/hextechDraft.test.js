@@ -54,6 +54,19 @@ test('normalizeHex: after the pick, and tolerant of missing / malformed frames',
   assert.equal(spectator.myRerolls, 0);
 });
 
+test('单张刷新是每张卡各一次（业主 2026-10-20「单个刷新应该3个都能刷一次」）', () => {
+  // the server publishes slotRerollsLeft per viewer; the client falls back to 1 per card when the key is absent (an
+  // older server) so the buttons never all go dark on a mixed deployment
+  const withBudget = normalizeHex({ ...HEX_VIEW, slotRerollsLeft: { p_0: [1, 0, 1], p_1: [0, 0, 0] } }, 'p_0', []);
+  assert.deepEqual(withBudget.mySlotRerolls, [1, 0, 1]);
+  const oldServer = normalizeHex(HEX_VIEW, 'p_0', []);
+  assert.deepEqual(oldServer.mySlotRerolls, [1, 1, 1], 'no key from the server -> every card still has its own one');
+  const spectator = normalizeHex(HEX_VIEW, 'spec_1', []);
+  assert.deepEqual(spectator.mySlotRerolls, [], 'a viewer with no offer has no cards to reroll');
+  // the two budgets are independent: the whole-batch counter and the per-card ones
+  assert.equal(withBudget.myRerolls, 1, 'the batch reroll is its own number');
+});
+
 test('rarityName resolves the tier label and keeps a fallback', () => {
   assert.equal(typeof rarityName('silver'), 'string');
   assert.equal(rarityName('prismatic').length > 0, true);

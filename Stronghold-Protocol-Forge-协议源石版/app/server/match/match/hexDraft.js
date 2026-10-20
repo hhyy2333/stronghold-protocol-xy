@@ -33,7 +33,13 @@ export class MatchHexDraft {
       offers[ps.playerId] = rollOffers(this.rngHex, { pool, owned: hexIdsOf(ps), weights, count: offer });
       rerolls[ps.playerId] = gd.hexRerolls();
     }
-    this.hex = { offers, picks: {}, rerolls, untimed: this.soloUntimed, turnDeadline: 0 };
+    // 业主 2026-10-20「单个刷新应该3个都能刷一次」: `rerolls` is now the budget of the WHOLE-BATCH button (unchanged),
+    // and `slotRerolls` is a per-card budget — every card may be rerolled once on its own. Two independent counters
+    // rather than one shared pool: the owner asked for 「3 个都能刷一次」, not 「一共 3 次随便花」.
+    /** @type {Record<string, number[]>} */
+    const slotRerolls = {};
+    for (const ps of alive) slotRerolls[ps.playerId] = offers[ps.playerId].map(() => 1);
+    this.hex = { offers, picks: {}, rerolls, slotRerolls, untimed: this.soloUntimed, turnDeadline: 0 };
     const secs = gd.hexTimer();
     if (secs && !this.soloUntimed) {
       this.setDeadline(secs, () => this._timeoutHexDraft());
@@ -70,10 +76,14 @@ export class MatchHexDraft {
   /**
    * g.hexReroll { idx? } — one reroll per player per draft; the pick is not consumed by it.
    *
-   * 业主 2026-10-20「把刷新按钮改成分别刷新每个」: with `idx` only that slot of the offer is replaced (the other two
-   * cards stay), and it costs the same one reroll. Without `idx` it is the original whole-batch reroll — the request an
-   * older client sends, byte for byte. A card the player already owns or is currently offered never comes back either
-   * way (the same 2026-10-16 rule as below).
+   * 业主 2026-10-20「把刷新按钮改成分别刷新每个」，随后「单个刷新应该3个都能刷一次」: with `idx` only that slot of
+   * the offer is replaced (the other two cards stay) and it spends THAT CARD's own budget (`slotRerolls[pid][idx]`, one
+   * per card). Without `idx` it is the original whole-batch reroll against `rerolls` — the request an older client
+   * sends, byte for byte. A card the player already owns or is currently offered never comes back either way (the
+   * same 2026-10-16 rule as below).
+   *
+   * The two budgets are independent on purpose: 整批 = 1 per draft (format.rerolls, unchanged), 单张 = 1 per CARD.
+   * Spending a card's reroll does not touch the batch count and vice versa.
    * @param {any} ps
    * @param {number} [idx] the slot to replace, absent = the whole offer
    */
@@ -81,10 +91,14 @@ export class MatchHexDraft {
     if (this.phase !== PHASE.HEX_DRAFT || !this.hex) return fail(ERR.WRONG_PHASE);
     if (!ps.alive) return fail(ERR.ELIMINATED);
     if (this.hex.picks[ps.playerId] != null) return fail(ERR.ALREADY);
-    if (!(this.hex.rerolls[ps.playerId] > 0)) return fail(ERR.NO_REROLL);
-    // the slot is checked BEFORE the reroll is spent: a bad index must not cost the player their one reroll
-    if (Number.isInteger(idx) && (idx < 0 || idx >= this.hexOfferOf(ps.playerId).length)) return fail(ERR.BAD_TARGET);
-    this.hex.rerolls[ps.playerId] -= 1;
+    const slot = Number.isInteger(idx) ? (this.hex.slotRerolls[ps.playerId] || []) : null;
+    if (Number.isInteger(idx)) {
+      // the slot is checked BEFORE anything is spent: a bad index must never cost the player a reroll
+      if (idx < 0 || idx >= this.hexOfferOf(ps.playerId).length) return fail(ERR.BAD_TARGET);
+      if (!(slot && slot[idx] > 0)) return fail(ERR.NO_REROLL);
+    } else if (!(this.hex.rerolls[ps.playerId] > 0)) return fail(ERR.NO_REROLL);
+    if (Number.isInteger(idx)) slot[idx] -= 1;
+    else this.hex.rerolls[ps.playerId] -= 1;
     const gd = this.gd;
     // 刷新要把**这一批**也排除掉（业主 2026-10-16「刷新会有重复海克斯」）：`hexIdsOf` 只是玩家**已经拥有**的，
     // 不含当前 offer 的三张。只传 owned 的话，新抽的三张可能又是刚被换掉的那几张 —— 池子小的时候（测试/少人数局）

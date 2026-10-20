@@ -258,7 +258,11 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   const enemyHexes = normalizeEnemyHexes(enemy);
   const picked = hex.myPick;
   const waiting = picked == null;
+  // 整批刷新（header 那颗）与单张刷新（每张卡角上）各有各的次数：整批仍是一次/局，单张是**每张卡各一次**
+  // （业主 2026-10-20「单个刷新应该3个都能刷一次」）。busyIdx 期间两者都禁掉。
   const canReroll = waiting && hex.myRerolls > 0 && busyIdx == null;
+  const slotBudget = Array.isArray(hex.mySlotRerolls) ? hex.mySlotRerolls : [];
+  const canRerollSlot = (idx) => waiting && busyIdx == null && (slotBudget[idx] || 0) > 0;
   /**
    * 二段点击（确认，owner 2026-10-18）：先放「卡牌化作数据流吸入屏幕中心 + 轻微震屏」的动画，
    * 动画结束才真正 onPick —— 否则服务器的回包会把卡牌提前换成已选状态，动画只播一个开头。
@@ -293,9 +297,9 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   // the rerolls left instead of the price. The mod's own button sprites are not used (user feedback: they read as a
   // foreign skin next to the shop's).
   // 业主 2026-10-20：「把刷新按钮改成分别刷新每个」。一张刷新按次要标在**卡片自己**身上（每张卡的角上一颗小刷新），
-  // header 那颗留给整批（一次换掉三张）。两者的次数共享同一个 `myRerolls`（服务器只认 `g.hexReroll`，协议没变）。
+  // header 那颗留给整批（一次换掉三张）。次数是两本独立的账：整批 1 次/局，单张**每张卡各 1 次**。
   const rerollLabel = hex.myRerolls > 0 ? t('刷新（剩余 {n} 次）', { n: hex.myRerolls }) : t('刷新已用完');
-  const cardReroll = (idx) => { if (!canReroll) return; setArmed(null); onReroll(idx); };
+  const cardReroll = (idx) => { if (!canRerollSlot(idx)) return; setArmed(null); onReroll(idx); };
   const armedName = armed != null ? (hex.myOffer.find((c) => c && c.idx === armed)?.name || null) : null;
   return html`<div class=${cx('spov', 'hxov', armed != null && 'has-armed', vanishing != null && 'is-vanishing')} role="dialog" aria-label=${t('协议源石')} onPointerDown=${onDown}>
     <div class="spov__veil" aria-hidden="true"></div>
@@ -326,8 +330,8 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
         ${hex.myOffer.map((c) => html`<${HexCard} key=${`${c.id}:${c.idx}`} hex=${c}
           armed=${armed === c.idx} picked=${picked === c.idx} faded=${picked != null && picked !== c.idx}
           busy=${busyIdx === c.idx} vanishing=${vanishing === c.idx} vanishDir=${c.idx} onClick=${() => tap(c)}
-          onReroll=${canReroll ? () => cardReroll(c.idx) : null}
-          rerollTitle=${hex.myRerolls > 0 ? t('只刷新这一张（剩余 {n} 次）', { n: hex.myRerolls }) : t('刷新已用完')} />`)}
+          onReroll=${canRerollSlot(c.idx) ? () => cardReroll(c.idx) : null}
+          rerollTitle=${canRerollSlot(c.idx) ? t('只刷新这一张') : t('这张已经刷新过了')} />`)}
       </div>
       <footer class="hxov__foot">
         <span class="hxov__enemy">
