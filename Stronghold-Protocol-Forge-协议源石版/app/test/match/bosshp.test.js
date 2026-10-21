@@ -10,6 +10,7 @@
 // bond / strategy / equipment bonuses in the additive bucket, both fields drain the one pool exactly once per hit.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { PHASE } from '../../shared/constants.js';
 import { makeMatch, DATA } from './harness.js';
 import { aggregateMods } from '../../server/sim/buffs.js';
@@ -58,10 +59,19 @@ const OFFICIAL_BLOOD_POINT = {
 };
 
 test('leader HP data = the current official bossInfoDict for every leader and difficulty', () => {
-  assert.deepEqual(Object.keys(DATA.bosses).sort(), Object.keys(OFFICIAL_BLOOD_POINT).sort());
+  // The fork's hand-added leaders (docs/research/15-extra-bosses.json) are not official rows: they must be exactly the
+  // declared extras, and their bloodPoint must be the research declaration's.
+  const extra = JSON.parse(fs.readFileSync(new URL('../../docs/research/15-extra-bosses.json', import.meta.url), 'utf8')).bosses || [];
+  const extraIds = extra.map((b) => b.bossId).sort();
+  assert.deepEqual(Object.keys(DATA.bosses).filter((id) => !(id in OFFICIAL_BLOOD_POINT)).sort(), extraIds);
+  assert.deepEqual(Object.keys(DATA.bosses).filter((id) => id in OFFICIAL_BLOOD_POINT).sort(), Object.keys(OFFICIAL_BLOOD_POINT).sort());
   for (const [id, want] of Object.entries(OFFICIAL_BLOOD_POINT)) {
     const bp = DATA.bosses[id].bloodPoint;
     assert.deepEqual([bp.FUNNY, bp.NORMAL, bp.HARD, bp.ABYSS], want, id);
+  }
+  for (const b of extra) {
+    const bp = DATA.bosses[b.bossId].bloodPoint;
+    assert.deepEqual([bp.FUNNY, bp.NORMAL, bp.HARD, bp.ABYSS], [b.bloodPoint.FUNNY, b.bloodPoint.NORMAL, b.bloodPoint.HARD, b.bloodPoint.ABYSS], b.bossId);
   }
 });
 

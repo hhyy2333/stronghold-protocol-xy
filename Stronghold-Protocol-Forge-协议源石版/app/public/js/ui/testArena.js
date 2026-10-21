@@ -73,14 +73,18 @@ export function TestHexButton({ hex, owned, busy, locked = false, onGrant }) {
  * open, so the panel itself needs no hook and stays renderable by the UI suites' plain expansion.
  * @param {{ funds: number, ownedPlayer: string[], ownedEnemy: string[], busy: string|null, side?: string,
  *   onSide?: (id: string) => void, onGrantPlayer: (id: string) => void, onGrantEnemy: (id: string) => void,
- *   onClearPlayer: () => void, onClearEnemy: () => void, onFunds: (amount: number) => void, onClose?: () => void }} props
+ *   onClearPlayer: () => void, onClearEnemy: () => void, onFunds: (amount: number) => void, onClose?: () => void,
+ *   bosses?: { bossId: string, name: string, hidden?: boolean }[], boss?: string|null, onBossPick?: (id: string) => void,
+ *   onBoss?: (id: string) => void }} props
  */
 export function TestArenaPanel({
   funds = 0, ownedPlayer = [], ownedEnemy = [], busy = null, side = 'player', onSide = null,
   onGrantPlayer, onGrantEnemy, onClearPlayer, onClearEnemy, onFunds, onClose = null,
+  bosses = [], boss = null, onBossPick = null, onBoss = null,
 }) {
   const active = TEST_HEX_SIDES.includes(side) ? side : 'player';
   const enemySide = active === 'enemy';
+  const leaders = Array.isArray(bosses) ? bosses.filter((b) => b && typeof b.bossId === 'string') : [];
   const hexes = hexesOf(active);
   const owned = enemySide ? (Array.isArray(ownedEnemy) ? ownedEnemy : []) : (Array.isArray(ownedPlayer) ? ownedPlayer : []);
   const held = new Set(owned);
@@ -103,6 +107,23 @@ export function TestArenaPanel({
         ${TEST_FUND_AMOUNTS.map((n) => html`<${Button} key=${n} variant="amber" size="sm"
           onClick=${() => onFunds(n)}>+${n}<//>`)}
       </div>
+    </div>
+
+    ${/* 测试场 直接到 boss 战 (业主 2026-10-21): skip the rounds before the leader round and land in its prep with the
+          leader picked here (data/bosses.json, the hand-added boss_11 included). */ ''}
+    <div class="tarena__sec">
+      <span class="tarena__label">${t('最终攻势')}</span>
+      ${leaders.length
+        ? html`<div class="tarena__bossrow">
+            <select class="tarena__boss" value=${(leaders.find((b) => b.bossId === boss) || leaders[0]).bossId}
+              aria-label=${t('首领')} disabled=${busy != null}
+              onChange=${(e) => onBossPick && onBossPick(e.currentTarget.value)}>
+              ${leaders.map((b) => html`<option key=${b.bossId} value=${b.bossId}>${b.name}${b.hidden ? ` · ${t('隐秘核心')}` : ''}</option>`)}
+            </select>
+            <${Button} variant="amber" size="sm" disabled=${busy != null}
+              onClick=${() => onBoss && onBoss((leaders.find((b) => b.bossId === boss) || leaders[0]).bossId)}>${t('跳到 boss 战')}<//>
+          </div>`
+        : html`<p class="tarena__empty t-lo">${t('本机数据里没有首领。')}</p>`}
     </div>
 
     <div class="tarena__sec tarena__sec--hex">

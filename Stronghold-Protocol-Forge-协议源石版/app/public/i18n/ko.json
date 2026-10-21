@@ -2371,5 +2371,8 @@
   "护盾吸收": "Shield absorb",
   "击杀": "Kills",
   "查看 {name} 的详细伤害类型": "Show {name}'s damage breakdown",
-  "没有实际伤害": "No actual damage"
+  "没有实际伤害": "No actual damage",
+  "跳到 boss 战": "보스전으로 이동",
+  "首领": "리더",
+  "本机数据里没有首领。": "이 데이터에는 리더가 없습니다."
 }

@@ -92,6 +92,42 @@ describe('测试场: the engine (opts.test)', () => {
     normal.m.dispose();
   });
 
+  test('g.testBoss jumps a test field straight to the picked leader round, and is refused everywhere else', () => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed: 21, fake: true, test: true }).start();
+    const m = h.m;
+    const ps = h.ps('p_0');
+    const bossRound = DATA.config.modes.mode_single_normal.bossRound;
+    // 业主 2026-10-21: 测试场 can go straight to the boss fight — a leader the mode does draw, and the hand-added boss_11
+    for (const bossId of ['boss_7', 'boss_11']) {
+      assert.deepEqual(m.handle('p_0', { t: 'g.testBoss', bossId }), { ok: true }, bossId);
+      assert.equal(m.phase, PHASE.PREP, `${bossId}: the leader round's prep`);
+      assert.equal(m.round, bossRound);
+      assert.equal(m.bossId, bossId);
+      assert.ok(typeof m.testBossTemplate === 'string' && /_s$/.test(m.testBossTemplate), `${bossId}: solo wave (${m.testBossTemplate})`);
+      assert.equal(DATA.waves[m.testBossTemplate].spawns.find((s) => s.tag === 'boss').key, DATA.bosses[bossId].enemyKey,
+        `${bossId}: the wave's leader spawn is that leader`);
+      // the skipped rounds' economy comes with it: a purse and a shop at the round's level (not a round-1 board)
+      assert.ok(ps.funds >= 60, `${bossId}: landed with a purse (${ps.funds})`);
+      assert.ok(ps.shop.level >= 5, `${bossId}: shop level ${ps.shop.level}`);
+      assert.ok(Array.isArray(ps.shop.slots) && ps.shop.slots.length > 0, `${bossId}: shop rolled`);
+    }
+    // Ready ends the prep through the ordinary endPrep → the picked leader's own wave, its pool from bloodPoint
+    assert.deepEqual(m.handle('p_0', { t: 'g.ready', ready: true }), { ok: true });
+    assert.ok(h.drive(() => m.phase === PHASE.FINAL_ASSAULT, 30), `expected FINAL_ASSAULT, got ${m.phase}`);
+    assert.equal(m.bossId, 'boss_11');
+    assert.equal(m.bossPool.maxHp, DATA.bosses.boss_11.bloodPoint.NORMAL, 'the pool is the leader bloodPoint × the seats alive');
+    const wave = DATA.waves[m.testBossTemplate];
+    assert.ok(wave, 'the leader round fights the picked leader\'s own wave');
+    assert.equal(wave.spawns.find((s) => s.tag === 'boss').key, DATA.bosses.boss_11.enemyKey);
+    h.invariants();
+    m.dispose();
+
+    // a normal match never accepts it
+    const normal = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed: 21, fake: true }).start();
+    assertErr(normal.m.handle('p_0', { t: 'g.testBoss' }), ERR.WRONG_PHASE, 'normal g.testBoss');
+    normal.m.dispose();
+  });
+
   test('g.testHex grants a card through the real applyHex path: ref, effect column and battle part; repeatable', () => {
     const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 13, fake: true, test: true }).start();
     const ps = h.ps('p_0');

@@ -56,21 +56,41 @@ const SENTIMENT_TEXT = Object.freeze({ bull: '牛市', bear: '熊市', calm: '�
  * @param {number} maxShares
  * @returns {number}
  */
-/** 与 server/exchange.mjs 的 feeOf 同一口径：成交额 < 10 不收，否则 1% 四舍五入、至少 1。 */
-export function feeFor(gross) {
-  if (!(gross >= 10)) return 0;
-  return Math.max(1, Math.round((gross * 100) / 10000));
+/**
+ * 与 server/exchange.mjs 的 `feeCentsOf` 同一口径（**分**）：
+ * 成交额 ≥ 10 元才收，1%，四舍五入、至少 1 元。返回「分」。
+ */
+export function feeCentsFor(grossCents) {
+  if (!(grossCents >= 1000)) return 0;
+  return Math.max(100, Math.round((grossCents * 100) / 10000));
 }
 
-export function maxAffordable(cash, price, maxShares = 60) {
-  const budget = Math.max(0, Math.trunc(Number(cash) || 0));
-  const unit = Number(price);
+/** 手续费（元），给面板显示用。 */
+export function feeFor(gross) {
+  return feeCentsFor(Math.round((Number(gross) || 0) * 100)) / 100;
+}
+
+/**
+ * 预算内最多买几股（纯函数）。与 server/exchange.mjs 的 `affordableShares` **同一口径**：
+ * 金额算到「分」，再换回整数元支付 —— 服务端真的会扣 `ceil(cost分 − 尾差) / 100`，
+ * 面板若用小数预算判断，就会出现「面板说能买、点下去被拒」。
+ *
+ * @param {number} budgetYuan 现金 + 可借额度（整数元）
+ * @param {number} price
+ * @param {number} maxShares
+ * @param {number} carryCents 交易所尾差（分，正 = 交易所欠你），会抵扣这一单
+ */
+export function maxAffordable(budgetYuan, price, maxShares = 60, carryCents = 0) {
+  const budget = Math.max(0, Math.trunc(Number(budgetYuan) || 0));
+  const unit = Math.round((Number(price) || 0) * 100);
   if (!(unit > 0)) return 0;
-  let qty = clampInt(Math.floor(budget / unit), 0, maxShares);
+  const capByBudget = Math.floor(((budget + Math.max(0, Number(carryCents) || 0) / 100) * 100) / unit);
+  let qty = clampInt(Math.min(maxShares, capByBudget), 0, maxShares);
   while (qty > 0) {
-    // 与 server/exchange.mjs 的 round2 同一口径：2.4 × 3 不能因为浮点尾数被当成买不起。
-    const gross = round2(unit * qty);
-    if (gross + feeFor(gross) <= budget) return qty;
+    const grossCents = unit * qty;
+    const costCents = grossCents + feeCentsFor(grossCents);
+    const pay = Math.max(0, Math.ceil((costCents - (Number(carryCents) || 0)) / 100));
+    if (pay <= budget) return qty;
     qty -= 1;
   }
   return 0;
@@ -78,13 +98,14 @@ export function maxAffordable(cash, price, maxShares = 60) {
 
 /**
  * 这一单在**含杠杆**之后最多能买几股（纯函数）。`state.borrowRoom` 是服务端算好的剩余额度，
- * 面板不自己重算额度（两份判据会漂）：现金 + 可用额度 = 预算上限。
+ * 面板不自己重算额度（两份判据会漂）：现金 + 尾差 + 可用额度 = 预算上限。
  */
 export function maxBuyable(state, price, maxShares = 60) {
   if (!state) return 0;
   const cash = Math.max(0, Math.trunc(Number(state.cash) || 0));
   const room = Math.max(0, Math.trunc(Number(state.borrowRoom) || 0));
-  return maxAffordable(cash + room, price, maxShares);
+  const carryCents = Math.round((Number(state.carry) || 0) * 100);
+  return maxAffordable(cash + room, price, maxShares, carryCents);
 }
 
 /**

@@ -2726,5 +2726,8 @@
   "每过 10 秒，我方随机 1 名干员陷入沉睡 2 秒。": "Every 10 s one random own operator falls asleep for 2 s.",
   "每过 25 秒，我方随机 1 名干员受到 1000 点凋亡损伤。": "Every 25 s one random own operator takes 1000 Necrosis damage.",
   "携带者视为【坚守】盟约成员；坚守盟约干员每隔 3 秒的攻击附带自身最大生命值 100% 的法术伤害，并增加自身最大生命值 150 点、【坚守】层数 2 层": "The carrier counts as a 坚守 bond member; 坚守 operators' attacks every 3 s carry Arts damage equal to 100 % of their max HP and grant +150 max HP and +2 坚守 layers.",
-  "协议源石【恶魔形态】的凭证：装备者在作战中每秒攻击力 +10%（本场战斗内叠加，无上限）；该装备同时视为【变形同构体】": "The token of the Protocol Originium card Demon Form: in battle its carrier gains +10 % ATK every second (stacking for the whole battle, with no cap); this equipment also counts as a Morphomorphic Body."
+  "协议源石【恶魔形态】的凭证：装备者在作战中每秒攻击力 +10%（本场战斗内叠加，无上限）；该装备同时视为【变形同构体】": "The token of the Protocol Originium card Demon Form: in battle its carrier gains +10 % ATK every second (stacking for the whole battle, with no cap); this equipment also counts as a Morphomorphic Body.",
+  "跳到 boss 战": "Jump to the boss fight",
+  "首领": "Leader",
+  "本机数据里没有首领。": "No leaders in this data."
 }

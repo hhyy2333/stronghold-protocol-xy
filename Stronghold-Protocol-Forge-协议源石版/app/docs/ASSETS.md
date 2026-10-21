@@ -320,7 +320,7 @@ The `stem` of a Spine model is the upstream file name. Two examples: `char_107_l
 - **Enemies:** 253 ids planned, 252 in the manifest (心烛 has no assets). The set is the union of:
   - the 07 enemy list;
   - every enemy in the `act1autochess_*` wave, boss and 联防 levels that act2 modes use (from `05-maps.json`; the tutorial is excluded);
-  - the bosses (`boss_1..10`);
+  - the bosses (`boss_1..10`, plus the fork's hand-added `boss_11` “不死的黑蛇” through `15-extra-bosses.json`);
   - the closure of their summons (`randomEnemyAttribute` spawns and blackboard `enemy_key` references);
   - every key of `data/enemies.json` (built by `tools/build-data.mjs`, when present), which adds for example the enemies swapped in by 机变 effects;
   - the bosses' handbook/model ids, such as `enemy_1559_vtlionk`;

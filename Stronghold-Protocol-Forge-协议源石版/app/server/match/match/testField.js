@@ -46,6 +46,12 @@ import { OK, fail } from './common.js';
 /** The test panel refuses a single grant larger than this (shared/protocol.js bounds the wire at 1e6 too). */
 export const TEST_MAX_FUNDS = 1e6;
 
+/**
+ * 测试场 直接到 boss 战 (`g.testBoss`) leaves the tester this much funds after the production income of the leader
+ * round, so the leader can be fought with a bought team instead of a round-1 board [ASSUMED test convenience].
+ */
+export const TEST_BOSS_PURSE = 60;
+
 export class MatchTestField {
   /**
    * Whether the room is a 测试场. The intents below and MatchPhases.afterRoundStart are its only readers.
@@ -151,6 +157,55 @@ export class MatchTestField {
     this.hexDrawRound = 0;
     for (const p of this.order) if (!p.isBot) this.markPrivate(p);
     this.markPublic();
+    return OK;
+  }
+
+  /**
+   * g.testBoss { bossId? } — 测试场 直接到 boss 战（业主 2026-10-21「测试场可以直接到 boss 战」）。
+   *
+   * Skips every round before the mode's leader round and re-enters that round's prep, so the tester places operators /
+   * grants 协议源石 / adds funds and then presses Ready exactly as in the real round; `bossId` names the leader (any
+   * data/bosses.json entry, hand-added ones included), absent keeps the leader this match already drew.
+   *
+   * The leader is fought on ITS OWN wave (`Match.testBossTemplate`, consumed by startFinalAssault): a test field must be
+   * able to show a leader the current mode does not draw, and the mode's round templates only cover its own pool.
+   * Refused while a battle is running — the field would be torn down under the players — and outside a test field.
+   */
+  testBoss(ps, bossId) {
+    const g = this._testGate(ps);
+    if (g) return g;
+    const running = [PHASE.COMBAT, PHASE.UNITE, PHASE.FINAL_ASSAULT, PHASE.HIDDEN_CORE, PHASE.RESULT];
+    if (running.includes(this.phase)) return fail(ERR.WRONG_PHASE, 'test boss: a battle is running');
+    const want = typeof bossId === 'string' && bossId ? bossId : this.bossId;
+    const boss = typeof want === 'string' ? this.gd.boss(want) : null;
+    if (!boss) return fail(ERR.BAD_TARGET, 'test boss: unknown leader');
+    // the leader's own wave: prefer this mode's declaration, else any mode's (the wave's leader spawn is that boss)
+    const templates = boss.templates && typeof boss.templates === 'object' ? boss.templates : {};
+    const soloRoom = this.isSolo;
+    let tpl = (templates[this.modeId] || Object.values(templates)[0] || null)?.template || null;
+    if (typeof tpl !== 'string' || !this.gd.wave(tpl)) return fail(ERR.BAD_TARGET, 'test boss: no wave for that leader');
+    if (soloRoom && !/_s$/.test(tpl) && this.gd.wave(`${tpl}_s`)) tpl = `${tpl}_s`;
+    else if (!soloRoom && /_s$/.test(tpl) && this.gd.wave(tpl.replace(/_s$/, ''))) tpl = tpl.replace(/_s$/, '');
+    // drop whatever the skipped rounds left half-done (a draft, a deadline, a queued prep end)
+    this.setDeadline(0);
+    this._prepEndQueued = false;
+    this.draft = null;
+    this.sp = null;
+    this.round = this.gd.mode.bossRound;
+    // land with a fieldable roster: the skipped rounds' economy comes in through the production startRound (income +
+    // shop roll) at the shop level a match would roughly have by that round, plus a starting purse [ASSUMED test
+    // convenience — a tester came to the leader, not to grind rounds]
+    for (const p of this.alivePlayers()) {
+      const wantLevel = Math.min(this.gd.maxShopLevel, 1 + Math.floor((this.round - 1) / 3));
+      if (p.shop.level < wantLevel) p.shop.level = wantLevel;
+      p.startRound(this.round);
+      if (p.funds < TEST_BOSS_PURSE) p.addFunds(TEST_BOSS_PURSE - p.funds, { reason: 'test' });
+      p.recompute();
+    }
+    this.bossId = boss.bossId;
+    this.testBossTemplate = tpl;
+    this.bossWaves = null;
+    this.enterPrep();
     return OK;
   }
 

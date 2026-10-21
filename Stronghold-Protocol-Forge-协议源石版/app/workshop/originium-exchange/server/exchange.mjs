@@ -164,10 +164,20 @@ function rngAt(matchSeed, round, salt) {
 
 const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
 
-/** 手续费：成交额 ≥ FEE_FREE_BELOW 才收，万分之 commissionBps（1%），四舍五入，至少 1。 */
-function feeOf(amount) {
-  if (!(amount >= FEE_FREE_BELOW)) return 0;
-  return Math.max(1, Math.round((amount * LIMITS.commissionBps) / 10000));
+/**
+ * 钱的最小单位 = **分**（整数）。
+ *
+ * 为什么必须这样：引擎的 `PlayerState.addFunds` 是 `Math.trunc`（整数元），而这个 mod 的价格是两位小数。
+ * 直接把 `-7.99` 交给引擎会被截成 `-7` —— **每一单都凭空多出不到 1 元**；最低价 0.25 时买 1 股
+ * 甚至被截成 0，等于白拿（业主 2026-10-21 报的「股票无中生钱」，实测 9 回合凭空多出 4.77 元）。
+ * 所以金额一律先算到「分」，再通过 `_oexBuyQuote` / `_oexSellQuote` 换回整数元 + 尾差：一分钱都不丢。
+ */
+const centsOf = (yuan) => Math.round((Number(yuan) || 0) * 100);
+
+/** 手续费（分）：成交额（分）≥ FEE_FREE_BELOW 元才收，1%，四舍五入，至少 1 元。 */
+function feeCentsOf(grossCents) {
+  if (!(grossCents >= FEE_FREE_BELOW * 100)) return 0;
+  return Math.max(100, Math.round((grossCents * LIMITS.commissionBps) / 10000));
 }
 
 /** 百分比口径统一到一位小数，避免下发帧里出现 3.1000000000000005。 */
@@ -282,14 +292,20 @@ export function nextPrice(prev, pct) {
 /** 金额口径：两位小数（价格是两位小数，`2.4 × 3` 的浮点尾数不能把刚好买得起的单拒掉）。 */
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
-/** 预算内最多买几股（含手续费；服务端拒绝提示用，与面板 maxAffordable 同一口径）。 */
-function affordableShares(budget, price, cap = LIMITS.maxShares) {
-  const unit = Number(price);
+/**
+ * 预算内最多买几股（含手续费与尾差；服务端拒绝提示用，与面板 maxAffordable 同一口径）。
+ * `carryCents` 是这名玩家在交易所的尾差（正 = 交易所欠他），会抵扣这一单的现付。
+ */
+function affordableShares(budget, price, cap = LIMITS.maxShares, carryCents = 0) {
+  const unit = centsOf(price);
   if (!(unit > 0)) return 0;
-  let qty = Math.min(cap, Math.floor(Math.max(0, budget) / unit));
+  const capByBudget = Math.floor(((Math.max(0, budget) + Math.max(0, carryCents) / 100) * 100) / unit);
+  let qty = Math.min(cap, Math.max(0, capByBudget));
   while (qty > 0) {
-    const gross = round2(unit * qty);
-    if (gross + feeOf(gross) <= budget) return qty;
+    const grossCents = unit * qty;
+    const costCents = grossCents + feeCentsOf(grossCents);
+    const pay = Math.max(0, Math.ceil((costCents - carryCents) / 100));
+    if (pay <= budget) return qty;
     qty -= 1;
   }
   return 0;
@@ -305,7 +321,8 @@ function affordableShares(budget, price, cap = LIMITS.maxShares) {
  */
 export function dividendOf(price, shares) {
   if (!(price > 0) || !(shares > 0)) return 0;
-  return Math.floor(price * shares * LIMITS.dividendBps);
+  // 用「分」算，避免 price 的小数部分在乘法里产生浮点尾数：cents × shares × bps(/100) 仍是整数。
+  return Math.floor((centsOf(price) * shares * LIMITS.dividendBps) / 100);
 }
 
 /** 每回合利息（纯函数）：负债 × interestBps，四舍五入；有负债就至少 1。 */
@@ -474,6 +491,12 @@ export function registerServer(host) {
           dividendsPaid: new Map(),
           /** 分红的小数余额（万分之一元）：不够 1 元的部分留到下一回合，见 dividendOf。 */
           dividendCarry: new Map(),
+          /**
+           * 每名玩家在交易所的**尾差**（分，正 = 交易所欠他、负 = 他欠交易所）。
+           * 引擎资金是整数元，而成交额是两位小数：把不足 1 元的零头记在这里，
+           * 下一单结算时先抵扣 —— 这样一分钱不会凭空产生，也不会凭空消失。
+           */
+          cents: new Map(),
           /** 每名玩家「上一次发出去的现金」—— flush 之后的对账凭它去重（见 _oexSyncCash）。 */
           cashSent: new Map(),
           lastNews: null,
@@ -502,15 +525,49 @@ export function registerServer(host) {
       _oexDebtOf(playerId) {
         const st = this._oexState();
         if (!st) return 0;
-        return nonNegInt(st.debt.get(playerId));
+        // 负债存的是整数元；这里 round 而不是 trunc —— trunc 会让尾数凭空消失（= 少还钱）。
+        return Math.max(0, Math.round(Number(st.debt.get(playerId)) || 0));
       }
 
       _oexSetDebt(playerId, value) {
         const st = this._oexState();
         if (!st) return;
-        const next = nonNegInt(value);
+        // 负债是**整数元**：不再用 trunc 截断（那会让小数部分凭空消失 = 少还钱）。
+        const next = Math.max(0, Math.round(Number(value) || 0));
         if (next > 0) st.debt.set(playerId, next);
         else st.debt.delete(playerId);
+      }
+
+      /** 这名玩家在交易所的尾差（分，正 = 交易所欠他）。 */
+      _oexCentsOf(playerId) {
+        const st = this._oexState();
+        if (!st) return 0;
+        return Math.round(Number(st.cents.get(playerId)) || 0);
+      }
+
+      _oexSetCents(playerId, value) {
+        const st = this._oexState();
+        if (!st) return;
+        const next = Math.round(Number(value) || 0);
+        if (next !== 0) st.cents.set(playerId, next);
+        else st.cents.delete(playerId);
+      }
+
+      /**
+       * 买入报价：`costCents`（分）→ 这次要付的**整元** + 结算后的尾差。
+       * 尾差先抵扣（carry 为负时），付出去的钱是整数元，剩下不到 1 元的零头记回尾差。
+       */
+      _oexBuyQuote(playerId, costCents) {
+        const after = this._oexCentsOf(playerId) - costCents;
+        const pay = Math.max(0, Math.ceil(-after / 100));
+        return { pay, carry: after + pay * 100 };
+      }
+
+      /** 卖出报价：`proceedsCents`（分）→ 这次到账的**整元** + 结算后的尾差。 */
+      _oexSellQuote(playerId, proceedsCents) {
+        const after = this._oexCentsOf(playerId) + proceedsCents;
+        const gain = Math.max(0, Math.floor(after / 100));
+        return { gain, carry: after - gain * 100 };
       }
 
       _oexPortfolioOf(playerId) {
@@ -534,7 +591,8 @@ export function registerServer(host) {
         const cash = Math.max(0, Math.trunc(ps.funds));
         const portfolio = this._oexPortfolioOf(ps.playerId);
         const debt = this._oexDebtOf(ps.playerId);
-        return round2(cash + portfolio - debt);
+        const carry = this._oexCentsOf(ps.playerId) / 100;
+        return round2(cash + portfolio + carry - debt);
       }
 
       // -----------------------------------------------------------------------------------------------------------
@@ -565,6 +623,7 @@ export function registerServer(host) {
             st.debt.delete(ps.playerId);
             st.lever.delete(ps.playerId);
             st.dividendCarry.delete(ps.playerId);
+            st.cents.delete(ps.playerId);
             continue;
           }
           const row = st.shares.get(ps.playerId) || {};
@@ -686,12 +745,16 @@ export function registerServer(host) {
             .filter((entry) => entry.shares > 0 && entry.price > 0)
             .sort((a, b) => a.shares * a.price - b.shares * b.price || (a.stock.id < b.stock.id ? -1 : 1))[0];
           if (!pick) break;
-          const gross = round2(pick.price);
-          const fee = feeOf(gross);
-          const proceeds = round2(Math.max(0, gross - fee));
-          const repay = Math.min(debt, proceeds);
-          debt = round2(debt - repay);
-          const cashIn = round2(proceeds - repay);
+          // 与 _oexSell 同一套分币结算：强制平仓也是真卖股票，不能因为取整多出/少掉钱。
+          const grossCents = centsOf(pick.price);
+          const feeCents = feeCentsOf(grossCents);
+          const proceedsCents = Math.max(0, grossCents - feeCents);
+          const quote = this._oexSellQuote(ps.playerId, proceedsCents);
+          const gain = quote.gain;
+          const repay = Math.min(debt, gain);
+          debt -= repay;
+          const cashIn = gain - repay;
+          this._oexSetCents(ps.playerId, quote.carry);
           if (cashIn > 0) ps.addFunds(cashIn, { reason: 'exchange-liquidate' });
           row[pick.stock.id] = (row[pick.stock.id] || 0) - 1;
           if (row[pick.stock.id] <= 0) delete row[pick.stock.id];
@@ -789,32 +852,38 @@ export function registerServer(host) {
           return;
         }
         const price = st.prices[stock.id];
-        const gross = round2(price * qty);
-        const fee = feeOf(gross);
-        const total = round2(gross + fee);
+        // 金额全部先算到「分」，再换回整数元 + 尾差（见 centsOf 的注释）。
+        const grossCents = centsOf(price) * qty;
+        const feeCents = feeCentsOf(grossCents);
+        const costCents = grossCents + feeCents;
         const cash = Math.max(0, Math.trunc(ps.funds));
         const debt = this._oexDebtOf(ps.playerId);
         const level = LIMITS.leverage.includes(leverOverride) ? leverOverride : (st.lever.get(ps.playerId) || 1);
-        const equity = round2(cash + this._oexPortfolioOf(ps.playerId) - debt);
+        const equity = this._oexNetWorth(ps);
         const room = Math.max(0, maxDebtFor(level, equity) - debt);
-        const borrow = Math.max(0, round2(total - cash));
-        if (borrow > room) {
-          const affordable = Math.min(total, cash + room);
+        const quote = this._oexBuyQuote(ps.playerId, costCents);
+        const pay = quote.pay;
+        const borrow = Math.max(0, pay - cash);
+        if (pay > cash + room) {
           this._oexReply(ps, {
-            ok: false, code: 'funds', op: 'buy', stock: stock.id, qty, price, fee,
+            ok: false, code: 'funds', op: 'buy', stock: stock.id, qty, price,
+            fee: feeCents / 100,
             text: borrow > 0 && level > 1
-              ? `超出 ${level}x 杠杆额度：这一单还要借 ${borrow}，但只剩 ${room} 的额度（现金 ${cash}）。`
-              : `资金不足：需要 ${total}（股价 ${gross} + 手续费 ${fee}），现在只有 ${cash}。`,
-            cash, debt, lever: level, maxBuy: affordableShares(affordable, price),
+              ? `超出 ${level}x 杠杆额度：这一单要付 ${pay}（现金 ${cash} + 可借 ${room}）。`
+              : `资金不足：这一单要付 ${pay}（成交 ${grossCents / 100} + 手续费 ${feeCents / 100}），现在只有 ${cash}。`,
+            cash, debt, lever: level,
+            maxBuy: affordableShares(cash + room, price, LIMITS.maxShares, this._oexCentsOf(ps.playerId)),
           });
           return;
         }
-        const pay = Math.min(cash, total);
+        // 只扣整数元；不足 1 元的零头记账到尾差，下一单抵扣 —— 既不造钱也不吞钱。
         if (pay > 0) ps.addFunds(-pay, { reason: 'exchange-buy' });
-        if (borrow > 0) this._oexSetDebt(ps.playerId, round2(debt + borrow));
+        this._oexSetCents(ps.playerId, quote.carry);
+        if (borrow > 0) this._oexSetDebt(ps.playerId, debt + borrow);
         row[stock.id] = held + qty;
         st.orders += 1;
-        st.feesPaid.set(ps.playerId, (st.feesPaid.get(ps.playerId) || 0) + fee);
+        st.feesPaid.set(ps.playerId, (st.feesPaid.get(ps.playerId) || 0) + feeCents / 100);
+        const fee = feeCents / 100;
         this._oexReply(ps, {
           ok: true, op: 'buy', stock: stock.id, qty, price, fee, lever: level,
           ...(borrow > 0 ? { borrowed: borrow } : {}),
@@ -836,19 +905,25 @@ export function registerServer(host) {
           return;
         }
         const price = st.prices[stock.id];
-        const gross = round2(price * qty);
-        const fee = feeOf(gross);
-        const proceeds = round2(Math.max(0, gross - fee));
+        // 同买入：先算到「分」，再换整数元 + 尾差。
+        const grossCents = centsOf(price) * qty;
+        const feeCents = feeCentsOf(grossCents);
+        const proceedsCents = Math.max(0, grossCents - feeCents);
+        const quote = this._oexSellQuote(ps.playerId, proceedsCents);
+        const gain = quote.gain;
         // 卖出的钱先还债，剩下的进现金（引擎里现金每回合清零，还债才是「留住价值」的那条路）。
         const debt = this._oexDebtOf(ps.playerId);
-        const repay = Math.min(debt, proceeds);
-        const cashIn = round2(proceeds - repay);
-        if (repay > 0) this._oexSetDebt(ps.playerId, round2(debt - repay));
+        const repay = Math.min(debt, gain);
+        const cashIn = gain - repay;
+        this._oexSetCents(ps.playerId, quote.carry);
+        if (repay > 0) this._oexSetDebt(ps.playerId, debt - repay);
         if (cashIn > 0) ps.addFunds(cashIn, { reason: 'exchange-sell' });
         row[stock.id] = held - qty;
         if (row[stock.id] <= 0) delete row[stock.id];
         st.orders += 1;
-        st.feesPaid.set(ps.playerId, (st.feesPaid.get(ps.playerId) || 0) + fee);
+        st.feesPaid.set(ps.playerId, (st.feesPaid.get(ps.playerId) || 0) + feeCents / 100);
+        const fee = feeCents / 100;
+        const proceeds = proceedsCents / 100;
         this._oexReply(ps, {
           ok: true, op: 'sell', stock: stock.id, qty, price, fee,
           ...(repay > 0 ? { repaid: repay } : {}),
@@ -892,7 +967,8 @@ export function registerServer(host) {
         });
         const cash = Math.max(0, Math.trunc(ps.funds));
         portfolio = round2(portfolio);
-        const equity = round2(cash + portfolio - debt);
+        const carry = round2(this._oexCentsOf(ps.playerId) / 100);
+        const equity = round2(cash + portfolio + carry - debt);
         const regime = regimeAt(Number(this.seed) >>> 0, this.round || st.openedRound);
         const marginPct = portfolio > 0 ? oneDecimal((debt * 100) / portfolio) : 0;
         return {
@@ -909,6 +985,8 @@ export function registerServer(host) {
             cash,
             portfolio,
             debt,
+            /** 交易所尾差（元）：不足 1 元的零头，正 = 交易所欠你。已计入 netWorth。 */
+            carry,
             leverage: level,
             borrowRoom: Math.max(0, maxDebtFor(level, equity) - debt),
             netWorth: equity,

@@ -428,6 +428,12 @@ export const FORMS = Object.freeze({
     reborn: Object.freeze({ change: 'Revive_01', next: 'form2', roles: Object.freeze({}) }),
     form2: Object.freeze({ change: null, roles: Object.freeze({}) }),
   }),
+  // 不死的黑蛇 (boss_11, content/bosses.js kitBlackSnake): 5 s 重生 on Reborn_1_Start / Reborn_1_Idle / Reborn_1_End, then
+  // the same skeleton in 狂暴 — the model carries Reborn_2_* as well (PRTS: both waves of 不息恶火)
+  enemy_1515_bsnake: Object.freeze({
+    reborn: Object.freeze({ change: 'Reborn_1_Start', end: 'Reborn_1_End', next: 'form2', roles: Object.freeze({ idle: 'Reborn_1_Idle', deploy: 'Reborn_1_Idle', move: loop('Reborn_1_Idle'), stun: loop('Reborn_1_Idle'), attack: null, skill: null }) }),
+    form2: Object.freeze({ change: null, roles: Object.freeze(clipSet('Idle_B', 'Move_B', 'Die', 'Attack_B')) }),
+  }),
   enemy_1516_jakill: Object.freeze({
     reborn: Object.freeze({ change: 'C1_Die', roles: JAKILL2 }),
     form2: Object.freeze({ change: null, roles: JAKILL2 }),

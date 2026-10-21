@@ -52,6 +52,8 @@ export class MatchIntents {
       case 'g.testHexClear': return this.testHexClear(ps);
       case 'g.testEnemyHex': return this.testEnemyHex(ps, msg.hexId);
       case 'g.testEnemyHexClear': return this.testEnemyHexClear(ps);
+      // 测试场 (业主 2026-10-21「测试场可以直接到 boss 战」): jump to the leader round's prep, optionally naming the leader
+      case 'g.testBoss': return this.testBoss(ps, msg.bossId);
       // 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12): a per-operator increment merged into the seat's
       // 配发 — and, for a 自选编队 slot the player filled, an update of that slot's pick (platform.js setPrepLoadout)
       case 'g.loadout': return this.setPrepLoadout(ps.playerId, msg.entries);

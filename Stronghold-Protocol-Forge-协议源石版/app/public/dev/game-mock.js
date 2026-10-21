@@ -26,6 +26,8 @@ const VARIANTS = new Set((params.get('variant') || '').split(',').filter(Boolean
 // the match's stage (data/stages.json id): ?stage=act1autochess_m01 boards a stage whose own devices (crates / turrets)
 // stand on the prep field — the default act2autochess_m01 keeps its blowers and turrets off it (rows 6 / 8 / 13)
 const STAGE_ID = params.get('stage') || 'act2autochess_m01';
+// ?boss=boss_11 — the leader the mocked FINAL_ASSAULT / HIDDEN_CORE draws (default: the official boss_5 / boss_8).
+const BOSS_ID = params.get('boss') || null;
 
 // ---- deterministic rng ----------------------------------------------------------------------------------
 let seed = 20260927;
@@ -471,7 +473,7 @@ function startCombat(phase) {
     enemies.push({ id: id++, kind: 'enemy', side: 'enemy', ownerId: ME, defId: key, name: e?.name, spine: key, avatar: key, x: startX + rnd() * 0.3, y, facing: -1, maxHp: e?.stats?.maxHp || 3000, hp: e?.stats?.maxHp || 3000, spawnAt: i * 0.9, dir: boss ? (i % 2 ? -1 : 1) : -1, dead: false });
   }
   if (boss) {
-    const bossRec = data.lookup('bosses', phase === PHASE.HIDDEN_CORE ? 'boss_8' : 'boss_5');
+    const bossRec = data.lookup('bosses', BOSS_ID || (phase === PHASE.HIDDEN_CORE ? 'boss_8' : 'boss_5'));
     const e = data.lookup('enemies', bossRec.enemyKey);
     enemies.push({ id: id++, kind: 'enemy', side: 'enemy', ownerId: ME, defId: bossRec.enemyKey, name: bossRec.name, spine: bossRec.enemyKey, avatar: bossRec.enemyKey, x: 10, y: 3, facing: -1, maxHp: e?.stats?.maxHp || 1e5, hp: (e?.stats?.maxHp || 1e5) * 0.62, spawnAt: 0, dir: 0, boss: true, dead: false });
   }

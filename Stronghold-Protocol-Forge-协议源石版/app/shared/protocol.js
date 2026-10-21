@@ -859,11 +859,17 @@ export const C2S = {
   //   g.testEnemyHex { hexId }  add one ENEMY 协议源石 of `enemyHexes` to `Match.enemyHexes` — match-global state, so it
   //                             is accepted only with exactly one human seat (a solo test field)
   //   g.testEnemyHexClear {}    drop every enemy 协议源石 (the enemy fights unmodified again)
+  //   g.testBoss { bossId? }    jump straight to the leader round (the mode's boss round) in its prep: the match skips
+  //                             the rounds before it and drops the tester into the Final Assault prep, where the leader
+  //                             is the one named (`bossId`, any data/bosses.json entry — including the fork's hand-added
+  //                             boss_11) or, without it, the one this match already drew. Accepted only in a test field
+  //                             and only when no battle is running (`testField.js testBoss`).
   'g.testFunds': { amount: (v) => isInt(v, 1, 1e6) },
   'g.testHex': { hexId: isId },
   'g.testHexClear': {},
   'g.testEnemyHex': { hexId: isId },
   'g.testEnemyHexClear': {},
+  'g.testBoss': { bossId: isId, $optional: ['bossId'] },
   // 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12; the reference mod 休整期切换技能模组mod): change ONE
   // operator's equipped skill / elite module between rounds. Unlike room.loadout (a whole-roster replacement, INFO_CHECK
   // only) this is a per-operator increment applied on top of the seat's current 配发, so one click never clears another

@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "about": "Hand-added 领袖 that the official autochess tables do not carry (this fork's own content). tools/build-data.mjs merges each entry into data/enemies.json (the enemy row), data/waves.json (a boss wave cloned from waveBase, its leader spawn retargeted at enemyId), data/bosses.json (the leader record: bloodPoint / weight / templates) and data/config.json (the mode's round bossTemplates + bossWeights). The scripted mechanics live in server/sim/content/bosses.js BOSS_KITS.",
+    "sources": [
+      "enemy_database.json (zh_CN) enemy_1515_bsnake level 0: constants, skills (Ignite / DragonFireExplode / ScreenAttack / SummonFlame) and talentBlackboard",
+      "enemy_handbook_table.json enemy_1515_bsnake: 能力 text (第一阶段 / 狂暴状态)",
+      "PRTS 不死的黑蛇 (level 0): 生命 50000, 攻击 770, 防御 800, 法抗 50, 移动 0.5, 攻击间隔 4.5, 攻击半径 2.0, 重量 6, 目标价值 2, 抗性 沉默·晕眩·沉睡·冻结·浮空; 点燃 cd 19; 引爆 cd 35; 召唤能量聚合体 [狂暴] cd 75 / 技力 50; 烈焚灼息 50/s→230/s over 30 s, duration 30.5 s; 黑蛇形态 debuff holders deal 50 % damage; 首次死亡 5 s 重生至 100 %, 狂暴 +50 % max HP / ATK, 不息恶火 28 s / 每 2 s 一列共 10 次 / 打完 15 s 无敌; 第二次死亡 5 s 后消失并再放一次",
+      "Ark-Models models_data.json enemy 1515_bsnake (spine): Reborn_1_* / Reborn_2_* / Skill_1_A/B / Skill_2_A/B / Skill_3 clips"
+    ],
+    "notes": [
+      "属性按业主 2026-10-21「把黑蛇属性加强到现在的 boss 属性」拉到现有领袖的档位：生命 50000 → 240000、攻击 770 → 1000、防御 800 → 1000、法抗 50 不变（`stats` 覆盖，build-data 合并进数据）[ASSUMED：官方 H8-4 数值在本模式的领袖里偏低]。",
+      "bloodPoint 与“萨米的意志”同一档（277.5k / 787.5k / 2M / 4M），是两条血条合计后的口径（首次被击败重生再打一轮），所以整场要打掉的伤害量与其它领袖相当 [ASSUMED]。",
+      "波次只换领袖的生成 key：场地、路线、护送与分支沿用 waveBase（官方 h07_05 卢西恩场；它的领袖路线是 patrol 循环，所以黑蛇会像卢西恩 / 假想敌：铳那样边走边打）[ASSUMED]。",
+      "能量聚合体在缓存的数据表里没有独立行（它来自关卡分支 bsnake_flame），v1 里用 kit 在场上召唤一位占位召唤物代替 [ASSUMED]。"
+    ]
+  },
+  "bosses": [
+    {
+      "bossId": "boss_11",
+      "enemyId": "enemy_1515_bsnake",
+      "handbookId": "enemy_1515_bsnake",
+      "name": "“不死的黑蛇”",
+      "sortId": 11,
+      "weight": 4,
+      "hidden": false,
+      "bloodPoint": { "FUNNY": 277500, "NORMAL": 787500, "HARD": 2000000, "ABYSS": 4000000 },
+      "stats": { "maxHp": 240000, "atk": 1000, "def": 1000, "res": 50 },
+      "waveBase": { "multi": "act2autochess_h07_05", "solo": "act2autochess_h07_05_s" }
+    }
+  ]
+}

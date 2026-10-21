@@ -133,6 +133,8 @@ export const actions = {
   testHexClear: () => act('g.testHexClear', {}, { sfx: 'back' }),
   testEnemyHex: (hexId) => act('g.testEnemyHex', { hexId }, { sfx: 'pick', sfxUrl: hexCue('selectGold') }),
   testEnemyHexClear: () => act('g.testEnemyHexClear', {}, { sfx: 'back' }),
+  // 测试场 直接到 boss 战（业主 2026-10-21）：skip to the leader round's prep; `bossId` picks the leader (absent keeps the draw)
+  testBoss: (bossId) => act('g.testBoss', bossId ? { bossId } : {}, { sfx: 'levelup' }),
   ready: (ready) => act('g.ready', { ready }, { sfx: ready ? 'ready' : 'back' }),
   // 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12; the reference mod 休整期切换技能模组mod): re-equip ONE
   // operator from its detail card in PREP. `entries` is a per-operator increment (`{ [baseChessId]: { skill?, module? } }`)

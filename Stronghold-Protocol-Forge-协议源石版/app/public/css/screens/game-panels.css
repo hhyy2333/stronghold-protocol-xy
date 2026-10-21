@@ -953,6 +953,12 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 }
 .tarena__label b.num { font-size: max(calc(.17 * var(--t)), 12px); }
 .tarena__funds { display: flex; align-items: center; gap: .06rem; flex-wrap: wrap; }
+/* 测试场 直接到 boss 战: a leader picker + the jump button (the label above names the round it starts) */
+.tarena__bossrow { display: flex; align-items: center; gap: .06rem; }
+.tarena__boss {
+  flex: 1; min-width: 0; padding: .04rem .06rem; font: inherit; color: var(--text-hi);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: .03rem;
+}
 /* the card grid: scrolls on its own (the section is the flex child that gives up height), 4 cards per row */
 .tarena__grid {
   flex: 1; min-height: 0; overflow: auto; display: grid; gap: .06rem;

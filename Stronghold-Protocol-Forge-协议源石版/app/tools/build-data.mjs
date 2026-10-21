@@ -387,6 +387,7 @@ async function loadContext() {
     enemies: await loadResearch('05-enemies.json'),
     maps: await loadResearch('05-maps.json'),
     assets: await loadResearch('07-assets.json'),
+    extra: await loadResearch('15-extra-bosses.json'),
   };
 
   return {
@@ -2422,6 +2423,20 @@ function enemyOverrideRecord(over, label) {
 }
 
 /**
+ * Hand-added leaders (docs/research/15-extra-bosses.json): the official autochess tables carry no enemy row, wave or
+ * boss row for them, so this fork declares them here and the builders below merge them in. Each entry names the enemy
+ * (`enemyId`), the leader record (`bossId`, weight, bloodPoint) and the official boss wave it clones (`waveBase`:
+ * the field, its routes and its escorts stay the official ones; only the leader's spawn key is retargeted).
+ * @returns {Array<{bossId:string, enemyId:string, handbookId?:string, name?:string, sortId?:number, weight:number,
+ *   hidden?:boolean, bloodPoint:Record<string,number>, waveBase?:{multi?:string, solo?:string}}>}
+ */
+function customBossDefs(ctx) {
+  const list = ctx.research.extra?.bosses;
+  if (!Array.isArray(list)) return [];
+  return list.filter((b) => b && typeof b.bossId === 'string' && typeof b.enemyId === 'string' && /^enemy_/.test(b.enemyId));
+}
+
+/**
  * Collect every enemy key that can appear in a match (templates, factions, bounties, bands,
  * bosses, summons), transitively through extraEnemyKeyList and enemy blackboards.
  */
@@ -2429,6 +2444,7 @@ function collectEnemyKeys(ctx) {
   const keys = new Set();
   const add = (k) => { if (typeof k === 'string' && /^enemy_/.test(k)) keys.add(k); };
   const refs0 = [];
+  for (const b of customBossDefs(ctx)) add(b.enemyId);
   for (const id of ctx.templateIds) {
     const lv = ctx.levels[id];
     for (const w of lv.waves || []) for (const f of w.fragments || []) for (const a of f.actions || []) if (a.actionType === 'SPAWN') add(a.key);
@@ -2711,6 +2727,12 @@ function buildEnemies(ctx) {
       tauntLevel: mv(at.tauntLevel, 0),
     };
     if (swapKeys.has(key)) stats.lpr = BAND_SWAP_LPR;
+    // Hand-added leaders may raise their own stat block (docs/research/15-extra-bosses.json `stats`): the official
+    // enemy_database row is the H8-4 stage's numbers, below the mode's own leaders.
+    const extraStats = customBossDefs(ctx).find((d) => d.enemyId === key)?.stats;
+    if (extraStats && typeof extraStats === 'object') {
+      for (const [k, v] of Object.entries(extraStats)) if (typeof v === 'number' && Number.isFinite(v) && k in stats) stats[k] = cleanNum(v);
+    }
     const beFactor = rand?.enemyBattleEffectivenessFactor ?? 1;
     const be = beFactor > 0 ? Math.round((stats.maxHp * hpF + stats.atk * atkF + stats.def * defF + stats.res * resF) / beFactor) : null;
     const talents = flattenBB(data.talentBlackboard, `enemy ${key} talents`);
@@ -2905,6 +2927,27 @@ function buildWaves(ctx, enemies) {
       if (sp.action) continue;
       if (!enemies[sp.key]) warn(`template ${id}: branch ${bn} key ${sp.key} not in enemies`);
       if (!out[id].extraRoutes[sp.routeIndex]) warn(`template ${id}: branch ${bn} uses missing extraRoute ${sp.routeIndex}`);
+    }
+  }
+
+  // Hand-added leaders (docs/research/15-extra-bosses.json): clone the declared official boss wave and retarget its
+  // leader spawn at our enemy. Field, routes, escorts, branches and overrides stay the official ones; the clone gets
+  // its own id and its own usedBy (the same modes/rounds as the base, with this boss's id).
+  for (const b of customBossDefs(ctx)) {
+    for (const [variant, baseId] of [['multi', b.waveBase?.multi], ['solo', b.waveBase?.solo]]) {
+      if (!baseId) { warn(`extra boss ${b.bossId}: no waveBase.${variant}`); continue; }
+      const base = out[baseId];
+      if (!base) { warn(`extra boss ${b.bossId}: waveBase.${variant} ${baseId} is not a wave`); continue; }
+      const id = `custom_${b.bossId}${variant === 'solo' ? '_s' : ''}`;
+      const w = JSON.parse(JSON.stringify(base));
+      w.id = id;
+      w.bossId = b.bossId;
+      w.solo = variant === 'solo';
+      const leader = w.spawns.find((sp) => sp.tag === 'boss');
+      if (!leader) { warn(`extra boss ${b.bossId}: ${baseId} has no leader spawn`); continue; }
+      leader.key = b.enemyId;
+      w.usedBy = (base.usedBy || []).map((u) => ({ ...u, bossId: b.bossId }));
+      out[id] = w;
     }
   }
   return out;
@@ -3287,6 +3330,37 @@ function buildBosses(ctx, enemies, waves) {
       bloodPoint: { FUNNY: b.bloodPoint, NORMAL: b.bloodPointNormal, HARD: b.bloodPointHard, ABYSS: b.bloodPointAbyss },
       lpr: e?.stats?.lpr ?? null, templates, escortsByTemplate, parts: [...parts].sort(naturalCmp),
       abilities: e?.abilities?.map((a) => a.text) || [],
+    };
+  }
+  // Hand-added leaders (docs/research/15-extra-bosses.json): no official bossInfoDict row exists, so the record is
+  // assembled here from the clone wave's usedBy (templates per mode), the base wave's escorts and the declaration.
+  for (const d of customBossDefs(ctx)) {
+    const e = enemies[d.enemyId];
+    if (!e) { warn(`extra boss ${d.bossId}: enemy ${d.enemyId} missing`); continue; }
+    const templates = {};
+    const escortsByTemplate = {};
+    for (const [variant, baseId] of [['multi', d.waveBase?.multi], ['solo', d.waveBase?.solo]]) {
+      const id = `custom_${d.bossId}${variant === 'solo' ? '_s' : ''}`;
+      const w = waves[id];
+      if (!w) continue;
+      for (const u of w.usedBy || []) templates[u.modeId] = { round: u.round, template: id };
+      const list = {};
+      for (const sp of w.spawns || []) {
+        if (sp.tag === 'boss' || sp.action || sp.tag === 'part') continue;
+        const k = sp.slot ? `${sp.slot}:${sp.key}` : sp.key;
+        list[k] = (list[k] || 0) + sp.count;
+      }
+      escortsByTemplate[id] = Object.entries(list).map(([k, count]) => {
+        const [slot, key] = k.includes(':') ? k.split(':') : [null, k];
+        return { key, slot, count };
+      });
+    }
+    out[d.bossId] = {
+      bossId: d.bossId, enemyKey: d.enemyId, handbookId: d.handbookId || d.enemyId, name: e.name || d.name || d.enemyId,
+      sortId: d.sortId ?? Object.keys(out).length + 1, weight: d.weight ?? 1, hidden: !!d.hidden,
+      bloodPoint: { FUNNY: d.bloodPoint?.FUNNY, NORMAL: d.bloodPoint?.NORMAL, HARD: d.bloodPoint?.HARD, ABYSS: d.bloodPoint?.ABYSS },
+      lpr: e.stats?.lpr ?? null, templates, escortsByTemplate, parts: [],
+      abilities: (e.abilities || []).map((a) => a.text),
     };
   }
   return out;
@@ -3838,6 +3912,26 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
       bossWeights: Object.fromEntries(Object.values(rounds).filter((x) => x.isBoss && !x.isHidden).flatMap((x) => Object.keys(x.bossTemplates)).map((b) => [b, act.bossInfoDict[b].weight])),
       hiddenBossWeights: Object.fromEntries(Object.values(rounds).filter((x) => x.isHidden).flatMap((x) => Object.keys(x.bossTemplates)).map((b) => [b, act.bossInfoDict[b].weight])),
     };
+  }
+
+  // Hand-added leaders (docs/research/15-extra-bosses.json): the official battle tables have no round row for them, so
+  // each mode/round the clone wave's usedBy names gets the boss in its bossTemplates and the mode gains its weight —
+  // that is what makes a match draw it (match/gamedata.js bossWeights → waves.js setupMatchWaves).
+  for (const d of customBossDefs(ctx)) {
+    for (const variant of ['multi', 'solo']) {
+      const id = `custom_${d.bossId}${variant === 'solo' ? '_s' : ''}`;
+      const w = waves[id];
+      if (!w) continue;
+      for (const u of w.usedBy || []) {
+        const mode = modes[u.modeId];
+        const rd = mode && mode.rounds && mode.rounds[u.round];
+        if (!rd || !rd.isBoss) { warn(`extra boss ${d.bossId}: ${u.modeId} round ${u.round} is not a boss round`); continue; }
+        rd.bossTemplates = rd.bossTemplates || {};
+        rd.bossTemplates[d.bossId] = id;
+        const weights = d.hidden ? mode.hiddenBossWeights : mode.bossWeights;
+        weights[d.bossId] = d.weight ?? 1;
+      }
+    }
   }
 
   const priceTable = act.shopCharChessInfoData || {};

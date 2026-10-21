@@ -3235,3 +3235,89 @@ test(`${nm('enemy_10122_uacann_2')}: its 燃烧区域 (不可对空) spares a fl
   assert.ok(!burns.some((c) => c.target === y), 'the dragon does not');
   assert.ok(!h.hooksOf('damaged').some((c) => c.source === e && c.target === y), 'nor is it shot or splashed');
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// boss_11 “不死的黑蛇” (enemy_1515_bsnake) — the hand-added leader (docs/research/15-extra-bosses.json)
+
+const SNAKE = 'enemy_1515_bsnake';
+const hasBuff = (u, key) => (u.buffs || []).some((b) => b.key === key);
+
+test('boss_11 数据：敌人、编队波次（多/单人）、模式权重都在', () => {
+  const B = JSON.parse(fs.readFileSync(new URL('../../data/bosses.json', import.meta.url), 'utf8'));
+  const C = JSON.parse(fs.readFileSync(new URL('../../data/config.json', import.meta.url), 'utf8'));
+  assert.equal(E[SNAKE].rank, 'BOSS');
+  // 属性拉到现有领袖档位（业主 2026-10-21）：240000 / 1000 / 1000 / 50
+  assert.deepEqual([E[SNAKE].stats.maxHp, E[SNAKE].stats.atk, E[SNAKE].stats.def, E[SNAKE].stats.res], [240000, 1000, 1000, 50]);
+  const boss = B.boss_11;
+  assert.ok(boss, 'boss_11 exists');
+  assert.equal(boss.enemyKey, SNAKE);
+  assert.equal(boss.hidden, false);
+  assert.equal(boss.bloodPoint.NORMAL, 787500);
+  for (const id of ['custom_boss_11', 'custom_boss_11_s']) {
+    const w = W[id];
+    assert.ok(w, `${id} exists`);
+    assert.equal(w.bossId, 'boss_11');
+    assert.equal(w.spawns.find((s) => s.tag === 'boss').key, SNAKE);
+    assert.equal(boss.templates[w.usedBy[0].modeId].template, id);
+  }
+  for (const id of ['mode_single_normal', 'mode_single_funny', 'mode_multi_normal']) {
+    assert.equal(C.modes[id].bossWeights.boss_11, 4, `${id} weight`);
+    const rounds = Object.entries(C.modes[id].rounds).filter(([, r]) => r.bossTemplates?.boss_11);
+    assert.equal(rounds.length, 1, `${id}: one boss round`);
+    assert.ok(rounds[0][1].isBoss);
+  }
+});
+
+test('黑蛇：普通攻击造成真实伤害并附加【烈焚灼息】（真伤每秒 50 → 230 递增）', () => {
+  const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 8 }] });
+  h.step();
+  const boss = put(h, SNAKE, [3, 10], { tag: 'boss' });
+  const wall = h.allies()[0];
+  assert.ok(h.runUntil(() => hasBuff(wall, 'boss:bsnakeFire'), 20), '普通攻击附加了烈焚灼息');
+  const hp0 = wall.hp;
+  h.run(2);
+  const early = (hp0 - wall.hp) / 2;               // 头两秒：50/s → 56/s
+  assert.ok(early >= 40 && early <= 95, `头两秒约 50/s，实际 ${early.toFixed(1)}`);
+  const hp1 = wall.hp;
+  h.run(12);
+  const late = (hp1 - wall.hp) / 12;               // 十几秒后：100/s 以上
+  assert.ok(late > early + 20, `真伤随时间递增（${early.toFixed(1)} → ${late.toFixed(1)}/s）`);
+});
+
+test('黑蛇：点燃对两名未带【烈焚灼息】的干员施加，引爆打身上的并溅射四格后重新施加', () => {
+  // 站在射程外（2 格）让普通攻击打不到，只看技能
+  const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 1 }, { chessId: 't_wall2', row: 11, col: 1 }] });
+  h.step();
+  const boss = put(h, SNAKE, [3, 10], { tag: 'boss' });
+  const [a, b2] = h.allies();
+  assert.ok(h.runUntil(() => hasBuff(a, 'boss:bsnakeFire') && hasBuff(b2, 'boss:bsnakeFire'), 25), '点燃：两名都上了烈焚灼息');
+  assert.equal(h.allies().filter((u) => hasBuff(u, 'boss:bsnakeFire')).length, 2, '点燃不重复施加');
+  const hpA = a.hp, hpB = b2.hp;
+  assert.ok(h.runUntil(() => hasBuff(a, 'boss:bsnakeFire') && !hasBuff(b2, 'boss:bsnakeFire'), 20), '引爆：清掉一名身上的烈焚灼息');
+  const burst = (hpA - a.hp) + (hpB - b2.hp);
+  assert.ok(burst > 1200, `引爆至少一次 100% 法术（合计掉血 ${burst.toFixed(0)}）`);
+  assert.ok(h.allies().some((u) => hasBuff(u, 'boss:bsnakeFire')), '引爆后重新施加');
+  assert.ok(boss.alive);
+});
+
+test('黑蛇：首次被击败（血池 60 %）→ 5 s 重生 → 狂暴 + 不息恶火（火球每 2 s 一列）→ 15 s 无敌', () => {
+  const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 8 }], hooks: ['damaged'] });
+  h.step();
+  const boss = put(h, SNAKE, [3, 10], { tag: 'boss' });
+  const wall = h.allies()[0];
+  // 把血池打到 60 %（= 第一条血条 40 % 打掉）
+  h.b.sharedBoss.hp = Math.round(h.b.sharedBoss.maxHp * 0.6);
+  h.run(0.5);
+  assert.equal(boss.form, 'form2', '进入重生形态');
+  assert.ok(hasBuff(boss, 'boss:bsnakeReborn'), '5 s 重生（无敌/不可选中）');
+  assert.ok(h.runUntil(() => hasBuff(boss, 'boss:bsnakeScreen'), 10), '重生结束进入不息恶火');
+  assert.ok(hasBuff(boss, 'boss:bsnakeRage'), '狂暴：攻击力提升');
+  assert.ok(boss.s.atk > E[SNAKE].stats.atk, `狂暴后攻击力 ${boss.s.atk} > 数据 ${E[SNAKE].stats.atk}`);
+  const hp = wall.hp;
+  assert.ok(h.run(6) && wall.hp < hp, '火球打到了该行最左边的干员');
+  assert.ok(h.runUntil(() => hasBuff(boss, 'boss:bsnakeInvuln'), 30), '不息恶火结束：切回形态并 15 s 无敌');
+  assert.ok(h.runUntil(() => !hasBuff(boss, 'boss:bsnakeInvuln'), 20), '无敌结束');
+  assert.equal(boss.form, null, '回到黑蛇形态');
+  assert.ok(boss.alive);
+});
+

@@ -74,7 +74,7 @@ import { normalizeRoute } from '../simdata.js';
 import {
   ensureInstalled, abOf, attach, T, elem, hurt, targetsNear, allTargets, byPriority, areaAllies, areaAlliesInTiles, fieldAllies,
   remainingRoute, stayRoute, stepToward, setHits, hitCount, lpLoss, blinkForward, canCast, unbalancedNow, absorbArts, nthOf,
-  castSlot,
+  castSlot, setForm,
 } from './enemies.js';
 import { hypot, powi } from '../detmath.js';
 
@@ -1107,6 +1107,185 @@ function kitEquip() {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// “不死的黑蛇” (boss_11, enemy_1515_bsnake) — hand-added leader (docs/research/15-extra-bosses.json).
+//
+// Sources: enemy_database enemy_1515_bsnake level 0 (skills Ignite / DragonFireExplode / ScreenAttack / SummonFlame + the
+// talentBlackboard), the handbook 能力 text and PRTS 不死的黑蛇 等级0.
+//   · 黑蛇形态: its normal attack deals TRUE damage and applies 烈焚灼息 (30.5 s); a unit carrying it deals 50 % damage
+//     to the leader (talent reborn.bsnake_t[protect].damage_resistance).
+//   · 烈焚灼息: 1 true damage per second, 50 → 230 over 30 s (re-applying refreshes; it never stacks), 抵抗 halves it.
+//   · 点燃 (cd 19): applies it to up to 2 units that do not carry it yet.
+//   · 引爆 (cd 35): 100 % arts to every carrier, clears it there, then 100 % arts to the carrier's tile + its four
+//     neighbours and re-applies it to them (the carrier itself excluded); it fires even with no carrier at all.
+//   · 首次被击败: 5 s 重生 to 100 % ⇒ 狂暴 (+50 % ATK) ⇒ 不息恶火 (28 s, invincible/untargetable, a fireball column every
+//     2 s, 10 waves, 100 % arts to the first unit of the row) ⇒ 黑蛇形态 again with 15 s 无敌 (PRTS ScreenAttack).
+//   · 第二次被击败: leaves the field. In this mode the shared pool reaching 0 ends the round, so that last 28 s beat
+//     cannot be played: the pool is split 40 % : 60 % between the two 血条 (50 000 : 75 000 at PRTS 等级0) and the
+//     "first death" is the pool-ratio threshold below [ASSUMED, DESIGN §20.10 — pooled leaders cannot revive].
+//   · 狂暴的召唤能量聚合体 is not implemented: the cached tables carry no row for it (it comes from the H8-4 level's
+//     bsnake_flame branch) [ASSUMED].
+const B_SNAKE = Object.freeze({
+  fireDuration: 30.5, fireBase: 50, fireAdd: 180, fireAddFor: 30,
+  /** The pool ratio the first 血条 ends at: 40 % of the total dealt (50 000 of 125 000) ⇒ 60 % left. */
+  rebornAt: 0.6, rebornDur: 5, berserkAtk: 0.5,
+  fireDur: 28, fireInterval: 2, fireWaves: 10, fireReturn: 15, fireballSpeed: 8,
+});
+const SNAKE_FIRE_KEY = 'boss:bsnakeFire';
+
+function kitBlackSnake(ab, e) {
+  const nv = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const ignite = ab.sk.Ignite, explode = ab.sk.DragonFireExplode, screen = ab.sk.ScreenAttack;
+  const fireDur = nv(ignite?.bb['dragon_fire.duration'], B_SNAKE.fireDuration);
+  const fireBase = nv(ignite?.bb['dragon_fire.baseDamage'], B_SNAKE.fireBase);
+  const fireAdd = nv(ignite?.bb['dragon_fire.addOnDamage'], B_SNAKE.fireAdd);
+  const fireAddFor = nv(ignite?.bb['dragon_fire.addOnDuration'], B_SNAKE.fireAddFor) || B_SNAKE.fireAddFor;
+  const rebornDur = nv(T(ab, 'reborn.duration'), B_SNAKE.rebornDur);
+  const rageAtk = nv(T(ab, 'reborn.atk'), B_SNAKE.berserkAtk);
+  const resist = nv(T(ab, 'protect.bsnake_t[protect].damage_resistance'), 0.5);
+  const fireDur2 = nv(screen?.bb.duration, B_SNAKE.fireDur);
+  const fireGap = nv(screen?.bb.interval, B_SNAKE.fireInterval) || B_SNAKE.fireInterval;
+  const fireWaves = nv(screen?.bb.trig_cnt, B_SNAKE.fireWaves);
+  const returnInvuln = nv(screen?.bb.invincible, B_SNAKE.fireReturn);
+  const scale = nv(explode?.bb.atk_scale, 1);
+  const P = { phase: 'base', until: 0, acc: 0, wave: 0, fire: new Set(), waveAt: 0 };
+  const casting = (b) => P.phase === 'base' || P.phase === 'berserk';
+  const hasFire = (u) => P.fire.has(u);
+
+  /** 烈焚灼息: refresh the per-second true damage ramp on one operator (the duration is the buff's own). */
+  function applyFire(b, u) {
+    if (!u || !u.alive) return;
+    P.fire.add(u);
+    b.addBuff(u, {
+      key: SNAKE_FIRE_KEY, duration: fireDur, interval: 1, visible: true, refresh: 'replace',
+      data: { t0: b.time },
+      onTick: ({ battle, unit, buff }) => {
+        if (!unit.alive || !e.alive) return;
+        const ramp = Math.min(fireAddFor, battle.time - buff.data.t0);
+        const dps = fireBase + fireAdd * (ramp / fireAddFor);          // 50/s → 230/s over 30 s
+        battle.dealDamage(e, unit, { amount: dps, type: 'true', canDodge: false, ignoreSelect: true, tags: ['enemyAbility', 'bsnakeFire'] });
+      },
+      onExpire: ({ unit }) => P.fire.delete(unit),
+    });
+  }
+  const clearFire = (b, u) => { P.fire.delete(u); b.removeBuff(u, SNAKE_FIRE_KEY); };
+
+  /** 100 % arts (引爆 both steps, 「100%法术普通伤害」). */
+  const artsHit = (b, u) => hurt(b, e, u, e.s.atk * scale, 'arts');
+
+  /** 重生 / 狂暴 / 不息恶火 — the windows are buffs on the leader, so damage to the pool stops while they run. */
+  function beginReborn(b) {
+    P.phase = 'reborn';
+    P.until = b.time + rebornDur;
+    setForm(b, e, 'form2', 'revive', { kind: 'reborn' });
+    b.addBuff(e, { key: 'boss:bsnakeReborn', duration: rebornDur + 0.05, visible: true,
+      flags: { invulnerable: true, untargetable: true, unblockable: true, noMove: true, stun: true } });
+  }
+  function beginBerserk(b) {
+    P.phase = 'fire';
+    P.wave = 0;
+    P.waveAt = b.time;
+    P.until = b.time;
+    b.removeBuff(e, 'boss:bsnakeReborn');        // the 5 s 重生 window ends here, not 0.05 s later
+    b.addBuff(e, { key: 'boss:bsnakeRage', persist: true, visible: true, mods: { atkPct: rageAtk } });
+    b.addBuff(e, { key: 'boss:bsnakeScreen', duration: fireDur2 + 0.05, visible: true,
+      flags: { invulnerable: true, untargetable: true, unblockable: true, noMove: true, stun: true } });
+    b.fx('phase', { x: e.x, y: e.y, id: e.id, kind: 'bsnakeRage' });
+  }
+  /** 不息恶火: one fireball per row, left to right, 100 % arts to the first (leftmost) operator it meets. */
+  function fireWave(b) {
+    const R = b.rect;
+    const c0 = R ? R.c0 - 0.5 : -0.5;
+    for (let r = R ? R.r0 : 0; r <= (R ? R.r1 : 11); r++) {
+      const row = b.allies().filter((u) => u.tileR === r && u.alive);
+      if (!row.length) continue;
+      let first = row[0];
+      for (const u of row) if (u.x < first.x) first = u;
+      const target = first;
+      const travel = Math.max(0, (target.x - c0) / B_SNAKE.fireballSpeed);
+      b.fx('shell', { x: c0, y: r, tx: target.x, ty: target.y, dur: travel, kind: 'bsnakeFire' });
+      b.after(travel, () => { if (e.alive && target.alive) hurt(b, e, target, e.s.atk, 'arts'); }, { owner: e });
+    }
+  }
+  function endFire(b) {
+    P.phase = 'berserk';
+    b.removeBuff(e, 'boss:bsnakeScreen');
+    setForm(b, e, null, 'phase', {});
+    b.addBuff(e, { key: 'boss:bsnakeInvuln', duration: returnInvuln, visible: true, flags: { invulnerable: true } });
+  }
+
+  /** Its scripted normal attack: true damage + 烈焚灼息 (PRTS 黑蛇形态). */
+  function attack(b, dt) {
+    P.acc += dt;
+    if (P.acc < e.s.interval) return;
+    const cands = targetsNear(b, e, e.s.range);
+    if (!cands.length) return;
+    P.acc = 0;
+    const t = byPriority(e, cands)[0];
+    b.fx('beam', { x: e.x, y: e.y, from: e.id, to: t.id, kind: 'bsnakeBurn' });
+    b.dealDamage(e, t, { amount: e.s.atk, type: 'true', isAttack: true, canDodge: false });
+    applyFire(b, t);
+    e.lastAttackAt = b.time;
+    e.stats.attacks++;
+  }
+
+  return [
+    { spawn(b, e2) { e2.profile.noAttack = true; } },
+    {
+      iv: 0.1,
+      tick(b, e2, a, dt) {
+        if (!e2.alive) return;
+        for (const u of P.fire) if (!u.alive) P.fire.delete(u);
+        if (P.phase === 'reborn') { if (b.time + 1e-9 >= P.until) beginBerserk(b); return; }
+        if (P.phase === 'fire') {
+          while (P.wave < fireWaves && b.time + 1e-9 >= P.until + (P.wave + 1) * fireGap) { P.wave += 1; fireWave(b); }
+          if (b.time + 1e-9 >= P.until + fireDur2) endFire(b);
+          return;
+        }
+        if (!canCast(e2, false, b)) return;
+        // 首次被击败（血池 60 % 处）：5 s 重生之后进入狂暴 + 不息恶火（池子按两条血条 40 : 60 切开）
+        if (P.phase === 'base' && e2.hpRatio <= B_SNAKE.rebornAt) { beginReborn(b); return; }
+        attack(b, dt);
+      },
+    },
+    {
+      // 【烈焚灼息】附带者的伤害对黑蛇降低到 50 %（天赋 reborn…damage_resistance）
+      taken(c, b, e2) {
+        if (!(c.amount > 0) || !(resist > 0)) return;
+        const src = c.source || c.credit;
+        if (src && src.side === 'ally' && P.fire.has(src)) c.dmg.mul *= 1 - resist;
+      },
+    },
+    ignite && {
+      cd: ignite.cd, icd: ignite.icd, sk: ignite,
+      cond: (b, e2) => casting(b) && canCast(e2, false, b) && allTargets(b, e2).some((u) => !hasFire(u)),
+      fire(b, e2) {
+        const picks = fairOrder(b, e2, allTargets(b, e2).filter((u) => !hasFire(u)), P).slice(0, 2);
+        for (const u of picks) { b.fx('beam', { x: e2.x, y: e2.y, from: e2.id, to: u.id, kind: 'bsnakeIgnite' }); applyFire(b, u); }
+      },
+    },
+    explode && {
+      cd: explode.cd, icd: explode.icd, sk: explode,
+      cond: (b, e2) => casting(b) && canCast(e2, false, b),
+      fire(b, e2) {
+        for (const u of [...P.fire]) {
+          if (!u.alive) { P.fire.delete(u); continue; }
+          // ① 100 % arts to the carrier ② clear it there ③ 100 % arts to its tile + 4 neighbours, re-applying it there
+          b.fx('explode', { x: u.x, y: u.y, r: 0.5, kind: 'bsnakeDetonate' });
+          artsHit(b, u);
+          const { tileR, tileC } = u;
+          clearFire(b, u);
+          for (const o of areaAlliesInTiles(b, e2, tileR, tileC, 'plus', 1)) {
+            if (o === u || !o.alive) continue;
+            artsHit(b, o);
+            applyFire(b, o);
+          }
+        }
+      },
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // “萨米的意志” (boss_7)
 
 function kitDeer(ab, e) {
@@ -1167,6 +1346,7 @@ function kitDeer(ab, e) {
 // ---------------------------------------------------------------------------------------------------------------
 
 export const BOSS_KITS = Object.freeze({
+  enemy_1515_bsnake: kitBlackSnake,    // boss_11 “不死的黑蛇” (hand-added leader)
   enemy_9013_acstmk: kitHelm,          // boss_1 假想敌：胄
   enemy_9013_acstmk_2: kitHelm,        // boss_8 假想敌：胄 (隐秘核心)
   enemy_9014_acstma: kitBlade,         // “斩胄之剑”

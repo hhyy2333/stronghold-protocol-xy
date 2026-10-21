@@ -15,6 +15,7 @@ const BANDS = Object.keys(DATA.bands);
 const CHESS_IDS = Object.keys(DATA.chess);
 const PLAYER_HEXES = Object.keys(DATA.hextech.playerHexes);
 const ENEMY_HEXES = Object.keys(DATA.hextech.enemyHexes);
+const BOSS_IDS = Object.keys(DATA.bosses);
 
 function randomIntent(rng, m, ps) {
   const t = rng.pick(GAME);
@@ -58,6 +59,8 @@ function randomIntent(rng, m, ps) {
     case 'g.testFunds': return { t, amount: 1 + rng.int(999) };
     case 'g.testHex': return { t, hexId: rng.pick(PLAYER_HEXES) };
     case 'g.testEnemyHex': return { t, hexId: rng.pick(ENEMY_HEXES) };
+    // 测试场 直接到 boss 战（2026-10-21）: `bossId` is optional, so both the empty body and a named leader are shapes
+    case 'g.testBoss': return rng() < 0.5 ? { t } : { t, bossId: rng.pick(BOSS_IDS) };
     default: return { t };
   }
 }

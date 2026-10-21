@@ -325,13 +325,18 @@ test('stages: 19 rows × 21 cols with known glyphs; paths are contiguous', () =>
 });
 
 test('bosses, factions, tokens and choices resolve', () => {
-  assert.equal(Object.keys(bosses).length, 10);
+  // 10 official leaders + the fork's hand-added boss_11 (docs/research/15-extra-bosses.json)
+  assert.equal(Object.keys(bosses).length, 11);
   for (const b of Object.values(bosses)) {
     assert.ok(enemies[b.enemyKey], `${b.bossId}: enemy`);
     for (const v of Object.values(b.bloodPoint)) assert.ok(isFiniteNum(v) && v > 0, `${b.bossId}: bloodPoint`);
     for (const t of Object.values(b.templates)) assert.ok(waves[t.template], `${b.bossId}: ${t.template}`);
   }
   assert.equal(Object.values(bosses).filter((b) => b.hidden).length, 3);
+  assert.equal(bosses.boss_11.enemyKey, 'enemy_1515_bsnake');
+  assert.deepEqual(bosses.boss_11.bloodPoint, { FUNNY: 277500, NORMAL: 787500, HARD: 2000000, ABYSS: 4000000 });
+  assert.deepEqual([enemies.enemy_1515_bsnake.stats.maxHp, enemies.enemy_1515_bsnake.stats.atk, enemies.enemy_1515_bsnake.stats.def], [240000, 1000, 1000]);
+  assert.ok(waves.custom_boss_11 && waves.custom_boss_11_s, 'boss_11 boss waves');
 
   assert.equal(Object.keys(factions.entries).length, 67);
   for (const e of Object.values(factions.entries)) {

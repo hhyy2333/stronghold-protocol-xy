@@ -372,7 +372,7 @@ Types: `BAND_INITIAL` 41, `BOND` 23, `EQUIP` 115, `ENEMY_GAIN` 129 (悬赏), `BU
 | `tacticDraft` | `{"rounds":[11],"kinds":["ally"],"weights":{"allybuff_select_4":4,…},"seen":[7,9,18,20],"count":6}` | the official 战术决策 (R11 of matches 7, 9, 18, 20; build-data `TACTIC_DRAFT`; the user: "战术决策也按官方改成可以重复吧"): six cards, each drawn on its own — with replacement, so a card can come twice (official: 补给 ×2 in match 7; the other three drafts show six different cards). All 24 official cards are `ally` cards (no 排斥 / 责罚 / 裁决, no 模拟战场演变; four drafts without a debuff: about 0.04 % for the previous draw, 6 different cards of the 26 ally + 9 debuff cards), and 列装 / 财富 / 补给 / 整备 / 升华 made 12 of them (uniform: about 4.6), so at `rounds` (R11 = 绝境 / 终极, the round of the screenshots) only the cards of `kinds`, each by `weights` (1 + the official cards it showed on; unlisted 1) [ASSUMED: the weights; no terrain card at R11 — the maps of the 4 matches are unknown]; each card independent, no slots like `shopDraft` [ASSUMED, open: all 4 drafts hold a 驰援, a 盟誓 and two of 列装 / 财富 / 补给 / 整备 / 升华 — about 3 % under independent draws, a pattern spotted after the fact]; solo 3 [ASSUMED]; other rounds (标准 R3 / R9, 险境 R3 / R6 / R9, 险境 solo R9; no screenshot) every card uniform, terrain cards only for the match stage, with replacement too [ASSUMED]. A card acting only on dead bonds is never offered (`Match.bondLive`). `assumed` lists the assumed parts |
 | `pools[poolId]` | `{"kind":"equip","items":[…]}` / `{"kind":"chess","tier":2,"rule":"shopEligible"}` | server-side reward pools referenced by effects (`pool_equip_*`, `pool_chess_shop_N_reward`, `pool_char_later`, …), all [ASSUMED]; `rule:"shopEligible"` = visible/non-hidden entries, `maxTier:"shopLevel"` = ≤ current shop level, `weighted` = `[[id, weight]]`. `pool_equip_vict` (维多利亚, every 25 layers: "获得一件带有随机特殊效果的维式重锤") and `pool_equip_rockr` (洛洛's 定制品; user playtest #4 — the research 04 §8 guess 有限加速器 / 激光发射器 / 护盾无人机 / 双模机械臂 / 蜂鸣器 is superseded) = the 4 special 维式重锤, uniform. `pool_equip_kathe` and `pool_equip_narant` omit `maxTier` (every shop-eligible tier, uniform [ASSUMED]; 见者有份 §34.14.8). `pool_equip_kathe.also` is 突变细胞 (`chess_item_5_08_e_a`), appended by `Match.rollItemId` at the same uniform weight [ASSUMED] and at any 调度中心 level (#631, §34.14.24); the shop item slot does not read `also`, so 突变细胞 stays `shopExcluded` |
 
-## 9. `enemies.json` — `{ [enemyKey]: Enemy }` (249 keys that can appear)
+## 9. `enemies.json` — `{ [enemyKey]: Enemy }` (250 keys that can appear)
 
 Collected from all wave templates (spawns, branches, enemyDbRefs), special-enemy entries and pools, bounty
 effects, band effects, bosses, placeholders, mode bans, plus summons (`extraEnemyKeyList`) and enemy keys in enemy
@@ -423,10 +423,12 @@ The official generator (implemented by `server/match/waves.js`):
    `time + i·max(n·interval/n', 0.05·n·interval)`. Literal keys and the T / TF token keys are kept.
 3. **Leader / hidden rounds** use the pick of their own slot (14 / 15; solo 标准 9): only E **or** EF escorts spawn.
 
-## 11. `waves.json` — `{ [templateId]: Wave }` (38 templates)
+## 11. `waves.json` — `{ [templateId]: Wave }` (40 templates)
 
 Non-boss rounds use `act1autochess_01…07`, `h01…h06`; leaders `h07_0X` (+`_s` solo; boss_5 is `act2autochess_h07_05`);
-hidden core `h08_0X`; 联防 `act1autochess_escaped_single|multi`; training `tr01/02/04`.
+hidden core `h08_0X`; 联防 `act1autochess_escaped_single|multi`; training `tr01/02/04`; the fork's hand-added leader
+boss_11 `custom_boss_11` / `_s` (a clone of the h07_05 field — its patrol route makes the leader walk like 卢西恩 /
+假想敌：铳 — whose leader spawn is `enemy_1515_bsnake`, `docs/research/15-extra-bosses.json`).
 
 | Field | Example | Meaning |
 |---|---|---|
@@ -495,7 +497,11 @@ Glyph legend (`rows`):
 | `m` `g` `i` | tile_mire / tile_smog / tile_infection | LOW | ALL | yes | special terrain (see `special`) |
 | `d` | tile_deepsea | LOW | NONE (level: ALL) | yes | 深水区 (see `special.deepsea`): enemies wade through it; no unit may be deployed on it (PRTS 深水区 地形信息 "拒绝部署（待补充）") — 战场#08's pool at board (10–12, 6), (10–12, 14), boss (3–5, 6) / (3–5, 14) |
 
-## 13. `bosses.json` — `{ [bossId]: Boss }` (10; boss_8–10 hidden)
+## 13. `bosses.json` — `{ [bossId]: Boss }` (11 = 10 official + the fork's hand-added boss_11; boss_8–10 hidden)
+
+The official ten come from activity_table `autoChessData.bossInfoDict`; `boss_11` (“不死的黑蛇”, `enemy_1515_bsnake`) is
+declared by the fork in `docs/research/15-extra-bosses.json` and merged here by `tools/build-data.mjs` (no official
+`bossInfoDict` row exists for it).
 
 | Field | Example (`boss_5`) | Meaning |
 |---|---|---|

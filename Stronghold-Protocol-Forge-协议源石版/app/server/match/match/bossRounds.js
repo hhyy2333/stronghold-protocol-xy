@@ -77,7 +77,9 @@ export class MatchBoss {
     const reuse = this.bossWaves && this.bossWaves.length === groups.length && this.bossWaves.every((w, i) => w.players.join() === groups[i].map((p) => p.playerId).join());
     this.fields = groups.map((g, i) => {
       const solo = this.isSolo || g.length === 1;
-      const wave = reuse ? this.bossWaves[i].wave : buildBossWave(this.gd, this.rngWaves, this.factions, this.round, { bossId, solo }, this.stageId);
+      // 测试场 `g.testBoss` names the leader's own wave (testField.js); a hidden round and a normal match pass null.
+      const forced = hidden ? null : (this.testBossTemplate ?? null);
+      const wave = reuse ? this.bossWaves[i].wave : buildBossWave(this.gd, this.rngWaves, this.factions, this.round, { bossId, solo, templateId: forced }, this.stageId);
       // one spawn list per field, shared by the field's players' onBattleStart handlers (edit it in place).
       // 协议源石敌方 hex 的 mods 半边（业主 2026-10-20）: a boss field used to build its list straight off the wave, so 虫群's
       // countAdd / 精英化's countSub / the stat multipliers applied to every NORMAL round and to the preparation preview

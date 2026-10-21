@@ -289,6 +289,16 @@ function MatchScreen() {
   const [testOpen, setTestOpen] = useState(false);
   const [testBusy, setTestBusy] = useState(null);
   const [testSide, setTestSide] = useState('player');
+  // 测试场「跳到 boss 战」: the leader picked in the panel (absent = the first one, i.e. the panel's own default)
+  const [testBoss, setTestBoss] = useState(null);
+  // the panel's leader list: every data/bosses.json entry that has a wave, in sort order (the hand-added boss_11 included)
+  const testBossList = useMemo(() => {
+    const all = data.get('bosses') || {};
+    return Object.values(all)
+      .filter((b) => b && typeof b.bossId === 'string' && b.templates && Object.keys(b.templates).length)
+      .sort((a, b) => (a.sortId ?? 99) - (b.sortId ?? 99))
+      .map((b) => ({ bossId: b.bossId, name: b.name || b.bossId, hidden: !!b.hidden }));
+  }, [data.get('bosses')]);
   const [personalBusy, setPersonalBusy] = useState(null); // { choiceId, idx }: an older request cannot clear a newer pick
   const [layer, setLayer] = useState('ALL');             // 联防 / 最终攻势 camera: 'L' | 'ALL' | 'R'
   const [pen, setPen] = useState(false);                 // the camera shows the enemy preview pen (research 09 §2)
@@ -996,6 +1006,14 @@ function MatchScreen() {
     await actions.testEnemyHexClear();
     setTestBusy(null);
   }, []);
+  // 测试场 直接到 boss 战（业主 2026-10-21）：skip to the leader round's prep with the picked leader (absent = the first).
+  const jumpToTestBoss = useCallback(async (bossId) => {
+    const id = bossId || testBoss || testBossList[0]?.bossId;
+    if (!id) return;
+    setTestBusy('*');
+    await actions.testBoss(id);
+    setTestBusy(null);
+  }, [testBoss, testBossList]);
   // 准备 with funds left asks first: the prep's end wipes them (community report #4; not 坎诺特, not at 0 funds, not
   // under AI 托管 — gameLogic.readyFundsPrompt). The button and Space both come here.
   const askingReady = useRef(false);
@@ -1843,6 +1861,7 @@ function MatchScreen() {
         busy=${testBusy} side=${testSide} onSide=${setTestSide} onFunds=${grantTestFunds}
         onGrantPlayer=${grantTestHex} onClearPlayer=${clearTestHex}
         onGrantEnemy=${grantTestEnemyHex} onClearEnemy=${clearTestEnemyHex}
+        bosses=${testBossList} boss=${testBoss} onBossPick=${setTestBoss} onBoss=${jumpToTestBoss}
         onClose=${() => setTestOpen(false)} />` : null}
       ${drawer ? html`<${EnemyDrawer} tab=${drawer} onTab=${setDrawer} pub=${pub} priv=${priv} onClose=${() => setDrawer(null)}
         bandId=${scoutBandId} bandOwner=${scoutBandOwner}

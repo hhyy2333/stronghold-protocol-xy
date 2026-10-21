@@ -446,12 +446,15 @@ export function buildNormalWave(gd, rng, factions, round, stageId = null) {
 
 /**
  * Boss / hidden round template for one boss field; escorts follow the pick of the round's own slot.
- * @param {{ bossId: string, solo: boolean }} opts solo → `_s` template (lone player or solo mode)
+ * @param {{ bossId: string, solo: boolean, templateId?: string|null }} opts solo → `_s` template (lone player or solo
+ *   mode); `templateId` = the leader's OWN wave, overriding the mode's round map (测试场 `g.testBoss`, which may show a
+ *   leader the mode does not draw — server/match/match/testField.js sets it)
  */
-export function buildBossWave(gd, rng, factions, round, { bossId, solo }, stageId = null) {
+export function buildBossWave(gd, rng, factions, round, { bossId, solo, templateId: forced = null }, stageId = null) {
   const rc = gd.roundCfg(round);
   const map = rc && rc.bossTemplates && typeof rc.bossTemplates === 'object' ? rc.bossTemplates : {};
-  let templateId = stageBossTemplateId(gd, stageId, round, bossId) || (typeof map[bossId] === 'string' ? map[bossId] : null);
+  let templateId = (typeof forced === 'string' && gd.wave(forced) ? forced : null)
+    || stageBossTemplateId(gd, stageId, round, bossId) || (typeof map[bossId] === 'string' ? map[bossId] : null);
   if (!templateId) {
     // Last resort for data that has no entry for the DRAWN leader at all (the official tables cover every drawable
     // bossId, so this only fires on a stage whose override names a wave that does not exist — see stageBossTemplateId,
