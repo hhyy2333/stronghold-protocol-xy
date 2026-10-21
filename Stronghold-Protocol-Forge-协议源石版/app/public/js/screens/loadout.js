@@ -1065,7 +1065,10 @@ function LoadoutScreen({ st, leaving = false }) {
   const hexBanText = ownLocked ? t('协议源石禁用是局外设置：本局按开局时的设置进行，修改将在下一局生效')
     : t('局外设置，下一局生效 · 只影响你自己的协议源石抽取');
 
-  const deck = view === 'deck';
+  // 协议源石禁用 / 干员持有 / 自选编队 live in the LIST layout (the tab strip). The saved 卡片视图 preference only
+  // applies to 干员调配, so opening 协议源石禁用 straight from the lobby can never land on a view without that tab
+  // (业主 2026-10-21: the lobby now has a direct entry for it).
+  const deck = view === 'deck' && tab === 'loadout';
   const deckLoadout = deck && tab === 'loadout';
   const clearFilters = () => loadoutStore.set({ filters: { ...st.filters, tier: null, prof: null, bond: null, query: '', changedOnly: false } });
   const lockedText = t('本局的调配已锁定（确认本局信息后无法修改），修改将在下一局生效');
@@ -1318,5 +1321,22 @@ export function LoadoutButton({ from, size = 'md', variant = 'secondary', class:
     ${n ? html`<span class="lo-entry__n num" aria-label=${t('{n} 名干员已调整', { n })}>${n}</span>` : null}
     ${off ? html`<span class="lo-entry__own" aria-label=${t('{off} 名干员未持有，由替补干员上场', { off })} title=${t('{off} 名干员未持有（由替补干员上场）', { off })}>${t('替补')} <b class="num">${off}</b></span>` : null}
     ${nDiy ? html`<span class="lo-entry__own lo-entry__diy" aria-label=${t('{n} 个自选名额已选择', { n: nDiy })} title=${t('{n} 个自选名额已选择', { n: nDiy })}>${t('自选')} <b class="num">${nDiy}</b></span>` : null}
+  </button>`;
+}
+
+/**
+ * 协议源石禁用入口（业主 2026-10-21「在这加个入口」）: a lobby plate that opens the 干员调配 overlay directly on its
+ * 协议源石 tab, with the banned count. The overlay's list layout is forced for that tab (see `deck` there), so the
+ * entry always lands on a screen that has the tab strip.
+ */
+export function HexBanButton({ from = 'lobby', size = 'lg', class: cls }) {
+  const banned = useStore((s) => s.hexBans || [], Object.is, loadoutStore);
+  const n = Array.isArray(banned) ? banned.length : 0;
+  return html`<button type="button" class=${cx('btn', 'btn--secondary', `btn--${size}`, 'lo-entry', 'lo-entry--hexbans', cls)}
+      data-testid="hexbans-open" onClick=${() => openLoadout(from, null, 'hexBans')}
+      title=${t('局外禁用最多 3 张协议源石，只影响你自己的抽取')}>
+    <${Icon} name="dots" class="btn__icon" />
+    <span class="btn__label">${t('协议源石禁用')}</span>
+    <span class="lo-entry__own num" aria-label=${t('{n} 张协议源石已禁用', { n })}>${t('禁用')} <b class="num">${n}</b><span class="t-dim">/${HEX_BANS_LIMIT}</span></span>
   </button>`;
 }

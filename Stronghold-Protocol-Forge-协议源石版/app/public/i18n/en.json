@@ -2729,5 +2729,6 @@
   "协议源石【恶魔形态】的凭证：装备者在作战中每秒攻击力 +10%（本场战斗内叠加，无上限）；该装备同时视为【变形同构体】": "The token of the Protocol Originium card Demon Form: in battle its carrier gains +10 % ATK every second (stacking for the whole battle, with no cap); this equipment also counts as a Morphomorphic Body.",
   "跳到 boss 战": "Jump to the boss fight",
   "首领": "Leader",
-  "本机数据里没有首领。": "No leaders in this data."
+  "本机数据里没有首领。": "No leaders in this data.",
+  "协议源石禁用": "Banned protocol originium"
 }

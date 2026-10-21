@@ -35,7 +35,7 @@ import { AchievementEntry, AchievementPanel } from '../ui/achievements.js';
 import { FriendsTile } from '../ui/friends.js';
 import { SettingsButton } from '../ui/settings.js';
 import { PwaInstallButton, fullscreen } from '../ui/device.js';
-import { LoadoutButton } from './loadout.js';
+import { LoadoutButton, HexBanButton } from './loadout.js';
 import { SweepReport } from './sweep.js';
 import * as roomMods from '../roomMods.js';
 // 地基加固（B 方案 · 2026-10-13）：`DEFAULT_DIFFICULTY` 与 `parsePlaytestParam` 现在住在 screens/lobbyLinks.js，
@@ -1287,6 +1287,8 @@ export function LobbyScreen() {
         <div class="hub-plates">
           <${SweepPlate} onClick=${() => setSweepOpen(true)} />
           <${LoadoutButton} from="lobby" size="lg" class="hub-plate hub-plate--loadout" label=${t('干员调配')} />
+          ${/* 协议源石禁用（业主 2026-10-21「在这加个入口」）：直接开到干员调配的第 4 页，省得先进卡片视图再找 */ ''}
+          <${HexBanButton} from="lobby" size="lg" class="hub-plate hub-plate--hexbans" />
         </div>
         <${FriendsTile} />
       </aside>
