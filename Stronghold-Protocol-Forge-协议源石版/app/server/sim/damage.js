@@ -443,6 +443,11 @@ export function isChained(dmg) {
  */
 export function applyHpLoss(battle, source, target, amount, dmg, mark) {
   if (!target.alive) return 0;
+  // 幽魂 (the remake's own equipment, `items.battle.js chess_item_9_90_e`): every instance of damage taken is capped,
+  // 流失 included — the cap sits HERE, after mitigation, so the capped number is what HP, the stats and the damage
+  // numbers all see. `mem.dmgCap` is installed/removed with the item grant.
+  const cap = target.mem && target.mem.dmgCap;
+  if (Number.isFinite(cap) && cap >= 0 && amount > cap) amount = cap;
   let dealt = 0;
   const hs = dmg && dmg.sourceless ? null : source; // the source hooks see (无来源: none; `credit` keeps it)
   if (target.bossPool) {
@@ -701,6 +706,10 @@ export function heal(battle, source, target, amount, opts = {}) {
   if (!target || !target.alive || target.removed || !target.deployed || target.bossPool) return 0;
   const self = source === target || !!opts.self;
   const through = !!(source && source.profile && typeof source.profile.healThrough === 'function' && source.profile.healThrough(source, target));
+  // 陷阱 / 棋子 (mines, 望's pieces) are ALLY TOKENS, not operators: no heal reaches one unless the healer's own
+  // `healThrough` allows it (凯尔希's Mon3tr — the same rule the target selector applies, injuredAlliesInKeys).
+  // A token's own regeneration (`regen`) and its own self-heal are not "a heal reaching a trap" and stay allowed.
+  if (target.side === 'ally' && target.kind !== 'op' && !through && !self && !opts.regen) return 0;
   if (!self && ((target.s.flags.noHeal && !through) || (target.profile && target.profile.noHeal))) return 0;
   const regen = !!opts.regen;
   if (target.s.flags.healFree && !regen && !opts.ignoreHealFree && !through) return 0;

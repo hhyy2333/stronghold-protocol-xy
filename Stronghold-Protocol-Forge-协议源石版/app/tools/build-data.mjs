@@ -1862,8 +1862,8 @@ const CUSTOM_EFFECTS = Object.freeze({
   },
   eff_item_demon: {
     name: '恶魔之契',
-    desc: '协议源石【恶魔形态】的凭证：装备者在作战中每秒攻击力 +10%（本场战斗内叠加，无上限）',
-    descRaw: '协议源石【恶魔形态】的凭证：装备者在作战中<@ba.vup>每秒攻击力 +10%</>（本场战斗内叠加，无上限）',
+    desc: '协议源石【恶魔形态】的凭证：装备者在作战中每秒攻击力 +10%（本场战斗内叠加，无上限）；该装备同时视为【变形同构体】',
+    descRaw: '协议源石【恶魔形态】的凭证：装备者在作战中<@ba.vup>每秒攻击力 +10%</>（本场战斗内叠加，无上限）；该装备同时视为<@ba.vup>【变形同构体】</>',
     buffs: [],
   },
   eff_item_canlight: {
@@ -1888,6 +1888,12 @@ const CUSTOM_EFFECTS = Object.freeze({
     name: '尸山',
     desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命',
     descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者<@ba.vup>获得他们的基础生命值、攻击力、阻挡数、防御力与法抗</>，<@ba.vup>技力回复 +1</>，且<@ba.vup>每秒恢复自身 1% 最大生命</>',
+    buffs: [],
+  },
+  eff_item_heartsteel: {
+    name: '心之钢',
+    desc: '携带者视为【坚守】盟约成员；坚守盟约干员每隔 3 秒的攻击附带自身最大生命值 100% 的法术伤害，并增加自身最大生命值 150 点、【坚守】层数 2 层',
+    descRaw: '携带者视为<@ba.vup>【坚守】盟约成员</>；坚守盟约干员每隔 3 秒的攻击附带自身最大生命值<@ba.vup>100%</> 的法术伤害，并增加自身最大生命值<@ba.vup>150</> 点、<@ba.vup>【坚守】层数 2 层</>',
     buffs: [],
   },
 });
@@ -2124,10 +2130,11 @@ function buildItems(ctx, effects) {
       price: c.price ?? 0, hideInShop: true,
       shopExcluded: true, shopExcludedBy: '本作自制装备（只由协议源石发放）',
       mergeable: false, upgradeNum: 100, upgradeChessId: null,
-      duration: -1, giveBondId: null, givePowerId: null, canGiveBond: false, requiresBondId: null,
+      duration: -1, giveBondId: c.giveBondId || null, givePowerId: null, canGiveBond: c.canGiveBond === true, requiresBondId: null,
       effectId: c.effectId || `eff_${id}`, effectName: c.effectName || c.name,
       desc: c.desc || null, descRaw: c.descRaw || null,
       buffs: c.buffs || [], params: c.params || {},
+      ...(Array.isArray(c.grantsBonds) && c.grantsBonds.length ? { grantsBonds: c.grantsBonds.slice() } : {}),
       category: 'EQUIP', kind: null, family: null,
       implFormula: null, note: c.note || null, rangeGrid: null, flavor: null,
     };
@@ -2149,6 +2156,10 @@ function buildItems(ctx, effects) {
  *   chess_item_9_91_e_a  恶魔之契 — granted only by the 协议源石 恶魔形态: a MARKER item with no `BY_ITEM` entry whose
  *                        carrier is the one the card's battle half buffs (server/sim/content/hextech.js
  *                        `DEMON_PACT_ITEM_KEY`). Same "never merges / never sold / price 0" shape as 幽魂.
+ *                        Since 业主 2026-10-21 it is ALSO a 变形同构体 carrier (`canGiveBond: true`).
+ *   chess_item_9_96_e_a  心之钢 — granted by the 协议源石 心之钢: a MARKER whose `grantsBonds: ['steadShip']` makes its
+ *                        carrier a 坚守 member (shared/morph.js memberBonds); the card's battle half
+ *                        (hexcards/heartsteel.js) owns its numbers.
  */
 const CUSTOM_ITEMS = Object.freeze({
   chess_item_9_90_e_a: {
@@ -2170,6 +2181,9 @@ const CUSTOM_ITEMS = Object.freeze({
   // who it affects (like 幽魂), so the card hands one out on pick. The item is a pure MARKER — no `BY_ITEM` entry: the
   // growth itself is the CARD's (server/sim/content/hextech.js `DEMON_PACT_ITEM_KEY`). `iconId` names no local art, so
   // the client draws its plate / bolt fallback.
+  //
+  // 业主 2026-10-21: 「三阶恶魔形态的装备恶魔形态增加装备『同构体』效果」 — the item is also a 变形同构体 carrier
+  // (`canGiveBond: true`), so worn together with a faction item (`giveBondId`) the carrier counts as that bond.
   chess_item_9_91_e_a: {
     name: '恶魔之契',
     tier: 1,
@@ -2177,12 +2191,13 @@ const CUSTOM_ITEMS = Object.freeze({
     shopSortId: 991,
     identifier: 9002,
     iconId: 'item_demon',
-    desc: '协议源石【恶魔形态】的凭证：装备者在作战中每秒攻击力 +10%（本场战斗内叠加，无上限）',
-    descRaw: '协议源石【恶魔形态】的凭证：装备者在作战中<@ba.vup>每秒攻击力 +10%</>（本场战斗内叠加，无上限）',
+    desc: '协议源石【恶魔形态】的凭证：装备者在作战中每秒攻击力 +10%（本场战斗内叠加，无上限）；该装备同时视为【变形同构体】',
+    descRaw: '协议源石【恶魔形态】的凭证：装备者在作战中<@ba.vup>每秒攻击力 +10%</>（本场战斗内叠加，无上限）；该装备同时视为<@ba.vup>【变形同构体】</>',
     effectId: 'eff_item_demon',
     effectName: '恶魔之契',
     buffs: [],
     params: { atkPctPerSec: 10 },
+    canGiveBond: true,
     note: '本作自制装备：只由协议源石【恶魔形态】发放，商店不出售、不可合并',
   },
   // ---- 2026-10-19 batch: the four cards that hand out equipment (业主原话照抄进 roster.mjs) ----------------
@@ -2253,6 +2268,27 @@ const CUSTOM_ITEMS = Object.freeze({
     buffs: [],
     params: { spRecovery: 1, regenPct: 1 },
     note: '本作自制装备：只由协议源石【尸山】发放，商店不出售、不可合并',
+  },
+  // 心之钢 (业主 2026-10-21): 「立刻获取一件装备『心之钢』，此后每两回获得一件心之钢装备，共获得三件。（心之钢:携带者
+  // 视为坚守盟约，坚守盟约干员每隔三秒攻击附带自身最大生命值伤害，并增加最大生命值150点，增加坚守层数2层）」
+  // A marker item: the CARD's battle half (server/sim/content/hexcards/heartsteel.js) owns the numbers, and
+  // `grantsBonds: ['steadShip']` is the only data-side mechanic (shared/morph.js memberBonds reads it, so the prep
+  // count, the battle's unitBonds and the client's bond chips all agree).
+  chess_item_9_96_e_a: {
+    name: '心之钢',
+    tier: 1,
+    price: 0,
+    shopSortId: 996,
+    identifier: 9007,
+    iconId: 'item_heartsteel',
+    desc: '携带者视为【坚守】盟约成员；坚守盟约干员每隔 3 秒的攻击附带自身最大生命值 100% 的法术伤害，并增加自身最大生命值 150 点、【坚守】层数 2 层',
+    descRaw: '携带者视为<@ba.vup>【坚守】盟约成员</>；坚守盟约干员每隔 3 秒的攻击附带自身最大生命值<@ba.vup>100%</> 的法术伤害，并增加自身最大生命值<@ba.vup>150</> 点、<@ba.vup>【坚守】层数 2 层</>',
+    effectId: 'eff_item_heartsteel',
+    effectName: '心之钢',
+    buffs: [],
+    params: {},
+    grantsBonds: ['steadShip'],
+    note: '本作自制装备：只由协议源石【心之钢】发放，商店不出售、不可合并',
   },
 });
 

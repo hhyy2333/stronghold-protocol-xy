@@ -538,7 +538,7 @@ function lineupScore(m, ps, set, ctx, handSlots = countFree(ps.hand)) {
   // arrangeSteps withdraws unchosen board chess before deployment, or sells them when the hand has no room.
   const withdrawn = [...ps.board.values()].filter((p) => p.kind === 'chess' && !inSet.has(p.uid)).slice(0, handSlots);
   const hand = [...ps.hand.filter((p) => p && !inSet.has(p.uid)), ...withdrawn];
-  const bonds = computeBonds(gd, { board, hand, layers: ps.layers, bondCountBonus: ps.bondCountBonus });
+  const bonds = computeBonds(gd, { board, hand, layers: ps.layers, bondCountBonus: ps.bondCountBonus, effects: ps.effects });
   let v = 0;
   for (const p of set) v += unitBase(m, p, ctx);
   for (const [id, b] of Object.entries(bonds)) {

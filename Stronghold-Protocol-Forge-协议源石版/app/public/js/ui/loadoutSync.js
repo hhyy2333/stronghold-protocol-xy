@@ -2,19 +2,22 @@
 //
 // `loadoutStore` holds the per-browser loadout (`entries`, persisted in localStorage through store.js savePref), the
 // per-browser not-owned list of the 干员持有 tab (`notOwned`, likewise), the 自选编队 picks (`diy`, likewise; with
-// `diyKitted` = the operators the server lets a DIY slot field, from every `welcome`) and the overlay's screen state
-// (open / origin / tab / selection / filters). `installLoadoutSync()` / `installOwnershipSync()` / `installDiySync()`
-// (called once by main.js) keep the server's copies current — one sync engine (installPrefSync), three settings: after
-// every `welcome` (new or resumed
+// `diyKitted` = the operators the server lets a DIY slot field, from every `welcome`), the 协议源石禁用 list (`hexBans`,
+// likewise; 业主 2026-10-21) and the overlay's screen state
+// (open / origin / tab / selection / filters). `installLoadoutSync()` / `installOwnershipSync()` / `installDiySync()` /
+// `installHexBanSync()` (called once by main.js) keep the server's copies current — one sync engine (installPrefSync),
+// four settings: after every `welcome` (new or resumed
 // session — the server keeps them on the session and on the seat, so joining a room needs no resend) and after every
 // edit (debounced; a pending edit goes out at once when the overlay closes), they send `room.loadout { entries, ops }`
 // (sanitised against the loaded data/chess.json: ui/loadoutModel.js sanitizeEntries — a stale entry is dropped, never
 // the whole loadout; `ops` = the per-operator 潜能 / 练度 of 0.2.2, sanitizeOps against chess.json + backups.json), `room.ownership { notOwned }` (sent as stored: the server keeps the droppable chess and drops
-// the rest, so no data is needed) and `room.diy { picks }` (sent as stored, structurally clean: the server keeps the
-// legal picks). Replies: RATE → retried later; WRONG_PHASE / ROOM_STARTED → the running match keeps what it took (the
-// loadout locks when INFO_CHECK ends; the ownership and the 自选 picks never change during a match) — stored for the
-// next match, not an error for the player; anything else is logged. `sync` / `ownSync` / `diySync` ∈ 'idle' |
-// 'pending' | 'sending' | 'synced' | 'locked' | 'error' are mirrored into the store for the screen's status line.
+// the rest, so no data is needed), `room.diy { picks }` (sent as stored, structurally clean: the server keeps the
+// legal picks) and `room.hexBans { ids }` (≤ 3 ids, sent as stored; the server drops the ones this room's data does not
+// have). Replies: RATE → retried later; WRONG_PHASE / ROOM_STARTED → the running match keeps what it took (the
+// loadout locks when INFO_CHECK ends; the ownership, the 自选 picks and the bans never change during a match) — stored
+// for the next match, not an error for the player; anything else is logged. `sync` / `ownSync` / `diySync` /
+// `hexBansSync` ∈ 'idle' | 'pending' | 'sending' | 'synced' | 'locked' | 'error' are mirrored into the store for the
+// screen's status line.
 
 import { createStore, loadPref, savePref } from '../store.js';
 import { data } from '../data.js';
@@ -24,6 +27,7 @@ import { contentSet as appContentSet } from '../content.js';
 import { PHASE } from '../../../shared/constants.js';
 import { OWNERSHIP_PREF, parseStoredOwnership, toStoredOwnership, cleanIds, sanitizeNotOwned } from './ownershipModel.js';
 import { DIY_PREF, parseStoredDiy, toStoredDiy, cleanPicks, sanitizeDiyPicks } from './diyModel.js';
+import { HEX_BANS_PREF, parseStoredHexBans, toStoredHexBans, cleanHexBans } from './hexBanModel.js';
 import { toast } from './toasts.js';
 import { t, N_ } from '../../../shared/i18n.js';
 
@@ -41,6 +45,9 @@ function readStoredOwnership() {
 }
 function readStoredDiy() {
   try { return parseStoredDiy(loadPref(DIY_PREF, null)); } catch { return {}; }
+}
+function readStoredHexBans() {
+  try { return parseStoredHexBans(loadPref(HEX_BANS_PREF, null)); } catch { return []; }
 }
 
 /**
@@ -97,15 +104,17 @@ export const loadoutStore = createStore({
   ops: readStoredOps(), // 0.2.2 潜能 / 练度: { [charId]: { potential?, cultivate? } } ({} = every operator 潜能 6, 精英2 Lv.60)
   notOwned: readStoredOwnership(), // 干员持有: base chess ids marked 未持有 (sorted; [] = every operator owned)
   diy: readStoredDiy(), // 自选编队: { [slotBaseId]: { charId, skillIndex?, uniEquipId? } } ({} = every slot empty)
+  hexBans: readStoredHexBans(), // 协议源石禁用: ≤ 3 card ids this player's own draws skip ([] = none)
   diyKitted: null,     // the operators a DIY slot may field (welcome.diyKitted; null before the first welcome)
   open: false,
   from: null,          // 'lobby' | 'room' | 'briefing'
-  tab: 'loadout',      // 'loadout' (干员调配) | 'ownership' (干员持有) | 'diy' (自选编队)
+  tab: 'loadout',      // 'loadout' (干员调配) | 'ownership' (干员持有) | 'diy' (自选编队) | 'hexBans' (协议源石)
   sel: null,           // selected base chess id
   filters: { tier: null, prof: null, bond: null, query: '', changedOnly: false },
   sync: 'idle',
   ownSync: 'idle',
   diySync: 'idle',
+  hexBansSync: 'idle',
 });
 
 /** Replace the stored entries (persisted at once with the settings; the sync picks the change up). */
@@ -120,6 +129,19 @@ export function setOpsMap(ops) {
   const next = ops && typeof ops === 'object' ? ops : {};
   savePref(LOADOUT_PREF, toStored(loadoutStore.get().entries, next));
   loadoutStore.set({ ops: next });
+}
+
+/**
+ * Replace the stored 协议源石禁用 list (业主 2026-10-21; at most `HEX_BANS_LIMIT` ids). Persisted at once; the sync
+ * picks the change up and sends `room.hexBans { ids }`.
+ * @param {string[]} ids
+ * @returns {string[]} the stored (cleaned) list
+ */
+export function setHexBans(ids) {
+  const next = cleanHexBans(ids);
+  savePref(HEX_BANS_PREF, toStoredHexBans(next));
+  loadoutStore.set({ hexBans: next });
+  return next;
 }
 
 /**
@@ -193,7 +215,7 @@ export function applyDiyImport(picks, data, kitted) {
 
 /**
  * Open the 干员调配 overlay. @param {'lobby'|'room'|'briefing'} from @param {string|null} [sel]
- * @param {'loadout'|'ownership'|'diy'|null} [tab] the tab to show (default: the last one)
+ * @param {'loadout'|'ownership'|'diy'|'hexBans'|null} [tab] the tab to show (default: the last one)
  */
 export function openLoadout(from = 'lobby', sel = null, tab = null) {
   data.load('chess');
@@ -203,7 +225,8 @@ export function openLoadout(from = 'lobby', sel = null, tab = null) {
   data.load('backups');
   data.load('effects'); // 0.2.2: the 练度 multipliers of the 局内数值 (effects.json CHAR_MAP)
   data.load('garrisons'); // the 特质 at the top of the detail (PR #301)
-  loadoutStore.set({ open: true, from, ...(sel ? { sel } : {}), ...(tab === 'loadout' || tab === 'ownership' || tab === 'diy' ? { tab } : {}) });
+  data.load('hextech'); // 协议源石禁用 tab (业主 2026-10-21): the card list to choose from
+  loadoutStore.set({ open: true, from, ...(sel ? { sel } : {}), ...(tab === 'loadout' || tab === 'ownership' || tab === 'diy' || tab === 'hexBans' ? { tab } : {}) });
 }
 export const closeLoadout = () => loadoutStore.set({ open: false });
 
@@ -391,4 +414,20 @@ export function installDiySync({ net, timers, target = loadoutStore, notify, con
     prepare: async () => cleanPicks(target.get().diy),
   });
   return { flush: sync.flush, dispose() { offKit?.(); offKitContent?.(); sync.dispose(); } };
+}
+
+/**
+ * Wire the 协议源石禁用 sync once (业主 2026-10-21): `room.hexBans { ids }` after every welcome and edit. The list goes
+ * as stored (structurally clean: ≤ 3 ids); the server keeps the cards this room's data actually has, and drops the ones
+ * it does not. During a match the server stores it for the next one (ROOM_STARTED → 'locked'): the setting is out of
+ * match.
+ * @param {{ net: any, timers?: { setTimeout: Function, clearTimeout: Function }, target?: ReturnType<typeof createStore>,
+ *   notify?: (text: string) => void }} deps
+ */
+export function installHexBanSync({ net, timers, target = loadoutStore, notify } = {}) {
+  return installPrefSync({
+    net, timers, target, notify, key: 'hexBans', stateKey: 'hexBansSync', msgType: 'room.hexBans', field: 'ids', tag: 'hexBans',
+    lockedText: N_('协议源石禁用是局外设置，修改将在下一局生效'),
+    prepare: async () => cleanHexBans(target.get().hexBans),
+  });
 }

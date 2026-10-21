@@ -119,8 +119,18 @@ function groundEnemyOn(battle, r, c) {
   return false;
 }
 
+/** An ally unit (a standing mine included) already occupies the tile — `summonTileFree` only checks reserving bodies. */
+function allyOnTile(battle, r, c) {
+  for (const u of battle.allyUnits || []) {
+    if (!u || !u.alive || u.hidden) continue;
+    if (u.hitArea ? bodyOnTile(u, r, c) : Math.abs(u.x - c) <= 0.5 && Math.abs(u.y - r) <= 0.5) return true;
+  }
+  return false;
+}
+
 /**
- * 雷区: at battle start, `count` 共振装置 mines on random deployable tiles.
+ * 雷区: at battle start, `count` 共振装置 mines on random deployable tiles; 业主 2026-10-21 adds 「每5s生成一个地雷」 —
+ * after the opening volley, every `periodicSec` seconds one more mine is placed on a random free tile (no cap).
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle — `battle` / `ownersOf` / `specOf` / `optNumber` are read.
  * @returns {number} 0 (the count is decided when battleStart runs and reported by the spawned mines themselves).
@@ -134,11 +144,40 @@ export function installMinefield(hooks) {
   const owners = ownersOf('hex_minefield');
   if (!owners.length) return 0;
 
+  /** pid → { spec, pick, count, periodicSec, periodicCount, def, kit } (filled at battleStart). */
+  const plans = new Map();
+
+  /** Place up to `n` mines for one owner on random free deployable tiles. */
+  const place = (pid, n) => {
+    const plan = plans.get(pid);
+    if (!plan || !(n > 0)) return 0;
+    const R = battle.grid.rect;
+    const cands = [];
+    for (let r = R.r0; r <= R.r1; r++) {
+      for (let c = R.c0; c <= R.c1; c++) {
+        if (!battle.grid.canStand(r, c)) continue;
+        if (!summonTileFree(battle, r, c)) continue;
+        if (allyOnTile(battle, r, c)) continue;
+        if (groundEnemyOn(battle, r, c)) continue;
+        cands.push([r, c]);
+      }
+    }
+    battle.rng.shuffle(cands);
+    let placed = 0;
+    for (const [r, c] of cands) {
+      if (placed >= n) break;
+      const t = battle.spawnToken(pid, RESONATOR, r, c, { def: plan.def || undefined, kit: plan.kit });
+      if (!t) continue;
+      battle.fx('summon', { x: t.x, y: t.y, id: t.id, token: RESONATOR });
+      placed++;
+    }
+    return placed;
+  };
+
   battle.on('battleStart', () => {
     const raw = battle.data && typeof battle.data.rawToken === 'function' ? battle.data.rawToken(RESONATOR) : null;
     if (!raw) battle.log?.(`${RESONATOR} is not in this battle's data: 雷区 places the default variant`);
     const baseDef = s2Def(battle);
-    const R = battle.grid.rect;
     for (const pid of owners) {
       const spec = typeof specOf === 'function' ? specOf(pid, 'hex_minefield', 'minefield') : null;
       /** The spec's number, else `d` (the hook bundle's own reader, so a malformed spec degrades like every other card). */
@@ -155,27 +194,29 @@ export function installMinefield(hooks) {
       // base stats from `stats.atk`, so replacing it there is what makes `t.s.atk` — and the blast the kit reads — 1000.
       const mineAtk = pick('atk', MINE_DEFAULT.atk);
       const def = baseDef && mineAtk > 0 ? { ...baseDef, stats: { ...(baseDef.stats || {}), atk: mineAtk } } : baseDef;
-      const kit = mineKit(tuning);
-      const cands = [];
-      for (let r = R.r0; r <= R.r1; r++) {
-        for (let c = R.c0; c <= R.c1; c++) {
-          if (!battle.grid.canStand(r, c)) continue;
-          if (!summonTileFree(battle, r, c)) continue;
-          if (groundEnemyOn(battle, r, c)) continue;
-          cands.push([r, c]);
-        }
-      }
-      battle.rng.shuffle(cands);
-      let placed = 0;
-      for (const [r, c] of cands) {
-        if (placed >= count) break;
-        const t = battle.spawnToken(pid, RESONATOR, r, c, { def: def || undefined, kit });
-        if (!t) continue;
-        battle.fx('summon', { x: t.x, y: t.y, id: t.id, token: RESONATOR });
-        placed++;
-      }
+      plans.set(pid, {
+        spec, pick, count, def, kit: mineKit(tuning),
+        periodicSec: pick('periodicSec', 0),
+        periodicCount: Math.max(1, Math.floor(pick('periodicCount', 1))),
+      });
+      place(pid, count);
     }
   }, { priority: -10 }); // the house slot for battleStart grants (after every bond / garrison passive)
+
+  // 业主 2026-10-21: one more mine every 5 s. `plans` is filled by battleStart, and `battle.every` starts after it.
+  battle.every(1, () => {
+    for (const pid of owners) {
+      const plan = plans.get(pid);
+      if (!plan || !(plan.periodicSec > 0)) continue;
+      if (battle.time < plan.periodicSec - 1e-9) continue;
+      // one placement per elapsed period; `battle.every(1)` keeps the check cheap and deterministic
+      const due = Math.floor(battle.time / plan.periodicSec + 1e-9);
+      const done = Number(plan.donePeriods) || 0;
+      if (due <= done) continue;
+      plan.donePeriods = due;
+      place(pid, (due - done) * plan.periodicCount);
+    }
+  });
 
   return 0;
 }

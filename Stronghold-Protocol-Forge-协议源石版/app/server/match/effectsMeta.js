@@ -51,7 +51,7 @@ import { onGiftTicker } from './botEmotes.js';
 // applyHex joined this import for 潘多拉魔盒 (the owner's list of 2026-10-15): the card replaces the player's whole
 // hex set, and each replacement must run the ORDINARY pick path — so it re-enters the pipeline rather than rebuilding
 // a ref by hand. This module already imported from ./hextech.js, so the edge exists and no cycle is added.
-import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf, applyHex } from './hextech.js';
+import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf, applyHex, gainTraitExtraOf } from './hextech.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
 import { previewContext } from './preview.js';
 
@@ -61,6 +61,9 @@ export const HOOKS = Object.freeze([
   'onDestroy', 'onLayers',
   'onSpend', 'onMerge', 'onLevelUp', 'onBattleStart', 'onBattleResult', 'onChoicePick', 'onEquip', 'onArt',
   'onDestroy', 'onLayers', 'onActiveBonds',
+  // fifteenth batch (业主 2026-10-21): fired by the dispatcher after every 获得时 trait trigger — not an event of its
+  // own (see server/sim/content/hextech.js HEX_HOOKS), but a handler member the registry must not warn about.
+  'onGainTrait',
 ]);
 /** Non-hook members a handler object may carry. */
 const HANDLER_EXTRAS = new Set(['run', 'garrisonHooks']);
@@ -200,23 +203,57 @@ export class EffectDispatcher {
       try { ctx = makeCtx(this.m, ps, source, hook, ev, this.preview); }
       catch (e) { this._report(key, hook, e); return; }
     } else ctx = makeCtx(this.m, ps, source, hook, ev);
+    /** 盟约获得 (业主 2026-10-21): a 获得时 trait's own layer gain is measured for the `onGainTrait` observers below. */
+    const measureGain = hook === 'onGain' && source && source.kind === 'garrison';
     for (let i = 0; i < repeat; i++) {
       if (!this._allowScript(handler,hook)) break;
-      try { fn.call(handler, ctx, ev); } catch (e) { this._report(key, hook, e); }
+      let gained = 0;
+      const origAdd = measureGain ? ctx.addLayers : null;
+      if (origAdd) {
+        ctx.addLayers = (bondId, n, opts) => {
+          const add = origAdd(bondId, n, opts);
+          if (Number.isFinite(add) && add > gained) gained = add;
+          return add;
+        };
+      }
+      let ok = true;
+      try { fn.call(handler, ctx, ev); } catch (e) { ok = false; this._report(key, hook, e); } finally { if (origAdd) ctx.addLayers = origAdd; }
+      // ONE observer pass per TRIGGER (each 投资人 repeat included). The trait's own layer gain is the largest single-bond
+      // gain it made; a trait that grants no layers passes 0 (盟约获得 then adds nothing, 投资天才 still banks its layer).
+      if (measureGain && ok) this._afterGainTrait(ps, ev, gained);
+    }
+  }
+
+  /**
+   * Fire `onGainTrait` on every persistent effect that declares it, after ONE 获得时 trait trigger.
+   * `ev.gainTraitAmount` = the largest single-bond layer gain that trigger made (see `_call`).
+   * @param {any} ps @param {any} ev @param {number} amount
+   */
+  _afterGainTrait(ps, ev, amount) {
+    const list = (ps && Array.isArray(ps.effects) ? ps.effects.slice() : []);
+    const gainEv = { ...(ev && typeof ev === 'object' ? ev : {}), gainTraitAmount: Number.isFinite(amount) ? amount : 0 };
+    for (const ref of list) {
+      if (!ref || typeof ref.key !== 'string') continue;
+      const h = this.registry.get(ref.key);
+      if (!h || typeof h.onGainTrait !== 'function') continue;
+      this._call(ps, ref.key, h, 'onGainTrait', { kind: 'effect', key: ref.key, ref }, gainEv);
     }
   }
 
   /** 获得时 multiplier from 投资人 (investShip): ×2 while active, ×3 at ≥ 100 layers (research 02 §3.17). */
   investRepeat(ps) {
+    // 投资天才 (业主 2026-10-21): its `gainTraitExtra` fires one MORE 获得时 trigger — on top of the bond's 2/3, or
+    // as 2 triggers when the bond is not active at all (「获得类特质额外触发一次」 is the card's own effect).
+    const extra = Math.max(0, Math.trunc(Number(gainTraitExtraOf(ps)) || 0));
     const b = ps.bonds && ps.bonds.investShip;
-    if (!b || !b.active) return 1;
+    if (!b || !b.active) return 1 + extra;
     const bond = this.m.gd.bond('investShip');
     const bb = bond && bond.bb ? bond.bb : {};
     // data: bb.count 2 ("每次触发2次"), layerMilestones [{ layer: 100 }] ("<达到100层>…每次触发3次")
     const base = Number.isInteger(bb.count) && bb.count > 1 ? bb.count : 2;
     const ms = bond && Array.isArray(bond.layerMilestones) ? bond.layerMilestones.find((x) => x && Number(x.layer) > 0) : null;
     const hi = ms ? Number(ms.layer) : Number.isFinite(bb.layer) && bb.layer > 0 ? bb.layer : 100;
-    return b.layers >= hi ? base + 1 : base;
+    return (b.layers >= hi ? base + 1 : base) + extra;
   }
 
   /**
@@ -630,6 +667,11 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
       const mul = bondLayerViewMulOf(ps);
       return mul === 1 ? v : Math.floor(v * mul + 1e-9);
     },
+    /**
+     * 盟约寄生 (业主 2026-10-21): the player's STORED bond layers, without 圣约回响's view multiplier — the teammate's
+     * 「上一回合叠了多少层」 must be the real gain, and the caller keeps its own baseline from this same reader.
+     */
+    rawLayers: () => ({ ...(ps.layers || {}) }),
     board: () => boardOrder(ps.board).map(({ r, c, piece }) => ps.pieceView(piece, [r, c])),
     hand: () => ps.hand.map(view),
     temp: () => ps.temp.map(view),

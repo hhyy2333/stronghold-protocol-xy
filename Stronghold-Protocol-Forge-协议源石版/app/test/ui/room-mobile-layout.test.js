@@ -1,133 +1,73 @@
-// Room screen — mobile layout guards (no browser). Regression test for the user report of 2026-10-11:
+// test/ui/room-mobile-layout.test.js — 房间屏「手机横屏」布局守卫。
 //
-//   「左下角那块 UI 太挤了，手机上拿浏览器打开压根显示不全 … 一堆东西全怼在左下角那个犄角旮旯，你压我我压你，
-//     屏幕小一点直接跑出画面外」
+// 业主 2026-10-21 的截图：一屏 597×270 CSS px（短横屏，根字号被 clamp 到 40px），房间的聊天面板 + 模组摘要
+// 把 `.rs-seats` 挤到只剩一条缝 —— 席位卡/头像（玩家口中的「人」）看不见。修法：
+//   * 短屏（max-height: 520px）聊天默认收起成**抽屉**：面板仍**常驻挂载**（只加 hidden，关着也继续收消息），
+//     开关按钮 `.rs-chat-toggle` 只在短屏出现；
+//   * 抽屉用 absolute 定位，展开时不再挤压席位；模组栏只留摘要（列表与 digest 在短屏隐藏）；
+//   * `.rs-seats` 保底高度，席位优先于这两块辅助信息。
 //
-// What actually happened, measured in a real headless Edge at 640×360 / 844×390 (see the numbers in the comments):
-//   * `.room-bar` was `height: 1.5rem` with `align-items: center`. On a phone in landscape the root scale is clamped
-//     at 40 px, so 1.5rem is 60 px — less than ONE row of the difficulty picker.
-//   * Its left column was a non-wrapping flex row holding five controls (难度 label + picker, AI switch, 额外内容
-//     label + button, 公开 label + switch). Nothing could wrap, so every child was SHRUNK instead: the 公开 switch
-//     came out 42 px wide and painted 「当前为私密…」 ONE CHARACTER PER LINE, 148 px tall inside a 60 px bar.
-//   * The cluster therefore ended at y=449 on a 360 px-tall screen: everything below y=360 was off-screen and
-//     untappable (elementFromPoint returned null for all twelve controls).
-//   * `.room-chat` lost the cascade to `.chatpanel { bottom: 1.0rem }` (css/screens/game.css is linked after
-//     room.css at equal specificity), so the chat panel sat 40 px from the bottom of the SCREEN — on top of the bar.
-//
-// The fix: the bar grows (`min-height`, wrapping left cluster, `flex: none` children grouped label+control), the
-// chat panel anchors to the bar's real height via `--room-bar-h`, and the 公开 note moved out of the one-line pill.
-// These assertions keep the CSS from regressing; the geometry itself is verified by the browser probe.
+// 桌面（高屏）保持聊天常驻，不出现开关按钮。
 
-import { test, describe } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const roomCss = readFileSync(path.join(ROOT, 'public/css/screens/room.css'), 'utf8');
-const browserCss = readFileSync(path.join(ROOT, 'public/css/screens/room-browser.css'), 'utf8');
-const gameCss = readFileSync(path.join(ROOT, 'public/css/screens/game.css'), 'utf8');
-const roomJs = readFileSync(path.join(ROOT, 'public/js/screens/room.js'), 'utf8');
+const read = (p) => readFileSync(path.join(ROOT, p), 'utf8');
+const roomJs = read('public/js/screens/room.js');
+const lobbyCss = read('public/css/screens/lobby.css');
 
-/** The declaration block of the FIRST rule whose selector is exactly `sel`, with comments stripped. */
-function block(css, sel) {
-  const at = css.indexOf(`\n${sel} {`);
-  const i = at >= 0 ? at : css.indexOf(`${sel} {`);
-  assert.ok(i >= 0, `rule ${sel} exists`);
-  const open = css.indexOf('{', i);
-  const close = css.indexOf('}', open);
-  return css.slice(open + 1, close).replace(/\/\*[\s\S]*?\*\//g, '');
+/** The balanced `@media <query> { … }` block that contains `marker` (the file has several 520px blocks). */
+function mediaBlock(css, query, marker) {
+  let from = 0;
+  for (;;) {
+    const start = css.indexOf(`@media ${query} {`, from);
+    assert.ok(start >= 0, `@media ${query} exists (${marker})`);
+    let depth = 0;
+    let end = -1;
+    for (let i = css.indexOf('{', start); i < css.length; i += 1) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') {
+        depth -= 1;
+        if (depth === 0) { end = i + 1; break; }
+      }
+    }
+    assert.ok(end > start, `@media ${query} is closed`);
+    const block = css.slice(start, end);
+    if (block.includes(marker)) return block;
+    from = end;
+  }
 }
 
-describe('room screen mobile layout (user report 2026-10-11)', () => {
-  test('the bottom bar grows instead of clipping: min-height, never a fixed height', () => {
-    const bar = block(roomCss, '.room-bar');
-    assert.match(bar, /min-height:\s*1\.5rem/, 'the bar keeps the 1.5rem design height as a MINIMUM');
-    // `height: 1.5rem` (and any `max-height`) would re-introduce the clip; `min-height` is the only height allowed.
-    assert.ok(!/(^|[^-\w])height:\s*1\.5rem/.test(bar), 'the bar must not have a fixed height');
-    assert.ok(!/max-height/.test(bar), 'the bar must not cap its own height');
-    // the old grid forced the crowded left cluster into half the bar and wrapped it even on a desktop
-    assert.ok(!/grid-template-columns/.test(bar), 'the bar is a flex row, not the 1fr/auto/1fr grid');
-  });
+const SHORT = mediaBlock(lobbyCss, '(max-height: 520px)', '.rs-chat-toggle');
 
-  test('the left cluster wraps and none of its children may be squeezed', () => {
-    const left = block(roomCss, '.room-bar__left');
-    assert.match(left, /flex-wrap:\s*wrap/, 'the crowded left cluster wraps');
-    assert.match(left, /flex:\s*1 1 auto/, 'the left cluster is the flexible column');
-    assert.match(roomCss, /\.room-bar__left\s*>\s*\*\s*\{[^}]*flex:\s*none/s, 'no direct child of the cluster may shrink');
-    // a label travels with its control, so a wrap never separates them
-    const group = block(roomCss, '.room-bar__group');
-    assert.match(group, /display:\s*flex/, 'label + control are grouped');
-    assert.match(roomCss, /\.room-bar__group\s*>\s*\.room-bar__label\s*\{[^}]*flex:\s*none/s, 'the label inside a group is fixed');
-    // the centre and the actions keep their natural size (they used to collide once the grid went `auto`)
-    assert.match(block(roomCss, '.room-bar__center'), /flex:\s*none/);
-    assert.match(block(roomCss, '.room-bar__right'), /flex:\s*none/);
-  });
+test('短横屏的聊天默认收起，桌面仍然常驻', () => {
+  assert.match(roomJs, /const isShortRoomViewport = \(\) => \{/, 'room.js names the short-viewport probe');
+  assert.match(roomJs, /matchMedia\?\.\('\(max-height: 520px\)'\)/, 'it probes the same 520px breakpoint as the CSS');
+  assert.match(roomJs, /useState\(\(\) => !isShortRoomViewport\(\)\)/, 'chat starts folded on, open otherwise');
+  // 旋屏：进入短屏自动收起，回到高屏恢复；不许把「桌面常驻」写死成永远 open。
+  assert.match(roomJs, /setChatOpen\(!event\.matches\)/, 'a viewport change follows the breakpoint');
+});
 
-  test('the 公开/私密 switch is a one-line pill — the note never stacks a character per line', () => {
-    const toggle = block(browserCss, '.vis-toggle');
-    assert.match(toggle, /display:\s*inline-flex/, 'the switch is a single-line pill');
-    assert.match(toggle, /flex:\s*none/, 'the switch never shrinks');
-    assert.match(toggle, /max-width:\s*100%/);
-    // the note is a nowrap ellipsis line, and the room bar hides it (the button's `title` carries it there)
-    assert.match(block(browserCss, '.vis-toggle__note'), /white-space:\s*nowrap/);
-    assert.match(browserCss, /\.room-bar\s+\.vis-toggle__note\s*\{\s*display:\s*none/);
-    assert.match(block(browserCss, '.vis-toggle__state'), /white-space:\s*nowrap/);
-    assert.match(block(browserCss, '.vis-toggle__btn'), /white-space:\s*nowrap/);
-    // it used to be a flex COLUMN of 11 px width at 1920×1080 — the source of the 306 px-tall note
-    assert.ok(!/\.vis-toggle__text\s*\{[^}]*flex-direction:\s*column/s.test(browserCss), 'the text is no longer a column');
-  });
+test('抽屉只加 hidden，聊天面板仍无条件挂载（关着也收消息）', () => {
+  assert.match(roomJs, /<div class="rs-chat" hidden=\$\{!chatOpen\}\s*>\s*<\$\{ChatPanel\}/,
+    'the panel mounts inside a hidden drawer');
+  assert.ok(!/chatOpen\s*\?\s*html`<div class="rs-chat"/.test(roomJs),
+    'the room chat must never be conditionally mounted (that loses messages)');
+  // 开关只在短屏出现；桌面聊天常驻，不需要按钮。
+  assert.match(lobbyCss, /\n\.rs-chat-toggle \{ display: none; \}/, 'the toggle is hidden on tall screens');
+  assert.match(SHORT, /\.rs-chat-toggle\s*\{[^}]*display:\s*inline-grid/s, 'the toggle appears on short screens');
+});
 
-  test('the chat panel is anchored above the bar\'s real height, and wins the cascade over .chatpanel', () => {
-    // game.css declares `.chatpanel { bottom: 1.0rem }` and is linked AFTER room.css: at equal specificity the room
-    // override lost, and the panel covered the bar. The room rule must therefore out-specify it.
-    const rule = roomCss.match(/\.room-screen\s+\.room-chat\s*\{([^}]*)\}/s);
-    assert.ok(rule, '.room-screen .room-chat exists (higher specificity than .chatpanel)');
-    assert.match(rule[1], /bottom:\s*calc\(var\(--room-bar-h/, 'it follows the bar height');
-    assert.match(roomCss, /\.room-screen\s+\.room-chat\s*\{[^}]*left:\s*\.6rem/s);
-    // the variable is published from the screen, and the effect must re-run when the room arrives (the screen renders
-    // null until then — an empty dep array ran the effect against an unmounted ref and never again)
-    assert.match(roomJs, /setProperty\('--room-bar-h'/);
-    assert.match(roomJs, /ResizeObserver/);
-    assert.match(roomJs, /\}, \[hasRoom\]\);/);
-    assert.match(roomJs, /const hasRoom = !!room;/);
-    assert.match(roomJs, /<footer class="room-bar" ref=\$\{barRef\}>/);
-    // the shared default must stay (the match screen uses it): only the room override changed
-    assert.match(gameCss, /\.chatpanel\s*\{[^}]*bottom:\s*1\.0rem/s, 'the shared panel default is untouched');
-  });
-
-  test('the seats reserve the floating chat panel, so it cannot cover a seat card', () => {
-    // the panel is absolutely positioned above the bar and floats OVER the seat grid: on a short phone its 💬 trigger
-    // covered the first seat's 「待命中」. Its measured height is published as --room-chat-h and .seats reserves it.
-    assert.match(roomJs, /setProperty\('--room-chat-h'/);
-    assert.match(block(roomCss, '.seats'), /padding:[^;]*var\(--room-chat-h/, '.seats reserves the panel height');
-    // A short landscape phone keeps the log folded down to the trigger (the seats there are tight). Since the fold moved
-    // into ui/chatBox.js (`.is-folded` + the `hidden` attribute, test/ui/chat-fold.test.js), this rule backs up the
-    // FOLDED state instead of every closed panel: keying it on `:not(.is-active)` would hide the log the chevron was
-    // just asked to unfold (an unfolded panel may be closed — that is the ambient log).
-    assert.match(roomCss, /\.room-screen\s+\.room-chat\.is-folded\s+\.chatpanel__log\s*\{\s*display:\s*none/);
-    assert.doesNotMatch(roomCss, /\.room-screen\s+\.room-chat:not\(\.is-active\)\s+\.chatpanel__log\s*\{\s*display:\s*none/,
-      'the fold is the chevron\'s job now, not the panel\'s open state');
-  });
-
-  test('label and control are grouped in the markup, one group per option', () => {
-    // count ELEMENTS, not the mentions in comments: `class="room-bar__group"` inside an HTML comment is not a group
-    const markup = roomJs.replace(/<!--[\s\S]*?-->/g, '');
-    const groups = markup.match(/class="room-bar__group"/g) || [];
-    assert.equal(groups.length, 3, '难度 / 额外内容 / 公开 each get a group');
-    // every group holds exactly one label, and no label is left bare in the cluster
-    const left = markup.slice(markup.indexOf('<div class="room-bar__left">'), markup.indexOf('<div class="room-bar__center">'));
-    const labels = left.match(/class="room-bar__label"/g) || [];
-    assert.equal(labels.length, 3, 'three labelled options');
-    assert.equal((left.match(/room-bar__group/g) || []).length, 3);
-  });
-
-  test('narrow / short viewports re-flow the bar into rows instead of overflowing', () => {
-    // the breakpoint block exists and stacks the cluster above the actions
-    assert.match(roomCss, /@media \(max-width: 900px\), \(max-height: 520px\)[\s\S]*?\.room-bar__left\s*\{[^}]*flex:\s*1 1 100%/);
-    assert.match(roomCss, /@media \(max-width: 900px\), \(max-height: 520px\)[\s\S]*?\.room-bar__right\s*\{[^}]*flex:\s*none/);
-    // and the shortest phones give every option its own line
-    assert.match(roomCss, /@media \(max-width: 640px\), \(max-height: 420px\)[\s\S]*?\.dpick\s*\{\s*flex-wrap:\s*wrap/);
-  });
+test('短横屏：抽屉浮在席位上方，不参与布局；模组栏收成摘要，席位保底高度', () => {
+  assert.match(SHORT, /\.rs-chat\s*\{[^}]*position:\s*absolute/s, 'the open drawer floats');
+  assert.match(SHORT, /\.rs-chat\s*\{[^}]*top:\s*1\.5rem/s, 'it starts below the top bar, so the toggle stays reachable');
+  assert.match(SHORT, /\.rs-chat\s*\{[^}]*bottom:\s*1\.6rem/s, 'and ends above the footer');
+  assert.match(SHORT, /\.rs-chat\[hidden\]\s*\{\s*display:\s*none/, 'hidden really hides (a display rule would win otherwise)');
+  assert.match(SHORT, /\.rs-chat \.chatp \.chatp__list\s*\{[^}]*max-height/s, 'the drawer caps its log');
+  assert.match(SHORT, /\.room-mods__digest,\s*\.room-mods__list\s*\{[^}]*display:\s*none/s, 'the mods summary hides its list');
+  assert.match(SHORT, /\.rs-seats\s*\{[^}]*min-height/s, 'the seats keep a floor instead of collapsing to a strip');
 });

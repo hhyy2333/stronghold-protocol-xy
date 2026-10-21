@@ -36,12 +36,18 @@ const PHASE_TEXT = Object.freeze({
 });
 
 const clampInt = (value, lo, hi) => Math.max(lo, Math.min(hi, Math.trunc(value)));
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const fmt = (value) => {
   const n = Math.round(Number(value) || 0);
   return n.toLocaleString('zh-CN');
 };
 /** 股价保留两位小数（服务端就是两位小数口径；`.00` 也照显示，免得「7」和「7.04」看起来像两个精度）。 */
 const fmtPrice = (value) => (Math.round((Number(value) || 0) * 100) / 100).toFixed(2);
+/** 源石大盘保留一位小数（100 起）。 */
+const fmtIndex = (value) => (Math.round((Number(value) || 0) * 10) / 10).toFixed(1);
+
+/** 市场情绪中文名（服务端下行帧里也有 `label`，这里只是兜底）。 */
+const SENTIMENT_TEXT = Object.freeze({ bull: '牛市', bear: '熊市', calm: '平静' });
 
 /**
  * 买入时「现有资金最多买几股」——含 1% 手续费（向上取整、最少 1）。纯函数，可单测。
@@ -58,10 +64,12 @@ export function feeFor(gross) {
 
 export function maxAffordable(cash, price, maxShares = 60) {
   const budget = Math.max(0, Math.trunc(Number(cash) || 0));
-  const unit = Math.max(1, Math.trunc(Number(price) || 0));
+  const unit = Number(price);
+  if (!(unit > 0)) return 0;
   let qty = clampInt(Math.floor(budget / unit), 0, maxShares);
   while (qty > 0) {
-    const gross = unit * qty;
+    // 与 server/exchange.mjs 的 round2 同一口径：2.4 × 3 不能因为浮点尾数被当成买不起。
+    const gross = round2(unit * qty);
     if (gross + feeFor(gross) <= budget) return qty;
     qty -= 1;
   }
@@ -206,6 +214,13 @@ export function mount(ctx) {
   head.appendChild(headTitles);
   head.appendChild(headActions);
 
+  // 行情带：源石大盘 + 市场情绪（服务端下发 `index` / `sentiment`，缺字段时整条隐藏）。
+  const tape = el('div', 'oex__tape');
+  const indexText = el('span', 'oex__index', '');
+  const sentimentText = el('span', 'oex__sentiment', '');
+  tape.appendChild(indexText);
+  tape.appendChild(sentimentText);
+
   const summary = el('div', 'oex__summary');
   const netWorthBox = el('div', 'oex__metric oex__metric--main');
   const netWorthLabel = el('span', 'oex__metric-label', '总资产');
@@ -265,7 +280,7 @@ export function mount(ctx) {
   const list = el('div', 'oex__list');
 
   const foot = el('footer', 'oex__foot');
-  const footHint = el('span', 'oex__foot-hint', '休整期才能交易 · 手续费 1% · 每回合分红 1.2% · 负债每回合计息 12%（可加 2x / 3x 杠杆）');
+  const footHint = el('span', 'oex__foot-hint', '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 12%');
   foot.appendChild(footHint);
 
   const toastBar = el('div', 'oex__toast');
@@ -290,6 +305,7 @@ export function mount(ctx) {
   closeLayer.appendChild(closeFoot);
 
   panel.appendChild(head);
+  panel.appendChild(tape);
   panel.appendChild(summary);
   panel.appendChild(newsBar);
   panel.appendChild(qtyBar);
@@ -381,12 +397,33 @@ export function mount(ctx) {
   function renderState(data) {
     state = data;
     roundLine.textContent = `第 ${data.round ?? '?'} 回合 · ${PHASE_TEXT[data.phase] || data.phase || ''}${data.closed ? ' · 已收盘' : ''}`;
+    // 行情带：源石大盘 + 市场情绪（缺字段的旧帧整条留空）。
+    if (data.index && Number.isFinite(Number(data.index.value))) {
+      const idxUp = Number(data.index.chgPct) >= 0;
+      indexText.textContent = `源石指数 ${fmtIndex(data.index.value)} ${idxUp ? '+' : ''}${(Number(data.index.chgPct) || 0).toFixed(1)}%`;
+      indexText.className = 'oex__index ' + (idxUp ? 'is-up' : 'is-down');
+    } else {
+      indexText.textContent = '';
+      indexText.className = 'oex__index';
+    }
+    if (data.sentiment && data.sentiment.kind) {
+      const label = SENTIMENT_TEXT[data.sentiment.kind] || data.sentiment.label || '';
+      const left = Number(data.sentiment.roundsLeft) || 0;
+      sentimentText.textContent = `市场情绪 ${label}${left > 0 ? ` · 剩 ${left} 回合` : ''}`;
+      sentimentText.className = 'oex__sentiment is-' + data.sentiment.kind;
+    } else {
+      sentimentText.textContent = '';
+      sentimentText.className = 'oex__sentiment';
+    }
     netWorthValue.textContent = fmt(data.netWorth);
     cashValue.textContent = fmt(data.cash);
     portfolioValue.textContent = fmt(data.portfolio);
     const debt = Number(data.debt) || 0;
+    const marginPct = Number(data.marginPct) || 0;
     debtValue.textContent = debt > 0 ? `-${fmt(debt)}` : '0';
-    debtBox.classList.toggle('is-warn', debt > 0);
+    // 追保距离：负债 / 持仓 ≥55% 变黄、≥65% 变红（70% 服务端强平）。
+    debtBox.classList.toggle('is-warn', debt > 0 && marginPct >= 55 && marginPct < 65);
+    debtBox.classList.toggle('is-danger', debt > 0 && marginPct >= 65);
     // 杠杆：当前档位高亮 + 还能借多少（服务端算好的 borrowRoom，面板不重算）。
     const level = Number(data.leverage) || 1;
     for (const btn of levButtons.childNodes || []) {
@@ -394,9 +431,11 @@ export function mount(ctx) {
       btn.classList.toggle('is-active', Number(btn.dataset.lever) === level);
     }
     const room = Number(data.borrowRoom) || 0;
-    levHint.textContent = level > 1
-      ? (room > 0 ? `可借 ${fmt(room)}` : '额度已用满')
-      : '不借钱';
+    levHint.textContent = debt > 0
+      ? `负债率 ${marginPct.toFixed(0)}% · 追保 70%`
+      : level > 1
+        ? (room > 0 ? `可借 ${fmt(room)}` : '额度已用满')
+        : '不借钱';
     if (data.news && data.news.text) {
       newsText.textContent = `${data.news.text}（${data.news.pct > 0 ? '+' : ''}${data.news.pct}%）`;
       newsText.className = 'oex__news-text ' + (data.news.pct > 0 ? 'is-up' : 'is-down');
@@ -406,7 +445,7 @@ export function mount(ctx) {
     }
     dividendText.textContent = data.dividend > 0 ? `分红 +${fmt(data.dividend)}` : '';
     if (typeof data.closed === 'boolean' && data.closed) footHint.textContent = '本局已收盘 · 下一局重新开市';
-    else footHint.textContent = '休整期才能交易 · 手续费 1% · 每回合分红 1.2% · 负债每回合计息 12%（可加 2x / 3x 杠杆）';
+    else footHint.textContent = '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 12%';
     while (list.firstChild) list.removeChild(list.firstChild);
     for (const stock of data.stocks || []) list.appendChild(renderStockRow(stock));
     renderQtyButtons();
@@ -418,10 +457,12 @@ export function mount(ctx) {
   function renderClose(data) {
     closing = data;
     closeLayer.hidden = false;
+    const idxReturn = Number(data.indexReturnPct);
+    const indexLine = Number.isFinite(idxReturn) ? ` · 本局大盘 ${idxReturn >= 0 ? '+' : ''}${idxReturn.toFixed(1)}%` : '';
     // 出局的人没有名次（服务端发 rank: null + out: true），但仍然看到本局的排行榜。
-    closeRank.textContent = data.out
+    closeRank.textContent = (data.out
       ? `已出局 · 本局排行共 ${data.ofPlayers} 人`
-      : `第 ${data.rank} 名 / 共 ${data.ofPlayers} 人 · 总资产 ${fmt(data.netWorth)}`;
+      : `第 ${data.rank} 名 / 共 ${data.ofPlayers} 人 · 总资产 ${fmt(data.netWorth)}`) + indexLine;
     while (closeList.firstChild) closeList.removeChild(closeList.firstChild);
     for (const row of data.rows || []) {
       const item = el('li', 'oex__close-row' + (row.isMe ? ' is-me' : ''));

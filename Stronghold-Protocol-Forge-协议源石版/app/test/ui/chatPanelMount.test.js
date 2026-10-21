@@ -4,8 +4,8 @@
 // 缓冲（store.js 里没有 pushChatMessage 一类）。所以面板一旦卸载，订阅就消失、这期间别人的话**永久丢失**：
 // 再打开是个新实例、记录从空开始，而服务端只在**重连**时补发 `chat.history`（server/lobby.js runResync）。
 //
-// 房间屏（screens/room.js）从头到尾无条件挂载，所以没这个问题；局内（screens/game.js）从前是
-// `chatOpen ? <ChatPanel/> : null` —— 关着面板时说的所有话都看不见。修法是常驻挂载 + hidden 切换。
+// 房间屏（screens/room.js）从头到尾无条件挂载（短横屏只是外面包一层 hidden 抽屉），所以没这个问题；局内
+// （screens/game.js）从前是 `chatOpen ? <ChatPanel/> : null` —— 关着面板时说的所有话都看不见。修法是常驻挂载 + hidden 切换。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -44,6 +44,9 @@ test('全树只有 chat.js 订阅 chat.msg，且没有 store 侧缓冲 —— �
 });
 
 test('房间屏与局内都挂了面板', () => {
-  assert.match(ROOM, /<\$\{ChatPanel\} \/>/, 'the room screen mounts it');
+  // 房间屏 1.3.0 起也给短横屏做了抽屉：外面多一层 hidden，但面板本身仍然**常驻**（关了也要继续收消息）。
+  assert.match(ROOM, /<div class="rs-chat" hidden=\$\{!chatOpen\}\s*>\s*<\$\{ChatPanel\}/,
+    'the room screen mounts it behind a hidden drawer (never conditionally)');
+  assert.ok(!/chatOpen\s*\?\s*html`<div class="rs-chat"/.test(ROOM), 'the room chat must not be conditionally mounted');
   assert.match(GAME, /<\$\{ChatPanel\}/, 'the match screen mounts it');
 });

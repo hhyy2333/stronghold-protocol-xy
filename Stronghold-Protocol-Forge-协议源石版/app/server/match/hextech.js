@@ -224,12 +224,33 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
   if (!spec || depth >= 2) return;
   if (spec.copyAllyHex) armMirrorCopy(m, ps, hex);
   if (Number.isInteger(spec.randomHexes) && spec.randomHexes > 0 && depth < 2) {
+    const pool = m.gd.hexPlayerPool().filter((h) => !(ps.hexBans || []).includes(h && h.id));
     const offer = rollOffers(m.rngHex, {
-      pool: m.gd.hexPlayerPool(), owned: hexIdsOf(ps), weights: m.gd.hexWeights(), count: spec.randomHexes,
+      pool, owned: hexIdsOf(ps), weights: m.gd.hexWeights(), count: spec.randomHexes,
     });
     for (const id of offer) {
       const rec = m.gd.hex(id);
       if (rec) applyHex(m, ps, rec, { depth: depth + 1 });
+    }
+  }
+  // 盟约寄生 (业主 2026-10-21 rework): pick a random living teammate at pick time (the 债务 convention — there is no
+  // pick-a-teammate UI), and store that teammate's stackable-layer TOTAL as the first round's baseline. The round
+  // starts (server/sim/content/hextech.js applySpec `parasiteShare`) compare against it and re-baseline. Solo: no
+  // teammate ⇒ `partnerId: null` and the card is inert (the text says 队友).
+  if (spec.pickTeammate === 'parasite') {
+    const mates = m.alivePlayers().filter((p) => p !== ps);
+    const partner = mates.length ? mates[Math.min(mates.length - 1, Math.floor(m.rngHex() * mates.length))] : null;
+    const ref = (ps.effects || []).find((e) => e && (e.id === `hex:${hex.id}` || e.key === `hex:${hex.id}`));
+    if (ref) {
+      let baseline = 0;
+      if (partner) {
+        for (const [bondId, total] of Object.entries(partner.layers || {})) {
+          const rec = m.gd.bond(bondId);
+          if (rec && !rec.noStack) baseline += Number(total) || 0;
+        }
+      }
+      ref.params = { ...(ref.params || {}), parasite: { partnerId: partner ? partner.playerId : null, baseline } };
+      ps.dirty();
     }
   }
   // 债务 (sixth batch, the owner's list of 2026-10-11): 「获得时选取一名队友，队友金钱+3，3回合内队友购买干员时你获得
@@ -337,6 +358,40 @@ export function bondCapOf(ps) {
     if (cap > 0) return cap;
   }
   return 0;
+}
+
+/**
+ * 投资天才 (业主 2026-10-21): how many EXTRA 获得时 triggers a player's cards ask for (`gainTraitExtra`), 0 without
+ * the card. Read by EffectDispatcher.investRepeat; the card's own `onGainTrait` banks the 投资人 layers separately.
+ * @param {{ effects?: any[] }} ps
+ * @returns {number}
+ */
+export function gainTraitExtraOf(ps) {
+  let extra = 0;
+  for (const e of (ps && ps.effects) || []) {
+    const v = Number(e && e.params && e.params.gainTraitExtra);
+    if (Number.isFinite(v) && v > 0) extra = Math.max(extra, Math.trunc(v));
+  }
+  return extra;
+}
+
+/**
+ * 投资天才 (业主 2026-10-21): how many FEWER members a bond needs to activate (`bondNeedBonus { bondId, n }`),
+ * 0 without such a card. bondsMeta.computeBonds subtracts it from the data thresholds; the member COUNT is untouched
+ * (so the strip still shows the real number of members).
+ * @param {{ effects?: any[] }} ps
+ * @param {string} bondId
+ * @returns {number}
+ */
+export function bondNeedBonusOf(ps, bondId) {
+  let n = 0;
+  for (const e of (ps && ps.effects) || []) {
+    const spec = e && e.params && e.params.bondNeedBonus;
+    if (!spec || spec.bondId !== bondId) continue;
+    const v = Number(spec.n);
+    if (Number.isFinite(v) && v > 0) n += Math.trunc(v);
+  }
+  return n;
 }
 
 /** The layer-gain multiplier of one bond (盟约裂变: the two kept bonds gain ×`mul`). 1 when the hex is absent. */

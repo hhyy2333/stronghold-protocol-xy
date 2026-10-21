@@ -1134,43 +1134,88 @@ test('均衡盟约: the noStack bonds are left out of the redistribution, and th
 
 // 业主 report 2026-10-15: 「盟约寄生会在点击干员后多次触发」. Opening an own operator's detail card in PREP asks the server
 // for its start-of-battle stats (g.unitStats → intents.js _unitStatsOf), which dispatches the real onBattleStart handlers
-// with `preview: true`. 盟约寄生 banked its bench layers on EVERY preview — a permanent layer gain per card opening —
-// and 群蛇形态 spent its whole banked point counter on the first one. docs/META.md states the contract ("with ev.preview
-// true a handler must NOT change match state or draw match rng"); the dispatcher now enforces it, so a handler may still
-// patch ev.input (the preview must SHOW the layers) but nothing is written.
-test('the stats preview runs the battle-start cards without changing the match (盟约寄生 / 群蛇形态)', () => {
+// with `preview: true`. 群蛇形态 spent its whole banked point counter on the first one. docs/META.md states the contract
+// ("with ev.preview true a handler must NOT change match state or draw match rng"); the dispatcher enforces it.
+// (盟约寄生 no longer has a battle-start half — 业主 2026-10-21 moved it to the round start; its own test follows.)
+test('the stats preview runs the battle-start cards without changing the match (群蛇形态)', () => {
   const { h, m, ps } = solo1(733);
-  give(m, ps, 'chess_char_1_09_a', 'hand', 0);
-  give(m, ps, 'chess_char_1_17_a', 'hand', 1);
-  applyHex(m, ps, m.gd.hex('hex_bondparasite'));
   applyHex(m, ps, m.gd.hex('hex_serpentform'));
-  ps.bondCountBonus.preciShip = 2;
-  ps.layers.preciShip = 10;
   ps.counters['hex:hex_serpentform:serpent'] = 3; // two banked enemies at 0.5 each
   ps.recompute();
-  const layersBefore = ps.layers.preciShip;
   const bankedBefore = ps.counters['hex:hex_serpentform:serpent'];
-  assert.equal(layersBefore, 10, 'premise: the bond holds 10 layers');
   assert.equal(bankedBefore, 3, 'premise: 群蛇形态 has banked points');
   // ask for the stats three times, exactly as the client does while the card stays open
   for (let i = 0; i < 3; i++) {
     m._unitStatsCache = null;
     assert.deepEqual(m.handle('p_0', { t: 'g.unitStats', seq: i }), { ok: true });
   }
-  assert.equal(ps.layers.preciShip, layersBefore, '盟约寄生 banks nothing on a preview');
   assert.equal(ps.counters['hex:hex_serpentform:serpent'], bankedBefore, '群蛇形态 spends nothing on a preview');
-  // … while the preview still SHOWS what the real battle will see: the bench is 2 operators × 2 layers
-  const previewInput = ps.battleInput({ side: 'L', colOffset: 0 });
-  const ev = { input: previewInput, kind: 'normal', round: m.round, preview: true };
-  m.dispatch(ps, 'onBattleStart', ev);
-  assert.equal(ev.input.bonds.preciShip.layers, layersBefore + 4, 'the previewed snapshot carries the 4 layers it would gain');
-  assert.equal(ps.layers.preciShip, layersBefore, 'and still nothing was written');
-  // the REAL battle start (no preview flag) does the work, once
+  // the REAL battle start (no preview flag) cashes the bank in, once
   const realInput = ps.battleInput({ side: 'L', colOffset: 0 });
   const realEv = { input: realInput, kind: 'normal', round: m.round, spawns: [] };
   m.dispatch(ps, 'onBattleStart', realEv);
-  assert.equal(ps.layers.preciShip, layersBefore + 4, 'the real battle banks the 4 layers');
-  assert.equal(ps.counters['hex:hex_serpentform:serpent'], 0, 'and 群蛇形态 cashes its 3 points in');
+  assert.equal(ps.counters['hex:hex_serpentform:serpent'], 0, '群蛇形态 cashes its 3 points in');
+  h.invariants();
+  m.dispose();
+});
+
+test('盟约寄生 (rework): the picker gets an even share of the teammate’s NEW layers each round', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, bots: 0, seed: 77, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const a = h.ps('p_0');
+  const b = h.ps('p_1');
+  // the picker fields three 炎 operators, so 炎 is the one active stackable bond they own
+  give(m, a, 'chess_char_1_03_a', 'board', [9, 3]);
+  give(m, a, 'chess_char_2_04_a', 'board', [9, 4]);
+  give(m, a, 'chess_char_3_03_a', 'board', [9, 5]);
+  a.recompute();
+  assert.equal(a.bonds.yanShip?.active, true, 'premise: 炎 is active');
+  applyHex(m, a, m.gd.hex('hex_bondparasite'));
+  const ref = a.effects.find((e) => e && e.key === 'hex:hex_bondparasite');
+  assert.ok(ref, 'the pick created the ref');
+  const parasite = ref.params.parasite;
+  assert.equal(typeof parasite.partnerId, 'string', 'a random living teammate was chosen');
+  assert.notEqual(parasite.partnerId, 'p_0');
+  assert.equal(parasite.baseline, 0, 'the baseline is the teammate’s layers at pick time');
+  // the teammate gains 7 layers of a stackable bond; the picker owns ONE active stackable bond ⇒ ceil(7 / 1) = 7
+  const partner = m.players.get(parasite.partnerId);
+  partner.layers.yanShip = 7;
+  partner.recompute();
+  const before = a.layers.yanShip || 0;
+  m.dispatch(a, 'onRoundStart', { round: 2 });
+  assert.equal((a.layers.yanShip || 0) - before, 7, 'the only active stackable own bond takes the whole delta');
+  assert.equal(ref.params.parasite.baseline, 7, 'the new total is the next baseline');
+  // a round with no new teammate layers grants nothing
+  const mid = a.layers.yanShip || 0;
+  m.dispatch(a, 'onRoundStart', { round: 3 });
+  assert.equal(a.layers.yanShip || 0, mid, 'no new layers ⇒ no share');
+  h.invariants();
+  m.dispose();
+});
+
+test('room.hexBans: each player’s own draft offer and reroll skip their ≤ 3 bans', () => {
+  const seats = [
+    { seat: 0, playerId: 'p_0', name: 'P0', isBot: false, connected: true, hexBans: ['hex_stipend', 'hex_echo'] },
+    { seat: 1, playerId: 'p_1', name: 'P1', isBot: false, connected: true, hexBans: [] },
+  ];
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', seats, seed: 31, fake: true });
+  h.start();
+  toHexDraft(h, 1);
+  const m = h.m;
+  const bans = ['hex_stipend', 'hex_echo'];
+  assert.deepEqual(h.ps('p_0').hexBans, bans, 'the seat’s bans reach the player state');
+  const offer = m.hexOfferOf('p_0');
+  for (const id of bans) assert.ok(!offer.includes(id), `p_0 is never offered the banned ${id}`);
+  // a single-card reroll also skips them
+  for (let i = 0; i < 3; i++) {
+    m.handle('p_0', { t: 'g.hexReroll', idx: 0 });
+    for (const id of bans) assert.ok(!m.hexOfferOf('p_0').includes(id), `reroll ${i + 1} skips ${id}`);
+    m.hex.slotRerolls.p_0[0] = 1; // refill the per-card budget so the loop exercises three draws
+  }
+  // the teammate is NOT filtered by p_0's bans
+  assert.equal(h.ps('p_1').hexBans.length, 0);
   h.invariants();
   m.dispose();
 });
@@ -1424,3 +1469,66 @@ test('窃贼: without the card nothing is banked or cut', () => {
   m.dispose();
 });
 
+
+test('投资天才: +1 获得时 trigger (投资人 ×2/×3 → ×3/×4) and two members activate 投资人', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, bots: 0, seed: 91, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  assert.equal(m.dispatcher.investRepeat(ps), 1, 'no 投资人, no card: one trigger');
+  applyHex(m, ps, m.gd.hex('hex_investgenius'));
+  assert.equal(m.dispatcher.investRepeat(ps), 2, 'the card alone: 1 + 1');
+  // two real members now activate 投资人 (the data threshold is 3)
+  give(m, ps, 'chess_char_1_16_a', 'board', [9, 3]);
+  give(m, ps, 'chess_char_2_19_a', 'board', [9, 4]);
+  ps.recompute();
+  assert.equal(ps.bonds.investShip?.active, true, 'the card’s need shift activates 投资人 at 2 members');
+  assert.equal(m.dispatcher.investRepeat(ps), 3, '投资人 ×2 + the card’s extra trigger');
+  ps.layers.investShip = 100;
+  ps.bonds.investShip.layers = 100;
+  assert.equal(m.dispatcher.investRepeat(ps), 4, '投资人 ×3 at 100 layers + the extra trigger');
+  h.invariants();
+  m.dispose();
+});
+
+test('传承: a GAIN banks +1 % for that operator’s bonds on the card’s own ref', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, bots: 0, seed: 93, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  applyHex(m, ps, m.gd.hex('hex_heritage'));
+  const gained = give(m, ps, 'chess_char_2_03_a', 'board', [9, 3]); // 崖心: two bonds
+  m.dispatch(ps, 'onGain', { piece: gained, kind: 'chess', source: 'test' });
+  const ref = ps.effects.find((e) => e && e.key === 'hex:hex_heritage');
+  const acc = ref.params.battle.bondAtk;
+  const rec = m.gd.chess('chess_char_2_03_a');
+  for (const b of rec.bonds) assert.equal(acc[b], 1, `${b}: one gain ⇒ +1 %`);
+  h.invariants();
+  m.dispose();
+});
+
+test('盟约获得: the dispatcher measures the trait’s own layer gain and gives half to the ACTIVE bonds', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, bots: 0, seed: 95, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  // three 谢拉格 operators, so 谢拉格 is active; 崖心 (the gained one) carries 谢拉格 + 不屈
+  give(m, ps, 'chess_char_1_02_a', 'board', [9, 3]);
+  give(m, ps, 'chess_char_2_05_a', 'board', [9, 4]);
+  give(m, ps, 'chess_char_3_14_a', 'board', [9, 5]);
+  ps.recompute();
+  assert.equal(ps.bonds.kjeragShip?.active, true, 'premise: 谢拉格 is active');
+  applyHex(m, ps, m.gd.hex('hex_bondgain'));
+  const gained = give(m, ps, 'chess_char_2_03_a', 'board', [9, 6]);
+  m.dispatch(ps, 'onGain', { piece: gained, kind: 'chess', source: 'test' });
+  ps.recompute();
+  // 崖心's 获得时 trait gives +3 to each of its own bonds; 盟约获得 halves that to 1 and gives it to the ACTIVE
+  // stackable bonds only (谢拉格). 不屈 stays inactive and gets only the trait's own +3.
+  assert.equal(ps.layers.kjeragShip || 0, 4, '谢拉格: trait 3 + card 1');
+  assert.equal(ps.layers.indomShip || 0, 3, '不屈: trait 3 only (inactive ⇒ no share)');
+  h.invariants();
+  m.dispose();
+});

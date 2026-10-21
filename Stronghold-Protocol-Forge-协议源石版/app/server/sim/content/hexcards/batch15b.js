@@ -161,7 +161,8 @@ export function installVoidReturn(hooks) {
  *   * 技力回复 +1 → `spRecoveryFlat`；每秒恢复 1% 最大生命 → `hpRegenRatio`。
  * 后两项是**固定值，全场只算一次**（业主 2026-10-20 选定：不随击杀数放大）。
  *
- * [ASSUMED: 1)「其他所有干员」= 装备者以外的己方干员（同一玩家 + 联防场上队友的干员都算；召唤物不算）；
+ * [ASSUMED: 1)「其他所有干员」= **装备者同一玩家**（`ownerId` 相同）的其他己方干员；联防 / boss 双人场上队友的干员不算
+ *   （业主「尸山在联防和打 boss 时会吞掉队友的干员」）；召唤物不算；
  *   2)「直接击杀」用永久退场（`permanent: true`），因此不能再部署 —— 这就是「不可重部署」；3)「获得其他干员属性」
  *   读的是**基础面板**（`unit.base`，不含装备与增益），与「吞噬」同一条口径；4) 生命值是 `hpFlat`（吃百分比），
  *   攻击力是 `atkFinal`（不吃百分比，与「吞噬」一致）；5)「技力回复+1」「每秒1%」是定值、不叠加；
@@ -189,12 +190,16 @@ export function installCorpseHill(hooks) {
       if (!carries(battle, carrier, CORPSEHILL_ITEM_KEY)) continue;
       const marker = carrier.uid != null ? `u${carrier.uid}` : `i${carrier.id}`;
       if (eaten.has(marker)) continue;
-      // 业主 2026-10-22「协议『尸山』的装备『尸山』联防不生效」：联防场上**别人那场已经倒下的干员**是按
-      // `carryState.down` 送进来的 —— 入场后立刻被强制退场，所以到 `battleStart` 时它们 `alive === false`，但对象还在
+      // 业主 2026-10-22「协议『尸山』的装备『尸山』联防不生效」：联防把**自己那场已经倒下的干员**按
+      // `carryState.down` 送进来 —— 入场后立刻被强制退场，所以到 `battleStart` 时它们 `alive === false`，但对象还在
       // `allyUnits` 里。原来这里用 `u.alive` 过滤，于是「己方其他干员」一个都不剩 ⇒ 装备者拿不到任何基础属性，
       // 看起来就是「联防不生效」。现在：属性从**所有还在场的己方干员**（含已经倒下的）累加，只对还活着的执行击杀 ——
       // 已经倒下的人本来就已经被击杀过了。普通战斗里 battleStart 之前没有伤亡，所以口径不变。
-      const others = battle.allyUnits.filter((u) => u !== carrier && u.kind === 'op' && u.side === 'ally' && !u.removed);
+      // 业主「尸山在联防和打 boss 时会吞掉队友的干员」：联防 / boss 双人场的 `allyUnits` 装的是**两个
+      // 玩家**的棋盘（hooks.js `fieldOps` 的注释），只认 `ownerId === carrier.ownerId` 才是「己方干员」—— 队友的
+      // 干员不执行击杀，属性也不吃。
+      const others = battle.allyUnits.filter((u) => u !== carrier && u.kind === 'op' && u.side === 'ally'
+        && u.ownerId === carrier.ownerId && !u.removed);
       if (!others.length) continue;
       eaten.add(marker);
       // 先把属性读下来 —— retreat 之后单位还活着，但读 base 更稳，也避免任何收尾逻辑改字段

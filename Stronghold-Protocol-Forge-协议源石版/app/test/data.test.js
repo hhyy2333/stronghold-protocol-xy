@@ -171,21 +171,21 @@ test('garrisons: all referenced exist; 43 distinct effect keys', () => {
   }
 });
 
-test('items: 117 item chess with valid effects, bonds and golden links', () => {
-  // 117 = 56 paired EQUIP × 2 (normal + its golden form) + 2 golden-less markers + 3 MAGIC.
-  // The two markers are the 协议源石 form items, granted only by a 幽魂 / 恶魔 form and carrying no golden form of
-  // their own (tools/build-data.mjs, the `chess_item_9_90_e_a` / `chess_item_9_91_e_a` comments): their battle
-  // behaviour is BY_ITEM-keyed and one of them is a pure marker. They are why the EQUIP-non-golden count is 58 and
-  // not the 56 that "56 EQUIP pairs" would suggest.
-  assert.equal(Object.keys(items).length, 117);
-  assert.equal(Object.values(items).filter((i) => i.itemType === 'EQUIP' && !i.isGolden).length, 58);
+test('items: 122 item chess with valid effects, bonds and golden links', () => {
+  // 122 = 56 paired EQUIP × 2 (normal + its golden form) + 7 golden-less 协议源石 items + 3 MAGIC. The seven
+  // (幽魂 / 恶魔之契 / 残光 / 加护 / 万物归虚 / 尸山 / 心之钢) are granted only by the 协议源石 cards and carry no golden form;
+  // their battle behaviour is BY_ITEM- or card-keyed, and 恶魔之契 / 心之钢 are also membership items (canGiveBond /
+  // grantsBonds). tools/build-data.mjs CUSTOM_ITEMS owns all seven.
+  assert.equal(Object.keys(items).length, 122);
+  assert.equal(Object.values(items).filter((i) => i.itemType === 'EQUIP' && !i.isGolden).length, 63);
   assert.equal(Object.values(items).filter((i) => i.itemType === 'MAGIC').length, 3);
-  assert.equal(Object.values(items).filter((i) => i.itemType === 'EQUIP' && !i.isGolden && !i.goldenId).length, 2,
-    'the 2 golden-less markers are the 协议源石 form items');
+  assert.equal(Object.values(items).filter((i) => i.itemType === 'EQUIP' && !i.isGolden && !i.goldenId).length, 7,
+    'the 7 golden-less markers are the 协议源石 items');
   for (const it of Object.values(items)) {
     assert.ok(effects[it.effectId], `${it.id}: effect ${it.effectId}`);
     if (it.goldenId) assert.ok(items[it.goldenId]?.isGolden, `${it.id}: golden`);
     if (it.giveBondId) assert.ok(bonds[it.giveBondId], `${it.id}: giveBond`);
+    for (const id of Array.isArray(it.grantsBonds) ? it.grantsBonds : []) assert.ok(bonds[id], `${it.id}: grantsBond ${id}`);
     if (it.requiresBondId) assert.ok(bonds[it.requiresBondId], `${it.id}: requiresBond`);
     assert.ok(isInt(it.tier) && it.tier >= 1 && it.tier <= 6, `${it.id}: tier`);
     assert.ok(isFiniteNum(it.price), `${it.id}: price`);

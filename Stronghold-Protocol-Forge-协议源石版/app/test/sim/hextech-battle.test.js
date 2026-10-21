@@ -22,6 +22,7 @@ import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
 import { isHitCount, abOf } from '../../server/sim/content/enemies/helpers.js';
 import { canTargetEnemy, enemyStealthed } from '../../server/sim/targeting.js';
 import { HUSK_REBIRTH } from '../../server/sim/content/enemies.js';
+import { unitBonds } from '../../server/sim/content/support/index.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const HEXTECH = JSON.parse(readFileSync(path.join(ROOT, 'data', 'hextech.json'), 'utf8'));
@@ -578,6 +579,8 @@ test('不灭壁垒 (immortalRevive): a knocked-out operator redeploys itself onc
   const u = one(h);
   assert.ok(u.alive, 'premise: it is deployed');
   const hp0 = u.s.maxHp;
+  // 业主 2026-10-21: 生命上限 +12% → +25%
+  assert.ok(Math.abs(hp0 - 2500) < 1e-6, `the 25 % max-HP passive (2000 → 2500, got ${hp0})`);
   h.battle.kill(u, null);
   assert.equal(u.alive, true, 'the death hook revived it where it stood');
   assert.equal(u.mem.hexImmortalRevives, 1, 'one revive spent');
@@ -614,37 +617,41 @@ test('浴血 (holdLine): the DEF step follows the HP lost, stacks to the cap, ne
   h.battle.emit('damaged', { source: null, target: u, amount: 0, type: 'true' });
   u.markDirty();
   assert.equal(buffsOf(u, 'hex:holdline')[0].stacks, 3, 'the earned stacks stay');
+  // 业主 2026-10-21: 「每次攻击恢复30血」 — every NORMAL attack heals 30; a skill attack does not
+  u.hp = u.s.maxHp - 100;
+  const healed = u.hp;
+  h.battle.emit('attack', { attacker: u, isSkill: false });
+  assert.equal(u.hp, healed + 30, 'a normal attack heals 30');
+  h.battle.emit('attack', { attacker: u, isSkill: true });
+  assert.equal(u.hp, healed + 30, 'a skill attack does not heal');
   h.invariants();
 });
 
-test('火力延伸 (rangedExtend): a SNIPER gains the range tile, a non-sniper does not', () => {
-  const sniper = () => chessRec({
-    id: 'test_sniper', profession: 'SNIPER', position: 'RANGED',
+test('火力延伸 (rangedExtend): every RANGED operator gains the range tile, a MELEE one does not', () => {
+  const ranged = () => chessRec({
+    id: 'test_ranged', profession: 'CASTER', position: 'RANGED',
     stats: { maxHp: 1200, atk: 200, def: 0, res: 0, aspd: 100, bat: 1, blockCnt: 0, respawnTime: 20 },
     skill: null,
   });
-  const h = soloBattle({ hexes: ['hex_firingline'], chess: { test_guard: guard(), test_sniper: sniper() }, timeLimit: 10 });
-  // the harness places test_guard by default: swap the board to the sniper
-  const h2 = makeBattle({
-    defs: { chess: { test_guard: guard(), test_sniper: sniper() }, enemies: { enemy_dummy: dummy() } },
+  const melee = () => chessRec({
+    id: 'test_melee', profession: 'WARRIOR', position: 'MELEE',
+    stats: { maxHp: 1200, atk: 200, def: 0, res: 0, aspd: 100, bat: 1, blockCnt: 1, respawnTime: 20 },
+    skill: null,
+  });
+  const mk = (chessId) => makeBattle({
+    defs: { chess: { test_ranged: ranged(), test_melee: melee() }, enemies: { enemy_dummy: dummy() } },
     players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_firingline')],
-      units: [{ uid: 1, kind: 'chess', chessId: 'test_sniper', row: 9, col: 5 }] }],
+      units: [{ uid: 1, kind: 'chess', chessId, row: 9, col: 5 }] }],
     enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }], autoFinish: false, timeLimit: 10,
   });
-  for (let i = 0; i < 60; i++) h2.step();
-  const sn = h2.battle.allyUnits.find((u) => u.kind === 'op');
-  assert.equal(sn.s.baseRangeExtend, 1, 'the sniper gained a permanent +1 range');
-  // a WARRIOR is untouched by the card
-  const h3 = makeBattle({
-    defs: { chess: { test_guard: guard() }, enemies: { enemy_dummy: dummy() } },
-    players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_firingline')],
-      units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] }],
-    enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }], autoFinish: false, timeLimit: 10,
-  });
-  for (let i = 0; i < 60; i++) h3.step();
-  assert.equal(h3.battle.allyUnits.find((u) => u.kind === 'op').s.baseRangeExtend, 0, 'a non-sniper gains nothing');
-  h.invariants();
-  void h;
+  const hr = mk('test_ranged');
+  for (let i = 0; i < 60; i++) hr.step();
+  assert.equal(hr.battle.allyUnits.find((u) => u.kind === 'op').s.baseRangeExtend, 1, 'a RANGED caster gained a permanent +1 range');
+  const hm = mk('test_melee');
+  for (let i = 0; i < 60; i++) hm.step();
+  assert.equal(hm.battle.allyUnits.find((u) => u.kind === 'op').s.baseRangeExtend, 0, 'a MELEE operator gains nothing');
+  hr.invariants();
+  hm.invariants();
 });
 
 test('先驱 (lastStand): lethal damage is prevented inside the window, and lands after it', () => {
@@ -1140,13 +1147,15 @@ test('亡语 (deathrattle): a LEAK never detonates — only a knock-out damages 
   h2.invariants();
 });
 
-test('铁壁 (ironwall): 20 % of the ENEMY’S OWN ATK, the same at every operator DEF (§29.39)', () => {
+test('铁壁 (ironwall): 10 % of the ENEMY’S OWN ATK, the same at every operator DEF (§29.39)', () => {
   // §29.15's report was "敌人词条造成物理伤害应该给干员反伤这个好像也没生效": the reflect was `phys` of `taken × 15 %` and
   // went through `mitigate` against the attacker's DEF a second time, collapsing onto the 5 % floor on a high-DEF
-  // operator. The owner's rebalance of 2026-10-14 changes WHAT it scales with as well: 20 % of the enemy's own ATK, read
-  // live off the attacker (`t.s.atk`), so the card neither grows with the player's damage nor shrinks with the
-  // player's DEF — and an ATK-0 enemy reflects nothing at all.
+  // operator. The owner's rebalance of 2026-10-14 changes WHAT it scales with as well: the share of the enemy's own ATK,
+  // read live off the attacker (`t.s.atk`), so the card neither grows with the player's damage nor shrinks with the
+  // player's DEF — and an ATK-0 enemy reflects nothing at all. 业主 2026-10-16 set the share to 10 % (the roster's
+  // `params.ratio: 0.1`; this test used to pin the previous 20 %).
   const ATK = 600;
+  const RATIO = 0.1;
   const slap = (def) => chessRec({ id: 'test_slap', stats: { maxHp: 999999, atk: 1000, def, res: 0, blockCnt: 1 }, skill: null });
   const beast = () => enemyRec({ key: 'enemy_beast', hp: 10000000, atk: ATK, def: 0, res: 0, speed: 1, bat: 3 });
   const totals = [];
@@ -1161,8 +1170,8 @@ test('铁壁 (ironwall): 20 % of the ENEMY’S OWN ATK, the same at every operat
     h.run(20);
     const back = h.hooksOf('damaged').filter((c) => c.dmg && c.dmg.steadThorn);
     assert.ok(back.length > 0, `the enemy reflected at least once (DEF ${DEF})`);
-    // every instance is the full 20 % of the enemy's ATK — nothing cuts it a second time
-    for (const c of back) assert.ok(Math.abs(c.amount - ATK * 0.2) < 1e-6, `reflect = 20 % of the enemy's ATK (DEF ${DEF}: ${c.amount})`);
+    // every instance is the full 10 % of the enemy's ATK — nothing cuts it a second time
+    for (const c of back) assert.ok(Math.abs(c.amount - ATK * RATIO) < 1e-6, `reflect = 10 % of the enemy's ATK (DEF ${DEF}: ${c.amount})`);
     totals.push(back.reduce((s, c) => s + c.amount, 0));
     h.invariants();
   }
@@ -1181,7 +1190,7 @@ test('铁壁 (ironwall): 20 % of the ENEMY’S OWN ATK, the same at every operat
   const dealt0 = h0.hooksOf('damaged').filter((c) => c.source && c.source.side === 'ally' && c.target && c.target.side === 'enemy' && c.type === 'phys')
     .reduce((s, c) => s + c.amount, 0);
   assert.ok(dealt0 > 0, 'the operator still hit the ATK-0 enemy');
-  assert.equal(h0.hooksOf('damaged').filter((c) => c.dmg && c.dmg.steadThorn).length, 0, 'and it reflected nothing (ATK 0 × 20 % = 0)');
+  assert.equal(h0.hooksOf('damaged').filter((c) => c.dmg && c.dmg.steadThorn).length, 0, 'and it reflected nothing (ATK 0 × 10 % = 0)');
   h0.invariants();
 });
 
@@ -1717,3 +1726,28 @@ test('背水一战 (lastDitch): while the window is open every bond layer gain i
   legacy.invariants();
 });
 
+
+test('心之钢 (heartsteel): a 坚守 operator procs every 3 s — 100 % max HP arts, +150 max HP and +2 坚守 layers', () => {
+  const h = soloBattle({
+    hexes: [],
+    players: [{
+      playerId: 'p1', seat: 0, side: 'L', colOffset: 0,
+      bonds: { steadShip: { count: 1, active: false, tier: 0, layers: 0 } },
+      playerEffects: [refOf('hex_heartsteel')],
+      units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_96_e_a'] }],
+    }],
+    enemies: [{ key: 'enemy_dummy', time: 0, pos: [9, 7] }],
+    timeLimit: 20,
+  });
+  h.run(1);
+  const u = one(h);
+  assert.ok(unitBonds(u).includes('steadShip'), 'the equipment makes its carrier a 坚守 member');
+  h.run(7);
+  const stacks = buffsOf(u, 'hex:heartsteel:maxhp');
+  assert.ok(stacks.length === 1 && stacks[0].stacks >= 2, `at least two procs in 7 s (got ${stacks[0] && stacks[0].stacks})`);
+  // the guard starts at 2000 max HP; every proc adds exactly 150 (one stack each)
+  assert.equal(u.s.maxHp, 2000 + 150 * stacks[0].stacks, `+150 max HP per proc (got ${u.s.maxHp})`);
+  const ps = h.battle.getPlayer('p1');
+  assert.ok((ps.bonds.steadShip?.layers || 0) >= 2 * stacks[0].stacks, 'the 坚守 layer gain follows the procs');
+  h.invariants();
+});

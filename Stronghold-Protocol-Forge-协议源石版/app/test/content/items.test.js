@@ -8,6 +8,7 @@ import { makeMatch, give, giveItem, DATA, legalTileFor, withoutHextech } from '.
 import { createRegistry } from '../../server/match/effectsMeta.js';
 import { lendItemEffects, itemGrants, PRIO_REVIVE, carries, hasBattleEffect } from '../../server/sim/content/items/battle.js';
 import { unitBonds } from '../../server/sim/content/support/index.js';
+import { pieceBonds } from '../../server/match/bondsMeta.js';
 
 const QUIET = { warn() {}, error() {}, info() {} };
 const REG = createRegistry({ log: QUIET });
@@ -1270,7 +1271,7 @@ test('教鞭: an open choice goes with a player who is eliminated, and nothing o
 
 test('merging: two identical normal items become the golden one (upgradeNum 2); upgradeNum-100 items never merge', () => {
   const never = Object.values(DATA.items).filter((r) => r.itemType === 'EQUIP' && !r.isGolden && r.upgradeNum === 100).map((r) => r.name).sort();
-  assert.deepEqual(never, ['人事部文档', '信标', '变形同构体', '寻呼模块', '拟态物质', '突变细胞', '幽魂', '恶魔之契'].sort());
+  assert.deepEqual(never, ['人事部文档', '信标', '变形同构体', '寻呼模块', '拟态物质', '突变细胞', '幽魂', '恶魔之契', '残光', '加护', '万物归虚', '尸山', '心之钢'].sort());
   const { m, ps } = setup();
   ps.acquireItem(A('3_07'));
   ps.acquireItem(A('3_07'));
@@ -1305,13 +1306,15 @@ test('幽魂 (the remake’s own equipment): 阻挡数 0, and nothing takes more
   checkInvariants(plain.b);
 });
 
-test('恶魔之契 (the remake’s second equipment): a pure MARKER — no battle behaviour of its own', () => {
+test('恶魔之契 (the remake’s second equipment): a MARKER that is also a 变形同构体 carrier', () => {
   // 恶魔形态 grants it so the CARD's battle half can find WHO to buff (`carries(battle, u, 'chess_item_9_91_e')`,
   // §29.32.4 — the card owns the mechanic, the equipment owns the choice). The item must therefore stay inert.
+  // 业主 2026-10-21: 「三阶恶魔形态的装备恶魔形态增加装备『同构体』效果」 — it is ALSO a morph carrier.
   const rec = DATA.items['chess_item_9_91_e_a'];
   assert.equal(hasBattleEffect(rec), false, 'no `BY_ITEM` behaviour of its own');
   assert.deepEqual(rec.buffs, [], 'and no stat buffs either');
   assert.equal(rec.shopExcluded, true, 'never sold (no shop / 道具补给 / pool can offer it)');
+  assert.equal(rec.canGiveBond, true, 'the 变形同构体 carrier flag');
   const withIt = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: ['chess_item_9_91_e_a'] }] });
   const without = fight({ units: [{ chessId: 't_op', row: 10, col: 4 }] });
   withIt.step(1);
@@ -1320,14 +1323,59 @@ test('恶魔之契 (the remake’s second equipment): a pure MARKER — no battl
   for (const k of ['atk', 'def', 'res', 'maxHp', 'aspd', 'blockCnt']) close(u.s[k], without.unit('t_op').s[k], `the marker changes no ${k}`);
   assert.equal(carries(withIt.b, u, 'chess_item_9_91_e'), true, 'the id the card looks up finds its carrier');
   assert.equal(carries(without.b, without.unit('t_op'), 'chess_item_9_91_e'), false, 'and an operator without it does not');
+  // as a carrier it makes the OTHER equipped item's bond count (维式重锤 → 维多利亚)
+  const paired = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: ['chess_item_9_91_e_a', A('1_01')] }] });
+  paired.step(1);
+  assert.ok(unitBonds(paired.unit('t_op')).includes('victoriaShip'), 'the morph pairing grants 维多利亚');
   cover('chess_item_9_91_e_a');
   checkInvariants(withIt.b);
   checkInvariants(without.b);
+  checkInvariants(paired.b);
+});
+
+test('心之钢 (the remake’s third equipment): its carrier counts as a 坚守 member', () => {
+  const rec = DATA.items['chess_item_9_96_e_a'];
+  assert.ok(rec, 'the record exists');
+  assert.equal(rec.name, '心之钢');
+  assert.equal(rec.shopExcluded, true, 'never sold');
+  assert.equal(rec.mergeable, false, 'never merges');
+  assert.deepEqual(rec.grantsBonds, ['steadShip'], 'the direct bond grant');
+  const h = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: ['chess_item_9_96_e_a'] }] });
+  h.step(1);
+  assert.ok(unitBonds(h.unit('t_op')).includes('steadShip'), 'the carrier is a 坚守 member');
+  // prep side too: the count follows the same shared rule
+  const { m, ps } = setup();
+  const piece = give(m, ps, 'chess_char_1_01_a', 'board', [10, 5]);
+  const item = giveItem(m, ps, 'chess_item_9_96_e_a');
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: item.uid, targetUid: piece.uid }), { ok: true });
+  assert.ok(pieceBonds(m.gd, piece).includes('steadShip'), 'the prep count sees it');
+  cover('chess_item_9_96_e_a');
+  checkInvariants(h.b);
+});
+
+test('协议源石自制的五件装备记录: name / effect / never-sold', () => {
+  for (const [id, name, effectId] of [
+    ['chess_item_9_90_e_a', '幽魂', 'eff_item_ghost'],
+    ['chess_item_9_92_e_a', '残光', 'eff_item_canlight'],
+    ['chess_item_9_93_e_a', '加护', 'eff_item_ward'],
+    ['chess_item_9_94_e_a', '万物归虚', 'eff_item_void'],
+    ['chess_item_9_95_e_a', '尸山', 'eff_item_corpsehill'],
+    ['chess_item_9_96_e_a', '心之钢', 'eff_item_heartsteel'],
+  ]) {
+    const rec = DATA.items[id];
+    assert.ok(rec, `${id} exists`);
+    assert.equal(rec.name, name);
+    assert.equal(rec.effectId, effectId);
+    assert.ok(DATA.effects[effectId], `${effectId} resolves`);
+    assert.equal(rec.shopExcluded, true, `${id}: never sold`);
+    assert.equal(rec.upgradeNum, 100, `${id}: never merges`);
+    cover(id);
+  }
 });
 
 test('coverage: every equipment (normal + golden) and every Art is exercised by a test above', () => {
   // items whose numbers are asserted in the stat table, the proc tests or the meta tests
   const missing = Object.keys(DATA.items).filter((id) => !COVER.has(id)).sort();
   assert.deepEqual(missing, []);
-  assert.equal(Object.keys(DATA.items).length, 117);
+  assert.equal(Object.keys(DATA.items).length, 122);
 });

@@ -845,6 +845,22 @@ const BY_ITEM = {
     });
     S.on('death', (c) => { if (c.unit === u) st.bonus = 0; });
   },
+  // 幽魂 (the remake's own equipment, 协议源石【幽魂形态】): 阻挡数 0 and EVERY instance of damage taken — a 流失
+  // included — is capped at `params.dmgCap` (100). The block count is an additive `blockCnt` mod (units.js clamps the
+  // aggregate at 0); the damage cap lives on the unit (`mem.dmgCap`) and is read by damage.js applyHpLoss, so it covers
+  // phys/arts/true damage, shields' overflow and Battle.loseHp alike, and the capped amount is what the stats and the
+  // damage numbers see.
+  chess_item_9_90_e(battle, u, rec, S) {
+    const cap = num(rec && rec.params ? rec.params.dmgCap : null, 100);
+    S.stat('ghost', { blockCnt: -999 });
+    if (!(cap >= 0) || !u.mem) return;
+    const prev = u.mem.dmgCap;
+    u.mem.dmgCap = Number.isFinite(prev) ? Math.min(prev, cap) : cap;
+    S.onDispose(() => {
+      if (u.mem.dmgCap !== Math.min(Number.isFinite(prev) ? prev : Infinity, cap)) return; // a stronger cap took over
+      if (Number.isFinite(prev)) u.mem.dmgCap = prev; else delete u.mem.dmgCap;
+    });
+  },
 };
 
 /** 浓缩嗅盐 "免疫晕眩、冻结等特殊状态" — research 04 §4 list (stun/freeze/sleep/levitate/palsy). 寒冷 is a debuff, not a

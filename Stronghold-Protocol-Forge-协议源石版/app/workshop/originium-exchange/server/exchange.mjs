@@ -35,20 +35,29 @@ const PHASE_PREP = 'PREP';
  *
  * 业主 2026-10-20：「股票的基础价格都减少 2」→ 7/6/9/5/10/8 → 5/4/7/3/8/6；同日「基础价格都再减 2」→
  *   5/4/7/3/8/6 → **3/2/5/1/6/4**（1~6 块一股）。
- *   注：KAZ 现在开市价正好等于 `PRICE_FLOOR`（1.00），也就是它**只会涨、不会跌** —— 这是价格地板撞上开市价的结果，
- *   不是 bug；要让它能跌就把 PRICE_FLOOR 一起调低（业主没要求，先不动）。
+ *   注：KAZ 开市价正好 1.00，1.3.0 把 `PRICE_FLOOR` 降到 0.25 之后它终于能跌了。
  * 业主 2026-10-20（同日）：「波动率增加」：每一支的 `vol` 统一 ×1.5（0.95/1.1/1.2/1.25/0.85/1.3 →
  *   1.43/1.65/1.8/1.88/1.28/1.95），个股之间的相对性格不变（谢拉格最稳、阿戈尔最野）。
- *   每回合单股的噪声项是 ±7×`vol`%，所以这一档把噪声从 ±6.7~9.1% 抬到 ±10.0~13.7%；其余规则（手续费 1%、
- *   分红 1.2%、杠杆 2x/3x、70% 维持担保、单回合 ±25% 夹逼）一格没动。
+ *
+ * ===== v1.3.0（业主 2026-10-21「波动性还是太小了」）=====
+ * 纯 IID 噪声太安静，行情像锯齿。现在每回合的涨跌由三块乘区加两块基本面组成：
+ *   `pct = clamp( 情绪漂移×beta + 共同市场×beta + 个股噪声 + 盟约冷热 + 新闻, -45, +45 )`
+ *   * **市场情绪**：3 回合一块（35% 牛市 +2.5%/回合、30% 熊市 -2.5%、35% 平静），块内方向不变 —— 行情有趋势；
+ *   * **共同市场**：80% 幅度 0..5%、20% 幅度 5..15%，方向对半 —— 六支一起大起大落；
+ *   * **个股噪声**：(2u−1)×`IDIO_PCT`×`vol`×情绪波动倍率；
+ *   * **盟约冷热**：原公式（绝对层数/持有人，业主同日明确**不要**「层数增长轮动」的业绩机制）；
+ *   * **新闻**：45% 一回合一条，单股 ±10~30%。
+ * 单回合夹 ±45%、股价 0.25..99.00（地板从 1.00 降下来，KAZ 才跌得动）；「源石大盘」= 六支 (price/base) 的等权均值。
+ * 实测（300 种子）：单回合 |涨跌| 中位数 5.7% → 8.1%（p90 11.2% → 19.5%），13 次改价累计中位数 17.0% → 29.0%。
  */
-const STOCKS = Object.freeze([
-  { id: 'yanShip', ticker: 'YAN', company: '尚蜀重工', bondName: '炎', base: 3, vol: 1.43 },
-  { id: 'victoriaShip', ticker: 'VIC', company: '伦蒂尼姆兵工', bondName: '维多利亚', base: 2, vol: 1.65 },
-  { id: 'siracusaShip', ticker: 'SIR', company: '叙拉古食品', bondName: '叙拉古', base: 5, vol: 1.8 },
-  { id: 'kazimierzShip', ticker: 'KAZ', company: '卡西米尔骑士竞技', bondName: '卡西米尔', base: 1, vol: 1.88 },
-  { id: 'kjeragShip', ticker: 'KJE', company: '谢拉格矿业', bondName: '谢拉格', base: 6, vol: 1.28 },
-  { id: 'egirShip', ticker: 'AEG', company: '阿戈尔深海科技', bondName: '阿戈尔', base: 4, vol: 1.95 },
+export const STOCKS = Object.freeze([
+  // `beta` 是这支股票对共同市场因子的敏感度：谢拉格矿业最稳，阿戈尔深海科技最野。
+  { id: 'yanShip', ticker: 'YAN', company: '尚蜀重工', bondName: '炎', base: 3, vol: 1.43, beta: 0.8 },
+  { id: 'victoriaShip', ticker: 'VIC', company: '伦蒂尼姆兵工', bondName: '维多利亚', base: 2, vol: 1.65, beta: 1.0 },
+  { id: 'siracusaShip', ticker: 'SIR', company: '叙拉古食品', bondName: '叙拉古', base: 5, vol: 1.8, beta: 1.1 },
+  { id: 'kazimierzShip', ticker: 'KAZ', company: '卡西米尔骑士竞技', bondName: '卡西米尔', base: 1, vol: 1.88, beta: 1.4 },
+  { id: 'kjeragShip', ticker: 'KJE', company: '谢拉格矿业', bondName: '谢拉格', base: 6, vol: 1.28, beta: 0.6 },
+  { id: 'egirShip', ticker: 'AEG', company: '阿戈尔深海科技', bondName: '阿戈尔', base: 4, vol: 1.95, beta: 1.5 },
 ]);
 
 /**
@@ -64,7 +73,7 @@ const STOCKS = Object.freeze([
  * 现在 1.2% 对 12%：2x 档满仓时负债 ≈ 1× 净资产，利息 ≈ 持仓市值的 12%，
  * 分红只有 1.2% —— 借钱买股变成真赌注，而且**红利本身也不再是免费午餐**。
  */
-const LIMITS = Object.freeze({
+export const LIMITS = Object.freeze({
   maxShares: 60,
   commissionBps: 100,
   dividendBps: 120,
@@ -73,17 +82,40 @@ const LIMITS = Object.freeze({
   maintainPct: 70,
   liquidateToPct: 50,
 });
-const PRICE_FLOOR = 1;
-const PRICE_CEIL = 60;
+export const PRICE_FLOOR = 0.25;
+export const PRICE_CEIL = 99;
 /** 价格保留两位小数（见 nextPrice 的说明）。 */
 const PRICE_DECIMALS = 2;
-const HISTORY_LENGTH = 12;
-/** 每回合出新闻的概率（35%）。 */
-const NEWS_CHANCE = 0.35;
+const HISTORY_LENGTH = 15;
+/** 单回合涨跌幅夹逼（百分点）。1.3.0 从 ±25 放宽到 ±45。 */
+export const CLAMP_PCT = 45;
+
+/** 市场情绪：每 3 回合一块，块内方向与波动倍率不变。 */
+export const REGIME_BLOCK = 3;
+const REGIMES = Object.freeze({
+  bull: Object.freeze({ kind: 'bull', label: '牛市', driftPct: 2.5, volMul: 1.15 }),
+  bear: Object.freeze({ kind: 'bear', label: '熊市', driftPct: -2.5, volMul: 1.25 }),
+  calm: Object.freeze({ kind: 'calm', label: '平静', driftPct: 0, volMul: 1 }),
+});
+/** 块内抽取：r < 0.35 牛市、r < 0.65 熊市、否则平静（35% / 30% / 35%）。 */
+const REGIME_BULL_BELOW = 0.35;
+const REGIME_BEAR_BELOW = 0.65;
+
+/** 个股噪声幅度：±IDIO_PCT × vol × 情绪波动倍率。 */
+const IDIO_PCT = 8;
+/** 共同市场因子：80% 幅度 0..5，20% 幅度 5..15，方向对半。 */
+const MARKET_COMMON_SHARE = 0.8;
+const MARKET_COMMON_MAX = 5;
+const MARKET_RARE_MAX = 15;
+
+/** 每回合出新闻的概率（45%）；单股幅度 10..30%。 */
+export const NEWS_CHANCE = 0.45;
+const NEWS_MIN = 10;
+const NEWS_MAX = 30;
 /** 手续费门槛：低于这个成交额不收（5 块的单收 1 块等于 20%，那不是手续费是惩罚）。 */
 const FEE_FREE_BELOW = 10;
 
-/** 新闻模板：`dir` 是方向（利好 +1 / 利空 -1），幅度每次在 8..22% 里抽。 */
+/** 新闻模板：`dir` 是方向（利好 +1 / 利空 -1），幅度每次在 10..30% 里抽。 */
 const NEWS = Object.freeze([
   { text: '拿到一笔跨城大单', dir: 1 },
   { text: '挖到一条新矿脉', dir: 1 },
@@ -157,14 +189,110 @@ export function stockHeat(holders, layers) {
 }
 
 /**
- * 一支股票的下一价（纯函数，方便单测）：**两位小数**，夹在 1.00..60.00。
+ * 市场情绪（纯函数）：每 `REGIME_BLOCK` 回合一块，同块内 `kind / driftPct / volMul` 恒定。
+ * 用块号（而不是回合号）做随机盐，所以「第 4~6 回合是牛市」这种节奏是确定的、可复现的。
+ * @param {number} seed 对局种子
+ * @param {number} round 回合（1 起）
+ * @returns {{ kind: string, label: string, driftPct: number, volMul: number, block: number, roundsLeft: number }}
+ */
+export function regimeAt(seed, round) {
+  const r = Number.isFinite(round) ? Math.max(1, Math.trunc(round)) : 1;
+  const block = Math.floor((r - 1) / REGIME_BLOCK);
+  const draw = rngAt(Number(seed) >>> 0, block, 'regime')();
+  const regime = draw < REGIME_BULL_BELOW ? REGIMES.bull : draw < REGIME_BEAR_BELOW ? REGIMES.bear : REGIMES.calm;
+  return { ...regime, block, roundsLeft: REGIME_BLOCK - ((r - 1) % REGIME_BLOCK) };
+}
+
+/**
+ * 共同市场因子（纯函数）：六支股票本回合共同吃到的涨跌（百分点）。
+ * 80% 的回合是 0..5 的温和波动，20% 是 5..15 的大行情；方向对半。
+ */
+export function marketMoveAt(seed, round) {
+  const draw = rngAt(Number(seed) >>> 0, Number.isFinite(round) ? Math.trunc(round) : 1, 'market')();
+  const sign = draw < 0.5 ? 1 : -1;
+  const u = Math.abs(draw * 2 - 1);
+  const mag = u < MARKET_COMMON_SHARE
+    ? (u / MARKET_COMMON_SHARE) * MARKET_COMMON_MAX
+    : MARKET_COMMON_MAX + ((u - MARKET_COMMON_SHARE) / (1 - MARKET_COMMON_SHARE)) * (MARKET_RARE_MAX - MARKET_COMMON_MAX);
+  return sign * mag;
+}
+
+/**
+ * 本回合新闻（纯函数）：45% 概率一条，命中一支股票，幅度 10..30%，方向对半。
+ * @returns {{ stockId: string, ticker: string, company: string, text: string, dir: number, pct: number } | null}
+ */
+export function newsAt(seed, round) {
+  const s = Number(seed) >>> 0;
+  const r = Number.isFinite(round) ? Math.trunc(round) : 1;
+  if (!(rngAt(s, r, 'news')() < NEWS_CHANCE)) return null;
+  const stock = STOCKS[Math.floor(rngAt(s, r, 'newsi')() * STOCKS.length) % STOCKS.length];
+  const template = NEWS[Math.floor(rngAt(s, r, 'newst')() * NEWS.length) % NEWS.length];
+  const magnitude = NEWS_MIN + Math.floor(rngAt(s, r, 'newsm')() * (NEWS_MAX - NEWS_MIN + 1));
+  const dir = rngAt(s, r, 'newsd')() < 0.5 ? 1 : -1;
+  return {
+    stockId: stock.id,
+    ticker: stock.ticker,
+    company: stock.company,
+    text: `${stock.company}${template.text}`,
+    dir,
+    pct: dir * magnitude,
+  };
+}
+
+/**
+ * 一支股票本回合的涨跌幅（纯函数）：情绪漂移×beta + 共同市场×beta + 个股噪声 + 冷热 + 新闻，夹在 ±45%。
+ * 个股噪声用 `rngAt(seed, round, stock.id)`，与市场/新闻/情绪的随机流互相独立。
+ * @param {{ seed: number, round: number, stock: any, heat?: number, newsPct?: number }} args
+ * @returns {number} 百分点
+ */
+export function roundPct({ seed, round, stock, heat = 0, newsPct = 0 } = {}) {
+  if (!stock || !Number.isFinite(stock.vol) || !Number.isFinite(stock.beta)) return 0;
+  const s = Number(seed) >>> 0;
+  const r = Number.isFinite(round) ? Math.trunc(round) : 1;
+  const regime = regimeAt(s, r);
+  const idio = (rngAt(s, r, stock.id)() * 2 - 1) * IDIO_PCT * stock.vol * regime.volMul;
+  const market = marketMoveAt(s, r) * stock.beta;
+  const pct = regime.driftPct * stock.beta + market + idio + heat + newsPct;
+  return clamp(pct, -CLAMP_PCT, CLAMP_PCT);
+}
+
+/** 源石大盘：六支 (price / base) 的等权平均，开市 100。 */
+function indexValue(prices) {
+  let sum = 0;
+  for (const stock of STOCKS) {
+    const raw = prices ? Number(prices[stock.id]) : NaN;
+    const price = Number.isFinite(raw) ? raw : stock.base;
+    sum += (price / stock.base) * 100;
+  }
+  return sum / STOCKS.length;
+}
+
+/**
+ * 一支股票的下一价（纯函数，方便单测）：**两位小数**，夹在 0.25..99.00。
  *
  * 为什么不是整数：股价只有 1~6 块时，±7% 的噪声在整数上常常四舍五入成 0 —— 行情会变成一条直线，
  * 「盟约冷热」也就没有意义了（实测：7 块的股票连涨 3 回合还是 7）。两位小数让 1 个百分点的波动看得见。
+ * 1.3.0 把地板从 1.00 降到 0.25：KAZ 开市价正好 1.00，旧地板让它数学上只能涨不能跌。
  */
 export function nextPrice(prev, pct) {
   const raw = prev * (1 + pct / 100);
   return clamp(Math.round(raw * 100) / 100, PRICE_FLOOR, PRICE_CEIL);
+}
+
+/** 金额口径：两位小数（价格是两位小数，`2.4 × 3` 的浮点尾数不能把刚好买得起的单拒掉）。 */
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+/** 预算内最多买几股（含手续费；服务端拒绝提示用，与面板 maxAffordable 同一口径）。 */
+function affordableShares(budget, price, cap = LIMITS.maxShares) {
+  const unit = Number(price);
+  if (!(unit > 0)) return 0;
+  let qty = Math.min(cap, Math.floor(Math.max(0, budget) / unit));
+  while (qty > 0) {
+    const gross = round2(unit * qty);
+    if (gross + feeOf(gross) <= budget) return qty;
+    qty -= 1;
+  }
+  return 0;
 }
 
 /**
@@ -349,6 +477,10 @@ export function registerServer(host) {
           /** 每名玩家「上一次发出去的现金」—— flush 之后的对账凭它去重（见 _oexSyncCash）。 */
           cashSent: new Map(),
           lastNews: null,
+          /** 源石大盘：六支 (price / base) 的等权平均，开市 100。 */
+          index: { value: 100, prev: 100, chgPct: 0, history: [100] },
+          /** 最近一块市场情绪（块切换时上滚动条）。 */
+          lastRegime: regimeAt(Number(this.seed) >>> 0, this.round || 1).kind,
           feesPaid: new Map(),
           interestPaid: new Map(),
           liquidations: 0,
@@ -390,7 +522,7 @@ export function registerServer(host) {
           const shares = row[stock.id] || 0;
           if (shares > 0) total += shares * (st.prices[stock.id] || 0);
         }
-        return total;
+        return round2(total);
       }
 
       /** 净资产 = 现金 + 持仓市值 − 负债。淘汰者按 0 计（见下面的注释）。 */
@@ -402,7 +534,7 @@ export function registerServer(host) {
         const cash = Math.max(0, Math.trunc(ps.funds));
         const portfolio = this._oexPortfolioOf(ps.playerId);
         const debt = this._oexDebtOf(ps.playerId);
-        return cash + portfolio - debt;
+        return round2(cash + portfolio - debt);
       }
 
       // -----------------------------------------------------------------------------------------------------------
@@ -415,7 +547,7 @@ export function registerServer(host) {
         if (!st) {
           this._oexOpen();
           const opened = this._oexState();
-          this._oexTicker('【源石证交所】开市：六支盟约概念股挂牌，1~6 块一股，休整期可交易（支持 2x / 3x 杠杆）。');
+          this._oexTicker('【源石证交所】开市：六支盟约概念股挂牌，休整期可交易；单回合涨跌最高 ±45%，0.25~99 块一股（支持 2x / 3x 杠杆）。');
           this._oexPushAll('open');
           if (opened) opened.openedRound = round;
           return;
@@ -465,32 +597,22 @@ export function registerServer(host) {
           st.interestPaid.set(ps.playerId, (st.interestPaid.get(ps.playerId) || 0) + interest);
         }
 
-        // 3) 本回合新闻（最多一条）：决定哪支股票额外吃一记涨跌。
-        const newsRng = rngAt(seed, round, 'news');
-        let news = null;
-        if (newsRng() < NEWS_CHANCE) {
-          const stock = STOCKS[Math.floor(newsRng() * STOCKS.length) % STOCKS.length];
-          const template = NEWS[Math.floor(newsRng() * NEWS.length) % NEWS.length];
-          const magnitude = 8 + Math.floor(newsRng() * 15);
-          news = {
-            stockId: stock.id,
-            ticker: stock.ticker,
-            company: stock.company,
-            text: `${stock.company}${template.text}`,
-            dir: template.dir,
-            pct: template.dir * magnitude,
-          };
+        // 3) 市场情绪（3 回合一块）与新闻（最多一条）。
+        const regime = regimeAt(seed, round);
+        if (regime.kind !== st.lastRegime) {
+          st.lastRegime = regime.kind;
+          const verb = regime.driftPct > 0 ? '看涨' : regime.driftPct < 0 ? '看跌' : '横盘';
+          this._oexTicker(`【源石证交所】市场情绪转为${regime.label}，接下来 ${REGIME_BLOCK} 回合概念股整体${verb}。`);
         }
+        const news = newsAt(seed, round);
         st.lastNews = news;
 
-        // 4) 每支股票：盟约冷热 + 本股噪声 + 新闻，夹在 ±25%。
+        // 4) 每支股票：情绪漂移×beta + 共同市场×beta + 个股噪声 + 冷热 + 新闻，夹在 ±45%。
         for (const stock of STOCKS) {
           const { holders, layers } = this._oexHeatFor(stock);
-          const stockRng = rngAt(seed, round, stock.id);
-          const noise = (stockRng() * 2 - 1) * 7 * stock.vol;
           const heat = stockHeat(holders, layers);
           const newsPct = news && news.stockId === stock.id ? news.pct : 0;
-          const pct = clamp(noise + heat + newsPct, -25, 25);
+          const pct = roundPct({ seed, round, stock, heat, newsPct });
           const previous = st.prices[stock.id];
           const price = nextPrice(previous, pct);
           st.prices[stock.id] = price;
@@ -500,6 +622,15 @@ export function registerServer(host) {
           while (series.length > HISTORY_LENGTH) series.shift();
           st.history[stock.id] = series;
         }
+
+        // 4b) 源石大盘：六支 (price / base) 的等权平均，开市 100。
+        if (!st.index) st.index = { value: 100, prev: 100, chgPct: 0, history: [100] };
+        const indexNow = indexValue(st.prices);
+        st.index.chgPct = st.index.prev > 0 ? oneDecimal(((indexNow - st.index.prev) / st.index.prev) * 100) : 0;
+        st.index.value = round2(indexNow);
+        st.index.prev = indexNow;
+        st.index.history.push(st.index.value);
+        while (st.index.history.length > HISTORY_LENGTH) st.index.history.shift();
 
         // 5) 爆仓检查（价格已经动完）：负债 / 持仓市值 超过维持担保比例 ⇒ 强制平仓。
         for (const ps of this._oexHumans()) {
@@ -515,6 +646,14 @@ export function registerServer(host) {
         if (news) {
           const verb = news.dir > 0 ? '上涨' : '下跌';
           this._oexTicker(`【源石证交所】${news.text}，${news.company}股价${verb} ${Math.abs(news.pct)}%。`);
+        }
+        // 6b) 单回合大行情也上滚动条：不开面板的人也看得见。
+        const mover = STOCKS.reduce((best, stock) => {
+          const chg = st.change[stock.id] || 0;
+          return Math.abs(chg) > Math.abs(best.chg) ? { stock, chg } : best;
+        }, { stock: STOCKS[0], chg: st.change[STOCKS[0].id] || 0 });
+        if (Math.abs(mover.chg) >= 20) {
+          this._oexTicker(`【源石证交所】${mover.stock.ticker} ${mover.stock.company} 本回合 ${mover.chg > 0 ? '+' : ''}${mover.chg}%。`);
         }
 
         // 7) 把新行情推给每个真人（各自带自己的持股、负债与现金）。
@@ -547,15 +686,16 @@ export function registerServer(host) {
             .filter((entry) => entry.shares > 0 && entry.price > 0)
             .sort((a, b) => a.shares * a.price - b.shares * b.price || (a.stock.id < b.stock.id ? -1 : 1))[0];
           if (!pick) break;
-          const fee = feeOf(pick.price);
-          const proceeds = Math.max(0, pick.price - fee);
+          const gross = round2(pick.price);
+          const fee = feeOf(gross);
+          const proceeds = round2(Math.max(0, gross - fee));
           const repay = Math.min(debt, proceeds);
-          debt -= repay;
-          const cashIn = proceeds - repay;
+          debt = round2(debt - repay);
+          const cashIn = round2(proceeds - repay);
           if (cashIn > 0) ps.addFunds(cashIn, { reason: 'exchange-liquidate' });
           row[pick.stock.id] = (row[pick.stock.id] || 0) - 1;
           if (row[pick.stock.id] <= 0) delete row[pick.stock.id];
-          portfolio -= pick.price;
+          portfolio = round2(portfolio - pick.price);
           sold += 1;
         }
         this._oexSetDebt(ps.playerId, debt);
@@ -649,15 +789,15 @@ export function registerServer(host) {
           return;
         }
         const price = st.prices[stock.id];
-        const gross = price * qty;
+        const gross = round2(price * qty);
         const fee = feeOf(gross);
-        const total = gross + fee;
+        const total = round2(gross + fee);
         const cash = Math.max(0, Math.trunc(ps.funds));
         const debt = this._oexDebtOf(ps.playerId);
         const level = LIMITS.leverage.includes(leverOverride) ? leverOverride : (st.lever.get(ps.playerId) || 1);
-        const equity = cash + this._oexPortfolioOf(ps.playerId) - debt;
+        const equity = round2(cash + this._oexPortfolioOf(ps.playerId) - debt);
         const room = Math.max(0, maxDebtFor(level, equity) - debt);
-        const borrow = Math.max(0, total - cash);
+        const borrow = Math.max(0, round2(total - cash));
         if (borrow > room) {
           const affordable = Math.min(total, cash + room);
           this._oexReply(ps, {
@@ -665,13 +805,13 @@ export function registerServer(host) {
             text: borrow > 0 && level > 1
               ? `超出 ${level}x 杠杆额度：这一单还要借 ${borrow}，但只剩 ${room} 的额度（现金 ${cash}）。`
               : `资金不足：需要 ${total}（股价 ${gross} + 手续费 ${fee}），现在只有 ${cash}。`,
-            cash, debt, lever: level, maxBuy: Math.max(0, Math.floor(affordable / Math.max(1, price))),
+            cash, debt, lever: level, maxBuy: affordableShares(affordable, price),
           });
           return;
         }
         const pay = Math.min(cash, total);
         if (pay > 0) ps.addFunds(-pay, { reason: 'exchange-buy' });
-        if (borrow > 0) this._oexSetDebt(ps.playerId, debt + borrow);
+        if (borrow > 0) this._oexSetDebt(ps.playerId, round2(debt + borrow));
         row[stock.id] = held + qty;
         st.orders += 1;
         st.feesPaid.set(ps.playerId, (st.feesPaid.get(ps.playerId) || 0) + fee);
@@ -696,14 +836,14 @@ export function registerServer(host) {
           return;
         }
         const price = st.prices[stock.id];
-        const gross = price * qty;
+        const gross = round2(price * qty);
         const fee = feeOf(gross);
-        const proceeds = Math.max(0, gross - fee);
+        const proceeds = round2(Math.max(0, gross - fee));
         // 卖出的钱先还债，剩下的进现金（引擎里现金每回合清零，还债才是「留住价值」的那条路）。
         const debt = this._oexDebtOf(ps.playerId);
         const repay = Math.min(debt, proceeds);
-        const cashIn = proceeds - repay;
-        if (repay > 0) this._oexSetDebt(ps.playerId, debt - repay);
+        const cashIn = round2(proceeds - repay);
+        if (repay > 0) this._oexSetDebt(ps.playerId, round2(debt - repay));
         if (cashIn > 0) ps.addFunds(cashIn, { reason: 'exchange-sell' });
         row[stock.id] = held - qty;
         if (row[stock.id] <= 0) delete row[stock.id];
@@ -751,7 +891,10 @@ export function registerServer(host) {
           };
         });
         const cash = Math.max(0, Math.trunc(ps.funds));
-        const equity = cash + portfolio - debt;
+        portfolio = round2(portfolio);
+        const equity = round2(cash + portfolio - debt);
+        const regime = regimeAt(Number(this.seed) >>> 0, this.round || st.openedRound);
+        const marginPct = portfolio > 0 ? oneDecimal((debt * 100) / portfolio) : 0;
         return {
           t: 'pack.msg',
           pack: PACK_ID,
@@ -769,6 +912,13 @@ export function registerServer(host) {
             leverage: level,
             borrowRoom: Math.max(0, maxDebtFor(level, equity) - debt),
             netWorth: equity,
+            index: {
+              value: st.index ? st.index.value : 100,
+              chgPct: st.index ? st.index.chgPct : 0,
+              history: st.index ? st.index.history.slice() : [100],
+            },
+            sentiment: { kind: regime.kind, label: regime.label, driftPct: regime.driftPct, roundsLeft: regime.roundsLeft },
+            marginPct,
             news: st.lastNews
               ? { text: st.lastNews.text, stockId: st.lastNews.stockId, pct: st.lastNews.pct }
               : null,
@@ -781,6 +931,10 @@ export function registerServer(host) {
               leverage: [...LIMITS.leverage],
               interestBps: LIMITS.interestBps,
               maintainPct: LIMITS.maintainPct,
+              clampPct: CLAMP_PCT,
+              priceFloor: PRICE_FLOOR,
+              priceCeil: PRICE_CEIL,
+              newsChance: NEWS_CHANCE,
             },
           },
         };
@@ -858,6 +1012,8 @@ export function registerServer(host) {
                 isMe: row.playerId === ps.playerId,
               })),
               stocks,
+              indexEnd: st.index ? st.index.value : 100,
+              indexReturnPct: st.index ? oneDecimal(st.index.value - 100) : 0,
               feesPaid: st.feesPaid.get(ps.playerId) || 0,
               interestPaid: st.interestPaid.get(ps.playerId) || 0,
               dividendsPaid: st.dividendsPaid.get(ps.playerId) || 0,

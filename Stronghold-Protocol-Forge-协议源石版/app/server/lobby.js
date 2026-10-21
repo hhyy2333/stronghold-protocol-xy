@@ -90,6 +90,11 @@
 //     and a change while it runs is stored for the next match (ROOM_STARTED 'stored for the next match'). Every
 //     `welcome` carries `diyKitted` (welcomeInfo): the operators a DIY slot may field, so the client's picker offers
 //     exactly what the server accepts.
+//   * 协议源石禁用 (业主 2026-10-21): room.hexBans { ids } — up to 3 protocol-originium card ids this player's OWN draws
+//     skip — is checked leniently (shared/protocol.js checkHexBans: an id this room's data does not have is dropped, never
+//     the whole list; only a malformed / over-3 / duplicate list is BAD_MSG) and stored on the session and the seat like
+//     the two settings above: the match receives seats[].hexBans when it starts (bots: none) and keeps it for its whole
+//     length (out of match: ROOM_STARTED 'stored for the next match').
 //   * Content identity (DESIGN §34, the plugin system's first step): the lobby is given the server's vanilla content
 //     (server/plugins/identity.js; none in unit tests that build a Lobby without it). Every `welcome` carries
 //     `content: { vanilla: <cs> }` — and `plugins: <n>` when this server has n > 0 unofficial plugins (every class but a
@@ -154,7 +159,7 @@
 //     broadcast (m.public, m.ticker, m.emote, b.pool — public data); the match registers it (opts.spectators /
 //     addSpectator) and shows it fields like an eliminated player (b.start watch / m.field), never an m.private. It may
 //     only g.watch (the heavy bucket, like every watcher), g.leave / room.leave, and room.loadout / room.ownership /
-//     room.diy (stored for its session, never handed to the match); anything else → SPECTATOR (▸ emotes too). Host: room.removeSpectator { playerId } any
+//     room.diy / room.hexBans (stored for its session, never handed to the match); anything else → SPECTATOR (▸ emotes too). Host: room.removeSpectator { playerId } any
 //     time → room.closed {kicked} to it. A spectator in a LOBBY room may take a free player seat with room.join of the same
 //     code; a player never switches to spectating in place (ALREADY). Disconnect / grace / reconnect / expiry work as for
 //     a player seat (the seat is kept and given back on resume).
@@ -176,7 +181,7 @@
 
 import { randomBytes, randomInt } from 'node:crypto';
 import { DIFFICULTIES, ERR, MAX_SEATS, MIN_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor, maxSeatsFrom, clampSeats } from '../shared/constants.js';
-import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks, charPotentialChanges, PACK_MSG_LIMITS, CHAT_LIMITS } from '../shared/protocol.js';
+import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks, checkHexBans, charPotentialChanges, PACK_MSG_LIMITS, CHAT_LIMITS } from '../shared/protocol.js';
 import { modSetOf, isModId, modSetDrift } from '../shared/modIdentity.js';
 import { normalizeSupportConfig, checkSupport, supportPicker, supportCapacity, supportTiers } from '../shared/support.js';
 import { isProtocolLevel, protocolLevelActive } from '../shared/protocolLevels.js';
@@ -1241,6 +1246,8 @@ export class Lobby {  /**
       case 'room.support': return this.support(session, msg);
       case 'room.ownership': return this.ownership(session, msg);
       case 'room.diy': return this.diy(session, msg);
+      // 协议源石禁用 (业主 2026-10-21): ≤ 3 cards this player's own draws skip; out-of-match, stored for the next match
+      case 'room.hexBans': return this.hexBans(session, msg);
       // 外观选择（皮肤层）：别人看到的你长什么样 —— 纯展示，比赛中也接受，变更即广播
       case 'room.appearance': return this.appearance(session, msg);
       case 'room.spectate': return this.spectate(session, msg);
@@ -2450,6 +2457,41 @@ export class Lobby {  /**
   }
 
   /**
+   * room.hexBans (业主 2026-10-21): keep the legal protocol-originium bans (≤ 3 cards of this room's own player pool),
+   * store them on the session and the seat (see the header). A running match never takes them: it keeps the list its
+   * seat had at its start, and the edit is stored for the NEXT match (ROOM_STARTED).
+   */
+  hexBans(session, { ids }) {
+    const room = this.roomOf(session);
+    const pool = this.hexPoolOf(this.dataFor(room));
+    const res = checkHexBans(ids, (id) => pool.get(id) || null);
+    if (!res || res.error) return fail(ERR.BAD_MSG, res && res.detail);
+    const list = Object.freeze(res.ids.slice());
+    const cs = this.csOf(room);
+    session.hexBans = list;
+    session.hexBansCs = cs;
+    if (!room) return OK;
+    const seat = room.seatOf(session.playerId);
+    if (seat) { seat.hexBans = list; seat.hexBansCs = cs; }
+    if (room.match && seat) return fail(ERR.ROOM_STARTED, 'stored for the next match');
+    return OK;
+  }
+
+  /**
+   * The player-side protocol-originium pool of a data snapshot (raw files or the match's GameData): id → record.
+   * Used by room.hexBans and by seatSettings' content re-check; a data set without the roster yields an empty map.
+   * @param {any} data
+   * @returns {Map<string, any>}
+   */
+  hexPoolOf(data) {
+    const hextech = data && (data.hextech || data.raw?.hextech);
+    const map = hextech && hextech.playerHexes;
+    const out = new Map();
+    if (map && typeof map === 'object') for (const rec of Object.values(map)) if (rec && typeof rec.id === 'string') out.set(rec.id, rec);
+    return out;
+  }
+
+  /**
    * `room.appearance`（皮肤层）：把**别人看到的你长什么样**存到会话与座位上，并向全房广播。
    *
    * 两个字段：`picks`（按干员的换装）与 `avatar`（玩家自己那张头像）—— **合并进同一份**会话/座位状态，
@@ -2530,6 +2572,7 @@ export class Lobby {  /**
     let ops = s.ops || null;
     let notOwned = s.notOwned || null;
     let diy = s.diy || null;
+    let hexBans = s.hexBans || null;
     const chess = (id) => lookup('chess', id, data);
     if (loadout && other(s.loadoutCs)) {
       const keep = {};
@@ -2558,7 +2601,13 @@ export class Lobby {  /**
       const r = checkDiyPicks({ ...diy }, { data, kitted: this.kittedFor(room) });
       diy = r && 'ok' in r ? freezeDiy(r.picks) : null;
     }
-    return { loadout, ops, notOwned, diy };
+    if (hexBans && other(s.hexBansCs)) {
+      // the room's player pool is the authority (a modded card goes with the content that added it)
+      const pool = this.hexPoolOf(this.dataFor(room));
+      const r = checkHexBans([...hexBans], (id) => pool.get(id) || null);
+      hexBans = r && !r.error ? Object.freeze(r.ids.slice()) : null;
+    }
+    return { loadout, ops, notOwned, diy, hexBans };
   }
 
   /** Extra fields of every `welcome` (net.js): the operators a 自选 slot may field (shared/diy.js `kitted`), and what
@@ -2635,6 +2684,8 @@ export class Lobby {  /**
         notOwned: own ? own.notOwned : null,
         // 0.2.0 自选编队: the human's checked DIY picks (bots field no 自选 piece [ASSUMED])
         diy: own ? own.diy : null,
+        // 协议源石禁用 (业主 2026-10-21): ≤ 3 cards this seat's own draws skip (bots ban none)
+        hexBans: own ? own.hexBans : null,
         // 助战 (shared/support.js): the human's checked support selection — only ids the server pool allows (bots: none).
         // Passed through as the frozen array the seat holds (the loadout's stance), never re-copied into a mutable one.
         support: s.isBot ? null : (Array.isArray(s.support) ? s.support : null),
@@ -3053,10 +3104,13 @@ export class Lobby {  /**
       ops: session.ops || null,
       notOwned: session.notOwned || null,
       diy: session.diy || null,
+      // 协议源石禁用 (业主 2026-10-21): ≤ 3 cards this seat's own draws skip
+      hexBans: session.hexBans || null,
       // the content each was checked for (header "Gameplay plugins": filtered at the match start when it is another)
       loadoutCs: session.loadoutCs ?? null,
       notOwnedCs: session.notOwnedCs ?? null,
       diyCs: session.diyCs ?? null,
+      hexBansCs: session.hexBansCs ?? null,
       // 房间同意（W7, DESIGN §28.53）：这个真人**明确同意过的那一份字节指纹**（`room.modSet.digest`），没同意过是
       // `null`。它是「这个座位对着哪一份内容表的态」—— 集合一变就作废，因为那时他同意的是另一份字节。
       modConsent: null,

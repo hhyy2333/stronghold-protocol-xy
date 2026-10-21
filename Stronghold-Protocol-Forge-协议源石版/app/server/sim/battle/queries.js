@@ -171,6 +171,9 @@ export class BattleQueries {
     const through = healer && healer.profile && typeof healer.profile.healThrough === 'function' ? healer.profile.healThrough : null;
     for (const a of this.allyUnits) {
       if (!a.alive || !a.deployed || a.hidden || a.kind === 'device') continue;
+      // 陷阱 / 棋子 are ally TOKENS, not operators: a generic heal selector never picks one. The healer's own
+      // `healThrough` is the one exception (凯尔希's Mon3tr), exactly as damage.js heal enforces for the target.
+      if (a.kind !== 'op' && !(through && through(healer, a))) continue;
       if (!set.has(a.tileR * COLS + a.tileC)) continue;
       if (a !== healer && ((a.s.flags.noHeal && !(through && through(healer, a))) || (a.profile && a.profile.noHeal))) continue;
       const injured = a.hp < a.s.maxHp - 1e-6;

@@ -90,6 +90,7 @@ export function validateReferences(f, { officialOwnedSkills = true } = {}) {
     if (!effects[it.effectId]) err(`item ${it.id}: effect missing`);
     if (it.goldenId && !items[it.goldenId]) err(`item ${it.id}: golden missing`);
     if (it.giveBondId && !bonds[it.giveBondId]) err(`item ${it.id}: giveBond ${it.giveBondId} missing`);
+    for (const id of Array.isArray(it.grantsBonds) ? it.grantsBonds : []) if (!bonds[id]) err(`item ${it.id}: grantsBond ${id} missing`);
     if (it.requiresBondId && !bonds[it.requiresBondId]) err(`item ${it.id}: requiresBond ${it.requiresBondId} missing`);
   }
   for (const b of Object.values(bands)) if (!effects[b.effectId]) err(`band ${b.bandId}: effect missing`);

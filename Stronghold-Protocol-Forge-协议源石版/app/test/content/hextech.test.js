@@ -12,12 +12,13 @@ import { DATA } from '../match/harness.js';
 import { getDefaultRegistry } from '../../server/match/effectsMeta.js';
 import { buildHextech, hextechText, validateHextech, OUT_FILE } from '../../tools/build-hextech.mjs';
 import { hexIds, battleModsOf, BATTLE_SPEC_KEYS, hasBattlePart, HEX_SCRIPT_KEYS } from '../../server/sim/content/hextech.js';
-import { applyEnemyHexes, enemyHexPayout, enemyHexPayoutFor } from '../../server/match/hextech.js';
+import { applyEnemyHexes, enemyHexPayout, enemyHexPayoutFor, gainTraitExtraOf, bondNeedBonusOf } from '../../server/match/hextech.js';
 import {
   rollOffers, pickEnemyRarity, pickEnemyHex, sumEnemyMods, rarityFallbackOrder, RARITY_ORDER, HEX_ROUNDS, hexEffectKey,
   ENEMY_VERBS,
 } from '../../shared/hextech.js';
 import { createRng } from '../../server/sim/rng.js';
+import { tierFor } from '../../server/match/bondsMeta.js';
 
 const HEXTECH = DATA.hextech;
 const PLAYER = Object.values(HEXTECH.playerHexes);
@@ -27,18 +28,19 @@ test('data/hextech.json is what tools/build-hextech.mjs generates (run: node too
   assert.equal(fs.readFileSync(OUT_FILE, 'utf8'), hextechText(buildHextech()));
 });
 
-test('roster: 108 player + 43 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
+test('roster: 111 player + 43 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
   assert.deepEqual(validateHextech(buildHextech()), []);
   // tenth batch (the owner's list of 2026-10-15): 11 more player cards (79 -> 90) — 反击装甲 and 紧急拨款 are
   // REBALANCES of existing records, not additions, so they do not move the count.
   // thirteenth batch (业主 2026-10-19): 10 more player cards (90 -> 100).
   // fourteenth batch (业主 2026-10-19): 8 more player cards (100 -> 108).
-  assert.equal(PLAYER.length, 108);
+  // fifteenth batch (业主 2026-10-21): 3 more player cards (108 -> 111).
+  assert.equal(PLAYER.length, 111);
   // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
   // fourteenth batch (业主 2026-10-19): 5 more enemy cards. 38 -> 43.
   assert.equal(ENEMY.length, 43);
   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
-  assert.equal(ids.size, 151);
+  assert.equal(ids.size, 154);
   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
   assert.deepEqual([...rarities], [...RARITY_ORDER]);
   for (const h of PLAYER) {
@@ -79,7 +81,7 @@ test('roster: 108 player + 43 enemy hexes, unique ids, known rarities and an eff
 test('every player hex has a registered hex: handler with onHexPick and onRoundStart (choices.test.js style)', () => {
   const reg = getDefaultRegistry();
   const ids = hexIds();
-  assert.equal(ids.length, 108);
+  assert.equal(ids.length, 111);
   for (const id of ids) {
     const h = reg.get(hexEffectKey(id));
     assert.ok(h, `hex:${id} handler`);
@@ -144,7 +146,7 @@ test('调度直播: it rewrites the first shop slot with a random own-board oper
   assert.equal(empty.slot, null, 'an empty board writes nothing');
 });
 
-test('传承: every sale adds +2 % to the bonds of the sold operator, on the hex’s own ref', () => {
+test('传承: every GAIN adds +1 % to the bonds of the gained operator, on the hex’s own ref', () => {
   const reg = getDefaultRegistry();
   const h = reg.get(hexEffectKey('hex_heritage'));
   const chess = Object.values(DATA.chess).find((c) => Array.isArray(c.bonds) && c.bonds.length === 2);
@@ -153,44 +155,49 @@ test('传承: every sale adds +2 % to the bonds of the sold operator, on the hex
   ctx.effect('hex:hex_heritage');
   ctx.effects['hex:hex_heritage'] = { id: 'hex:hex_heritage', params: {} };
   ctx.ev = { piece: { kind: 'chess', id: chess.chessId } };
-  h.onSold(ctx);
-  h.onSold(ctx);
+  // 业主 2026-10-21: the trigger moved from a SALE to a GAIN and the step is 1 % (was 2 % on a sale).
+  assert.equal(typeof h.onGain, 'function', 'the card declares the onGain hook');
+  assert.equal(h.onSold, undefined, 'and no longer hooks a sale');
+  h.onGain(ctx);
+  h.onGain(ctx);
   const acc = ctx.effects['hex:hex_heritage'].params.battle.bondAtk;
-  for (const b of chess.bonds) assert.equal(acc[b], 4, `${b} accumulated twice`);
+  for (const b of chess.bonds) assert.equal(acc[b], 2, `${b} accumulated twice`);
 });
 
-test('战损回收: 2 funds per LP actually charged this round, capped at 12', () => {
+test('战损回收: 2 funds per LP charged (cap 12) + 2 on the battle’s first leak', () => {
   const reg = getDefaultRegistry();
   const h = reg.get(hexEffectKey('hex_recovery'));
   const leak = (counted) => ({ enemyKey: 'e', counted });
-  // Owner's decision 2026-10-18: the card pays for the damage TAKEN, not for the leaks — 2 per LP, cap 12.
-  // `ev.lpLoss` is the settlement's own number (settle.js), so a 联防 leaker charged only for what got past the
-  // helpers, and a protocol level's extra leak LP, both count through this one reading.
-  const at = (lpLoss) => {
+  const twoLeaks = [leak(true), leak(true)];
+  // Owner's decision 2026-10-18: the card pays for the damage TAKEN — 2 per LP, cap 12. 业主 2026-10-21 adds ONE
+  // extra 2-fund payout on the battle's first counted leak (on top of the LP half).
+  const at = (lpLoss, leaked = twoLeaks) => {
     const ctx = ctxStub();
-    ctx.ev = { result: { leaked: [leak(true), leak(true)] }, lpLoss };
+    ctx.ev = { result: { leaked }, lpLoss };
     h.onBattleResult(ctx);
     return ctx.pending;
   };
-  assert.equal(at(1), 2, '1 LP × 2');
-  assert.equal(at(2), 4, '2 LP × 2');
-  assert.equal(at(3), 6, '3 LP × 2');
-  // the cap is per round, unchanged at 12
-  assert.equal(at(5), 10);
-  assert.equal(at(6), 12, '6 LP × 2 = 12, exactly the cap');
-  assert.equal(at(9), 12, '9 LP × 2 = 18 is capped at 12');
-  // nothing charged ⇒ nothing paid (a perfect round, or a 联防 that held)
-  assert.equal(at(0), 0, 'no LP charged pays nothing');
-  assert.equal(at(undefined), 0, 'an event without lpLoss pays nothing');
-  // leaks alone no longer pay: 9 leaks with 0 LP charged is 0 (the old shape paid 9)
+  assert.equal(at(1), 4, '1 LP × 2 + the first-leak 2');
+  assert.equal(at(2), 6, '2 LP × 2 + the first-leak 2');
+  assert.equal(at(3), 8, '3 LP × 2 + the first-leak 2');
+  // the LP cap is per round, unchanged at 12; the first-leak half is outside that cap
+  assert.equal(at(5), 12);
+  assert.equal(at(6), 14, '6 LP × 2 = 12 (cap) + 2');
+  assert.equal(at(9), 14, '9 LP × 2 = 18 is capped at 12 + 2');
+  // nothing charged and nothing leaked ⇒ nothing paid (a perfect round, or a 联防 that held)
+  assert.equal(at(0, []), 0, 'no LP charged and no leak pays nothing');
+  assert.equal(at(undefined, []), 0, 'an event without lpLoss or leaks pays nothing');
+  // a 0-LP battle that still leaked (a 联防 held off the helpers) pays the first-leak 2 only
   const leakOnly = ctxStub();
   leakOnly.ev = { result: { leaked: Array.from({ length: 9 }, () => leak(true)) }, lpLoss: 0 };
   h.onBattleResult(leakOnly);
-  assert.equal(leakOnly.pending, 0, 'leaks alone pay nothing now — the LP charged is what pays');
-  // the bundled card no longer carries the old keys
+  assert.equal(leakOnly.pending, 2, 'the first leak pays 2 once, LP or no LP');
+  // an uncounted leak (a 联防 helper's) is not the player's first leak
+  assert.equal(at(1, [leak(false), leak(true)]), 4, 'the uncounted leak does not consume the payout');
+  // the bundled card carries both halves
   const decl = HEXTECH.playerHexes.hex_recovery;
-  assert.deepEqual(decl.effect.onBattleResult, { perLpLoss: 2, cap: 12 });
-  assert.ok(!('perLeak' in decl.effect.onBattleResult), 'the leak-counting keys are gone from the bundled card');
+  assert.deepEqual(decl.effect.onBattleResult, { perLpLoss: 2, cap: 12, firstLeak: 2 });
+  assert.ok(!('perLeak' in decl.effect.onBattleResult), 'the old leak-counting keys stay gone from the bundled card');
 });
 
 test('盟约之主: the most numerous bond needs 1 fewer operator, and the bonus follows the board', () => {
@@ -742,7 +749,7 @@ test('the eleventh batch: 79 player hexes, the owner’s names and tiers verbati
     assert.equal(rec.name, name, `${id} name`);
     assert.equal(rec.rarity, rarity, `${id} tier`);
   }
-  assert.equal(Object.keys(HEXTECH.playerHexes).length, 108, '108 player hexes after the fourteenth batch');
+  assert.equal(Object.keys(HEXTECH.playerHexes).length, 111, '111 player hexes after the fifteenth batch');
 });
 
 
@@ -918,21 +925,52 @@ test('背水一战: below the LP threshold the round’s first refresh is free, 
   assert.equal(arm2.effects['hex:hex_lastditch'].params.lastDitch.active, false, 'above the threshold the arm says closed');
 });
 
-test('盟约寄生: at battle start the bench gives the highest ACTIVE bond `per` layers, patched into this battle’s input', () => {
+/** `ctx.gd` for the two 主权 / 寄生 card tests: the raw data plus the two lookups the handlers ask for. */
+const bondGd = () => ({
+  bondIds: Object.keys(DATA.bonds),
+  bond: (id) => DATA.bonds[id] || null,
+});
+
+test('盟约寄生: each round start splits the teammate’s new layers over the own ACTIVE stackable bonds (向上取整)', () => {
   const reg = getDefaultRegistry();
+  const h = reg.get(hexEffectKey('hex_bondparasite'));
+  const ref = { id: 'hex:hex_bondparasite', params: { parasite: { partnerId: 'p2', baseline: 10 } } };
   const adds = [];
-  const input = { bonds: { preciShip: { count: 2, active: true, tier: 1, layers: 10 } } };
+  const updates = [];
+  const partner = { rawLayers: () => ({ yanShip: 16, preciShip: 0, investShip: 0, maniShip: 99 }) };
   const ctx = ctxStub({
-    hand: () => [{ kind: 'chess', id: 'a' }, { kind: 'chess', id: 'b' }, { kind: 'token', id: 't' }, null],
-    topLayerBond: () => 'preciShip',
-    addLayers: (b, n) => { adds.push([b, n]); return n; },
-    ev: { input },
+    gd: bondGd(),
+    effect: (id) => (id === 'hex:hex_bondparasite' ? ref : null),
+    player: (id) => (id === 'p2' ? partner : null),
+    bonds: () => ({
+      yanShip: { active: true, count: 3, layers: 0 },
+      preciShip: { active: true, count: 2, layers: 0 },
+      investShip: { active: false, count: 1, layers: 0 },
+      maniShip: { active: true, count: 1, layers: 0 },   // noStack: never receives a share
+    }),
+    addLayers: (b, n, opts) => { adds.push([b, n, opts && opts.requireActive]); return n; },
+    addEffect: (r) => { updates.push(r); ref.params = r.params; return r; },
   });
-  reg.get(hexEffectKey('hex_bondparasite')).onBattleStart(ctx);
-  assert.deepEqual(adds, [['preciShip', 4]], 'two bench operators × 2 layers');
-  assert.equal(input.bonds.preciShip.layers, 14, 'the battle that is starting sees them too');
-  const empty = ctxStub({ hand: () => [], topLayerBond: () => 'preciShip', addLayers: () => { throw new Error('an empty bench grants nothing'); } });
-  reg.get(hexEffectKey('hex_bondparasite')).onBattleStart(empty);
+  h.onRoundStart(ctx);
+  // teammate gained 6 layers (16 − baseline 10), two active stackable own bonds ⇒ ceil(6 / 2) = 3 each
+  assert.deepEqual(adds, [['yanShip', 3, true], ['preciShip', 3, true]], 'only the active, stackable bonds, required active');
+  assert.equal(updates.length, 1, 'the new total becomes the next baseline');
+  assert.equal(updates[0].params.parasite.baseline, 16);
+  assert.equal(updates[0].params.parasite.partnerId, 'p2');
+  // no new layers ⇒ nothing to split, but the baseline still refreshes (a decrease must not be paid out later)
+  adds.length = 0;
+  partner.rawLayers = () => ({ yanShip: 12, maniShip: 99 });
+  h.onRoundStart(ctx);
+  assert.deepEqual(adds, [], 'a negative delta grants nothing');
+  assert.equal(updates.at(-1).params.parasite.baseline, 12, 'and re-baselines downwards');
+  // solo (no teammate) ⇒ the card is inert
+  const solo = ctxStub({
+    gd: bondGd(),
+    effect: () => ({ id: 'hex:hex_bondparasite', params: { parasite: { partnerId: null, baseline: 0 } } }),
+    player: () => null,
+    addLayers: () => { throw new Error('no teammate ⇒ no layer gain'); },
+  });
+  h.onRoundStart(solo);
 });
 
 test('三连透支: an elite merge grants an elite of the board’s most numerous bond, and the card lapses for THAT ROUND', () => {
@@ -1015,3 +1053,90 @@ test('电表倒转·改: on a FREE refresh the card has a 15 % chance to make th
 });
 
 
+
+// =====================================================================================================================
+// fifteenth batch (业主 2026-10-21): 盟约获得 · 投资天才 · 心之钢
+
+test('盟约获得: floor(largest single-bond gain / 2) goes to every ACTIVE stackable bond', () => {
+  const reg = getDefaultRegistry();
+  const h = reg.get(hexEffectKey('hex_bondgain'));
+  const adds = [];
+  const ctx = ctxStub({
+    gd: bondGd(),
+    ev: { gainTraitAmount: 7 },
+    bonds: () => ({
+      yanShip: { active: true, count: 3, layers: 0 },
+      preciShip: { active: true, count: 2, layers: 0 },
+      investShip: { active: false, count: 1, layers: 0 }, // inactive: no share
+      maniShip: { active: true, count: 1, layers: 0 },   // noStack: no share
+    }),
+    addLayers: (b, n, o) => { adds.push([b, n, o && o.requireActive]); return n; },
+  });
+  h.onGainTrait(ctx);
+  assert.deepEqual(adds, [['yanShip', 3, true], ['preciShip', 3, true]], 'floor(7 / 2) = 3, only the active stackable bonds');
+  // X = 1 halves to 0 ⇒ nothing; X = 0 (a trait that grants no layers) ⇒ nothing
+  for (const amount of [1, 0]) {
+    adds.length = 0;
+    const c = ctxStub({
+      gd: bondGd(), ev: { gainTraitAmount: amount },
+      bonds: () => ({ yanShip: { active: true, count: 3, layers: 0 } }),
+      addLayers: (b, n) => { adds.push([b, n]); return n; },
+    });
+    h.onGainTrait(c);
+    assert.deepEqual(adds, [], `X = ${amount} grants nothing`);
+  }
+});
+
+test('投资天才: 投资人 needs 1 fewer member, 获得时 traits fire once more, and every trigger banks +1 投资人', () => {
+  const rec = HEXTECH.playerHexes.hex_investgenius;
+  assert.deepEqual(rec.effect.bondNeedBonus, { bondId: 'investShip', n: 1 });
+  assert.equal(rec.effect.gainTraitExtra, 1);
+  const ps = { effects: [{ params: rec.effect }] };
+  assert.equal(gainTraitExtraOf(ps), 1);
+  assert.equal(bondNeedBonusOf(ps, 'investShip'), 1);
+  assert.equal(bondNeedBonusOf(ps, 'yanShip'), 0);
+  // the need shift is applied to the TIER, not to the displayed member count
+  const bond = DATA.bonds.investShip;
+  assert.equal(tierFor(bond, 2), 0, '2 members are not enough at the data threshold (3)');
+  assert.equal(tierFor(bond, 2, 1), 1, 'with 投资天才 they are');
+  // every trigger banks one 投资人 layer (banked even while the bond is inactive)
+  const reg = getDefaultRegistry();
+  const adds = [];
+  const ctx = ctxStub({ ev: {}, addLayers: (b, n, o) => { adds.push([b, n, o]); return n; } });
+  reg.get(hexEffectKey('hex_investgenius')).onGainTrait(ctx);
+  assert.deepEqual(adds, [['investShip', 1, { reason: 'hex' }]]);
+});
+
+test('心之钢: the card and its equipment are wired end to end, and the item grant stops at three', () => {
+  const rec = HEXTECH.playerHexes.hex_heartsteel;
+  assert.equal(rec.rarity, 'prismatic');
+  assert.deepEqual(rec.effect.heartsteel, { every: 3, dmgMaxHpPct: 100, maxHpGain: 150, layerGain: 2 });
+  assert.ok(BATTLE_SPEC_KEYS.includes('heartsteel'), 'ownership-only script: declared beside its install reader');
+  assert.equal(HEX_SCRIPT_KEYS.hex_heartsteel, 'heartsteel');
+  assert.ok(hasBattlePart(rec.effect), 'the ref must reach the battle');
+  assert.ok(getDefaultRegistry().get(hexEffectKey('hex_heartsteel')), 'hex:hex_heartsteel handler');
+  const item = DATA.items['chess_item_9_96_e_a'];
+  assert.ok(item, 'the id resolves in data/items.json');
+  assert.equal(item.name, '心之钢');
+  assert.deepEqual(item.grantsBonds, ['steadShip'], 'the carrier counts as a 坚守 member');
+  assert.equal(item.shopExcluded, true);
+  assert.equal(item.mergeable, false);
+  // the pick grants one; the two scheduled round starts (every 2 rounds, first skipped) grant #2 and #3; then nothing
+  const reg = getDefaultRegistry();
+  const h = reg.get(hexEffectKey('hex_heartsteel'));
+  const grants = [];
+  const ctx = ctxStub({ ev: null, grantItem: (id) => { grants.push(id); return { id }; } });
+  h.onHexPick(ctx);
+  assert.equal(grants.length, 1, 'the pick grants the first');
+  const round = () => h.onRoundStart(ctx);
+  round();                                     // R1: skipFirst
+  assert.equal(grants.length, 1, 'the pick round’s own round start is skipped');
+  round();                                     // R2 (n = 2): (n − 1) % 2 ≠ 0
+  assert.equal(grants.length, 1);
+  round();                                     // R3 (n = 3): the first scheduled grant
+  assert.equal(grants.length, 2);
+  round(); round();                            // R5 (n = 5): the second scheduled grant
+  round();                                     // R6
+  assert.equal(grants.length, 3, 'three in total, then the `total` cap stops it');
+  assert.ok(grants.every((id) => id === 'chess_item_9_96_e_a'));
+});

@@ -12,6 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
+import { FORCED_EXIT } from '../../server/sim/constants.js';
 import { hexHooks } from '../../server/sim/content/hexcards/hooks.js';
 import {
   installWarding, installVoidReturn, installCorpseHill, installOldPower,
@@ -192,9 +193,10 @@ test('万物归虚: no layers (nothing removed) and no equipment => nothing happ
 
 // 业主 2026-10-22「协议『尸山』的装备『尸山』联防不生效」：联防把**自己那场已经倒下的干员**按 `carryState.down` 送进来，
 // 它们入场后立刻被强制退场 —— 到 `battleStart` 时 `alive === false`，对象却还在 `allyUnits` 里。原来按 `alive` 过滤，
-// 于是「其他己方干员」一个都不剩、装备者拿不到任何属性。下面这条钉住：已经倒下的队友，属性照样被吞掉。
-// （注：`opsOf` 只取活着的干员，所以断言的是「没人可杀、但两份属性都吃到了」。）
-test('尸山: 联防里已经倒下的队友（carryState.down）照样被吞掉属性，只是不再执行一次击杀', () => {
+// 于是「其他己方干员」一个都不剩、装备者拿不到任何属性。下面这条钉住：自己那场已经倒下的干员，属性照样被吞掉。
+// 业主「尸山在联防和打 boss 时会吞掉队友的干员」：联防 / boss 双人场上队友的干员不杀、属性也不吃 ——
+// 只认 `ownerId === carrier.ownerId`。所以这里 p_1 的那份 down 不再算进 6000 / 1500。
+test('尸山: 联防里自己已经倒下的干员照样被吞属性，队友的（down 或站着）一律不碰', () => {
   const h = makeBattle({
     kind: 'unite', content: 'generic',
     defs: { chess: { test_guard: guard() }, enemies: { enemy_dummy: dummy() } },
@@ -216,9 +218,65 @@ test('尸山: 联防里已经倒下的队友（carryState.down）照样被吞掉
   assert.equal(alive.length, 1, 'only the carrier is left standing, got ' + alive.length);
   const carrier = alive[0];
   assert.equal(inst.kills, 0, 'nobody was killed again (they were already down), got ' + inst.kills);
-  assert.ok(Math.abs(carrier.s.maxHp - 6000) < 1e-6, 'max HP = 2000 + 2000 + 2000, got ' + carrier.s.maxHp);
-  assert.ok(Math.abs(carrier.s.atk - 1500) < 1e-6, 'ATK = 500 x 3, got ' + carrier.s.atk);
+  // the carrier's own 2000 + its own down 2000; p_1's down is NOT counted
+  assert.ok(Math.abs(carrier.s.maxHp - 4000) < 1e-6, 'max HP = carrier 2000 + own down 2000, got ' + carrier.s.maxHp);
+  assert.ok(Math.abs(carrier.s.atk - 1000) < 1e-6, 'ATK = own 500 x 2, got ' + carrier.s.atk);
   assert.ok(Math.abs(carrier.s.spRecovery - 1) < 1e-9, 'SP recovery +1, got ' + carrier.s.spRecovery);
+  // the teammate's operator was already down on its own account: untouched by 尸山
+  assert.equal(h.unit(3).removeReason, FORCED_EXIT, 'p_1\'s operator is still the engine\'s forced exit, not corpsehill');
+});
+
+test('尸山: 联防场上站着的队友干员不被执行、也不被吃属性', () => {
+  const h = makeBattle({
+    kind: 'unite', content: 'generic',
+    defs: { chess: { test_guard: guard() }, enemies: { enemy_dummy: dummy() } },
+    players: [
+      { playerId: 'p_0', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_corpsehill')],
+        units: [
+          { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_95_e_a'] },
+          { uid: 2, kind: 'chess', chessId: 'test_guard', row: 9, col: 7 },
+        ] },
+      { playerId: 'p_1', seat: 1, side: 'L', colOffset: 8, bonds: {}, playerEffects: [],
+        units: [{ uid: 3, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] },
+    ],
+    enemies: [{ key: 'enemy_dummy', time: 0, pos: [10, 6] }], autoFinish: false, timeLimit: 40,
+  });
+  const inst = installCorpseHill(hexHooks(h.battle));
+  h.run(0.3);
+  assert.equal(inst.kills, 1, 'only the card owner\'s other operator is executed, got ' + inst.kills);
+  const carrier = h.unit(1);
+  const mate = h.unit(3);
+  assert.ok(carrier.alive && mate.alive, 'the carrier and the teammate\'s operator are both standing');
+  assert.equal(mate.removeReason, undefined, 'the teammate\'s operator was not retired');
+  assert.ok(Math.abs(carrier.s.maxHp - 4000) < 1e-6, 'max HP = carrier 2000 + own 2000 (the teammate\'s 2000 is not eaten), got ' + carrier.s.maxHp);
+  assert.ok(Math.abs(carrier.s.atk - 1000) < 1e-6, 'ATK = own 500 x 2, got ' + carrier.s.atk);
+});
+
+test('尸山: boss 双人场里另一半玩家的干员不被执行、也不被吃属性', () => {
+  const h = makeBattle({
+    kind: 'boss', content: 'generic',
+    defs: { chess: { test_guard: guard() }, enemies: { enemy_dummy: dummy() } },
+    players: [
+      { playerId: 'p_0', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_corpsehill')],
+        units: [
+          { uid: 1, kind: 'chess', chessId: 'test_guard', row: 10, col: 3, items: ['chess_item_9_95_e_a'] },
+          { uid: 2, kind: 'chess', chessId: 'test_guard', row: 10, col: 4 },
+        ] },
+      { playerId: 'p_1', seat: 1, side: 'R', bonds: {}, playerEffects: [],
+        units: [{ uid: 3, kind: 'chess', chessId: 'test_guard', row: 10, col: 3 }] },
+    ],
+    autoFinish: false, timeLimit: 40,
+  });
+  const inst = installCorpseHill(hexHooks(h.battle));
+  h.run(0.3);
+  assert.equal(inst.kills, 1, 'only the card owner\'s other operator is executed, got ' + inst.kills);
+  const carrier = h.unit(1);
+  const partner = h.unit(3);
+  assert.equal(partner.ownerId, 'p_1', 'premise: the partner\'s operator keeps its own ownerId');
+  assert.ok(carrier.alive && partner.alive, 'the carrier and the partner\'s operator are both standing');
+  assert.equal(partner.removeReason, undefined, 'the partner\'s operator was not retired');
+  assert.ok(Math.abs(carrier.s.maxHp - 4000) < 1e-6, 'max HP = carrier 2000 + own 2000, got ' + carrier.s.maxHp);
+  assert.ok(Math.abs(carrier.s.atk - 1000) < 1e-6, 'ATK = own 500 x 2, got ' + carrier.s.atk);
 });
 
 // =====================================================================================================================

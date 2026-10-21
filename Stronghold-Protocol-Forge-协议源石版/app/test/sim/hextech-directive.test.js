@@ -37,18 +37,20 @@ const refOf = (hexId) => {
 
 const melee = (o = {}) => chessRec({ id: 'test_melee', profession: 'WARRIOR', dmgType: 'phys', stats: { maxHp: 3000, atk: 500, def: 200, res: 0, blockCnt: 2, respawnTime: 20 }, skill: null, ...o });
 const caster = (o = {}) => chessRec({ id: 'test_caster', profession: 'CASTER', dmgType: 'arts', stats: { maxHp: 1200, atk: 400, def: 0, res: 0, blockCnt: 1, respawnTime: 20 }, skill: null, ...o });
+const sniper = (o = {}) => chessRec({ id: 'test_sniper', profession: 'SNIPER', dmgType: 'phys', position: 'RANGED', stats: { maxHp: 1200, atk: 450, def: 0, res: 0, blockCnt: 0, respawnTime: 20 }, skill: null, ...o });
 const dummy = (o = {}) => enemyRec({ key: 'enemy_dummy', hp: 100000, atk: 0, speed: 0, ...o });
 
-/** One player carrying `hexes`, two operators of different professions on the board, one harmless enemy. */
+/** One player carrying `hexes`, the three professions the card may roll on the board, one harmless enemy. */
 function battle({ hexes = [], units = null } = {}) {
   return makeBattle({
-    defs: { chess: { test_melee: melee(), test_caster: caster() }, enemies: { enemy_dummy: dummy() } },
+    defs: { chess: { test_melee: melee(), test_caster: caster(), test_sniper: sniper() }, enemies: { enemy_dummy: dummy() } },
     players: [{
       playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {},
       playerEffects: hexes.map(refOf),
       units: units || [
         { uid: 1, kind: 'chess', chessId: 'test_melee', row: 9, col: 6 },
         { uid: 2, kind: 'chess', chessId: 'test_caster', row: 9, col: 8 },
+        { uid: 3, kind: 'chess', chessId: 'test_sniper', row: 9, col: 10 },
       ],
     }],
     enemies: [{ key: 'enemy_dummy', time: 0, pos: [9, 14] }],
@@ -72,7 +74,8 @@ test('指令之意: the profession it rolled is published, and the buff lands on
   assert.equal(pid, 'p1');
   assert.equal(hexId, 'hex_directive', 'the row names the card, so the HUD can label it');
   assert.equal(kind, 'prof', 'the value is a profession code');
-  assert.ok(['WARRIOR', 'CASTER'].includes(pick), `rolled a profession on the field, got ${pick}`);
+  // 业主 2026-10-21: the roll is among SNIPER / WARRIOR / CASTER, independent of who is fielded
+  assert.ok(['SNIPER', 'WARRIOR', 'CASTER'].includes(pick), `rolled one of the three named professions, got ${pick}`);
   assert.equal(amount, 50, 'the strength comes from the card spec');
   // the buff agrees with the published roll — the chip may never disagree with who actually got stronger
   const buffed = h.battle.allyUnits.filter((u) => (u.buffs || []).some((b) => b.key === 'hex:directive'));
@@ -80,7 +83,7 @@ test('指令之意: the profession it rolled is published, and the buff lands on
   for (const u of buffed) assert.equal(u.def.profession, pick, 'every buffed operator is of the rolled profession');
 });
 
-test('指令之意·改: the damage type it rolled is published', () => {
+test('指令之意·改: the damage type it rolled is published, and only phys / arts are candidates', () => {
   const h = battle({ hexes: ['hex_directive2'] });
   h.run(1);
   const rows = dirsFor(h);
@@ -88,8 +91,8 @@ test('指令之意·改: the damage type it rolled is published', () => {
   const [, hexId, kind, pick, amount] = rows[0];
   assert.equal(hexId, 'hex_directive2');
   assert.equal(kind, 'dmg', 'the value is a damage type');
-  assert.ok(['phys', 'arts', 'true'].includes(pick), `rolled one of the three damage types, got ${pick}`);
-  assert.equal(amount, 150, 'the spec multiplier, as a percent');
+  assert.ok(['phys', 'arts'].includes(pick), `rolled one of the two damage types, got ${pick}`);
+  assert.equal(amount, 200, '业主 2026-10-21: 150 % → 200 %');
 });
 
 test('owning BOTH cards publishes one row each — a per-player slot would let the second overwrite the first', () => {

@@ -189,6 +189,13 @@ export class PlayerState {
     this.diy = Object.freeze({});
     /** @type {Map<string, object>} slot id (normal / elite) → composed 自选 record (setDiy) */
     this._diyRecords = new Map();
+    /**
+     * 协议源石禁用 (业主 2026-10-21): the seat's ≤ 3 card ids — this player's OWN draft offers / rerolls / random extra
+     * draws skip them. Frozen; [] = nothing banned (bots always). A match keeps the list its seat had at its start.
+     */
+    this.hexBans = Object.freeze(!this.isBot && Array.isArray(seat.hexBans)
+      ? [...new Set(seat.hexBans.filter((id) => typeof id === 'string' && id))].slice(0, 3)
+      : []);
     /** the copies of the slotted pieces (initDiyStock, once the match's bans are drawn) */
     this.diyStock = new DiyStock();
     /**

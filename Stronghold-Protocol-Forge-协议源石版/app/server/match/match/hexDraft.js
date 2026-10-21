@@ -18,6 +18,13 @@ export class MatchHexDraft {
   enterHexDraft() {
     const gd = this.gd;
     const alive = this.alivePlayers();
+    // 协议源石禁用 (业主 2026-10-21): each player's own ≤ 3 bans only narrow THAT player's pool — never a teammate's,
+    // never the enemy pool, never a card another effect grants.
+    const poolFor = (ps) => {
+      const bans = Array.isArray(ps.hexBans) ? ps.hexBans : [];
+      const pool = gd.hexPlayerPool();
+      return bans.length ? pool.filter((h) => !bans.includes(h && h.id)) : pool;
+    };
     const pool = gd.hexPlayerPool();
     // Nothing to offer (no alive player, or a data set without the roster): the round still continues through
     // afterHexDraft — a same-round 机变 must run even when 海克斯 cannot (test/match/harness.js withoutHextech).
@@ -30,7 +37,7 @@ export class MatchHexDraft {
     /** @type {Record<string, number>} */
     const rerolls = {};
     for (const ps of alive) {
-      offers[ps.playerId] = rollOffers(this.rngHex, { pool, owned: hexIdsOf(ps), weights, count: offer });
+      offers[ps.playerId] = rollOffers(this.rngHex, { pool: poolFor(ps), owned: hexIdsOf(ps), weights, count: offer });
       rerolls[ps.playerId] = gd.hexRerolls();
     }
     // 业主 2026-10-20「单个刷新应该3个都能刷一次」: `rerolls` is now the budget of the WHOLE-BATCH button (unchanged),
@@ -104,7 +111,9 @@ export class MatchHexDraft {
     // 不含当前 offer 的三张。只传 owned 的话，新抽的三张可能又是刚被换掉的那几张 —— 池子小的时候（测试/少人数局）
     // 几乎必然如此（实测：3 张卡的池子，20 个种子里 5 次刷出与原来完全相同的三张）。
     const offered = this.hexOfferOf(ps.playerId);
-    const pool = gd.hexPlayerPool();
+    const bans = Array.isArray(ps.hexBans) ? ps.hexBans : [];
+    const base = gd.hexPlayerPool();
+    const pool = bans.length ? base.filter((h) => !bans.includes(h && h.id)) : base;
     const weights = gd.hexWeights();
     if (Number.isInteger(idx)) {
       // one slot: everything else about the batch is kept, so the other two cards must be excluded from the draw as well

@@ -29,7 +29,8 @@
 // 干员调配 (DESIGN §16): an overlay over any route (<LoadoutHost/>, opened from lobby / room / briefing); its loadout is
 // kept in sync with the server by installLoadoutSync (room.loadout after every welcome and edit), its 干员持有 tab's
 // not-owned list (0.2.0 补位) by installOwnershipSync (room.ownership, likewise), the 自选编队 picks (0.2.0 DIY) by
-// installDiySync (room.diy, likewise; it also keeps welcome.diyKitted for the picker).
+// installDiySync (room.diy, likewise; it also keeps welcome.diyKitted for the picker), and the 协议源石禁用 list
+// (业主 2026-10-21) by installHexBanSync (room.hexBans, likewise).
 // Game data: every text of the game is static data (/data/*.json) downloaded once per page; the in-match files are
 // warmed in the background as soon as the player is in a room (warmGameData), before the match needs them.
 // Language (ui/lang.js, docs/I18N.md): chosen before the first render (initLang); App re-renders on a switch (useLang).
@@ -78,7 +79,7 @@ import { SupportHost } from './screens/support.js';
 import { StatsHost } from './screens/stats.js';
 import { installRehearsal } from './battle/rehearsal.js';
 import { recordResult, installStatsRecorder } from './ui/stats.js';
-import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
+import { installLoadoutSync, installOwnershipSync, installDiySync, installHexBanSync } from './ui/loadoutSync.js';
 import { installSupportSync } from './ui/supportSync.js';
 import { startBuildGuard } from './ui/buildGuard.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
@@ -611,6 +612,7 @@ async function boot() {
   installSupportSync({ net });
   installOwnershipSync({ net });
   installDiySync({ net });
+  installHexBanSync({ net }); // 协议源石禁用 (业主 2026-10-21): room.hexBans, out of match like the two above
   // the room's cosmetic plugins and the player's own over the art manifest (content.js; nothing is fetched without them)
   installContent({ toast });
   // a room with gameplay plugins: its content set downloaded, checked and shown (content.js — DESIGN §34.6)

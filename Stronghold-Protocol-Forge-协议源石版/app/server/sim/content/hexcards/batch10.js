@@ -179,18 +179,25 @@ export function installTerraMourn(hooks) {
 }
 
 /**
- * 指令之意: at battle start ONE profession is chosen at random, and every own operator of it gains +`atkPct`.
+ * 指令之意: at battle start ONE of the three named professions is chosen at random, and every own operator of it gains
+ * +`atkPct`.
  *
- * 「每回合随机指定一种职业，攻击力+50」. The roll happens ONCE per battle (not per tick): the card says 「每回合」, and a
- * battle IS the round, so re-rolling mid-fight would make the buff flicker between professions. `battle.rng` is the
- * deterministic stream every other random pick in the sim uses, so a replay of the same seed chooses the same
- * profession — which is what keeps a client-side battle and the server's re-computation in agreement.
+ * 「每回合随机指定一种职业，攻击力+50」. 业主 2026-10-21: 「改成在狙击近卫术师三个职业里随机」 — the roll is among
+ * SNIPER / WARRIOR (近卫) / CASTER, NOT among the professions actually fielded: the card may roll a profession the player
+ * has nobody of, and then it grants nothing (the roll is still published so the HUD can say what it rolled).
+ *
+ * The roll happens ONCE per battle (not per tick): the card says 「每回合」, and a battle IS the round, so re-rolling
+ * mid-fight would make the buff flicker between professions. `battle.rng` is the deterministic stream every other
+ * random pick in the sim uses, so a replay of the same seed chooses the same profession — which is what keeps a
+ * client-side battle and the server's re-computation in agreement.
  * @param {any} hooks the shared bundle
  */
 export function installDirectiveAtk(hooks) {
   const { battle, ownersOf, opsOf, specOf, optNumber, onField } = hooks;
   const owners = ownersOf('hex_directive');
   if (!owners.length) return 0;
+  /** The card's own candidate list (the owner's three named professions). */
+  const PROFS = ['SNIPER', 'WARRIOR', 'CASTER'];
   const applied = [];
   const done = new Set();
   // THE ROLL RUNS ON THE FIRST TICK, NOT AT INSTALL. `install()` is called while the battle is being BUILT, before any
@@ -204,9 +211,7 @@ export function installDirectiveAtk(hooks) {
       if (!ops.length) continue;
       const spec = specOf(pid, 'hex_directive', 'directiveAtk');
       const pctVal = optNumber(spec, 'atkPct', 50);
-      const profs = [...new Set(ops.map((u) => u.def && u.def.profession).filter(Boolean))];
-      if (!profs.length) continue;
-      const pick = profs[Math.min(profs.length - 1, Math.floor(battle.rng() * profs.length))];
+      const pick = PROFS[Math.min(PROFS.length - 1, Math.floor(battle.rng() * PROFS.length))];
       for (const u of ops) {
         if (!u.def || u.def.profession !== pick) continue;
         passiveBuff(battle, u, 'hex:directive', { atkPct: pctVal / 100 });
@@ -222,10 +227,12 @@ export function installDirectiveAtk(hooks) {
 /**
  * 指令之意·改: at battle start ONE damage type is chosen at random, and own operators deal `mul`% of it.
  *
- * 「每回合随机指定一种伤害类型，伤害提升至150%」. `dmgType` is a PROFILE field (phys / arts / true), read by ai.js
- * when an attack is built, so the buff is applied to the units whose type matches the roll and lasts the battle.
+ * 「每回合随机指定一种伤害类型，伤害提升至150%」. 业主 2026-10-21: 「改成只在物理，法术里随机。数值改成提升至200%」 —
+ * the candidate list is phys / arts only (true damage is out), and the multiplier comes from the record (200).
+ * `dmgType` is a PROFILE field (phys / arts), read by ai.js when an attack is built, so the buff is applied to the
+ * units whose type matches the roll and lasts the battle.
  *
- * The three candidate types are the ones a player's operator can actually deal; `heal` / `none` are excluded because
+ * The candidate types are the ones a player's operator can actually deal; `heal` / `none` are excluded because
  * 「伤害类型」 names damage and neither deals any.
  * @param {any} hooks the shared bundle
  */
@@ -233,7 +240,7 @@ export function installDirectiveType(hooks) {
   const { battle, ownersOf, opsOf, specOf, optNumber, onField } = hooks;
   const owners = ownersOf('hex_directive2');
   if (!owners.length) return 0;
-  const TYPES = ['phys', 'arts', 'true'];
+  const TYPES = ['phys', 'arts'];
   const applied = [];
   const done = new Set();
   // First tick, not install: no operator is deployed while the battle is being BUILT (see installDirectiveAtk).
@@ -241,7 +248,7 @@ export function installDirectiveType(hooks) {
   for (const pid of owners) {
     if (done.has(pid)) continue;
     const spec = specOf(pid, 'hex_directive2', 'directiveType');
-    const mul = optNumber(spec, 'mul', 150) / 100;
+    const mul = optNumber(spec, 'mul', 200) / 100;
     const pick = TYPES[Math.min(TYPES.length - 1, Math.floor(battle.rng() * TYPES.length))];
     let any = false;
     for (const u of opsOf(pid)) {

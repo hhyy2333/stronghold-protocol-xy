@@ -210,9 +210,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_bulwark',
     name: '坚壁',
-    desc: '获得时目标生命值上限 +10。',
+    desc: '获得时目标生命值上限 +10；作战中，己方所有干员防御力 +30%。',
     rarity: 'silver',
-    effect: { onPick: { lp: 10 } },
+    effect: { onPick: { lp: 10 }, battle: { defPct: 30 } },
   },
   {
     id: 'hex_massprod',
@@ -250,9 +250,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_immortal',
     name: '不灭壁垒',
-    desc: '作战中，己方所有干员生命值上限 +12%；每场战斗中，己方每名干员各有 1 次复活机会。',
+    desc: '作战中，己方所有干员生命值上限 +25%；每场战斗中，己方每名干员各有 1 次复活机会。',
     rarity: 'prismatic',
-    effect: { battle: { maxHpPct: 12 }, immortalRevive: { count: 1 } },
+    effect: { battle: { maxHpPct: 25 }, immortalRevive: { count: 1 } },
   },
   // ---- second batch (0.3.0 playtest #2) ---------------------------------------------------------------
   {
@@ -265,16 +265,16 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_recovery',
     name: '战损回收',
-    desc: '每场战斗每扣除 1 点目标生命值，下回合开始时额外得到 2 资金（每回合最多 12）。',
+    desc: '每场战斗每扣除 1 点目标生命值，下回合开始时额外得到 2 资金（每回合最多 12）；每场战斗第一次漏怪时，下回合开始时额外得到 2 资金。',
     rarity: 'silver',
-    effect: { onBattleResult: { perLpLoss: 2, cap: 12 } },
+    effect: { onBattleResult: { perLpLoss: 2, cap: 12, firstLeak: 2 } },
   },
   {
     id: 'hex_heritage',
     name: '传承',
-    desc: '你每出售 1 名干员，场上拥有其任一盟约的干员永久 +2% 攻击力。',
+    desc: '你每获得 1 名干员，场上拥有其任一盟约的干员永久 +1% 攻击力。',
     rarity: 'silver',
-    effect: { onSold: { bondAtkPct: 2 } },
+    effect: { onGain: { bondAtkPct: 1 } },
   },
   {
     id: 'hex_broadcast',
@@ -487,16 +487,16 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_holdline',
     name: '浴血',
-    desc: '作战中，己方干员每损失 25% 生命值，防御力 +40（本场战斗内叠加，最多 4 层）。',
+    desc: '作战中，己方干员每损失 25% 生命值，防御力 +40（本场战斗内叠加，最多 4 层）；每次攻击回复 30 点生命。',
     rarity: 'silver',
-    effect: { holdLine: { stepPct: 25, def: 40, max: 4 } },
+    effect: { holdLine: { stepPct: 25, def: 40, max: 4, attackHeal: 30 } },
   },
   {
     id: 'hex_firingline',
     name: '火力延伸',
-    desc: '作战中，己方狙击干员的攻击距离 +1。',
+    desc: '作战中，己方远程干员的攻击距离 +1。',
     rarity: 'gold',
-    effect: { rangedExtend: { profession: 'SNIPER', extend: 1 } },
+    effect: { rangedExtend: { position: 'RANGED', extend: 1 } },
   },
   {
     id: 'hex_shieldwall',
@@ -659,9 +659,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_minefield',
     name: '雷区',
-    desc: '战斗开始时，在6个随机可部署地块，放置多萝西的2技能的召唤物地雷（地雷攻击力1000，命中后束缚5秒；只命中1名敌人时束缚10秒）。',
+    desc: '战斗开始时，在6个随机可部署地块，放置多萝西的2技能的召唤物地雷（地雷攻击力1000，命中后束缚5秒；只命中1名敌人时束缚10秒）；此后每5秒在随机可部署地块生成1个地雷。',
     rarity: 'silver',
-    effect: { minefield: { count: 6, atk: 1000, bind: 5, bindSingle: 10 } },
+    effect: { minefield: { count: 6, atk: 1000, bind: 5, bindSingle: 10, periodicSec: 5, periodicCount: 1 } },
   },
   {
     id: 'hex_breaker',
@@ -702,7 +702,7 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_demonform',
     name: '恶魔形态',
-    desc: '获得时立即得到装备【恶魔之契】。每隔一回合，休整期的资金由瓦库接管：优先升级调度中心（有钱就升），再购买干员并刷新，直到没钱为止。作战中，装备【恶魔之契】的己方干员每过一秒攻击力 +10%（本场战斗内叠加，无上限）。',
+    desc: '获得时立即得到装备【恶魔之契】（该装备同时具有【变形同构体】效果）。每隔一回合，休整期的资金由瓦库接管：优先升级调度中心（有钱就升），再购买干员并刷新，直到没钱为止。作战中，装备【恶魔之契】的己方干员每过一秒攻击力 +10%（本场战斗内叠加，无上限）。',
     rarity: 'prismatic',
     effect: {
       onPick: { item: { id: 'chess_item_9_91_e_a', count: 1 } },
@@ -786,10 +786,9 @@ export const PLAYER_HEXES = [
   //                                   window is open) and the first refresh of each round is free
   //                                   (`onRoundStart.lastDitchRefresh`).
   //   onBattleStart.parasiteLayers { per }
-  //                                   盟约寄生: at battle start, +per layers to the highest ACTIVE bond for every chess in
-  //                                   the 整备区 (the hand — 备战区 read as the bench, [ASSUMED]). Hook-declared like
-  //                                   层数转移: it patches the battle input's own bonds snapshot, so the ref stays
-  //                                   prep-side.
+  //                                   盟约寄生 (2026-10-21 REWORK: replaced by `onPick.pickTeammate` + `onRoundStart.
+  //                                   parasiteShare`, documented in the fifteenth-batch block below). The old key is
+  //                                   kept in this comment for history only.
   //   onMerge.eliteBondGrant true     三连透支: merging an elite operator grants one ELITE operator carrying the board's
   //                                   most numerous bond, then the card lapses FOR THAT ROUND (the counter is keyed by
   //                                   the round number, like 配给制's sell cap, so it re-arms next round).
@@ -850,11 +849,12 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_bondparasite',
     name: '盟约寄生',
-    desc: '战斗开始时，你的整备区每有一名干员，你层数最高的已激活盟约 +2 层。',
+    desc: '获得时随机选择一名队友；每回合开始时，该队友上一回合获得的总层数平均（向上取整）加到你所有可叠层的已激活盟约上。',
     rarity: 'silver',
-    // The hook-declared shape (like 层数转移's `onBattleStart.layerTransfer`): the mechanic patches the battle input's
-    // OWN bonds snapshot, so the ref never needs to reach the sim and the card is NOT a BATTLE_SPEC_KEYS entry.
-    effect: { onBattleStart: { parasiteLayers: { per: 2 } } },
+    // 业主 2026-10-21 改版：原来是「战斗开始时整备区每名干员给最高层盟约 +2 层」。现在随机选一名队友，按该队友
+    // 上一回合新增总层数平均分配到自己的可叠层已激活盟约。选人/快照在 match 侧（server/match/hextech.js
+    // applyHexExtras `pickTeammate`），分配在准备期 applySpec `parasiteShare`；单人无队友时整张卡不生效。
+    effect: { onPick: { pickTeammate: 'parasite' }, onRoundStart: { parasiteShare: true } },
   },
   {
     id: 'hex_tripleoverdraft',
@@ -952,16 +952,16 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_directive',
     name: '指令之意',
-    desc: '作战开始时随机指定一种职业，该职业的己方干员攻击力 +50%。',
+    desc: '作战开始时，在狙击、近卫、术师三个职业中随机指定一种，该职业的己方干员攻击力 +50%。',
     rarity: 'gold',
     effect: { directiveAtk: { atkPct: 50 } },
   },
   {
     id: 'hex_directive2',
     name: '指令之意·改',
-    desc: '作战开始时随机指定一种伤害类型，己方干员造成该类型伤害时提升至 150%。',
+    desc: '作战开始时，在物理、法术两种伤害类型中随机指定一种，己方干员造成该类型伤害时提升至 200%。',
     rarity: 'prismatic',
-    effect: { directiveType: { mul: 150 } },
+    effect: { directiveType: { mul: 200 } },
   },
   {
     id: 'hex_bigdiscount',
@@ -973,9 +973,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_rabbithead',
     name: '兔头',
-    desc: '作战中，己方攻击力最高的干员攻击力 +50%，攻击力最低的干员攻击力 −30%。',
+    desc: '作战中，己方攻击力最高的干员攻击力 +70%，攻击力最低的干员攻击力 −50%。',
     rarity: 'silver',
-    effect: { rabbitHead: { top: 50, bottom: -30 } },
+    effect: { rabbitHead: { top: 70, bottom: -50 } },
   },
   {
     id: 'hex_profresonance',
@@ -1138,6 +1138,44 @@ export const PLAYER_HEXES = [
     desc: '作战中，己方干员的技力消耗 +20%，伤害提升至 140%。',
     rarity: 'gold',
     effect: { oldpower: { spCostPct: 20, dmgPct: 140 } },
+  },
+  // ---- fifteenth batch (业主 2026-10-21): three new player cards ------------------------------------------------
+  //   onGainTrait { halfActiveBonds }   盟约获得: whenever a 获得时 (SERVER_GAIN) trait fires, the trait's own largest
+  //                                     single-bond layer gain X is measured; every ACTIVE stackable bond then gains
+  //                                     floor(X / 2) layers. The trait itself still runs unchanged.
+  //   onGainTrait { investor }          投资天才: every 获得时 trait trigger adds N 投资人 layers (banked even while the
+  //                                     bond is inactive).
+  //   gainTraitExtra N                  投资天才: 获得时 traits trigger N more times (1 + N when 投资人 is inactive,
+  //                                     the bond's own 2/3 + N when it is).
+  //   bondNeedBonus { bondId, n }       投资天才: that bond needs `n` fewer members to activate (read from the ref by
+  //                                     server/match/hextech.js bondNeedBonusOf → bondsMeta.computeBonds; the member
+  //                                     COUNT itself is untouched).
+  //   heartsteel { every, dmgMaxHpPct, maxHpGain, layerGain }   心之钢: the battle half of its equipment
+  //                                     chess_item_9_96_e_a (hexcards/heartsteel.js).
+  {
+    id: 'hex_bondgain',
+    name: '盟约获得',
+    desc: '「获得时」类特质触发时，该特质每增加 X 层，你的所有已激活盟约额外 +向下取整(X÷2) 层。',
+    rarity: 'gold',
+    effect: { onGainTrait: { halfActiveBonds: true } },
+  },
+  {
+    id: 'hex_investgenius',
+    name: '投资天才',
+    desc: '你的【投资人】盟约所需人数 −1；「获得时」类特质额外触发 1 次；每次「获得时」类特质触发时，【投资人】+1 层。',
+    rarity: 'gold',
+    effect: { onGainTrait: { investor: 1 }, gainTraitExtra: 1, bondNeedBonus: { bondId: 'investShip', n: 1 } },
+  },
+  {
+    id: 'hex_heartsteel',
+    name: '心之钢',
+    desc: '立刻获取一件装备【心之钢】，此后每两回合获得一件【心之钢】装备，共获得三件。',
+    rarity: 'prismatic',
+    effect: {
+      onPick: { item: { id: 'chess_item_9_96_e_a', count: 1, total: 3 } },
+      onRoundStart: { everyRounds: 2, skipFirst: true, item: { id: 'chess_item_9_96_e_a', count: 1, total: 3 } },
+      heartsteel: { every: 3, dmgMaxHpPct: 100, maxHpGain: 150, layerGain: 2 },
+    },
   },
 ];
 
@@ -1396,10 +1434,10 @@ export const ENEMY_HEXES = [
   {
     id: 'ehex_hush',
     name: '静默',
-    desc: '每过 35 秒，我方随机 1 名干员受到 1000 点凋亡损伤。',
+    desc: '每过 25 秒，我方随机 1 名干员受到 1000 点凋亡损伤。',
     rarity: 'prismatic',
     verb: 'silence',
-    params: {"period":35,"damage":1000},
+    params: {"period":25,"damage":1000},
   },
   {
     id: 'ehex_gravewound',
@@ -1443,19 +1481,19 @@ export const ENEMY_HEXES = [
   {
     id: 'ehex_restless',
     name: '无头苍蝇',
-    desc: '敌人移动速度增加 50%，但是每过 10 秒受到一次 2 秒恐惧（boss 和隐匿敌人除外）。',
+    desc: '敌人移动速度增加 50%，但是每过 10 秒受到一次 1 秒恐惧（boss 和隐匿敌人除外）。',
     rarity: 'silver',
     verb: 'restless',
-    params: {"period":10,"seconds":2},
+    params: {"period":10,"seconds":1},
     mods: {"speedMul":1.5},
   },
   {
     id: 'ehex_drowse',
     name: 'zzz',
-    desc: '每过 20 秒，我方随机 1 名干员陷入沉睡 2 秒。',
+    desc: '每过 10 秒，我方随机 1 名干员陷入沉睡 2 秒。',
     rarity: 'gold',
     verb: 'drowse',
-    params: {"period":20,"seconds":2},
+    params: {"period":10,"seconds":2},
   },
   {
     id: 'ehex_originium',

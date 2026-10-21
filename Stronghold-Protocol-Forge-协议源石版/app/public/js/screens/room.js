@@ -657,7 +657,7 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
 
   return html`<div class="room-mods brackets">
     <${MicroLabel} tone="mint">ROOM MODS<//>
-    ${mods ? html`<span class="room-mods__title">${t('本房间使用模组（{n} 个）', { n: mods.packs.length })}</span>
+    ${mods ? html`<span class="room-mods__title" title=${mods.packs.map((p) => p.id).join(', ')}>${t('本房间使用模组（{n} 个）', { n: mods.packs.length })}</span>
       <span class="room-mods__digest num" title=${mods.digest}>${shortDigest(mods.digest)}…</span>` : null}
     ${ready ? html`<span class="room-mods__state t-mint">${t('本机已就绪')}</span>` : null}
     ${mods ? html`<ul class="room-mods__list">
@@ -707,6 +707,11 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
   </div>`;
 }
 
+/** Phone-landscape room (≤520px tall): chat folds into a drawer so the seats keep their height. */
+const isShortRoomViewport = () => {
+  try { return !!globalThis.matchMedia?.('(max-height: 520px)')?.matches; } catch { return false; }
+};
+
 /** Room screen component. */
 export function RoomScreen() {
   const room = useStore((s) => s.room);
@@ -716,6 +721,21 @@ export function RoomScreen() {
   const [busy, setBusy] = useState(null);
   const [picker, setPicker] = useState(false);
   const [opts, setOpts] = useState(false);
+  // 手机上（短横屏）房间里的聊天默认收起：它和模组栏占满竖向空间时，席位卡会被挤到只剩一条缝
+  // （业主 2026-10-21 的截图：一屏 270 CSS px，聊天 + 模组把「人」压没了）。桌面/平板仍然常驻。
+  const [chatOpen, setChatOpen] = useState(() => !isShortRoomViewport());
+  const [chatUnread, setChatUnread] = useState(false);
+  const chatOpenRef = useRef(chatOpen);
+  chatOpenRef.current = chatOpen;
+  useEffect(() => {
+    let mq = null;
+    try { mq = globalThis.matchMedia?.('(max-height: 520px)') || null; } catch { mq = null; }
+    if (!mq || typeof mq.addEventListener !== 'function') return undefined;
+    // 旋屏 / 改窗口高度：进入短屏自动收起，回到高屏恢复常驻（用户手动开关仍可在短屏上操作）。
+    const onChange = (event) => { setChatOpen(!event.matches); setChatUnread(false); };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   // 协议等级滑块（owner 2026-10-18：从「选择模拟协议」面板挪到底栏）。拖动时先改 draft，停手 280ms 才发 room.setLevel，
   // 否则每拖一格都是一条消息、还会把其它人反复取消准备。
   const [levelDraft, setLevelDraft] = useState(room?.level || 0);
@@ -966,6 +986,13 @@ export function RoomScreen() {
           <b>${modeName}<span class="rs-clock__sep"></span>${t('同盟已等待')} <span class="num">${clock((Date.now() - since) / 1000)}</span></b>
           <span>${t('当前延迟')}<b class=${`num rs-ping rs-ping--${!online || !Number.isFinite(conn.ping) ? 'off' : conn.ping < 60 ? 'low' : conn.ping < 200 ? 'mid' : 'high'}`}>${online && Number.isFinite(conn.ping) ? Math.round(conn.ping) : '--'}</b>ms</span>
         </div>
+        ${/* 短横屏才有：聊天默认收起成抽屉，点这里展开/收起（桌面端聊天常驻，不显示这颗按钮）。 */ ''}
+        <button type="button" class=${`rs-chat-toggle${chatOpen ? ' is-on' : ''}${chatUnread && !chatOpen ? ' has-unread' : ''}`}
+          aria-expanded=${chatOpen ? 'true' : 'false'} aria-label=${t('房内聊天')} title=${t('房内聊天')}
+          onClick=${() => { setChatOpen((v) => !v); setChatUnread(false); }}>
+          <span class="rs-chat-toggle__glyph" aria-hidden="true">💬</span>
+          ${chatUnread && !chatOpen ? html`<i class="rs-chat-toggle__dot" aria-hidden="true" />` : null}
+        </button>
         <div class="rs-tools">
           <${Button} variant="secondary" size="sm" square=${true} icon="chart" class="stats-entry" onClick=${openStats} title=${t('统计数据')} aria-label=${t('统计数据')} />
           ${coop && !openFriends.unavailable ? html`<${Button} variant="secondary" size="sm" square=${true} icon="users" class="rs-friends" onClick=${() => openFriends()} title=${t('好友 · 邀请好友加入')} aria-label=${t('好友')} />` : null}
@@ -1010,7 +1037,9 @@ export function RoomScreen() {
     */ null}
     <div class="mod-host" data-mod-slot="screen.room.aside"></div>
     <${RoomModsPanel} room=${room} myId=${me.playerId} onAlignment=${setAlign} />
-    <${ChatPanel} />
+    <div class="rs-chat" hidden=${!chatOpen}>
+      <${ChatPanel} onMessage=${() => { if (!chatOpenRef.current) setChatUnread(true); }} />
+    </div>
     <${SpectatorBar} facts=${facts} myId=${me.playerId} busy=${busy} onRemove=${removeSpectator} onSit=${sit} />
 
     <footer class="rs-foot">

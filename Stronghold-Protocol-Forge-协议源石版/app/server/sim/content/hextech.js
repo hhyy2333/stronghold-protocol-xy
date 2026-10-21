@@ -69,6 +69,8 @@ import { installNeurotoxin } from './hexcards/neurotoxin.js';
 import { installRicochet } from './hexcards/ricochet.js';
 import { installLogos } from './hexcards/logos.js';
 import { installOneBody } from './hexcards/onebody.js';
+// fifteenth batch (业主 2026-10-21): 心之钢's equipment script.
+import { installHeartsteel } from './hexcards/heartsteel.js';
 // tenth batch (the owner's list of 2026-10-15): the seven battle scripts of hexcards/batch10.js.
 import {
   installBlockwall, installSharePain, installTerraMourn, installDirectiveAtk,
@@ -229,6 +231,9 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // key MUST be declared here or addHexRef marks the ref prep-only and the battle never sees the card.
   'untouchable', 'pearlglove', 'physarts', 'quantum', 'tapdance',
   'ultrefresh', 'omenpact', 'proteinshake', 'frostghost', 'heavyhitter',
+  // fifteenth batch (业主 2026-10-21): 心之钢's equipment script (hexcards/heartsteel.js). Ownership-only, so it MUST be
+  // declared here or addHexRef marks the ref prep-only and the battle never sees the card.
+  'heartsteel',
 ]);
 
 /**
@@ -244,8 +249,13 @@ export function hasBattlePart(params) {
   if (!params || typeof params !== 'object') return false;
   if (params.battle && typeof params.battle === 'object') return true;
   if (BATTLE_SPEC_KEYS.some((k) => params[k] !== undefined && params[k] !== null && params[k] !== false)) return true;
-  const sold = params.onSold;
-  return !!sold && typeof sold === 'object' && sold.bondAtkPct !== undefined && sold.bondAtkPct !== null;
+  // 传承 (2026-10-21: moved from onSold to onGain): the ref accumulates `params.battle.bondAtk` on every gain, which
+  // `install` reads at the next battle start — the ref therefore has to be battle-visible BEFORE the first gain.
+  for (const hook of ['onGain', 'onSold']) {
+    const spec = params[hook];
+    if (spec && typeof spec === 'object' && spec.bondAtkPct !== undefined && spec.bondAtkPct !== null) return true;
+  }
+  return false;
 }
 
 /**
@@ -273,24 +283,40 @@ function applySpec(ctx, spec, hex = null, hook = '') {
     //     branches on `Number.isInteger(tier)` and ignores `maxTier` when it is one, so a `'level'` token here would
     //     silently roll tier 1 (tools/build-hextech.mjs rejects it; use `pool` for the level-scaled roll).
     const shopLevel = typeof ctx.shopLevel === 'function' ? ctx.shopLevel() : 6;
+    // A FIFTH field (业主 2026-10-21, 心之钢): `total` caps how many items this CARD grants across all its runs
+    // (pick + the scheduled round starts), counted on the hex's own `itemGranted` counter. A failed grant (no stock)
+    // does not count, so a later round start retries it.
+    const total = Number.isInteger(spec.item.total) && spec.item.total > 0 ? spec.item.total : 0;
+    const countKey = `${HEX_KEY}${id}:itemGranted`;
+    let granted = total ? Math.max(0, Math.trunc(Number(ctx.counter(countKey)) || 0)) : 0;
+    const started = granted;
+    const grant = (gid) => {
+      if (!gid || (total > 0 && granted >= total)) return false;
+      const got = ctx.grantItem(gid, { source: 'hex' });
+      if (got === null || got === false) return false;
+      granted += 1;
+      if (total > 0) ctx.setCounter(countKey, granted);
+      return true;
+    };
     // A FOURTH shape (the owner's list of 2026-10-15, 武器大师): `ids: ['a', 'b']` grants ONE of EACH named record,
     // in order. The single-`id` form cannot express a card that hands out two DIFFERENT pieces of equipment, and the
     // pool/tier forms roll — neither is what 「给一个天马之盔和一个天马之枪」 means.
     if (Array.isArray(spec.item.ids) && spec.item.ids.length) {
       for (const want of spec.item.ids) {
-        if (typeof want === 'string' && want) ctx.grantItem(want, { source: 'hex' });
+        if (typeof want === 'string' && want) grant(want);
       }
-      did = true;
+      did = did || granted > started;
     } else {
       for (let i = 0; i < countOf(spec.item.count); i++) {
+        if (total > 0 && granted >= total) break;
         const gid = typeof spec.item.id === 'string' && spec.item.id
           ? spec.item.id
           : typeof spec.item.pool === 'string' && spec.item.pool
             ? (typeof ctx.rollPool === 'function' ? (ctx.rollPool(spec.item.pool) || {}).id ?? null : null)
             : ctx.rollItem({ tier: Number.isInteger(spec.item.tier) ? spec.item.tier : 1, maxTier: Math.max(Number.isInteger(spec.item.tier) ? spec.item.tier : 1, shopLevel) });
-        if (gid) ctx.grantItem(gid, { source: 'hex' });
+        if (gid) grant(gid);
       }
-      did = true;
+      did = did || granted > started;
     }
   }
   // 后勤整备 (2026-10-12 rebalance): a GOLDEN (进阶) equipment grant whose TIER is on a ladder —
@@ -367,8 +393,9 @@ function applySpec(ctx, spec, hex = null, hook = '') {
       if (pick && ctx.setShopSlot(spec.shopSlot.index, { kind: 'chess', id: pick.id })) did = true;
     }
   }
-  // 传承: every sale adds +N % ATK, permanently, for the operators sharing one of the sold bonds. The per-bond pot
-  // lives on the hex's own EffectRef (params.battle.bondAtk), which the battle side reads at battle start.
+  // 传承 (业主 2026-10-21: trigger moved from a SALE to a GAIN and the step 2% → 1%): every gained operator adds
+  // +N % ATK, permanently, for the operators sharing one of that operator's bonds. The per-bond pot lives on the hex's
+  // own EffectRef (params.battle.bondAtk), which the battle side reads at battle start.
   if (spec.bondAtkPct && isPos(spec.bondAtkPct)) {
     const piece = ctx.event()?.piece;
     const rec = piece && piece.kind === 'chess' && typeof piece.id === 'string' ? ctx.gd.chess(piece.id) : null;
@@ -398,6 +425,13 @@ function applySpec(ctx, spec, hex = null, hook = '') {
       ctx.addPendingFunds(Math.min(cap, Math.trunc(charged) * spec.perLpLoss));
       did = true;
     }
+  }
+  // 战损回收 (业主 2026-10-21): 「加一个漏怪就给2块（限一次）」 — ONE extra payout per battle, on the first counted
+  // leak, on top of the per-LP half above. onBattleResult runs once per battle, so no round counter is needed.
+  if (isPos(spec.firstLeak)) {
+    const ev = ctx.event() || {};
+    const leaked = (ev.result?.leaked || []).filter((l) => l && l.counted !== false).length;
+    if (leaked > 0) { ctx.addPendingFunds(spec.firstLeak); did = true; }
   }
   // 战损回收's old shape (`perLeak` / `perLeakAfterLoss`): kept readable so an already-installed pack that
   // declares it still pays, but the bundled card no longer uses it (see the comment above).
@@ -713,20 +747,56 @@ function applySpec(ctx, spec, hex = null, hook = '') {
     if (inRef && inRef !== ref) inRef.params = { ...stamped };
     did = true;
   }
-  // 盟约寄生: at battle start, every chess in the 整备区 (hand) gives the highest ACTIVE bond `per` layers. They are real,
-  // persistent layers AND are patched into this battle's own input snapshot (built before this dispatch), so the fight
-  // that is starting sees them — the 层数转移 / 群蛇形态 convention.
-  if (spec.parasiteLayers && isPos(spec.parasiteLayers.per)) {
-    const per = countOf(spec.parasiteLayers.per, 2);
-    const bench = (typeof ctx.hand === 'function' ? ctx.hand() || [] : []).filter((p) => p && p.kind === 'chess').length;
-    const top = typeof ctx.topLayerBond === 'function' ? ctx.topLayerBond() : null;
-    if (bench > 0 && top) {
-      const add = ctx.addLayers(top, bench * per, { reason: 'hex' });
-      const input = ctx.event() && ctx.event().input;
-      const snap = input && input.bonds && input.bonds[top];
-      if (snap && Number.isFinite(add) && add > 0) snap.layers = (Number(snap.layers) || 0) + add;
+  // 盟约寄生 (业主 2026-10-21 rework): the old `parasiteLayers` battle-start shape is gone. The pick chose a random
+  // teammate (match side, server/match/hextech.js applyHexExtras `pickTeammate`) and wrote
+  // `ref.params.parasite = { partnerId, baseline }`; here, at each round start, the teammate's stackable-layer total is
+  // compared with the stored baseline and the DELTA is split evenly (向上取整) over the owner's ACTIVE stackable bonds.
+  // The new total becomes the next baseline. No teammate / an eliminated teammate ⇒ the delta is 0.
+  if (spec.parasiteShare) {
+    const ref = typeof ctx.effect === 'function' ? ctx.effect(`hex:${id}`) : null;
+    const p = ref && ref.params && ref.params.parasite ? ref.params.parasite : null;
+    const partner = p && p.partnerId && typeof ctx.player === 'function' ? ctx.player(p.partnerId) : null;
+    if (partner && typeof partner.rawLayers === 'function') {
+      const raw = partner.rawLayers() || {};
+      const stackable = (bondId) => {
+        const b = ctx.gd.bond(bondId);
+        return !!b && !b.noStack;
+      };
+      let total = 0;
+      for (const bondId of (Array.isArray(ctx.gd.bondIds) ? ctx.gd.bondIds : [])) if (stackable(bondId)) total += Number(raw[bondId]) || 0;
+      const prev = Number(p.baseline) || 0;
+      const delta = total - prev;
+      const mine = Object.entries(ctx.bonds() || {}).filter(([bondId, b]) => b && b.active && stackable(bondId));
+      if (delta > 0 && mine.length) {
+        const each = Math.ceil(delta / mine.length);
+        for (const [bondId] of mine) ctx.addLayers(bondId, each, { requireActive: true, reason: 'hex' });
+        did = true;
+      }
+      if (total !== prev) {
+        const next = { ...(ref.params || {}), parasite: { ...p, baseline: total } };
+        ctx.addEffect({ id: `hex:${id}`, params: next });
+      }
+    }
+  }
+  // ---- fifteenth batch (业主 2026-10-21) -------------------------------------------------------------------
+  // 盟约获得: after a 获得时 trait fires, the dispatcher passes the trait's own largest single-bond layer gain as
+  // `gainTraitAmount`; HALF of it (floor) is added to every ACTIVE stackable bond. The trait itself runs unchanged.
+  if (spec.halfActiveBonds) {
+    const amount = Math.floor((Number(ctx.event() && ctx.event().gainTraitAmount) || 0) / 2);
+    if (amount > 0) {
+      for (const [bondId, b] of Object.entries(ctx.bonds() || {})) {
+        if (!b || !b.active) continue;
+        const rec = ctx.gd.bond(bondId);
+        if (!rec || rec.noStack) continue;
+        ctx.addLayers(bondId, amount, { requireActive: true, reason: 'hex' });
+      }
       did = true;
     }
+  }
+  // 投资天才: every 获得时 trait trigger banks `investor` layers, active or not.
+  if (isPos(spec.investor)) {
+    ctx.addLayers('investShip', spec.investor, { reason: 'hex' });
+    did = true;
   }
   // 三连透支: merging an elite operator grants one ELITE operator of the board's most-numerous bond, and the card then
   // lapses FOR THAT ROUND (业主 2026-10-14: 「…然后本回合失效」; it used to lapse for the whole match). The merge event
@@ -825,6 +895,10 @@ function bondBuff(ctx, bondId, key) {
 export const HEX_HOOKS = Object.freeze([
   'onIncome', 'onPrepStart', 'onPrepEnd', 'onGain', 'onSold', 'onRefresh', 'onBuy', 'onSpend', 'onMerge', 'onLevelUp',
   'onBattleStart', 'onBattleResult', 'onChoicePick', 'onEquip', 'onArt', 'onDestroy', 'onLayers', 'onPrice',
+  // fifteenth batch (业主 2026-10-21): a hook the DISPATCHER fires after every 获得时 (SERVER_GAIN) trait trigger —
+  // 盟约获得 / 投资天才 read it. Not an event of its own: server/match/effectsMeta.js `_afterGainTrait` calls it with
+  // `ev.gainTraitAmount` = the trait's own largest single-bond layer gain (0 for a trait that grants no layers).
+  'onGainTrait',
 ]);
 
 /** The `hex:<id>` handler of one player hex. */
@@ -850,6 +924,9 @@ function handlerOf(hex) {
       const every = Number.isInteger(spec.everyRounds) && spec.everyRounds > 1 ? spec.everyRounds : 1;
       if (every > 1) {
         const n = ctx.incCounter(`${HEX_KEY}${hex.id}:rounds`, 1);
+        // 心之钢 (业主 2026-10-21): 「此后每两回合获得一件」 counts from the PICK round, so the round start right after
+        // the pick is skipped and the first scheduled grant is two rounds later (n = 3 with everyRounds = 2).
+        if (spec.skipFirst === true && n === 1) return false;
         if ((n - 1) % every !== 0) return false;
       }
       return applySpec(ctx, spec, hex, 'onRoundStart');
@@ -1268,11 +1345,21 @@ export function install(battle) {
   // ---- fourth batch (owner's review of 2026-10-09) ---------------------------------------------------
   // 浴血: every `stepPct`% of max HP lost adds `def` DEF (a stacking buff, at most `max` stacks). The step is derived
   // from the unit's CURRENT missing-HP ratio on every hit, so it also fires on a big single hit and never overshoots.
+  // 业主 2026-10-21: 「增加每次攻击恢复30血」 — every normal attack of an own operator heals it `attackHeal` HP.
   for (const pid of ownersOf('hex_holdline')) {
     const s = specOf(pid, 'hex_holdline', 'holdLine');
     const stepPct = Number(s.stepPct) > 0 ? Number(s.stepPct) : 25;
     const def = Number(s.def) || 0;
     const max = Number.isInteger(s.max) && s.max > 0 ? s.max : 4;
+    const attackHeal = Number(s.attackHeal) > 0 ? Number(s.attackHeal) : 0;
+    if (attackHeal > 0) {
+      battle.on('attack', ({ attacker, isSkill }) => {
+        if (isSkill) return; // 「攻击」 = the normal attack, as every other card's attack hook reads it
+        if (!attacker || attacker.kind !== 'op' || attacker.side !== 'ally' || attacker.ownerId !== pid) return;
+        if (!attacker.alive) return;
+        battle.heal(attacker, attacker, attackHeal, { self: true });
+      });
+    }
     if (!(def > 0)) continue;
     battle.on('damaged', ({ target }) => {
       if (!target || target.kind !== 'op' || target.side !== 'ally' || target.ownerId !== pid) return;
@@ -1290,14 +1377,15 @@ export function install(battle) {
     });
   }
 
-  // 火力延伸: the named profession's operators get +`extend` attack range (a persistent passive). rangeExtend is a
-  // permanent part of the unit's range (buffs.js permRangeExtend), so `Battle._refreshRange` picks it up at deploy.
+  // 火力延伸: every own RANGED operator gets +`extend` attack range (a persistent passive). rangeExtend is a permanent
+  // part of the unit's range (buffs.js permRangeExtend), so `Battle._refreshRange` picks it up at deploy.
+  // 业主 2026-10-21: 「希望能改成远程干员生效」 — the target axis is the operator's position (`RANGED`), not a profession.
   for (const pid of ownersOf('hex_firingline')) {
     const s = specOf(pid, 'hex_firingline', 'rangedExtend');
-    const profession = typeof s.profession === 'string' ? s.profession : 'SNIPER';
+    const position = typeof s.position === 'string' ? s.position : 'RANGED';
     const extend = Number(s.extend) > 0 ? Math.trunc(Number(s.extend)) : 1;
     battle.on('battleStart', () => {
-      for (const u of opsOf(pid)) if (u.def && u.def.profession === profession) passiveBuff(battle, u, 'hex:firingline', { rangeExtend: extend });
+      for (const u of opsOf(pid)) if (u.def && u.def.position === position) passiveBuff(battle, u, 'hex:firingline', { rangeExtend: extend });
     }, { priority: -10 });
   }
 
@@ -1434,6 +1522,8 @@ export const HEX_SCRIPT_KEYS = Object.freeze({
     hex_canlight: 'canlight', hex_glasscannon: 'glasscannon', hex_heavyload: 'heavyload',
     hex_umbrellabreak: 'umbrellabreak', hex_warding: 'warding', hex_voidreturn: 'voidreturn',
     hex_corpsehill: 'corpsehill', hex_oldpower: 'oldpower',
+    // fifteenth batch (业主 2026-10-21)
+    hex_heartsteel: 'heartsteel',
 });
 
 function installHexCards(battle) {
@@ -1501,6 +1591,8 @@ function installHexCards(battle) {
   installVoidReturn(gated);
   installCorpseHill(gated);
   installOldPower(gated);
+  // fifteenth batch (业主 2026-10-21)
+  installHeartsteel(gated);
 }
 
 /**

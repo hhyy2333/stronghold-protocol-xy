@@ -403,6 +403,37 @@ const isDiyPickWire = (p) => p === null || (isPlain(p) && isId(p.charId)
 /** Structural check of `room.diy.picks`: a map of ≤ 8 slot ids → a pick `{ charId, skillIndex?, uniEquipId? }` or null. */
 export const isDiyPicks = (v) => isMap(v, DIY_LIMITS.slots, isId, isDiyPickWire);
 
+// ---- 协议源石禁用 (业主 2026-10-21): room.hexBans { ids } ----------------------------------------------------------
+//
+// An out-of-match setting like 干员持有 / 自选编队: each player may ban up to 3 protocol-originium cards, and ONLY their
+// own draft offers / rerolls / random extra gains skip them. Stored per session / seat; a match takes the list its seat
+// had at its start, and during a match the setting is stored for the NEXT one (ROOM_STARTED). The wire check is
+// structural only (≤ 3 id strings, no duplicates); which of them are real cards of this room's data is the semantic
+// check's job (server/lobby.js, LENIENT like checkNotOwned: an id it does not know is dropped, never the whole setting).
+export const HEX_BANS_LIMIT = 3;
+/** Structural check of `room.hexBans.ids`: an array of ≤ 3 distinct ids. */
+export const isHexBanList = (v) => isList(v, HEX_BANS_LIMIT, isId) && new Set(v).size === v.length;
+
+/**
+ * Semantic check + normalisation of a hex-ban list: keeps the ids of cards this data set actually has, drops the rest;
+ * dedupes and caps at `HEX_BANS_LIMIT`. Used by the server (lobby / match) and by the client before it sends an edit.
+ * @param {any} ids `room.hexBans.ids`
+ * @param {(id: string) => any} getHex hex record lookup (data/hextech.json playerHexes)
+ * @returns {{ ok: true, ids: string[], dropped: number } | { error: 'BAD_MSG', detail: string }}
+ */
+export function checkHexBans(ids, getHex) {
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string' && id)) {
+    return { error: 'BAD_MSG', detail: 'bad hex ban list' };
+  }
+  const keep = new Set();
+  for (const id of ids) {
+    const rec = typeof getHex === 'function' ? getHex(id) : null;
+    if (rec) keep.add(id);
+  }
+  const list = [...keep].slice(0, HEX_BANS_LIMIT);
+  return { ok: true, ids: list, dropped: ids.length - list.length };
+}
+
 // ---- 外观选择 (皮肤层): room.appearance { picks?, avatar? } ---------------------------------------------------------
 
 /**
@@ -684,6 +715,11 @@ export const C2S = {
   // 自选编队 (0.2.0 DIY): the player's DIY slot picks; stored per session / seat like room.ownership (a match takes the
   // picks its seat had when it started; during a match they are stored for the next one: ROOM_STARTED)
   'room.diy': { picks: isDiyPicks },
+  // 协议源石禁用 (业主 2026-10-21): ≤ 3 card ids this player does not want offered in their own 协议源石 draws. Stored
+  // per session / seat like room.ownership / room.diy (a match takes the list its seat had at its start; during a match
+  // it is stored for the next one: ROOM_STARTED). Only this player's draws are filtered — never a teammate's, never the
+  // enemy pool, and never a card copied/granted by another effect.
+  'room.hexBans': { ids: isHexBanList },
   // 房间内的**外观选择**（皮肤层，业主裁决：让「换装 / 头像」对同房的人可见）。
   //
   // 这是一条**展示**消息，不是玩法消息：它改的是别人看到的你长什么样，**永远不碰战果**，因此

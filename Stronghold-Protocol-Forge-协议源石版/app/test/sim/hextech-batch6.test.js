@@ -166,6 +166,18 @@ test('雷区: the card’s 1000 ATK × S2’s 2.6 = 2600, and a single victim is
   h.invariants();
 });
 
+test('雷区: after the opening volley, one more mine every 5 s (业主 2026-10-21)', () => {
+  const h = soloBattle({ hexes: ['hex_minefield'], enemies: [] });
+  h.run(1);
+  const count = () => h.battle.allyUnits.filter((u) => u && u.defId === 'token_10025_doroth_recttp' && u.alive).length;
+  assert.equal(count(), 6, 'the opening six');
+  h.run(5);            // t ≈ 6: the t = 5 period is due
+  assert.equal(count(), 7, 'one more at 5 s');
+  h.run(5);            // t ≈ 11: the t = 10 period is due
+  assert.equal(count(), 8, 'and another at 10 s');
+  h.invariants();
+});
+
 test('雷区: two victims are 束缚 5 s each (bindSingle is only for exactly one)', () => {
   const h = soloBattle({ hexes: ['hex_minefield'], enemies: [], hooks: ['statusApplied'], captureNoisy: true });
   h.run(0.2);

@@ -22,6 +22,8 @@ import { SkinSection } from '../ui/skinPicker.js';
 // deployed as its official stand-in (room.ownership; ui/ownershipModel.js) — with its own 导出 / 导入 / 全部持有.
 // The third tab, 自选编队 (0.2.0 DIY, screens/diy.js): the operators of the four DIY slots (room.diy; ui/diyModel.js) —
 // with its own 导出 / 导入 / 全部清空.
+// The fourth tab, 协议源石 (业主 2026-10-21, screens/hexBans.js): up to 3 protocol-originium cards this player's own
+// draws skip (room.hexBans; ui/hexBanModel.js) — out of match like the two tabs above, applied by the next match.
 // Keyboard: Esc closes, ←/→ move through the (filtered) roster when focus is not in the search field (干员调配 tab).
 // Motion (2026-10-13, the owner's request, as the hub's screens): the overlay darkens what is below, then comes up from
 // black — the top bar, the tier groups one by one, the bottom bar; a tab's content comes up when opened; closing fades
@@ -42,14 +44,16 @@ import {
   changedCount, skillLabel, moduleBadge, attrRows, skillTags, quickSkillTags, traitLines, serializeExport, parseImport, LOADOUT_IMPORT_MAX_BYTES, mergeSkins,
   opsOf, setOps, resetOps, moduleRecord,
 } from '../ui/loadoutModel.js';
-import { loadoutStore, openLoadout, closeLoadout, setEntries, setOpsMap, applyLoadoutEntries, setNotOwned, applyOwnershipImport, setDiyPicks, applyDiyImport, currentLoadoutLockPhases } from '../ui/loadoutSync.js';
+import { loadoutStore, openLoadout, closeLoadout, setEntries, setOpsMap, applyLoadoutEntries, setNotOwned, applyOwnershipImport, setDiyPicks, applyDiyImport, setHexBans, currentLoadoutLockPhases } from '../ui/loadoutSync.js';
 import { OperatorVoice } from '../ui/operatorVoice.js';
 import { CultivationSelects, CultivationSection, cultivationView, potentialEditable } from './cultivation.js';
-import { cultivationCharIds } from '../../../shared/protocol.js';
+import { cultivationCharIds, HEX_BANS_LIMIT } from '../../../shared/protocol.js';
 import { atPotential } from '../../../shared/potential.js';
 import { setOwned, notOwnedCount, serializeOwnership, parseOwnershipImport, OWNERSHIP_IMPORT_MAX_BYTES } from '../ui/ownershipModel.js';
 import { OwnershipPanel, useOwnershipRoster } from './ownership.js';
 import { DiyPanel, diyData } from './diy.js';
+import { HexBanPanel } from './hexBans.js';
+import { toggleHexBan } from '../ui/hexBanModel.js';
 import { LoadoutStats } from '../ui/loadoutStats.js';
 export { LoadoutStats, statsPreview } from '../ui/loadoutStats.js';
 import { diyCount, sanitizeDiyPicks, setPick, serializeDiy, parseDiyImport, DIY_IMPORT_MAX_BYTES, diySlotList, slotRecord } from '../ui/diyModel.js';
@@ -714,6 +718,8 @@ const SYNC_TEXT = {
 const OWN_SYNC_TEXT = { ...SYNC_TEXT, locked: [N_('下一局生效'), 'is-warn'] };
 /** The 自选编队 tab's status line (msgids, translated where shown): out of match, like 干员持有. */
 const DIY_SYNC_TEXT = { ...OWN_SYNC_TEXT };
+/** The 协议源石禁用 tab's status line (业主 2026-10-21): out of match too. */
+const HEX_BANS_SYNC_TEXT = { ...OWN_SYNC_TEXT };
 
 /**
  * The game-data files a tab cannot work without — its roster and its import's sanitiser: chess.json, plus backups.json
@@ -725,7 +731,8 @@ const DIY_SYNC_TEXT = { ...OWN_SYNC_TEXT };
  * @returns {string[]} data file names
  */
 export function missingGameData(tab, status = data.status) {
-  return (tab === 'diy' ? ['chess', 'backups'] : ['chess']).filter((name) => status(name) === 'missing');
+  const need = tab === 'hexBans' ? ['hextech'] : tab === 'diy' ? ['chess', 'backups'] : ['chess'];
+  return need.filter((name) => status(name) === 'missing');
 }
 
 /**
@@ -821,7 +828,7 @@ function LoadoutScreen({ st, leaving = false }) {
   const codex = useMemo(() => codexItems(data.get('items')), [itemsReady, data.locale()]);
   const diySlots = ready ? diySlotList(diyData()) : [];
 
-  const tab = st.tab === 'ownership' || st.tab === 'diy' ? st.tab : 'loadout';
+  const tab = st.tab === 'ownership' || st.tab === 'diy' || st.tab === 'hexBans' ? st.tab : 'loadout';
   const lost = ready ? missingGameData(tab) : [];
   const ownRoster = useOwnershipRoster(ready);
   const nNotOwned = notOwnedCount(st.notOwned, ownRoster);
@@ -834,6 +841,14 @@ function LoadoutScreen({ st, leaving = false }) {
     const ok = await confirmDialog({ title: t('全部清空'), text: t('清空全部 {n} 个自选名额？', { n: nDiy }), okText: t('全部清空') });
     if (ok) setDiyPicks({});
   };
+  // 协议源石禁用 (业主 2026-10-21): at most HEX_BANS_LIMIT cards, out of match like the two tabs above.
+  const nHexBans = (st.hexBans || []).length;
+  const toggleHexBanOf = (id) => {
+    const res = toggleHexBan(loadoutStore.get().hexBans, id);
+    if (!res.ok) { toast(t('最多只能禁用 {n} 张协议源石', { n: HEX_BANS_LIMIT }), 'warn'); return; }
+    setHexBans(res.ids);
+  };
+  const clearHexBans = () => setHexBans([]);
   const setTab = (t) => loadoutStore.set({ tab: t });
   const toggleOwned = (id, owned) => setNotOwned(setOwned(loadoutStore.get().notOwned, id, owned));
   const ownAll = async () => {
@@ -1037,7 +1052,9 @@ function LoadoutScreen({ st, leaving = false }) {
   const diyOpen = Object.fromEntries(TIERS.map((tier) => [tier, diySlots.filter((s) => s.tier === tier && !diyLegal[s.slotId]).length]));
 
   const [syncText, syncCls] = tab === 'ownership' ? OWN_SYNC_TEXT[st.ownSync] || OWN_SYNC_TEXT.idle
-    : tab === 'diy' ? DIY_SYNC_TEXT[st.diySync] || DIY_SYNC_TEXT.idle : SYNC_TEXT[st.sync] || SYNC_TEXT.idle;
+    : tab === 'diy' ? DIY_SYNC_TEXT[st.diySync] || DIY_SYNC_TEXT.idle
+      : tab === 'hexBans' ? HEX_BANS_SYNC_TEXT[st.hexBansSync] || HEX_BANS_SYNC_TEXT.idle
+        : SYNC_TEXT[st.sync] || SYNC_TEXT.idle;
   const fromText = st.from === 'briefing' ? t('确认本局信息阶段结束前可调整本局配置') : t('开始模拟前可调整干员携带的技能与模组，以及潜能与练度；干员的局内等级不可调整');
   // 干员持有 is out of match: a running match keeps the list its seat had at its start
   const ownLocked = inMatch && !!phase && phase !== PHASE.LOBBY;
@@ -1045,6 +1062,8 @@ function LoadoutScreen({ st, leaving = false }) {
     : t('局外设置，下一局生效 · 联机时只影响你自己的棋子 · 默认全部持有');
   const diyText = ownLocked ? t('自选编队是局外设置：本局按开局时的设置进行，修改将在下一局生效')
     : t('局外设置，下一局生效 · 联机时只进入你自己的商店');
+  const hexBanText = ownLocked ? t('协议源石禁用是局外设置：本局按开局时的设置进行，修改将在下一局生效')
+    : t('局外设置，下一局生效 · 只影响你自己的协议源石抽取');
 
   const deck = view === 'deck';
   const deckLoadout = deck && tab === 'loadout';
@@ -1070,17 +1089,23 @@ function LoadoutScreen({ st, leaving = false }) {
             : quick ? t('快速编辑：展示干员精锐形态的技能与模组，改动即时保存') : locked ? lockedText : fromText}</p>`
         : deck ? html`<${MicroLabel} tone="mint">${tab === 'ownership' ? 'OPERATOR ROSTER' : 'SELF-SELECT SQUAD'}<//>
           <h2 class="lo-top__title">${tab === 'ownership' ? t('干员持有') : t('自选编队')}</h2>`
-        : html`<${MicroLabel} tone="mint">${tab === 'ownership' ? 'OPERATOR ROSTER' : tab === 'diy' ? 'SELF-SELECT SQUAD' : 'OPERATOR LOADOUT'}<//>
-        <div class="lo-tabs" role="tablist" aria-label=${t('干员调配 / 干员持有 / 自选编队')}>
+        : html`<${MicroLabel} tone="mint">${tab === 'ownership' ? 'OPERATOR ROSTER' : tab === 'diy' ? 'SELF-SELECT SQUAD' : tab === 'hexBans' ? 'PROTOCOL ORIGINIUM' : 'OPERATOR LOADOUT'}<//>
+        <div class="lo-tabs" role="tablist" aria-label=${t('干员调配 / 干员持有 / 自选编队 / 协议源石')}>
           <button type="button" role="tab" aria-selected=${tab === 'loadout' ? 'true' : 'false'} data-tab="loadout" class=${cx('lo-tab', tab === 'loadout' && 'is-on')} onClick=${() => setTab('loadout')}>
             <${Img} src=${localAsset('ui/outer', 'operator_preset')} class="lo-top__icon" fallback=${html`<${Icon} name="edit" class="lo-top__icon" />`} />${t('干员调配')}</button>
           <button type="button" role="tab" aria-selected=${tab === 'ownership' ? 'true' : 'false'} data-tab="ownership" class=${cx('lo-tab', tab === 'ownership' && 'is-on')} onClick=${() => setTab('ownership')}
             title=${t('标记未持有的干员：由官方指定的替补干员上场')}>${t('干员持有')}${nNotOwned ? html`<span class="lo-tab__n num" aria-label=${t('{nNotOwned} 名未持有', { nNotOwned })}>${nNotOwned}</span>` : null}</button>
           <button type="button" role="tab" aria-selected=${tab === 'diy' ? 'true' : 'false'} data-tab="diy" class=${cx('lo-tab', tab === 'diy' && 'is-on')} onClick=${() => setTab('diy')}
             title=${t('5阶、6阶的自选名额：持有的 6★ 干员或原型干员')}>${t('自选编队')}${nDiy ? html`<span class="lo-tab__n num" aria-label=${t('{n} 个自选名额已选择', { n: nDiy })}>${nDiy}</span>` : null}</button>
+          <button type="button" role="tab" aria-selected=${tab === 'hexBans' ? 'true' : 'false'} data-tab="hexBans" class=${cx('lo-tab', tab === 'hexBans' && 'is-on')} onClick=${() => setTab('hexBans')}
+            title=${t('局外禁用最多 3 张协议源石，只影响你自己的抽取')}>${t('协议源石')}${nHexBans ? html`<span class="lo-tab__n num" aria-label=${t('{n} 张协议源石已禁用', { n: nHexBans })}>${nHexBans}</span>` : null}</button>
         </div>`}
       </div>
-      ${tab === 'diy' ? html`<div class="lo-top__right">
+      ${tab === 'hexBans' ? html`<div class="lo-top__right">
+        ${syncText ? html`<span class=${cx('lo-sync', syncCls)} role="status" data-testid="hexBans-sync">${t(syncText)}</span>` : null}
+        <span class="lo-count">${t('已禁用')} <b class="num">${nHexBans}</b><span class="num t-dim">/${HEX_BANS_LIMIT}</span></span>
+        <${Button} variant="secondary" size="sm" icon="refresh" data-testid="hexBans-reset" disabled=${!nHexBans} onClick=${clearHexBans}>${t('全部清空')}<//>
+      </div>` : tab === 'diy' ? html`<div class="lo-top__right">
         ${syncText ? html`<span class=${cx('lo-sync', syncCls)} role="status" data-testid="diy-sync">${t(syncText)}</span>` : null}
         <span class="lo-count">${t('已选')} <b class="num">${nDiy}</b><span class="num t-dim">/4</span></span>
         <${Button} variant="ghost" size="sm" data-testid="diy-export" disabled=${!nDiy} onClick=${openExport} title=${t('导出自选编队（可复制或下载）')}>${t('导出')}<//>
@@ -1148,14 +1173,18 @@ function LoadoutScreen({ st, leaving = false }) {
         <${Button} variant="secondary" size="sm" icon="refresh" disabled=${!nChanged} onClick=${resetAll}>${t('全部恢复默认')}<//>
       </div>`}
     </header>
-    ${tab === 'diy'
+    ${tab === 'hexBans'
+      ? html`<p class=${cx('lo-note', ownLocked && 'is-locked')}><${Icon} name="info" />${hexBanText}</p>`
+      : tab === 'diy'
       ? html`<p class=${cx('lo-note', ownLocked && 'is-locked')}><${Icon} name="info" />${diyText}</p>`
       : tab === 'ownership'
       ? html`<p class=${cx('lo-note', ownLocked && 'is-locked')}><${Icon} name="info" />${ownText}</p>`
       : deck ? null
       : html`<p class=${cx('lo-note', locked && 'is-locked')}><${Icon} name="info" />${locked ? lockedText : fromText}</p>`}
     ${!ready ? html`<div class="lo-loading"><${Spinner} size="sm" />${t('正在载入干员数据（打开页面后仅载入一次）…')}</div>`
-      : lost.length ? html`<${DataMissing} files=${lost} />` : tab === 'diy'
+      : lost.length ? html`<${DataMissing} files=${lost} />` : tab === 'hexBans'
+      ? html`<${HexBanPanel} m=${m} ids=${st.hexBans || []} onToggle=${toggleHexBanOf} />`
+      : tab === 'diy'
       ? html`<${DiyPanel} m=${m} picks=${st.diy || {}} legal=${diyLegal} kitted=${st.diyKitted} onSet=${setDiySlot} ops=${st.ops} onOps=${setOpsOf} />`
       : tab === 'ownership'
       ? html`<${OwnershipPanel} m=${m} roster=${ownRoster} notOwned=${st.notOwned} onToggle=${toggleOwned} />`

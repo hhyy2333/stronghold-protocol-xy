@@ -15,7 +15,7 @@ const HEX_VIEW = {
   offers: {
     p_0: [{ idx: 0, id: 'hex_stipend', name: '战备津贴', desc: '获得时立即得到 8 资金。', rarity: 'silver', icon: 'piggyBankRune' },
       { idx: 1, id: 'hex_armor', name: '反击装甲', desc: '防御 +15%。', rarity: 'gold', icon: 'adamantRune' },
-      { idx: 2, id: 'hex_immortal', name: '不灭壁垒', desc: '生命上限 +12%。', rarity: 'prismatic', icon: 'undyingUpgradeRune' }],
+      { idx: 2, id: 'hex_immortal', name: '不灭壁垒', desc: '生命上限 +25%。', rarity: 'prismatic', icon: 'undyingUpgradeRune' }],
     p_1: [{ idx: 0, id: 'hex_echo', name: '盟约回响', desc: '随机盟约 +1 层。', rarity: 'silver', icon: 'echoRune' }],
   },
   picks: { p_1: 0 },

@@ -7,7 +7,7 @@ import { t } from '../../../../shared/i18n.js';
 // 第 7 段把**同一格开关的另外半条**（装备位语义）也收在那里：`morphSlotPolicy` 给出这一页的策略对象。
 // §28.49（`trait.grantsBonds`）：成员资格的**合并**也收在那边（`memberBonds`），所以客户端与服务端/战斗调的
 // 还是同一个函数 —— 只是它现在多了一条腿（特质）。客户端不必再知道「有几种成员资格来源」。
-import { grantedBondsByMorph, memberBonds, morphSlotPolicy, OFFICIAL_SLOT_POLICY } from '../../../../shared/morph.js';
+import { memberBonds, morphSlotPolicy, OFFICIAL_SLOT_POLICY } from '../../../../shared/morph.js';
 
 /**
  * 这一页的 `morphPairing` 档位（房间的包声明里派生的**有效档位**）。`setMorphPairing()` 由
@@ -109,7 +109,8 @@ export function nextThreshold(count, thresholds) {
 export function grantedBonds(items, getItem = () => null) {
   const list = Array.isArray(items) ? items : [];
   const recs = list.map((it) => getItem(typeof it === 'string' ? it : it?.id)).filter(isObj);
-  return grantedBondsByMorph(recs, { morphed: morphOption() });
+  // `memberBonds([])` = every GRANTED bond: 变形同构体 pairing + 装备自己的 grantsBonds (心之钢, 业主 2026-10-21).
+  return memberBonds([], { recs, morphed: morphOption() });
 }
 
 /**

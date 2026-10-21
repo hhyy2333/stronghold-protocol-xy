@@ -25,7 +25,7 @@
 
 import { layerGainRoom } from '../../shared/constants.js';
 import { memberBonds } from '../../shared/morph.js';
-import { ownsHex, bondCapOf, fissionBondIds } from './hextech.js';
+import { ownsHex, bondCapOf, fissionBondIds, bondNeedBonusOf } from './hextech.js';
 
 export const HARMONY_BOND = 'maniShip';
 export const DEPUTY_BOND = 'deputShip';
@@ -146,7 +146,9 @@ export function computeBonds(gd, ps) {
     const bond = gd.bond(id);
     const harmonyBonus = harmonyActive && bond.isCore && (onBoard.get(id)?.size ?? 0) >= 1 ? 1 : 0;
     const count = raw[id] + harmonyBonus;
-    let tier = tierFor(bond, count);
+    // 投资天才 (业主 2026-10-21): the card lowers ONE bond's activation threshold (`bondNeedBonus`); the member count
+    // shown to the player stays the real one.
+    let tier = tierFor(bond, count, bondNeedBonusOf(ps, id));
     if (id === DEPUTY_BOND && tier >= 1) {
       // upper tiers: operators differing in name OR elite state
       const variants = (onBoardVariant.get(id)?.size ?? 0) + bonusOf(id);
@@ -208,15 +210,21 @@ export function thresholdsOf(bond) {
   return [2];
 }
 
-/** Tier for a member count (downward bonds: 1 while 1 ≤ count ≤ maxCount). */
-export function tierFor(bond, count) {
+/**
+ * Tier for a member count (downward bonds: 1 while 1 ≤ count ≤ maxCount).
+ *
+ * `need` (0 by default) lowers every upward threshold — 投资天才's `bondNeedBonus`, so 「所需人数 −1」 activates the
+ * bond without pretending the player has a member they do not. A threshold never drops below 1.
+ */
+export function tierFor(bond, count, need = 0) {
   const th = thresholdsOf(bond);
   if (bond.thresholdTemplate === 'count_threshold_downward') {
     const max = Number.isFinite(bond.maxCount) ? bond.maxCount : th[0];
     return count >= th[0] && count <= max ? 1 : 0;
   }
+  const shift = Number.isFinite(need) && need > 0 ? Math.trunc(need) : 0;
   let t = 0;
-  for (const n of th) if (count >= n) t++;
+  for (const n of th) if (count >= Math.max(1, n - shift)) t++;
   return t;
 }
 

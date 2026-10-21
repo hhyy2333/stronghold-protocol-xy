@@ -153,6 +153,27 @@
 }
 .oex__metric--main .oex__metric-value { color: #f0c674; font-size: 15px; }
 
+/* ---- 行情带：源石大盘 + 市场情绪 -------------------------------------------------------------- */
+
+.oex__tape {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(240, 198, 116, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #8fa0a8;
+}
+.oex__index.is-up, .oex__sentiment.is-bull { color: #ff8a8a; }
+.oex__index.is-down, .oex__sentiment.is-bear { color: #6ee7a8; }
+.oex__sentiment.is-calm { color: #9fb2ba; }
+.oex__metric--debt.is-danger { background: rgba(255, 107, 107, 0.14); }
+.oex__metric--debt.is-danger .oex__metric-value { color: #ff7a7a; }
+
 /* ---- 新闻条 ------------------------------------------------------------------------------------ */
 
 .oex__news {
@@ -426,6 +447,7 @@
   .oex { top: auto; bottom: 8px; right: 8px; width: min(340px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
   .oex__panel { max-height: calc(100vh - 16px); }
   .oex__head { padding-top: 6px; padding-bottom: 4px; }
+  .oex__tape { padding-top: 2px; padding-bottom: 2px; }
   .oex__sum { padding-top: 4px; padding-bottom: 4px; }
   .oex__qty, .oex__lev { padding-top: 3px; padding-bottom: 3px; }
   .oex__foot { padding: 4px 10px 6px; }

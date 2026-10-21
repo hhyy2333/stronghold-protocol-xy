@@ -70,7 +70,8 @@ export const NET_DEFAULTS = Object.freeze({
  * Intents that also draw from the per-connection heavy bucket: g.watch (its reply is a large state resend, m.field),
  * room.loadout (a ≤ 160-entry map and ≤ 256 operator settings validated against the game data; the client debounces its
  * edits), room.ownership
- * (a ≤ 160-id list, the same way), room.diy (≤ 8 自选 picks checked against the data, the same way) and room.spectate
+ * (a ≤ 160-id list, the same way), room.diy (≤ 8 自选 picks checked against the data, the same way), room.hexBans
+ * (≤ 3 协议源石 ids checked against the room's player pool, the same way) and room.spectate
  * (taking a spectator seat in a running match resends its state like a watcher's g.watch — server/lobby.js spectate).
  * 野排匹配 room.queue (server/matchmaking.js) is here for the other reason the bucket exists: entering the queue
  * re-announces the queue to everyone waiting, so a rapid enter/leave loop is fan-out work, not a single reply.
@@ -83,7 +84,7 @@ export const NET_DEFAULTS = Object.freeze({
  * Nothing a normal client loses: public/js/main.js:150 PUBLIC_FULL_ASK_MS = 2000 throttles the ask to 0.5/s, four
  * times below the refill, so a legitimately out-of-sync player still asks as often as the client lets it.
  */
-export const HEAVY_TYPES = new Set(['g.watch', 'g.publicFull', 'room.loadout', 'room.ownership', 'room.diy', 'room.spectate', 'room.queue', 'records.mine', 'room.setPlugins']);
+export const HEAVY_TYPES = new Set(['g.watch', 'g.publicFull', 'room.loadout', 'room.ownership', 'room.diy', 'room.hexBans', 'room.spectate', 'room.queue', 'records.mine', 'room.setPlugins']);
 
 /** Close codes (see header). */
 export const CLOSE = Object.freeze({ REPLACED: 4001, HELLO_TIMEOUT: 4002, POLICY: 1008, SHUTDOWN: 1001 });
@@ -136,6 +137,8 @@ export class Session {
     this.notOwned = null;
     /** @type {Readonly<Record<string, { charId: string, skillIndex: number, uniEquipId: string|null }>> | null} checked 自选 picks (lobby-owned, 0.2.0 自选编队) */
     this.diy = null;
+    /** @type {readonly string[] | null} ≤ 3 protocol-originium cards this player's own draws skip (lobby-owned, 业主 2026-10-21) */
+    this.hexBans = null;
     /** @type {string} client address of the latest connection (logging) */
     this.addr = '?';
     /** @type {string | null} per-network limit key of the latest connection (null = not limited), see clientAddress */

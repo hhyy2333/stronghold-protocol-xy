@@ -270,7 +270,8 @@ test('悬赏决策: multi-battle bounties persist for `rounds` battles; 战术�
 
 test('悬赏决策 (solo HARD R3): bounty enemies take the round\'s enemy scale only — no extra solo ×0.7 (research 08 §8 #8)', () => {
   const run = (mode, modeId, pickId) => {
-    const data = dataWith(modeId, 3, 'bounty', { bounty: [KILL, PERF] });
+    // no 协议源石 draft: an enemy hex drawn by this seed would ride on the spawn mods this test pins
+    const data = withoutHextech(dataWith(modeId, 3, 'bounty', { bounty: [KILL, PERF] }));
     const h = makeMatch({ mode, difficulty: 'HARD', humans: 1, seed: 33, data, registry: REG, fake: true });
     h.start();
     toDraft(h, 3);

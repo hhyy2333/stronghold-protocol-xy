@@ -210,11 +210,35 @@ export function traitGrantIssues(trait, { bondIds = null } = {}) {
 }
 
 /**
- * **一名干员的成员资格**（`bonds` 这一格的唯一出口）：自己的盟约 ∪ 变形同构体授予 ∪ 特质授予。
+ * 装备**直接授予**盟约（`item.grantsBonds`，业主 2026-10-21 的心之钢）：一件装备可以无条件让携带者视为某几条盟约的成员
+ * （心之钢 → 坚守），不需要变形同构体配对。与 `giveBondId` 的区别是语义：`giveBondId` 只在配对时由 `grantedBondsByMorph`
+ * 授予，`grantsBonds` 只要穿着就授予。
+ *
+ * 形状与 `traitGrantList` 同一条纪律：非空字符串、去重、按声明顺序；`hasBond` 负责把本机不存在的盟约挡掉。
+ * @param {Iterable<any>} recs 装备记录，按装备行顺序
+ * @param {{ hasBond?: ((bondId: string) => boolean)|null }} [opts]
+ * @returns {string[]}
+ */
+export function grantedBondsByItem(recs, { hasBond = null } = {}) {
+  const out = [];
+  const ok = (id) => (typeof hasBond === 'function' ? !!hasBond(id) : true);
+  for (const rec of recs || []) {
+    const raw = rec && Array.isArray(rec.grantsBonds) ? rec.grantsBonds : [];
+    for (const id of raw) {
+      if (typeof id !== 'string' || !id || out.includes(id) || !ok(id)) continue;
+      out.push(id);
+    }
+  }
+  return out;
+}
+
+/**
+ * **一名干员的成员资格**（`bonds` 这一格的唯一出口）：自己的盟约 ∪ 装备授予 ∪ 特质授予。
  *
  * 三条腿的判据都在本文件：装备那条是 `grantedBondsByMorph`（行为开关 `morphPairing` 的档位由调用方经 `morphed`
- * 传进来 —— 这一层不读任何局面状态），特质那条是 `grantedBondsByTrait`。**合并只在这一处**：三处读取点以前各写
- * 一遍同样的 push 循环，加一条新的成员资格来源就得同时改三个文件、漏一个就变成「服务端数了、卡片没显示」。
+ * 传进来 —— 这一层不读任何局面状态）与 `grantedBondsByItem`（`grantsBonds` 的无条件授予），特质那条是
+ * `grantedBondsByTrait`。**合并只在这一处**：三处读取点以前各写一遍同样的 push 循环，加一条新的成员资格来源就得同时
+ * 改三个文件、漏一个就变成「服务端数了、卡片没显示」。
  *
  * `own` 只能是数组（记录自己的 `bonds`）；调用方本来就要 `Array.isArray` 判一次（官方数据里它是数组）。
  * @param {string[]|null|undefined} own 记录自己的 `bonds`
@@ -226,6 +250,7 @@ export function memberBonds(own, { trait = null, recs = [], morphed = null, hasB
   const out = Array.isArray(own) ? own.slice() : [];
   const add = (list) => { for (const b of list) if (!out.includes(b)) out.push(b); };
   add(grantedBondsByMorph(recs, { morphed, hasBond }));
+  add(grantedBondsByItem(recs, { hasBond }));
   add(grantedBondsByTrait(trait, { hasBond }));
   return out;
 }

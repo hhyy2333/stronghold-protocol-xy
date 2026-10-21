@@ -19,7 +19,8 @@
 //                            loadout?: { [baseChessId]: { skill: index, module: uniEquipId|'none'|null } } | null,
 //                            ops?: { [charId]: { potential: 1–6, cultivate: 0–3 } } | null,
 //                            notOwned?: string[] | null,
-//                            diy?: { [slotBaseId]: { charId, skillIndex, uniEquipId } } | null }>
+//                            diy?: { [slotBaseId]: { charId, skillIndex, uniEquipId } } | null,
+//                            hexBans?: string[] | null }>
 //                    sorted by seat, 1–4 entries, ≥ 1 human; solo ⇒ exactly 1 human and no bots.
 //                    Bot playerIds start with 'ai_'. Seat indexes may have gaps (e.g. seats 0 and 2).
 //                    `loadout` (DESIGN §16, optional): the human's operator loadout, already checked by the lobby
@@ -31,6 +32,8 @@
 //                    for the match; those chess fight as their stand-ins (PlayerState setNotOwned; bots own everything).
 //                    `diy` (0.2.0 自选编队, optional): the human's 自选 picks (shared/protocol.js checkDiyPicks) — fixed for
 //                    the match; the slotted operators join the human's own shop (PlayerState setDiy / initDiyStock).
+//                    `hexBans` (业主 2026-10-21, optional): ≤ 3 protocol-originium card ids this seat's OWN draws skip
+//                    (checkHexBans; PlayerState.hexBans; hexDraft filters the offer/reroll pool). Bots ban none.
 //   opts.spectators  string[] (optional)        the room's spectator seats (remake feature, community report #26;
 //                                              server/lobby.js): never players — see addSpectator below
 //   opts.hostId      string (optional)          the room's current host (server/lobby.js room.hostId): the executor a
