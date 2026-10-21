@@ -44,7 +44,12 @@
 import { PHASE } from '../../shared/constants.js';
 import { collectViolations } from './invariants.js';
 import { mergeTile, pieceDir, canPlace, placeClass } from './board.js';
-import { bossPoolHp, hiddenEligible } from './finalAssault.js';
+import { hiddenEligible } from './finalAssault.js';
+// 协议源石（业主 2026-10-13/14）：领袖血池 = 基础 × 存活人数份额 × 调参 × **总阶数 ÷ 人数 ÷ 2** 的倍率。
+// 引擎侧唯一入口是 `bossPoolHpFor`（hextech.js：`bossPoolHp` 的 `hexTierMul` 由它算），它的注释就写着「audit.js 重新推导也
+// 走它」—— 但这次移植时 audit 还留着旧的 `bossPoolHp`，于是审计把每场 boss 战都报成「boss pool X != Y」
+// （业主 2026-10-21「查」）。
+import { bossPoolHpFor } from './hextech.js';
 import { helperOrder } from './unite.js';
 import { squadMembersOf, SQUAD_SIZE } from './unite100.mjs';
 import { BAND_TURN_SECONDS } from './Match.js';
@@ -507,7 +512,7 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
       m.fields.forEach((f, i) => { if (f.fieldId !== `b${i + 1}`) fail(`boss field id ${f.fieldId}`); });
       if (!hidden && m.teamLp !== lpSum) fail(`team LP ${m.teamLp} != Σ alive LP ${lpSum}`);
       if (hidden && m.teamLp !== teamLp0) fail(`hidden core changed team LP ${teamLp0} → ${m.teamLp}`);
-      const want = bossPoolHp(gd, hidden ? m.hiddenBossId : m.bossId, alive.length);
+      const want = bossPoolHpFor(m, hidden ? m.hiddenBossId : m.bossId, alive);
       if (!m.bossPool || m.bossPool.maxHp !== want) fail(`boss pool ${m.bossPool && m.bossPool.maxHp} != ${want}`);
       if (hidden && !hiddenEligible(gd, { layerSum: m.hiddenLayerSum, teamLp: m.teamLp })) fail('hidden core entered while not eligible');
       if (hidden && gd.difficulty === 'FUNNY') fail('hidden core on FUNNY');

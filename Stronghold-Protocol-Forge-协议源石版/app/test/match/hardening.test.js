@@ -67,7 +67,7 @@ test('PREP: a player who un-readies right after everybody was ready keeps the pr
   m.dispose();
 });
 
-test('merge with a full hand and a full temp: the elite takes its deployed copy\'s tile (PRTS) and keeps the returned items', () => {
+test('merge with a full hand and a full temp: the elite takes its deployed copy\'s tile (PRTS), and the returned equipment is stowed rather than kept on it', () => {
   const { m, ps } = prepSolo({ seed: 903 });
   const id = chessOfTier(1, (c) => c.position === 'MELEE').find((c) => m.pool.has(c) && m.gd.mergeCount(c) === 3);
   const t1 = legalTileFor(m, ps, id);
@@ -93,7 +93,12 @@ test('merge with a full hand and a full temp: the elite takes its deployed copy\
   assert.ok(elite, 'the elite stands on a consumed copy\'s tile');
   assert.equal(ps.find(elite.uid).key, `${t1[0]},${t1[1]}`, 'the copy that deploys first (legalTileFor walks the top row left to right: on one row, the deploy order)');
   assert.equal(elite.poolCopies, 3, 'it holds all three copies');
-  assert.deepEqual(elite.items.map((x) => x.id).sort(), ['chess_item_1_01_e_a', 'chess_item_2_04_e_a'], 'returned items are kept on it');
+  // 口径见 docs/design/match.md:61「returned equipment is stowed before … a merge elite's summon cards」——返还的装备走
+  // `stow`（手牌 / 无限长的临时整备区），**不**挂在精英身上。这句原先断言「kept on it」，是移植前那棵树的行为
+  // （业主 2026-10-21「查」）。
+  assert.deepEqual(elite.items, [], 'the returned equipment does not stay on the elite');
+  const returned = [...ps.hand, ...ps.temp].filter((p) => p && ['chess_item_1_01_e_a', 'chess_item_2_04_e_a'].includes(p.id)).map((p) => p.id).sort();
+  assert.deepEqual(returned, ['chess_item_1_01_e_a', 'chess_item_2_04_e_a'], 'both returned items are stowed (hand or the overflow queue)');
   checkInvariants(m);
   m.dispose();
 });

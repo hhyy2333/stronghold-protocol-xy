@@ -160,24 +160,37 @@ test('merge whose copies are not deployed (temp) with a full hand overflows the 
   m.dispose();
 });
 
-test('reward pick respects the pool and a full hand; offers expire at prep end', () => {
+test('reward pick respects the hand and a displayed offer survives stock exhaustion; offers expire at prep end', () => {
   const { h, m, ps } = prep(24);
   ps.pushRewardOffer('merge');
   const offer = ps.offers[0];
   const id0 = offer.slots[0].id;
-  const taken = m.pool.take(id0, 100);
-  assert.deepEqual(m.handle('p_0', { t: 'g.reward', idx: 0 }), { error: ERR.SOLD_OUT });
-  m.pool.give(id0, taken);
+  // (a) a full regular hand refuses the pick, exactly like a purchase (#82 / PRTS 卫戍协议/帮助 §手牌区)
   const others = chessOfTier(3).filter((c) => m.pool.has(c) && !offer.slots.some((s) => s.id === c));
   for (let i = 0; ps.hand.some((p) => p == null); i++) give(m, ps, others[i]);
   assert.deepEqual(m.handle('p_0', { t: 'g.reward', idx: 0 }), { error: ERR.HAND_FULL });
-  ps.hand[0] && ps.returnCopies(ps.hand[0]);
-  ps.hand[0] = null;
+  const back = ps.hand.find((p) => p != null);
+  if (back) ps.returnCopies(back);
+  ps.hand[ps.hand.indexOf(back)] = null;
   ps.recompute();
+  // (b) 已被展示的奖励**不会**因为库存耗尽而失效（维护者 2026-10-14 #624 / 业主 2026-10-11 #498）：照样拿得到，池子记一笔
+  // 欠账（`take(..., { overdraw: true })` ⇒ 原始余额为负、`left()` 夹到 0）。这条断言原先写的是 SOLD_OUT —— 那是这两条
+  // 决定之前的口径，测试没跟上（业主 2026-10-21「查」）。
+  const taken = m.pool.take(id0, 100);
+  assert.deepEqual(m.handle('p_0', { t: 'g.reward', idx: 0 }), { ok: true }, 'a displayed operator reward survives stock exhaustion');
+  assert.ok(m.pool.entries.get(id0).left <= 0, `the pool recorded the deficit, raw left ${m.pool.entries.get(id0).left}`);
+  m.pool.give(id0, taken);
+  checkInvariants(m);
+  // (c) a queued offer is NOT dropped at the prep end — it lasts until picked (维护者 2026-10-15 的决定，
+  //     见 server/match/audit.js:170「queued reward offers last until picked: none is dropped at the round start」)。
+  //     这条断言原先写的是「offer gone at prep end」，那是该决定之前的口径（业主 2026-10-21「查」）。
+  ps.pushRewardOffer('merge');
+  assert.equal(ps.offers.length, 1, 'premise: one more offer is queued');
   assert.deepEqual(m.handle('p_0', { t: 'g.ready', ready: true }), { ok: true });
-  h.sched.runNext();
-  h.sched.runNext();
-  assert.equal(ps.offers.length, 0, 'offer gone at prep end');
+  const round0 = m.round;
+  for (let i = 0; i < 50 && m.round === round0 && m.phase === PHASE.PREP; i++) h.sched.runNext();
+  assert.ok(m.round > round0 || m.phase !== PHASE.PREP, 'premise: this prep ended');
+  assert.equal(ps.offers.length, 1, 'a queued reward offer survives the prep end');
   checkInvariants(m);
   m.dispose();
 });
@@ -327,8 +340,13 @@ test('item merge with a full hand AND a full temp: the golden item takes the equ
   ps.recompute();
   const got = ps.acquireItem('chess_item_1_02_e_a', { source: 'grant' });
   assert.ok(got && got.id === 'chess_item_1_02_e_b', 'the merge produced the golden item');
-  assert.deepEqual(carrier.items.map((x) => x.id), ['chess_item_1_01_e_a', 'chess_item_1_02_e_b'], 'golden item equipped in the twin\'s slot');
+  // 引擎的口径（items.js `_mergeItem` 上方注释）：同款普通装备已经在身上时**合并不装备**，金装回手牌 ——
+  // 「the golden item goes to the hand (research 04 §2)」。这条断言原先写的是「顶进被吃掉的同款那一格」，
+  // 与现在的口径相反（业主 2026-10-21「查」）。手牌满时它进无界的临时整备区，所以「不会被吞掉」这一点仍然钉住。
+  assert.deepEqual(carrier.items.map((x) => x.id), ['chess_item_1_01_e_a'], 'the carrier keeps its other item; the golden does not jump into the twin\'s slot');
   assert.ok(!ps.find(twin.uid), 'the twin was consumed');
+  const goldenSomewhere = [...ps.hand, ...ps.temp].find((p) => p && p.id === 'chess_item_1_02_e_b');
+  assert.ok(goldenSomewhere, 'the golden is not lost: hand, or the overflow queue when the hand is full');
   assert.equal(ps.stats.itemMerges, 1);
   checkInvariants(m);
   m.dispose();
@@ -394,9 +412,10 @@ test('a merge completed during SETTLE (突变细胞) keeps its reward offer for 
     assert.equal([...ps.hand, ...ps.temp].filter((p) => p && p.id === CELL).length, 1, `${label}: the cell came back`);
     assert.ok(ps.temp.every((p) => !p || p.id === CELL), `${label}: nothing else waits in temp`);
     checkInvariants(m);
-    // it expires at the end of that prep like any other offer
+    // 排队的奖励**不会**在下一个 prep 结束时过期 —— 维护者 2026-10-15：一直留到被选走（server/match/audit.js:170
+    // 的审计就是这条）。这句原先断言 0，是该决定之前的口径（业主 2026-10-21「查」）。
     h.drive(() => m.phase === PHASE.COMBAT && m.round === 2);
-    assert.equal(ps.offers.length, 0);
+    assert.equal(ps.offers.length, 1, 'the queued offer survives into the next round, not picked yet');
     m.dispose();
   }
 });

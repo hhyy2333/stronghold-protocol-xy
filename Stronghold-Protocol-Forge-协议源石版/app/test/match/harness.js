@@ -219,7 +219,11 @@ function legacyInvariants(m) {
     assert.ok(Number.isInteger(ps.funds) && ps.funds >= 0, `${ps.playerId} funds ${ps.funds}`);
     assert.ok(Number.isInteger(ps.pendingFunds) && ps.pendingFunds >= 0, `${ps.playerId} pending ${ps.pendingFunds}`);
     assert.equal(ps.hand.length, GEO.HAND_SIZE);
-    assert.equal(ps.temp.length, GEO.TEMP_SIZE);
+    // 临时整备区是**无界的溢出队列**（pieces.js: “Five visible slots are a window, not a capacity limit”）：前五个是可见位，
+    // 多出来的接在后面。这里必须与 server/match/invariants.js 同一条读法（「至少 tempSize」+「超出部分不许有空位」）——
+    // 原来写死的 `=== TEMP_SIZE` 比权威侧更严，一件装备从满手牌溢出到队列时会被误报（业主 2026-10-21「查」）。
+    assert.ok(ps.temp.length >= GEO.TEMP_SIZE, `${ps.playerId} temp has ${ps.temp.length} slots`);
+    if (ps.temp.length > GEO.TEMP_SIZE) assert.ok(!ps.temp.some((x) => x == null), `${ps.playerId}: the overflow queue has an unfilled slot`);
     assert.ok(ps.shop.level >= 1 && ps.shop.level <= m.gd.maxShopLevel);
     assert.ok(ps.shop.upgradePrice >= 0);
     assert.ok(ps.shop.freeRefreshes >= 0);
