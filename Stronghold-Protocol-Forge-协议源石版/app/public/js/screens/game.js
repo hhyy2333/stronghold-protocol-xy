@@ -171,6 +171,13 @@ export function GameScreen() {
     ${ended && !hasResult && mode !== 'result' ? html`<${MatchEnded} />` : null}`;
 }
 
+/**
+ * 「我这边掉了一帧私有视图」的自愈请求的最小间隔（毫秒）。与 main.js 里 `PUBLIC_FULL_ASK_MS` 同一条判据：一次请求
+ * 就够服务端补发整份状态，重复的请求只是白跑；这里单独放一个常量，是因为这条 effect 与增量帧的合并失败判据彼此独立
+ * （一个看帧能不能合并，一个看这个阶段该有的界面数据在不在）。
+ */
+const PUBLIC_SYNC_ASK_MS = 2000;
+
 // ---- match screen ----------------------------------------------------------------------------------------
 
 /** A card of a unit of the battle on screen: a unit's, or a crate's / turret's (a device card with its `unitId`, #228). */
@@ -185,6 +192,8 @@ function MatchScreen() {
   useDocClass('sp-in-match');
   const pub = useStore((s) => s.match.public);
   const priv = useStore((s) => s.match.private);
+  /** 上一次「我的私有视图不见了」的自愈请求（节流用；见下面 needsPrivate 那条 effect）。 */
+  const syncAskRef = useRef(0);
   const field = useStore((s) => s.match.field);
   const myId = useStore((s) => s.me.playerId);
   const conn = useStore((s) => s.connection, shallowEqual);
@@ -310,7 +319,21 @@ function MatchScreen() {
   // 协议源石 (Hextech): the draft is its own phase — the shop bar stays up through it
   const showShop = !!priv && alive && (phase === PHASE.PREP || phase === PHASE.SP_DRAFT || phase === PHASE.HEX_DRAFT || phase === PHASE.ROUND_START) && !watchingOther;
   const layersDisabled = phase === PHASE.UNITE || isBossPhase(phase);
+  // a phase the player is supposed to ACT in — the shop bar / draft / prep board all read `priv` or `pub.<draft>`
+  const actionablePhase = phase === PHASE.PREP || phase === PHASE.SP_DRAFT || phase === PHASE.HEX_DRAFT || phase === PHASE.ROUND_START;
+  const needsPrivate = actionablePhase && !spectator && alive && !priv;
+  useEffect(() => {
+    if (!needsPrivate) return;
+    const now = Date.now();
+    if (now - syncAskRef.current < PUBLIC_SYNC_ASK_MS) return;
+    syncAskRef.current = now;
+    try { net.send('g.publicFull'); } catch { /* offline: the reconnect's own resync answers it */ }
+  }, [needsPrivate, phase, pub?.round]);
   const sp = phase === PHASE.SP_DRAFT ? normalizeSp(pub?.sp, players) : null;
+  // 业主 2026-10-21（玩家反馈「选悬赏 页面直接没了，只能看着场地发呆」）：可见的对局阶段却没有自己的 `m.private` ⇒
+  // 这个客户端少了一帧（服务端 `_sendPrivate` 是按 `_lastPriv` 去重的，漏送之后不会再补，见 match/platform.js
+  // resendPublic）。这时主动要一次**完整**状态（`g.publicFull` 现在会把私有视图一起强制补发），而不是让玩家对着
+  // 一块看得见、点不动的场地发呆到下一回合。节流由 PUBLIC_SYNC_ASK_MS 管，且只在真的能操作的时候问。
   // 协议源石 (Hextech): a PARALLEL draft — the local player's own three offers, their pick and their rerolls.
   // null outside the phase, so the overlay below is rendered only while it runs.
   const hexDraft = phase === PHASE.HEX_DRAFT ? normalizeHex(pub?.hex, myId, players) : null;

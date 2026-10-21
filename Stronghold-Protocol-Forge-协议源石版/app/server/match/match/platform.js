@@ -250,9 +250,12 @@ export class MatchPlatform {
     const ps = this.players.get(playerId) || this.spectators.get(playerId);
     if (!ps || ps.isBot || ps.left || this.disposed) return fail(ERR.NOT_IN_ROOM);
     this.guard(() => {
-      // the answer is a unicast full frame; a send that does not reach the socket is not an error to report (sendTo
-      // already logs it), and the room-wide full frame below is the same answer for everybody anyway
-      this._sendFullPublic(ps);
+      // 业主 2026-10-21（玩家反馈「选悬赏 页面直接没了，只能看着场地发呆」）：这条请求的意思是「我这边状态坏了」，
+      // 只补 m.public 不够 —— `_sendPrivate` 用 `ps._lastPriv` **去重**：一帧 m.private 没送到客户端之后，服务端认为
+      // 它已经送过了，之后只要私有视图序列化结果相同（同一回合的休整期反复重发）就永远不再发。玩家于是停在
+      // 「看得见场地、没有任何可操作界面」的状态，只能刷新页面。所以这里走与重连同一条 `_resync`：m.public 全帧 +
+      // **强制**的 m.private + 战场 / 侦察视图。仍然是单播，房间基线照旧由下面的 markMembershipChanged 复原。
+      this._resync(ps);
       this.markMembershipChanged();
     });
     this.flush();

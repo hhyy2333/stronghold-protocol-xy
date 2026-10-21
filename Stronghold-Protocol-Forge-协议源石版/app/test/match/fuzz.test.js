@@ -34,6 +34,9 @@ function randomIntent(rng, m, ps) {
     case 'g.band': return { t, bandId: rng() < 0.8 ? rng.pick(BANDS) : rng.pick(['constructor', '__proto__', 'band_x', 'a'.repeat(64)]) };
     case 'g.buy': return { t, slot: rng.int(16) };
     case 'g.sell': case 'g.destroy': return { t, uid: uid() };
+    // 行为开关 `unequip`（DESIGN §28.43.1）：body 是 `{ itemUid }`。没有这一行时 fuzz 会自己造一条
+    // `{ t: 'g.unequip' }` 的非法消息，把「协议表里每个意图都要有合法 body」这条自检判红。
+    case 'g.unequip': return { t, itemUid: uid() };
     case 'g.move': return { t, uid: uid(), to: to() };
     case 'g.equip': return { t, itemUid: uid(), targetUid: uid() };
     case 'g.art': return { t, itemUid: uid(), row: rng.int(19), col: rng.int(21) };

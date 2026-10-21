@@ -57,6 +57,15 @@ export class MatchIntents {
       case 'g.loadout': return this.setPrepLoadout(ps.playerId, msg.entries);
       case 'g.ready': return ps.setReady(!!msg.ready);
       case 'g.emote': return this.emote(ps, msg.id);
+      // `g.publicFull` — 「我这边状态坏了，重发一份完整的给我」（DESIGN §8.2 增量帧的自愈路径；客户端在增量帧合并
+      // 失败、或者待操作的阶段却缺自己的私有视图时发）。**这条 case 以前漏了**：`resendPublic` 写好了却没人调，
+      // 于是客户端每次自愈请求都拿到 `BAD_MSG`、服务端一帧也不补 —— 只剩「房间每 32 帧一次全帧」这一条兜底。
+      // 业主 2026-10-21 玩家反馈「选悬赏 页面直接没了，只能看着场地发呆」正是这条路径不通的表现。
+      case 'g.publicFull': return this.resendPublic(ps.playerId);
+      // `g.unequip`（行为开关 `unequip: "allow"`，DESIGN §28.43.1）：把已装备的装备取回手上。`PlayerState.unequip`
+      // 早就写好了，**这条 case 也漏了** —— 开关打开的房间点「卸下」只会拿到 `BAD_MSG`。默认档下它照旧回
+      // 「equipped items are locked」，与从前一字不差（unimplemented 的开关不该表现成「按钮没反应」）。
+      case 'g.unequip': return ps.unequip(msg.itemUid);
       // playerId: the player tapped (a shared field names two) — the watch preference (item 56)
       case 'g.watch': return this.watch(ps, msg.fieldId, msg.playerId ?? null);
       case 'g.autoplay': return this.setAutoplay(ps, !!msg.on);
