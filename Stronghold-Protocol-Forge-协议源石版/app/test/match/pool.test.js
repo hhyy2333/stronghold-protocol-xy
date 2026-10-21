@@ -4,21 +4,31 @@ import assert from 'node:assert/strict';
 import { GameData } from '../../server/match/gamedata.js';
 import { SharedPool, drawDisabledBonds } from '../../server/match/pool.js';
 import { createRng } from '../../server/sim/rng.js';
+import { readFileSync } from 'node:fs';
 import { DATA, makeMatch, give, checkInvariants, chessOfTier } from './harness.js';
-import { FIXED_CHESS_IDS } from '../../tools/custom-ops.mjs';
-
-/** The FIXED operators of tools/custom-ops.mjs: every one adds a base chess to the shared pool (112 official + these). */
-const FIXED_BASES = FIXED_CHESS_IDS.filter((id) => !/_b$/.test(id)).length;
-const VISIBLE_CHESS = 112 + FIXED_BASES;
+// 这份测试是从「带固定（非官方）干员」的那棵树移植来的，那边 `tools/custom-ops.mjs` 的 FIXED_CHESS_IDS 会给共享池再加一批
+// base chess。**本树没有那个模块**，直接 import 会让整份文件在加载阶段就 ERR_MODULE_NOT_FOUND（业主 2026-10-21「查」时
+// 那 5 条常红之一）。本树的额外干员现在来自**工坊包**（装了 clemnt-addition / yana-addition 就会出现克莱门莎、娅娜），
+// 数量随「装了哪些包」变 —— 所以这里只钉官方的 112 这条下限，具体条数一律读 `gd.visibleChess`。
+const OFFICIAL_VISIBLE = 112;
 
 const gdOf = (modeId = 'mode_multi_normal') => new GameData(DATA, modeId);
+
+/** `data/choices.json` as shipped — the pack-free view of the 机变 pools (packs merge into the RUNTIME `DATA`). */
+const OFFICIAL_CHOICES = JSON.parse(readFileSync(new URL('../../data/choices.json', import.meta.url), 'utf8'));
+/**
+ * The shop-excluded items one pool may still hand out: the data's own `also` list. `pool_equip_kathe` is declared
+ * `{ rule: 'shopEligible', also: ['chess_item_5_08_e_a'] }` — 「定向投放」按名字就是「特殊商品」，突变细胞就是它声明的例外。
+ * Anything shop-excluded that is NOT in there must never come out of that pool.
+ */
+const poolAlso = (pid) => new Set((OFFICIAL_CHOICES.pools && OFFICIAL_CHOICES.pools[pid] && OFFICIAL_CHOICES.pools[pid].also) || []);
 
 test('pool caps follow config (co-op doubles 12/14/18/16/8/5 → 24/28/36/32/16/10, plus the low-tier identity overrides) and only visible, unbanned chess enter', () => {
   const gd = gdOf();
   const pool = new SharedPool(gd, { banned: [] });
   const caps = { 1: 24, 2: 28, 3: 36, 4: 32, 5: 16, 6: 10 };
   assert.equal(pool.entries.size, gd.visibleChess.length);
-  assert.equal(pool.entries.size, VISIBLE_CHESS);
+  assert.ok(pool.entries.size >= OFFICIAL_VISIBLE, `the official 112 are always there, got ${pool.entries.size}`);
   for (const [id, e] of pool.entries) {
     assert.equal(e.cap, gd.poolCopies(id), `${id}: the config value`);
     assert.ok(e.cap <= caps[e.tier], `${id}: at most its tier's base cap (an override only lowers it)`);
@@ -38,7 +48,7 @@ test('pool caps follow config (co-op doubles 12/14/18/16/8/5 → 24/28/36/32/16/
   assert.equal(soloGd.poolCopies(plain), caps[gd.tierOf(plain)] / 2, 'solo: the base table');
   const banned = [gd.visibleChess[0], gd.visibleChess[5]];
   const p2 = new SharedPool(gd, { banned });
-  assert.equal(p2.entries.size, VISIBLE_CHESS - 2);
+  assert.equal(p2.entries.size, gd.visibleChess.length - 2);
   assert.ok(!p2.has(banned[0]) && p2.left(banned[0]) === 0 && p2.take(banned[0]) === 0);
 });
 
@@ -135,7 +145,12 @@ test('effect-only items are never shop items: not in shopItemsByTier, never in t
   // every shop-eligible pool (凯瑟琳 / 列装 / 定向投放 / 见者有份) and the plain "random item" roll of effects
   const m = makeMatch({ mode: 'coop', seed: 3, fake: true }).m;
   for (const pid of ['pool_equip_normal', 'pool_equip_shop_1', 'pool_equip_kathe', 'pool_equip_narant']) {
-    for (let i = 0; i < 300; i++) assert.ok(!EFFECT_ONLY.includes(m.rollItemId({ pool: pid, shopLevel: 6 })), pid);
+    // 池子可以自己声明例外（`also`，见 poolAlso）—— 除此之外，永不售卖的东西不许从池子里滚出来
+    const declared = poolAlso(pid);
+    for (let i = 0; i < 300; i++) {
+      const id = m.rollItemId({ pool: pid, shopLevel: 6 });
+      assert.ok(!EFFECT_ONLY.includes(id) || declared.has(id), `${pid}: ${id} is effect-only and not declared`);
+    }
   }
   for (let i = 0; i < 300; i++) assert.ok(!EFFECT_ONLY.includes(m.rollItemId({ maxTier: 6 })));
   m.dispose();
@@ -144,11 +159,24 @@ test('effect-only items are never shop items: not in shopItemsByTier, never in t
 test('维多利亚 25-layer reward and 洛洛的定制品: the 4 special 维式重锤 (and nothing else)', () => {
   const special = ['chess_item_2_03_e_a', 'chess_item_3_09_e_a', 'chess_item_3_10_e_a', 'chess_item_4_09_e_a'];
   const m = makeMatch({ mode: 'coop', seed: 3, fake: true }).m;
+  // 两个池的声明形状不同：`pool_equip_vict` 是 items 列表（恰好这 4 把），`pool_equip_rockr` 是官方加权池
+  // （4 把特殊锤 + 4 件普通装备，特殊锤权重低）—— 读法按形状来，别假设只有一个形状。
+  const declaredItems = (pid) => {
+    const p = DATA.choices.pools[pid];
+    if (p && Array.isArray(p.items)) return [...p.items];
+    if (p && Array.isArray(p.weighted)) return p.weighted.map((x) => (Array.isArray(x) ? x[0] : x && x.id)).filter((x) => typeof x === 'string');
+    return [];
+  };
   for (const pid of ['pool_equip_vict', 'pool_equip_rockr']) {
-    assert.deepEqual([...DATA.choices.pools[pid].items].sort(), special, pid);
+    const items = declaredItems(pid);
+    assert.ok(items.length > 0, `${pid}: the pool declares its items`);
+    // 官方那 4 把特殊维式重锤必须都在（装机工坊包可以再往里加自己的东西 —— 那是包的内容）
+    for (const id of special) assert.ok(items.includes(id), `${pid}: ${id} is in the pool`);
+    if (pid === 'pool_equip_vict') assert.deepEqual(items.slice().sort(), special, `${pid}: the official pool is exactly the 4`);
     const seen = new Set();
-    for (let i = 0; i < 200; i++) seen.add(m.rollPool(pid).id);
-    assert.deepEqual([...seen].sort(), special, `${pid}: every special hammer can come, nothing else`);
+    for (let i = 0; i < 400; i++) seen.add(m.rollPool(pid).id);
+    for (const id of seen) assert.ok(items.includes(id), `${pid}: ${id} came from the pool it declares`);
+    for (const id of special) assert.ok(seen.has(id), `${pid}: every special hammer can come (${id})`);
   }
   m.dispose();
 });
@@ -184,7 +212,7 @@ test('the match pool excludes banned chess; m.public lists disabled bonds and ba
   assert.equal(pub.drawnDisabledBonds.length, 7);
   assert.ok(pub.bannedChess.length > 0);
   for (const id of pub.bannedChess) assert.ok(!h.m.pool.has(id), `${id} should not be in the pool`);
-  assert.equal(h.m.pool.entries.size + pub.bannedChess.length, VISIBLE_CHESS);
+  assert.equal(h.m.pool.entries.size + pub.bannedChess.length, h.m.gd.visibleChess.length);
   checkInvariants(h.m);
   h.m.dispose();
 });

@@ -3,9 +3,18 @@
 // data/choices.json pool_equip_kathe maxTier 'shopLevel', an [ASSUMED] cap (the pool is server-side). The players' first-hand
 // account: tier VI items show at the 1 → 2 upgrade. The pool is every shop-eligible item now (uniform [ASSUMED]).
 
+// 2026-10-21 复查（业主「继续」）：这条测试原来一刀切要求「每个候选都是商店可买的装备」，而 `data/choices.json` 里
+// `pool_equip_kathe` 的声明是 `{ rule: 'shopEligible', also: ['chess_item_5_08_e_a'] }` —— 「特殊商品」池按名字就该带特殊
+// 装备，`also` 那一条就是数据自己声明的例外（突变细胞，商店里买不到）。判据改成「商店可买 **或者** 本池 `also` 声明过」：
+// 既不再把合法数据判红，也不会放过池子里冒出别的不可购买物品。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { makeMatch, DATA } from './harness.js';
+
+/** 出厂数据里这个池自己声明的特殊条目（`also`；`rule` 展开前的形状）。 */
+const OFFICIAL_CHOICES = JSON.parse(readFileSync(new URL('../../data/choices.json', import.meta.url), 'utf8'));
+const KATHE_ALSO = new Set((OFFICIAL_CHOICES.pools && OFFICIAL_CHOICES.pools.pool_equip_kathe && OFFICIAL_CHOICES.pools.pool_equip_kathe.also) || []);
 
 test('凯瑟琳 定向投放: the level 1 → 2 offer draws from every tier, the special items never', () => {
   assert.equal(DATA.choices.pools.pool_equip_kathe.maxTier, undefined, 'no shop-level cap in the data');
@@ -23,7 +32,7 @@ test('凯瑟琳 定向投放: the level 1 → 2 offer draws from every tier, the
     assert.equal(ids.length, 3, `seed ${seed}: 3 items`);
     for (const id of ids) {
       const rec = h.m.gd.item(id);
-      assert.ok(rec && !rec.shopExcluded, `seed ${seed}: ${id} is a shop item`);
+      assert.ok(rec && (!rec.shopExcluded || KATHE_ALSO.has(id)), `seed ${seed}: ${id} is a shop item or a declared special`);
       tiers.set(rec.tier, (tiers.get(rec.tier) || 0) + 1);
     }
   }
