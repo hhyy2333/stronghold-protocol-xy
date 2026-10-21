@@ -27,6 +27,7 @@ import { FakeBattle } from './fakeBattle.js';
 import { applyPublic } from '../../public/js/matchDelta.js';
 import { GEO } from '../../shared/constants.js';
 import { collectViolations } from '../../server/match/invariants.js';
+import { equipCapCeiling } from '../../server/match/hextech.js';
 import { attachSimClients } from './simClient.js';
 
 export const DATA = getData({ log: { warn() {}, error() {}, info() {} } });
@@ -206,6 +207,8 @@ export function checkInvariants(m) {
 function legacyInvariants(m) {
   const pool = m.pool;
   const held = new Map();
+  /** playerId → baseId → copies (the 100-seat variant's per-player pools; see the branch below). */
+  const heldOf = new Map();
   const uids = new Set();
   const note = (p) => {
     assert.ok(Number.isInteger(p.uid) && p.uid > 0, `bad uid ${p.uid}`);
@@ -248,13 +251,19 @@ function legacyInvariants(m) {
       if (p.kind === 'chess') {
         const rec = m.gd.chess(p.id);
         assert.ok(rec, `unknown chess ${p.id}`);
-        assert.ok(Array.isArray(p.items) && p.items.length <= (typeof ps.equipCap === 'function' ? ps.equipCap() : m.gd.equipPerChess), `${p.id} carries ${p.items && p.items.length} items`);
+        // 上限可以变小（潘多拉魔盒换掉「整装待发」）、装备不会被强制卸下 ⇒ 与 invariants.js 用同一个上界
+        assert.ok(Array.isArray(p.items) && p.items.length <= Math.max(typeof ps.equipCap === 'function' ? ps.equipCap() : m.gd.equipPerChess, equipCapCeiling(m.gd)), `${p.id} carries ${p.items && p.items.length} items`);
         for (const it of p.items) { note(it); assert.equal(it.kind, 'item'); assert.ok(m.gd.item(it.id), `unknown item ${it.id}`); }
         assert.ok(Number.isInteger(p.poolCopies) && p.poolCopies >= 0);
         const base = m.gd.baseIdOf(p.id);
         // a 自选 piece's copies are its player's own stock (0.2.0, server/match/player/diy.js)
         const tally = ps.diyStock && ps.diyStock.has(base) ? diyHeld : held;
         tally.set(base, (tally.get(base) || 0) + p.poolCopies);
+        if (!(ps.diyStock && ps.diyStock.has(base))) {
+          let mine = heldOf.get(ps.playerId);
+          if (!mine) { mine = new Map(); heldOf.set(ps.playerId, mine); }
+          mine.set(base, (mine.get(base) || 0) + p.poolCopies);
+        }
       } else if (p.kind === 'item') {
         assert.ok(m.gd.item(p.id), `unknown item ${p.id}`);
       } else if (p.kind === 'token') {
@@ -272,6 +281,26 @@ function legacyInvariants(m) {
     for (const [base, e] of ps.diyStock ? ps.diyStock.entries : []) {
       assert.equal(e.left + (diyHeld.get(base) || 0), e.cap, `${ps.playerId} 自选 stock ${base}: left ${e.left} + held ${diyHeld.get(base) || 0} != cap ${e.cap}`);
     }
+  }
+  if (m.variant === true) {
+    // 100 座变体（> MAX_SEATS 参与者，docs/PS100-MIGRATION.md §10-A）：副本取自**每个玩家自己的池**，`m.pool` 只是只读
+    // 的权威目录 —— 拿共享池对账必然误报「left 24 + held 2 != cap 24」（fuzz 的 5 人对局就这么红过）。与
+    // server/match/invariants.js 的 independent 分支同一条读法，两条检查必须给出同一个答案。
+    for (const [base, e] of pool.entries) assert.ok(Number.isInteger(e.left) && e.left <= e.cap, `pool ${base} balance ${e.left} cap ${e.cap}`);
+    for (const ps of m.players.values()) {
+      const own = typeof ps.pool === 'function' ? ps.pool() : ps._ownPool || null;
+      const mine = heldOf.get(ps.playerId) || null;
+      if (!own) {
+        if (mine) for (const [base, n] of mine) assert.equal(n, 0, `${ps.playerId}: holds ${n} copies of ${base} with no pool of its own`);
+        continue;
+      }
+      for (const [base, e] of own.entries) {
+        assert.ok(Number.isInteger(e.left) && e.left <= e.cap, `${ps.playerId} pool ${base} balance ${e.left} cap ${e.cap}`);
+        const h = mine ? mine.get(base) || 0 : 0;
+        assert.equal(e.left + h, e.cap, `${ps.playerId} pool accounting ${base}: left ${e.left} + held ${h} != cap ${e.cap}`);
+      }
+    }
+    return true;
   }
   for (const [base, e] of pool.entries) {
     // MUST AGREE with server/match/invariants.js:198-200 (the authoritative side, "they must agree" above). That side

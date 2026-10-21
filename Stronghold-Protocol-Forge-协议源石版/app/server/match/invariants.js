@@ -33,6 +33,7 @@ import { FIELD, canPlace, placeClass, positionClass, parseKey } from './board.js
 import { computeBonds } from './bondsMeta.js';
 // 装备位语义（第 7 段）：不变量里「占几格 / 最多几件 / 最多一件变形同构体」读这一局的策略（缺省档 = 官方那条算术）。
 import { matchSlotPolicy } from '../../shared/morph.js';
+import { equipCapCeiling } from './hextech.js';
 
 const PHASES = new Set(Object.values(PHASE));
 
@@ -129,8 +130,13 @@ export function collectViolations(m, { limit = 25 } = {}) {
           // guard is exactly this file before the accessor was wired into PlayerState; keep it so a tree without the
           // accessor still checks against the data cap instead of throwing.
           const cap = typeof ps.equipCap === 'function' ? ps.equipCap() : gd.equipPerChess;
-          if (slots > cap) fail(`${id}: ${p.id} uses ${slots} equipment slots`);
-          if (p.items.length > policy.maxItems(cap)) fail(`${id}: ${p.id} carries ${p.items.length} items`);
+          // 上限可以**变小**：潘多拉魔盒（`hex_pandora`）把玩家的所有协议源石换成随机 3 阶，于是「整装待发」+1 格可能
+          // 在干员已经装上那第 3 件之后才消失，而装备不会被强制卸下（`PlayerState._attach` 只在下次装备时才修剪）。
+          // 合法上界因此是「数据里任何一张卡能给的最高格数」，不是玩家此刻的实时上限 —— 后者会把这种合法状态判成
+          // 损坏（fuzz seed 6；业主 2026-10-21「查」）。
+          const ceiling = Math.max(cap, equipCapCeiling(gd));
+          if (slots > ceiling) fail(`${id}: ${p.id} uses ${slots} equipment slots`);
+          if (p.items.length > policy.maxItems(ceiling)) fail(`${id}: ${p.id} carries ${p.items.length} items`);
           if (p.items.filter((x) => policy.isSlotless(gd.item(x && x.id))).length > 1) fail(`${id}: ${p.id} carries more than one slotless item`);
         }
         for (const it of p.items || []) {

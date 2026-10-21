@@ -484,6 +484,28 @@ export function equipSlotsOf(ps, base = 2) {
 }
 
 /**
+ * The HIGHEST equipment cap any hex of this dataset can grant — `max(gd.equipPerChess, 整装待发's equipSlots)`.
+ *
+ * The invariant checkers need it because the cap can SHRINK mid-match: 潘多拉魔盒 (`hex_pandora`) replaces every hex the
+ * player owns with a random 3阶 one, so a player who had 整装待发 (+1 slot) can lose it while its operators already carry
+ * the extra item. Items are never force-removed — `PlayerState._attach` only trims them the next time that operator is
+ * equipped — so a LEGAL state is `slots ≤ this ceiling`, not `slots ≤ the live cap`. Checking against the live cap
+ * flagged that legal state as corruption (fuzz seed 6; 业主 2026-10-21 「查」).
+ * @param {any} gd GameData
+ * @returns {number} the ceiling, never below `gd.equipPerChess`
+ */
+export function equipCapCeiling(gd) {
+  let ceiling = Number.isFinite(gd && gd.equipPerChess) ? gd.equipPerChess : 2;
+  let pool = [];
+  try { pool = typeof gd.hexPlayerPool === 'function' ? gd.hexPlayerPool() : []; } catch { pool = []; }
+  for (const rec of Array.isArray(pool) ? pool : []) {
+    const spec = rec && rec.effect && rec.effect.equipSlots;
+    if (Number.isFinite(spec) && spec > 0) ceiling = Math.max(ceiling, Math.trunc(spec));
+  }
+  return ceiling;
+}
+
+/**
  * Whether the player's 不灭壁垒 makes this round's first leak free (settlement): true when one of its hexes carries
  * `battle.firstLeakFree`.
  */
