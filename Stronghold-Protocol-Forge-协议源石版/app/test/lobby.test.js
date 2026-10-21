@@ -682,12 +682,23 @@ describe('websocket lobby', () => {
       await expectError(s1, msg, ERR.NOT_HOST);
     }
     await expectError(s1, { t: 'g.ready', ready: true }, ERR.WRONG_PHASE);
-    // the cap; spectators never count toward the players: two player seats still free
+    // the cap; spectators never count toward the players: player seats still free
     const s2 = await pool.player('Watcher2');
     await expectOk(s2, { t: 'room.spectate', code: st.code });
-    assert.equal(MAX_SPECTATORS, 2);
-    const s3 = await pool.player('Watcher3');
+    assert.equal(MAX_SPECTATORS, 5);
+    // fill every remaining spectator seat, then one more is refused
+    const extras = [];
+    for (let i = 3; i <= MAX_SPECTATORS; i++) {
+      const w = await pool.player(`Watcher${i}`);
+      await expectOk(w, { t: 'room.spectate', code: st.code });
+      extras.push(w);
+    }
+    await host.waitFor('room.state', (s) => s.spectators.length === MAX_SPECTATORS);
+    const s3 = await pool.player('WatcherX');
     await expectError(s3, { t: 'room.spectate', code: st.code }, ERR.ROOM_FULL);
+    // free the extra seats so the rest of the test starts from the two spectators above
+    for (const w of extras) await expectOk(w, { t: 'room.leave' });
+    await host.waitFor('room.state', (s) => s.spectators.length === 2);
     await joinRoom(s3, st.code);
     await expectOk(host, { t: 'room.addBot' });
     const full = await host.waitFor('room.state', (s) => s.seats.every(Boolean));

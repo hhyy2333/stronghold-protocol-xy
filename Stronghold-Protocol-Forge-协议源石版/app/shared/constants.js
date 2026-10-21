@@ -226,8 +226,11 @@ export function clampSeats(want, max = MAX_SEATS) {
  * room has 1–4 players and no spectator seat (there only eliminated players and 联防 bystanders watch, research 09 §3.1).
  * A spectator never counts as a player, may not act, and watches like an eliminated player (server/lobby.js spectate,
  * server/match/match/watch.js addSpectator).
+ *
+ * Raised 2 → 5 by the owner's request of 2026-10-21 (「增加观众席人数到5人」). Independent of the player-seat
+ * ceiling (`maxSeats`): a spectator never takes a seat, so this constant alone moves the cap.
  */
-export const MAX_SPECTATORS = 2;
+export const MAX_SPECTATORS = 5;
 export const ROOM_CODE_LEN = 4;
 export const NAME_MAX_LEN = 12;
 /**
