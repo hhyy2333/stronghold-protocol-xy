@@ -44,17 +44,23 @@ const fmt = (value) => {
 /** 股价保留两位小数（服务端就是两位小数口径；`.00` 也照显示，免得「7」和「7.04」看起来像两个精度）。 */
 const fmtPrice2 = (value) => (Math.round((Number(value) || 0) * 100) / 100).toFixed(2);
 /**
- * 股价的**两种显示模式**（业主 2026-10-22「增加显示模式（无小数点）可在原本与无小数点间切换」）。
+ * 股价的**两种显示模式**（业主 2026-10-22「增加显示模式（无小数点）可在原本与无小数点间切换」，
+ * 同日的口径补充：「不显示小数模式是*100（只改变显示）」）。
  *
- *   * `'decimal'`（默认，也就是 1.3.x 的样子）：两位小数，成交口径与屏幕上的数字一致；
- *   * `'integer'`：四舍五入到整数，**没有小数点**；不足 0.5 的毛票写成 `<1`（写成 0 看起来像坏了，
- *     写成 1 又把它抬高了两倍多）。
+ *   * `'decimal'`（默认，也就是 1.3.x 的样子）：两位小数 —— 3.04、0.25、99.00；
+ *   * `'integer'`（无小数点）：**把价格 ×100 之后按整数显示** —— 3.04 → `304`、0.25 → `25`、99 → `9900`。
+ *
+ * 为什么是 ×100 而不是四舍五入到整数：价格是两位小数口径（`PRICE_DECIMALS = 2`），×100 正好把它抬成
+ * 「分」的整数，**信息一点不丢** —— 304 和 3.04 是同一个价的两种写法，25 和 0.25 也是。四舍五入会把 3.04
+ * 抹成 3、把 0.25 抹成 0，屏幕和成交价对不上，那才是最坏的一种显示。所以这个模式就是小数点右移两位、
+ * 去掉那个点。
  *
  * 这是**纯显示**：算钱、算可买股数、下单、强平全用服务端的两位小数真实价，切换不会改变任何一单的成交额。
- * 所以整数模式下屏幕上的价只是「一眼看个大概」，订单回执里的价格仍是真实值。
  */
 const PRICE_MODES = Object.freeze(['decimal', 'integer']);
 const PRICE_MODE_KEY = 'sp.oex.priceMode';
+/** 无小数点模式的价格倍率：两位小数 ⇒ 分。 */
+const INTEGER_SCALE = 100;
 /**
  * 股价按当前显示模式格式化（纯函数，可单测）。
  * @param {number} value 真实价（两位小数）
@@ -62,15 +68,14 @@ const PRICE_MODE_KEY = 'sp.oex.priceMode';
  * @returns {string}
  */
 export function formatPrice(value, mode) {
-  if (mode !== 'integer') return fmtPrice2(value);
   const raw = Math.round((Number(value) || 0) * 100) / 100;
-  const n = Math.round(raw);
-  if (n >= 1) return String(n);
-  return raw > 0 ? '<1' : '0';
+  if (mode !== 'integer') return raw.toFixed(2);
+  // ×100 之后四舍五入到整数：raw 已经是两位小数，所以这一步是精确的（没有 303.99999 这种尾数）。
+  return String(Math.round(raw * INTEGER_SCALE));
 }
 const fmtPrice = formatPrice;
 /** 面板里那一颗显示模式按钮的文案。 */
-const PRICE_MODE_TEXT = Object.freeze({ decimal: '保留小数', integer: '无小数点' });
+const PRICE_MODE_TEXT = Object.freeze({ decimal: '保留小数', integer: '无小数点（×100）' });
 /** 源石大盘保留一位小数（100 起）。 */
 const fmtIndex = (value) => (Math.round((Number(value) || 0) * 10) / 10).toFixed(1);
 
@@ -441,7 +446,7 @@ export function mount(ctx) {
       if (!btn || !btn.dataset) continue;
       btn.classList.toggle('is-active', String(btn.dataset.mode) === priceMode);
     }
-    dispHint.textContent = priceMode === 'integer' ? '仅显示取整 · 成交按两位小数' : '按两位小数显示';
+    dispHint.textContent = priceMode === 'integer' ? '价格 ×100 · 仅显示，成交按两位小数' : '按两位小数显示';
   }
 
   function renderToast() {

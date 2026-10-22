@@ -472,21 +472,30 @@ test('面板假 DOM：行情带（大盘/情绪）、追保预警与收盘大盘
 });
 
 // =====================================================================================================================
-// 1.4.0 显示模式（业主 2026-10-22「增加显示模式（无小数点）可在原本与无小数点间切换」）
+// 1.4.0 显示模式（业主 2026-10-22「增加显示模式（无小数点）可在原本与无小数点间切换」，
+// 同日口径补充「不显示小数模式是*100（只改变显示）」）
 // =====================================================================================================================
 
-test('1.4.0 formatPrice：保留小数是原来的两位；无小数点是取整、毛票写 <1', () => {
+test('1.4.0 formatPrice：保留小数是原来的两位；无小数点是把价格 ×100 的整数', () => {
   assert.equal(formatPrice(3, 'decimal'), '3.00');
   assert.equal(formatPrice(3.04, 'decimal'), '3.04');
   assert.equal(formatPrice(0.25, 'decimal'), '0.25');
-  // 整数模式：四舍五入；< 0.5 的毛票不写成 0（看起来像坏了）也不写成 1（凭空抬价）
-  assert.equal(formatPrice(3, 'integer'), '3');
-  assert.equal(formatPrice(3.04, 'integer'), '3');
-  assert.equal(formatPrice(3.5, 'integer'), '4');
-  assert.equal(formatPrice(0.25, 'integer'), '<1');
-  assert.equal(formatPrice(0.4, 'integer'), '<1');
+  assert.equal(formatPrice(99, 'decimal'), '99.00');
+  // 无小数点 = 小数点右移两位（两位小数 ⇒ 分），**信息一点不丢**：
+  //   3.04 → 304、0.25 → 25、99 → 9900、1 → 100。不是四舍五入 —— 那会把 3.04 抹成 3、0.25 抹成 0。
+  assert.equal(formatPrice(3, 'integer'), '300');
+  assert.equal(formatPrice(1, 'integer'), '100');
+  assert.equal(formatPrice(3.04, 'integer'), '304');
+  assert.equal(formatPrice(3.5, 'integer'), '350');
+  assert.equal(formatPrice(0.25, 'integer'), '25');
+  assert.equal(formatPrice(0.4, 'integer'), '40');
   assert.equal(formatPrice(0, 'integer'), '0');
-  assert.equal(formatPrice(99, 'integer'), '99');
+  assert.equal(formatPrice(99, 'integer'), '9900');
+  assert.equal(formatPrice(6.01, 'integer'), '601', 'no 600.9999 tail from the ×100');
+  // 同一个价的两种写法必须能互相还原：integer / 100 === decimal 的数值
+  for (const price of [0.25, 1, 2.4, 3.04, 6.01, 99]) {
+    assert.equal(Number(formatPrice(price, 'integer')) / 100, Math.round(price * 100) / 100, `${price} round-trips`);
+  }
   // 模式不认识时按默认（两位小数）：旧面板 / 脏 localStorage 不会画出一堆 NaN
   assert.equal(formatPrice(2.5, 'nope'), '2.50');
   assert.equal(formatPrice(2.5, undefined), '2.50');
@@ -555,20 +564,23 @@ test('1.4.0 面板假 DOM：杠杆按钮按下发帧建 5 档、追保标 93%、
   assert.equal(sent.length, before, 'switching the display mode sends nothing to the server');
   const afterText = textOf(host);
   assert.ok(!/6\.00/.test(afterText), `no two-decimal price is left: ${afterText.slice(0, 200)}`);
-  assert.match(afterText, /仅显示取整 · 成交按两位小数/);
+  assert.match(afterText, /价格 ×100 · 仅显示，成交按两位小数/);
+  // 开市价 3 / 2 / 5 / 1 / 6 / 4 ⇒ ×100 之后是 300 / 200 / 500 / 100 / 600 / 400
+  assert.match(afterText, /600/);
+  assert.match(afterText, /300/);
   inst.unmount();
 });
 
-test('1.4.0 显示模式是纯显示：切换不发帧、不改这一单的成交额', () => {
+test('1.4.0 显示模式是纯显示：×100 只是写法，成交额一分不差', () => {
   // 这条用例守的是边界：显示模式只影响画出来的字符串。`maxAffordable` / `resolveQty` / 手续费都拿真实价算，
-  // 与显示模式无关 —— 所以「整数模式看着像 3 块，其实 3.04 块」不会变成「少付 4 分钱」。
+  // 与显示模式无关 —— 「屏幕上写 304 其实是 3.04 块」不会变成「少付 4 分钱」，也不会变成「按 304 块一单」。
   const real = 3.04;
-  assert.equal(formatPrice(real, 'integer'), '3', 'the screen rounds it away');
+  assert.equal(formatPrice(real, 'integer'), '304', 'the screen shifts the point, it does not round');
+  assert.equal(Number(formatPrice(real, 'integer')) / 100, real, '×100 is reversible: no information is lost');
   assert.equal(maxAffordable(10, real, 60), maxAffordable(10, real, 60), 'the arithmetic ignores the mode');
   assert.equal(feeFor(100), 1, 'and so does the fee');
-  // 一句人话：整数模式下 10 块能买的股数与小数模式完全一致（两者用的是同一个 real price）。
-  const asInt = Math.trunc(real);
-  assert.notEqual(asInt, real, 'the integer display is NOT the price used for settlement');
-  assert.ok(maxAffordable(10, real, 60) <= maxAffordable(10, asInt, 60), 'rounding the display DOWN would over-quote');
+  // 反证：如果有人真按显示出来的 304 去算，能买的股数会差出两个数量级 —— 这不可能是同一个价。
+  assert.notEqual(Math.trunc(real), real, 'the displayed integer is not the settlement price');
+  assert.ok(maxAffordable(10, real, 60) > maxAffordable(10, 304, 60), 'quoting off the display would tank the count');
 });
 
