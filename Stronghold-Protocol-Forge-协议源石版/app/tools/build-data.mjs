@@ -2425,10 +2425,13 @@ function enemyOverrideRecord(over, label) {
 /**
  * Hand-added leaders (docs/research/15-extra-bosses.json): the official autochess tables carry no enemy row, wave or
  * boss row for them, so this fork declares them here and the builders below merge them in. Each entry names the enemy
- * (`enemyId`), the leader record (`bossId`, weight, bloodPoint) and the official boss wave it clones (`waveBase`:
- * the field, its routes and its escorts stay the official ones; only the leader's spawn key is retargeted).
+ * (`enemyId`), the leader record (`bossId`, weight, bloodPoint), the official boss wave it clones (`waveBase`:
+ * the field, its routes and its escorts stay the official ones; only the leader's spawn key is retargeted) and an
+ * optional escort swap (`escorts`: base enemy key → this leader's own escort key, e.g. Mephisto's 宿主 unit; the base
+ * wave's timing / route / slot / count are kept, which is what makes his +100 % HP-recovery talent matter at all).
  * @returns {Array<{bossId:string, enemyId:string, handbookId?:string, name?:string, sortId?:number, weight:number,
- *   hidden?:boolean, bloodPoint:Record<string,number>, waveBase?:{multi?:string, solo?:string}}>}
+ *   hidden?:boolean, bloodPoint:Record<string,number>, waveBase?:{multi?:string, solo?:string},
+ *   escorts?:Record<string,string>}>}
  */
 function customBossDefs(ctx) {
   const list = ctx.research.extra?.bosses;
@@ -2444,7 +2447,11 @@ function collectEnemyKeys(ctx) {
   const keys = new Set();
   const add = (k) => { if (typeof k === 'string' && /^enemy_/.test(k)) keys.add(k); };
   const refs0 = [];
-  for (const b of customBossDefs(ctx)) add(b.enemyId);
+  for (const b of customBossDefs(ctx)) {
+    add(b.enemyId);
+    // a hand-added leader may bring its own escort set (research `escorts`): those rows are spawnable too
+    if (b.escorts && typeof b.escorts === 'object') for (const k of Object.values(b.escorts)) add(k);
+  }
   for (const id of ctx.templateIds) {
     const lv = ctx.levels[id];
     for (const w of lv.waves || []) for (const f of w.fragments || []) for (const a of f.actions || []) if (a.actionType === 'SPAWN') add(a.key);
@@ -2931,8 +2938,9 @@ function buildWaves(ctx, enemies) {
   }
 
   // Hand-added leaders (docs/research/15-extra-bosses.json): clone the declared official boss wave and retarget its
-  // leader spawn at our enemy. Field, routes, escorts, branches and overrides stay the official ones; the clone gets
-  // its own id and its own usedBy (the same modes/rounds as the base, with this boss's id).
+  // leader spawns (the main spawn and the ≥2-player mirrored copy in `branches`) at our enemy. Field, routes, escorts
+  // and overrides stay the official ones; the clone gets its own id and its own usedBy (the same modes/rounds as the
+  // base, with this boss's id).
   for (const b of customBossDefs(ctx)) {
     for (const [variant, baseId] of [['multi', b.waveBase?.multi], ['solo', b.waveBase?.solo]]) {
       if (!baseId) { warn(`extra boss ${b.bossId}: no waveBase.${variant}`); continue; }
@@ -2946,6 +2954,24 @@ function buildWaves(ctx, enemies) {
       const leader = w.spawns.find((sp) => sp.tag === 'boss');
       if (!leader) { warn(`extra boss ${b.bossId}: ${baseId} has no leader spawn`); continue; }
       leader.key = b.enemyId;
+      // the wave's other leader spawns are branches (boss_battle_multi_player's mirrored copy, and any branch leader):
+      // they must be this leader too, otherwise a 2-player fight of a hand-added boss would mirror the BASE wave's
+      // leader (boss_11 / boss_12 cloned 卢西恩's field: the mirror used to spawn 卢西恩 itself).
+      for (const phases of Object.values(w.branches || {})) {
+        for (const ph of phases || []) for (const sp of ph || []) if (sp && sp.tag === 'boss' && sp.key !== b.enemyId) sp.key = b.enemyId;
+      }
+      // Optional escort swap (research `escorts`): the base wave's escort keys become this leader's own escort set —
+      // timing, route, slot and count stay the base wave's (e.g. Mephisto's 宿主 escorts instead of 卢西恩's fliers).
+      if (b.escorts && typeof b.escorts === 'object') {
+        for (const sp of w.spawns) {
+          if (sp.tag === 'boss') continue;
+          const to = b.escorts[sp.key];
+          if (to === undefined) continue;
+          if (typeof to !== 'string' || !/^enemy_/.test(to)) { warn(`extra boss ${b.bossId}: escort ${sp.key} -> ${String(to)} is not an enemy key`); continue; }
+          if (!enemies[to]) { warn(`extra boss ${b.bossId}: escort ${sp.key} -> ${to} is not in enemies`); continue; }
+          sp.key = to;
+        }
+      }
       w.usedBy = (base.usedBy || []).map((u) => ({ ...u, bossId: b.bossId }));
       out[id] = w;
     }

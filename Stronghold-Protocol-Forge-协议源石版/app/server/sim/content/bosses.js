@@ -1286,6 +1286,62 @@ function kitBlackSnake(ab, e) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// 梅菲斯特 (boss_12, enemy_1507_mephi) — hand-added leader (docs/research/15-extra-bosses.json).
+//
+// Sources: enemy_database enemy_1507_mephi level 0 (no skills; talentBlackboard 只有 healaura.hp_recovery_per_sec =
+// 1.0), the handbook 能力 (全场的敌方单位的自然生命回复速度加倍 / 普通攻击能够同时治疗3名敌方单位) and PRTS 梅菲斯特
+// (等级0): 不造成任何伤害、无阶段 / 无召唤 / 无技能、没有常见抗性、可被阻挡。
+//   · 天赋：全场敌方单位生命回复速度 +100 % — every enemy whose own natural regen (`base.hpRecoveryPerSec`) is
+//     positive gets an equal hpRegen buff (a unit with 0 regen stays at 0: the data's aura only scales
+//     HP_RECOVERY_PER_SEC). The escort set swapped onto his wave (research `escorts`: 宿主士兵 / 宿主重装士兵) is what
+//     this actually applies to — 80 → 160/s and 200 → 400/s.
+//   · 普通攻击 = 治疗：every 6 s heal up to 3 injured enemy units (lowest HP ratio first) for `atk` each — no damage to
+//     operators at all. The data carries no 治疗倍率, so atk × 1 [ASSUMED].
+//   · 共享血池的领袖吃不到治疗（damage.js heal 拒绝 bossPool），所以“他能不能自疗”这个问题在本模式下不存在。
+//   · 无 phase / 无 death 触发：shared pool 归零就是这一轮的结束。
+const MEPHISTO_HEAL_TARGETS = 3;
+const MEPHISTO_AURA_KEY = 'boss:mephistoAura';
+
+function kitMephisto(ab, e) {
+  // 第一次治疗像引擎的敌方医疗单位那样：只要有人受伤就立刻落下（enemyHeal 的 atkCd 从 0 开始）。
+  const P = { acc: e.s.interval };
+  /** 天赋：给每个自带自然回复的敌方单位补一份等量的 hpRegen（生命回复速度 +100 %）。 */
+  const aura = (b, e2) => {
+    for (const o of b.enemies) {
+      if (!o.alive || o === e2) continue;
+      const regen = (o.base && o.base.hpRecoveryPerSec) || 0;
+      if (!(regen > 0) || o.findBuff(MEPHISTO_AURA_KEY)) continue;
+      b.addBuff(o, { key: MEPHISTO_AURA_KEY, persist: true, visible: true, mods: { hpRegen: regen } });
+    }
+  };
+  return [
+    { spawn(b, e2) { e2.profile.noAttack = true; aura(b, e2); } },
+    {
+      iv: 0.5,
+      tick(b, e2, a, dt) {
+        if (!e2.alive) return;
+        aura(b, e2);
+        if (!canCast(e2, false, b)) return;              // 眩晕 / 冻结 / 失衡打断普通攻击 → 治疗也停（PRTS：天赋与普攻都不是技能，沉默无效）
+        P.acc += dt;
+        if (P.acc < e2.s.interval) return;
+        const r = Math.max(e2.base.rangeRadius || 0, 1);   // 攻击半径在 base 上（s 只带 buff 后的派生数值）
+        const cands = b.enemies.filter((o) => o !== e2 && o.alive && !o.bossPool && o.hp < o.s.maxHp && hypot(o.x - e2.x, o.y - e2.y) <= r);
+        if (!cands.length) return;                        // 没人受伤：保持蓄力，下一名受伤时立刻治疗
+        cands.sort((p, q) => p.hpRatio - q.hpRatio);
+        P.acc = 0;
+        e2.lastAttackAt = b.time;
+        e2.stats.attacks++;
+        for (const o of cands.slice(0, MEPHISTO_HEAL_TARGETS)) {
+          b._ev(['atk', e2.id, o.id, 'orb']);
+          b.heal(e2, o, e2.s.atk);
+          b.fx('heal', { x: o.x, y: o.y, id: o.id });
+        }
+      },
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // “萨米的意志” (boss_7)
 
 function kitDeer(ab, e) {
@@ -1347,6 +1403,7 @@ function kitDeer(ab, e) {
 
 export const BOSS_KITS = Object.freeze({
   enemy_1515_bsnake: kitBlackSnake,    // boss_11 “不死的黑蛇” (hand-added leader)
+  enemy_1507_mephi: kitMephisto,       // boss_12 梅菲斯特 (hand-added leader)
   enemy_9013_acstmk: kitHelm,          // boss_1 假想敌：胄
   enemy_9013_acstmk_2: kitHelm,        // boss_8 假想敌：胄 (隐秘核心)
   enemy_9014_acstma: kitBlade,         // “斩胄之剑”

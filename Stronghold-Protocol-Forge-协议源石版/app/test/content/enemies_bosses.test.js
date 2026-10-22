@@ -3321,3 +3321,83 @@ test('黑蛇：首次被击败（血池 60 %）→ 5 s 重生 → 狂暴 + 不�
   assert.ok(boss.alive);
 });
 
+// ---------------------------------------------------------------------------------------------------------------
+// boss_12 梅菲斯特 (enemy_1507_mephi) — the hand-added healer leader (docs/research/15-extra-bosses.json)
+
+const MEPHI = 'enemy_1507_mephi';
+
+test('boss_12 数据：敌人、宿主护卫、编队波次（多/单人）、模式权重都在', () => {
+  const B = JSON.parse(fs.readFileSync(new URL('../../data/bosses.json', import.meta.url), 'utf8'));
+  const C = JSON.parse(fs.readFileSync(new URL('../../data/config.json', import.meta.url), 'utf8'));
+  assert.ok(BOSS_KITS[MEPHI], 'kit registered');
+  assert.equal(E[MEPHI].rank, 'BOSS');
+  // 属性拉到现有领袖档位（生命 28000 → 200000、攻击 500 → 1000、防御 200 → 800、法抗 60 不变）
+  assert.deepEqual([E[MEPHI].stats.maxHp, E[MEPHI].stats.atk, E[MEPHI].stats.def, E[MEPHI].stats.res], [200000, 1000, 800, 60]);
+  assert.equal(E[MEPHI].stats.dmgType, 'heal', '普通攻击是治疗（数据里没有伤害型 attack）');
+  assert.deepEqual(E[MEPHI].stats.immunities, { stun: false, silence: false, sleep: false, frozen: false, levitate: false }, '没有任何常见抗性');
+  const boss = B.boss_12;
+  assert.ok(boss, 'boss_12 exists');
+  assert.equal(boss.enemyKey, MEPHI);
+  assert.equal(boss.hidden, false);
+  assert.equal(boss.bloodPoint.NORMAL, 787500);
+  for (const id of ['custom_boss_12', 'custom_boss_12_s']) {
+    const w = W[id];
+    assert.ok(w, `${id} exists`);
+    assert.equal(w.bossId, 'boss_12');
+    assert.equal(w.spawns.find((s) => s.tag === 'boss').key, MEPHI);
+    assert.equal(boss.templates[w.usedBy[0].modeId].template, id);
+  }
+  // 宿主护卫（5-10 的宿主编队）：只换 key，时间/路线/槽位/数量沿用 h07_05
+  const wave = W.custom_boss_12;
+  const keys = [...new Set(wave.spawns.filter((s) => s.tag !== 'boss').map((s) => s.key))].sort();
+  assert.deepEqual(keys, ['enemy_1043_zomsbr', 'enemy_1061_zomshd'], '宿主士兵 / 宿主重装士兵');
+  for (const mode of ['mode_single_normal', 'mode_multi_normal', 'mode_single_funny']) {
+    assert.equal(C.modes[mode].bossWeights.boss_12, 4, `${mode} weight`);
+    const rounds = Object.entries(C.modes[mode].rounds).filter(([, r]) => r.bossTemplates?.boss_12);
+    assert.equal(rounds.length, 1, `${mode}: one boss round`);
+    assert.ok(rounds[0][1].isBoss);
+  }
+});
+
+test('梅菲斯特：普通攻击治疗至多 3 个未满血敌方单位，对干员零伤害', () => {
+  const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 8 }] });
+  h.step();
+  const boss = put(h, MEPHI, [3, 10], { tag: 'boss' });
+  const wall = h.allies()[0];
+  const wallHp = wall.hp;
+  const hosts = [];
+  for (let i = 0; i < 4; i++) {
+    const u = put(h, 'enemy_1043_zomsbr', [4 + i, 10]);
+    u.hp = Math.max(1, Math.round(u.s.maxHp * (0.1 + i * 0.1)));
+    hosts.push({ u, hp0: u.hp });
+  }
+  h.run(1);
+  const gains = hosts.map(({ u, hp0 }) => u.hp - hp0);
+  const healed = gains.filter((g) => g >= 500).length;
+  assert.equal(healed, 3, `一次治疗 3 名（治疗量 ${gains.map((g) => g.toFixed(0)).join('/')}）`);
+  assert.ok(gains.filter((g) => g < 300).length >= 1, '第 4 名（生命比最高）这次没被治疗');
+  assert.equal(wall.hp, wallHp, '他不攻击干员，干员不掉血');
+  assert.ok(boss.alive);
+  assert.ok(boss.stats.attacks > 0, '治疗按一次“攻击”计');
+});
+
+test('梅菲斯特：天赋令宿主的自然回复速度翻倍（宿主士兵 80 → 160/s、宿主重装士兵 200 → 400/s）', () => {
+  const h = bossArena();
+  h.step();
+  const boss = put(h, MEPHI, [3, 10], { tag: 'boss' });
+  const host = put(h, 'enemy_1043_zomsbr', [4, 10]);
+  const heavy = put(h, 'enemy_1061_zomshd', [5, 10]);
+  h.run(1);
+  assert.equal(host.s.hpRegen, 160, '宿主士兵：数据 80，天赋 +100 % → 160');
+  assert.equal(heavy.s.hpRegen, 400, '宿主重装士兵：数据 200，天赋 +100 % → 400');
+  // 先让 6 s 一次的治疗落地，再量接下来 2 秒（下一次治疗在 6 s 后）：只剩翻倍的自然回复
+  for (const u of [host, heavy]) u.hp = Math.round(u.s.maxHp * 0.3);
+  assert.ok(h.runUntil(() => boss.stats.attacks >= 1, 3), '治疗先落下一次');
+  const h0 = host.hp, t0 = heavy.hp;
+  h.run(2);
+  const rHost = (host.hp - h0) / 2, rHeavy = (heavy.hp - t0) / 2;
+  assert.ok(rHost > 120 && rHost < 220, `宿主士兵回血约 160/s，实际 ${rHost.toFixed(0)}`);
+  assert.ok(rHeavy > 300 && rHeavy < 500, `宿主重装士兵回血约 400/s，实际 ${rHeavy.toFixed(0)}`);
+});
+
+

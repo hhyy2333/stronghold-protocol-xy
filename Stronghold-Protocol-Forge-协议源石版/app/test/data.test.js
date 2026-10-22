@@ -222,7 +222,7 @@ test('enemies: stats are finite and motion/dmgType valid', () => {
 });
 
 test('waves: every template resolves spawns, routes and enemies', () => {
-  assert.equal(Object.keys(waves).length, 38);
+  assert.equal(Object.keys(waves).length, 42);
   for (const w of Object.values(waves)) {
     assert.ok(w.routes.length > 0, `${w.id}: routes`);
     for (const r of [...w.routes, ...w.extraRoutes]) {
@@ -325,8 +325,8 @@ test('stages: 19 rows × 21 cols with known glyphs; paths are contiguous', () =>
 });
 
 test('bosses, factions, tokens and choices resolve', () => {
-  // 10 official leaders + the fork's hand-added boss_11 (docs/research/15-extra-bosses.json)
-  assert.equal(Object.keys(bosses).length, 11);
+  // 10 official leaders + the fork's hand-added boss_11 / boss_12 (docs/research/15-extra-bosses.json)
+  assert.equal(Object.keys(bosses).length, 12);
   for (const b of Object.values(bosses)) {
     assert.ok(enemies[b.enemyKey], `${b.bossId}: enemy`);
     for (const v of Object.values(b.bloodPoint)) assert.ok(isFiniteNum(v) && v > 0, `${b.bossId}: bloodPoint`);
@@ -337,6 +337,14 @@ test('bosses, factions, tokens and choices resolve', () => {
   assert.deepEqual(bosses.boss_11.bloodPoint, { FUNNY: 277500, NORMAL: 787500, HARD: 2000000, ABYSS: 4000000 });
   assert.deepEqual([enemies.enemy_1515_bsnake.stats.maxHp, enemies.enemy_1515_bsnake.stats.atk, enemies.enemy_1515_bsnake.stats.def], [240000, 1000, 1000]);
   assert.ok(waves.custom_boss_11 && waves.custom_boss_11_s, 'boss_11 boss waves');
+  assert.equal(waves.custom_boss_11.branches.boss_battle_multi_player[0][0].key, 'enemy_1515_bsnake', 'boss_11 的双人镜像也是黑蛇');
+  assert.equal(bosses.boss_12.enemyKey, 'enemy_1507_mephi');
+  assert.deepEqual(bosses.boss_12.bloodPoint, { FUNNY: 277500, NORMAL: 787500, HARD: 2000000, ABYSS: 4000000 });
+  assert.deepEqual([enemies.enemy_1507_mephi.stats.maxHp, enemies.enemy_1507_mephi.stats.atk, enemies.enemy_1507_mephi.stats.def], [200000, 1000, 800]);
+  assert.ok(waves.custom_boss_12 && waves.custom_boss_12_s, 'boss_12 boss waves');
+  assert.equal(waves.custom_boss_12.branches.boss_battle_multi_player[0][0].key, 'enemy_1507_mephi', 'boss_12 的双人镜像也是梅菲斯特');
+  assert.deepEqual([...new Set(waves.custom_boss_12.spawns.filter((s) => s.tag !== 'boss').map((s) => s.key))].sort(),
+    ['enemy_1043_zomsbr', 'enemy_1061_zomshd'], 'boss_12 escorts = the 宿主 units');
 
   assert.equal(Object.keys(factions.entries).length, 67);
   for (const e of Object.values(factions.entries)) {

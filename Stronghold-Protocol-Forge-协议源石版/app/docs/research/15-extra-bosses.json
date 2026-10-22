@@ -1,17 +1,26 @@
 {
   "_meta": {
-    "about": "Hand-added 领袖 that the official autochess tables do not carry (this fork's own content). tools/build-data.mjs merges each entry into data/enemies.json (the enemy row), data/waves.json (a boss wave cloned from waveBase, its leader spawn retargeted at enemyId), data/bosses.json (the leader record: bloodPoint / weight / templates) and data/config.json (the mode's round bossTemplates + bossWeights). The scripted mechanics live in server/sim/content/bosses.js BOSS_KITS.",
+    "about": "Hand-added 领袖 that the official autochess tables do not carry (this fork's own content). tools/build-data.mjs merges each entry into data/enemies.json (the enemy row), data/waves.json (a boss wave cloned from waveBase; its leader spawns — the main spawn and the ≥2-player mirrored copy in `branches` — are retargeted at enemyId, and its escorts are optionally swapped by `escorts`), data/bosses.json (the leader record: bloodPoint / weight / templates) and data/config.json (the mode's round bossTemplates + bossWeights). The scripted mechanics live in server/sim/content/bosses.js BOSS_KITS.",
     "sources": [
       "enemy_database.json (zh_CN) enemy_1515_bsnake level 0: constants, skills (Ignite / DragonFireExplode / ScreenAttack / SummonFlame) and talentBlackboard",
       "enemy_handbook_table.json enemy_1515_bsnake: 能力 text (第一阶段 / 狂暴状态)",
       "PRTS 不死的黑蛇 (level 0): 生命 50000, 攻击 770, 防御 800, 法抗 50, 移动 0.5, 攻击间隔 4.5, 攻击半径 2.0, 重量 6, 目标价值 2, 抗性 沉默·晕眩·沉睡·冻结·浮空; 点燃 cd 19; 引爆 cd 35; 召唤能量聚合体 [狂暴] cd 75 / 技力 50; 烈焚灼息 50/s→230/s over 30 s, duration 30.5 s; 黑蛇形态 debuff holders deal 50 % damage; 首次死亡 5 s 重生至 100 %, 狂暴 +50 % max HP / ATK, 不息恶火 28 s / 每 2 s 一列共 10 次 / 打完 15 s 无敌; 第二次死亡 5 s 后消失并再放一次",
-      "Ark-Models models_data.json enemy 1515_bsnake (spine): Reborn_1_* / Reborn_2_* / Skill_1_A/B / Skill_2_A/B / Skill_3 clips"
+      "Ark-Models models_data.json enemy 1515_bsnake (spine): Reborn_1_* / Reborn_2_* / Skill_1_A/B / Skill_2_A/B / Skill_3 clips",
+      "enemy_database.json (zh_CN) enemy_1507_mephi level 0: 生命 28000, 攻击 500, 防御 200, 法抗 60, 移动 0.5, 攻击间隔 6.0, 攻击半径 20（全场）, 重量 3, 目标价值 1; 无任何常见抗性; skills 为 null; talentBlackboard 仅 healaura.hp_recovery_per_sec = 1.0（生命回复速度 +100%）",
+      "enemy_handbook_table.json enemy_1507_mephi: 能力 text（全场的敌方单位的自然生命回复速度加倍 / 普通攻击能够同时治疗3名敌方单位）",
+      "PRTS 梅菲斯特 (level 0): 治疗不造成任何伤害、无阶段 / 无召唤 / 无技能; 5-10「长夜终尽」敌方阵容以宿主为主（宿主士兵×44 / 宿主拾荒者×22 / 粉碎攻坚手×3 / 特战术师×2 / 浮士德×1），关卡层面没有针对领袖的脚本技能",
+      "Ark-Models models_data.json enemy 1507_mephi (spine): enemy_1507_mephi.skel / .atlas / .png"
     ],
     "notes": [
       "属性按业主 2026-10-21「把黑蛇属性加强到现在的 boss 属性」拉到现有领袖的档位：生命 50000 → 240000、攻击 770 → 1000、防御 800 → 1000、法抗 50 不变（`stats` 覆盖，build-data 合并进数据）[ASSUMED：官方 H8-4 数值在本模式的领袖里偏低]。",
       "bloodPoint 与“萨米的意志”同一档（277.5k / 787.5k / 2M / 4M），是两条血条合计后的口径（首次被击败重生再打一轮），所以整场要打掉的伤害量与其它领袖相当 [ASSUMED]。",
       "波次只换领袖的生成 key：场地、路线、护送与分支沿用 waveBase（官方 h07_05 卢西恩场；它的领袖路线是 patrol 循环，所以黑蛇会像卢西恩 / 假想敌：铳那样边走边打）[ASSUMED]。",
-      "能量聚合体在缓存的数据表里没有独立行（它来自关卡分支 bsnake_flame），v1 里用 kit 在场上召唤一位占位召唤物代替 [ASSUMED]。"
+      "能量聚合体在缓存的数据表里没有独立行（它来自关卡分支 bsnake_flame），v1 里用 kit 在场上召唤一位占位召唤物代替 [ASSUMED]。",
+      "梅菲斯特只有骨架：enemy_database 里 skills 为 null、talentBlackboard 只有 healaura.hp_recovery_per_sec = 1.0，两条机制来自 handbook 能力（全场敌方单位生命回复速度加倍 / 普通攻击治疗至多 3 名敌方单位）与 PRTS（不造成伤害、无阶段/召唤/免疫、可被阻挡）。kit 需要 [ASSUMED] 补三处：治疗量（ATK×1 = 1000/目标）、光环对象（按 PRTS「所有敌方单位」，自回为 0 的单位不变）、能否自疗（共享血池的领袖本来就吃不到治疗）。",
+      "属性同样按黑蛇的口径拉到领袖档位（生命 28000 → 200000、攻击 500 → 1000（同时是治疗量）、防御 200 → 800；法抗 60 / 移动 0.5 / 攻击间隔 6 / 攻击半径 20 保持官方值）[ASSUMED：5-10 数值在本模式里偏低；官方突袭倍率（HP×3 / DEF×2.5）不采用]。",
+      "5-10 的敌方阵容以宿主为主（宿主士兵×44 / 宿主拾荒者×22 / …）。本模式把 h07_05 的护卫换成数据里已有的宿主单位（`escorts` 映射：只换 key，生成时间 / 路线 / 槽位 / 数量沿用 base 波次），他的天赋（生命回复 +100%）因此真正生效：宿主士兵 80→160/s、宿主重装士兵 200→400/s [ASSUMED；宿主拾荒者等 5-10 专属敌人在本模式下没有数据行与模型，改用已有的宿主单位]。",
+      "波次沿用 h07_05 的场地与巡逻路线：他会像卢西恩一样绕行、不会走到终点。无阶段、无技能、无召唤：kit 只把普通攻击换成治疗（每 6 s 至多 3 名未满血敌方单位，最低生命比优先），并加上 +100% 生命回复光环。",
+      "bloodPoint 与其它手加领袖同档（277.5k / 787.5k / 2M / 4M）[ASSUMED：他是纯续航型领袖，整场要打掉的伤害量与其它领袖相当，实际手感待试玩回调]。"
     ]
   },
   "bosses": [
@@ -26,6 +35,24 @@
       "bloodPoint": { "FUNNY": 277500, "NORMAL": 787500, "HARD": 2000000, "ABYSS": 4000000 },
       "stats": { "maxHp": 240000, "atk": 1000, "def": 1000, "res": 50 },
       "waveBase": { "multi": "act2autochess_h07_05", "solo": "act2autochess_h07_05_s" }
+    },
+    {
+      "bossId": "boss_12",
+      "enemyId": "enemy_1507_mephi",
+      "handbookId": "enemy_1507_mephi",
+      "name": "梅菲斯特",
+      "sortId": 12,
+      "weight": 4,
+      "hidden": false,
+      "bloodPoint": { "FUNNY": 277500, "NORMAL": 787500, "HARD": 2000000, "ABYSS": 4000000 },
+      "stats": { "maxHp": 200000, "atk": 1000, "def": 800, "res": 60 },
+      "waveBase": { "multi": "act2autochess_h07_05", "solo": "act2autochess_h07_05_s" },
+      "escorts": {
+        "enemy_1427_lrnazg": "enemy_1061_zomshd",
+        "enemy_2009_csaudc": "enemy_1043_zomsbr",
+        "enemy_2010_csdcr": "enemy_1061_zomshd",
+        "enemy_1042_frostd": "enemy_1043_zomsbr"
+      }
     }
   ]
 }
