@@ -293,6 +293,9 @@ export class MatchPhases {
   startRound(r) {
     this.phase = PHASE.ROUND_START;
     this.round = r;
+    // 协议等级 (owner 2026-10-22): 额外敌方协议源石按 1 / 3 / 5 回合分散发（业主「额外协议源石分散给，在1，3，5回合
+    // 给额外的」）。在这里而不是开局一次发完，令 L18 的 R1/R3/R5 各拿 1 张；休整期之前敌方就拿到本轮该有的卡。
+    this.applyProtocolLevelEnemyHexes(r);
     this.fields = [];
     this.watchers.clear();
     this.unitePlan = null;

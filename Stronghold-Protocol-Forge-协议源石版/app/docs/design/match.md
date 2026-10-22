@@ -194,8 +194,11 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `room.state.level`（只有 >0 才带这个键）；`m.result.protocolLevel` 进战绩（`matchRecords` 的 `level`、
   `ui/stats` 的 `level`）。
 - **匹配**：`server/matchmaking.js` 严格按 `(difficulty, level)` 成房 —— 不同等级不会凑到同一间。
-- **额外敌方协议源石**：13/15/16/18 级在开局由 `MatchHexDraft.applyProtocolLevelEnemyHexes()` 从敌方名册按这一局的
-  `rngHex` 抽 N 张直接发给敌方（跳过已有的卡、确定性；等级关闭时返回 0，一个字节都不动）。
+- **额外敌方协议源石**：13/14/15 级 1 张、16/17 级 2 张、18 级 3 张，**按 1 / 3 / 5 回合分散发放**
+  （`MatchHexDraft.applyProtocolLevelEnemyHexes(round)`，每回合由 `MatchPhases.startRound` 调一次；第 i 张落在
+  `PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS[i]` 回合。业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」——
+  此前是开局一次发完，L18 等于 R1 就拿到 3 张）。从敌方名册按这一局的 `rngHex` 抽（跳过已有的卡、确定性；等级
+  关闭时返回 0，一个字节都不动）。
 - **排行榜**：`MatchRecords.board({ difficulty, level, limit })` —— 每 (难度, 等级) 一张榜，每名真人只留「胜 > 通过回合多 >
   更早达成」的最好一局，榜长封顶 50；公开面只有名字与成绩（**不含 playerId**），装载时从 journal 重建。C2S
   `records.board` 取榜，客户端「统计 → 排行榜」按难度 / 等级筛选。

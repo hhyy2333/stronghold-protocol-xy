@@ -14,12 +14,13 @@
 // 每一级只动 1–2 个玩家能感知的量，乘法曲线（不是加法），每 3 级一个拐点：
 //   1–6   稳定区：只有敌方生命/攻击；
 //   7–12  危险区：加防御/法抗、漏怪、每波数量、收入；
-//   13–18 深潜区：首领池、额外敌方协议源石。
+//   13–18 深潜区：首领池、额外敌方协议源石（第 1 / 3 / 5 回合分散发，见 PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS）。
 //
 // 读点（都从这里取，别在引擎里写第二份）：
 //   server/match/gamedata.js   income / bossPoolHp
 //   server/match/hextech.js    matchEnemyMods（敌方 mods 折入，预览=实战同一份）
 //   server/match/match/settle.js 漏怪损失
+//   server/match/match/hexDraft.js 额外敌方协议源石的发放（applyProtocolLevelEnemyHexes）
 //   server/match/Match.js      所有者：protocolLevel
 
 /** 最高等级。0 = 关闭。 */
@@ -37,6 +38,36 @@ export const PROTOCOL_LEVEL_MAX = 18;
  * `income(round)` 只在 `round > PROTOCOL_LEVEL_INCOME_FREE_ROUNDS` 时折 `incomeDelta`；表里的数值不为此改动。
  */
 export const PROTOCOL_LEVEL_INCOME_FREE_ROUNDS = 7;
+
+/**
+ * **额外敌方协议源石的发放回合**（业主 2026-10-22：「额外协议源石分散给，在1，3，5回合给额外的」）。
+ *
+ * 第 i 张额外源石（0-based）在第 `PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS[i]` 回合发：`extraEnemyHexes = 1` 的等级只在
+ * R1 发，2 张的等级在 R1 / R3，3 张（N18）在 R1 / R3 / R5。此前这些卡在开局一次性发完（owner 2026-10-18），
+ * N18 等于 R1 就拿到全部 3 张；分散后 R1–R5 的敌方强度逐回合加码，R5 之后与旧口径一致。
+ *
+ * 表里的 `extraEnemyHexes` 仍是**整局一共几张**，不为此改数值；发放由
+ * `MatchHexDraft.applyProtocolLevelEnemyHexes()` 按本表逐回合执行。
+ */
+export const PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS = Object.freeze([1, 3, 5]);
+
+/**
+ * 这一级在 `round` 这一回合应发几张额外敌方协议源石（等级关闭 / 不在发放回合 ⇒ 0）。
+ *
+ * 表里最多 3 张（正好对应 1 / 3 / 5）；若以后出现更多的等级，多出来的张数全部落在最后一个发放回合。
+ * @param {number} level @param {number} round @param {string} [difficulty]
+ * @returns {number}
+ */
+export function protocolLevelExtraHexesAt(level, round, difficulty = 'ABYSS') {
+  const mods = protocolLevelMods(level, difficulty);
+  if (!mods || !(mods.extraEnemyHexes > 0) || !Number.isInteger(round)) return 0;
+  const idx = PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS.indexOf(round);
+  if (idx < 0) return 0;
+  const extra = mods.extraEnemyHexes;
+  if (extra <= PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS.length) return idx < extra ? 1 : 0;
+  // 表外余量（当前表走不到）：最后一个发放回合一次发完
+  return idx === PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS.length - 1 ? 1 + (extra - PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS.length) : 1;
+}
 
 /** 每一级的数值。`hpMul/atkMul/defMul/resMul` 是**乘数**，`countAdd` 是每波额外敌人数（加法），其余是绝对增减。 */
 export const PROTOCOL_LEVELS = Object.freeze([

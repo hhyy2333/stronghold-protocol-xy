@@ -10,6 +10,7 @@
 
 import { PHASE, ERR } from '../../../shared/constants.js';
 import { rollOffers, pickEnemyRarity, pickEnemyHex } from '../../../shared/hextech.js';
+import { protocolLevelExtraHexesAt } from '../../../shared/protocolLevels.js';
 import { applyHex, hexIdsOf } from '../hextech.js';
 import { OK, fail, DELAYS } from './common.js';
 
@@ -182,14 +183,23 @@ export class MatchHexDraft {
   }
 
   /**
-   * 协议等级 (owner's call 2026-10-18): the enemy gets `extraEnemyHexes` extra 协议源石 at the start of the match
-   * (levels 13/15/16/18). Drawn from the enemy roster on the match's own rngHex so a replay is deterministic, skipping
-   * cards the enemy already owns. A level with none (or a data set without the roster) returns 0 and changes nothing.
+   * 协议等级 (owner's call 2026-10-18): the enemy gets `extraEnemyHexes` extra 协议源石 — levels 13–15 one, 16–17 two,
+   * 18 three.
+   *
+   * 业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」: they are NOT all granted at match start any more. The
+   * i-th card lands on `PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS[i]` (1 / 3 / 5), so L18 gets one at each of R1, R3 and R5 while
+   * L16–17 get R1 + R3 and L13–15 the R1 card only. Called once per round from `MatchPhases.startRound`, before the prep
+   * phase — the enemy already owns this round's card when the players shop. A round with nothing due returns 0 and
+   * touches neither the state nor the RNG.
+   *
+   * Drawn from the enemy roster on the match's own rngHex so a replay is deterministic, skipping cards the enemy already
+   * owns. A data set without the roster returns 0 and changes nothing.
+   * @param {number} round the round this grant belongs to
    * @returns {number} how many were granted
    */
-  applyProtocolLevelEnemyHexes() {
-    const extra = this.gd.protocolLevelMods ? this.gd.protocolLevelMods.extraEnemyHexes : 0;
-    if (!(extra > 0)) return 0;
+  applyProtocolLevelEnemyHexes(round = this.round) {
+    const due = protocolLevelExtraHexesAt(this.gd.protocolLevel, round, this.gd.difficulty);
+    if (!(due > 0)) return 0;
     if (!Array.isArray(this.enemyHexes)) this.enemyHexes = [];
     const pool = this.gd.hexEnemyPool();
     if (!pool.length) return 0;
@@ -197,15 +207,15 @@ export class MatchHexDraft {
     if (!rarities.length) return 0;
     const owned = this.enemyHexes.map((e) => (e && e.id ? e.id : e));
     let granted = 0;
-    for (let i = 0; i < extra; i++) {
+    for (let i = 0; i < due; i++) {
       const rarity = pickEnemyRarity(this.rngHex, rarities);
       const id = pickEnemyHex(this.rngHex, { pool, owned, rarity });
       if (!id) break;
       owned.push(id);
-      this.enemyHexes.push({ id, round: this.round });
+      this.enemyHexes.push({ id, round });
       granted += 1;
     }
-    if (granted) this.hexDrawRound = this.round;
+    if (granted) this.hexDrawRound = round;
     return granted;
   }
 

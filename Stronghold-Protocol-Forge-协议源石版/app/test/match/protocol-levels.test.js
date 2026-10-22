@@ -3,7 +3,8 @@
 // 这一份钉住三件事：
 //   * 表本身（18 行、逐级单调、13–18 的每一轴都不回头、综合压力严格上升）；
 //   * 归一化：等级只在 ABYSS 上生效，其它难度一律 0；缺省 0 时引擎逐字节不变；
-//   * 折入：敌方 mods（预览=实战同一个 matchEnemyMods）、收入、首领池。
+//   * 折入：敌方 mods（预览=实战同一个 matchEnemyMods）、收入、首领池，以及额外敌方协议源石按 R1/R3/R5 分散发放
+//     （业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ import { makeMatch, DATA } from './harness.js';
 import { enemyHexMods, matchEnemyMods, bossPoolHpFor } from '../../server/match/hextech.js';
 import {
   PROTOCOL_LEVELS, PROTOCOL_LEVEL_MAX, isProtocolLevel, protocolLevelActive, protocolLevelRow, protocolLevelMods,
+  PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS, protocolLevelExtraHexesAt,
 } from '../../shared/protocolLevels.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -125,23 +127,47 @@ test('the income penalty starts at round 8, so every level opens with a normal h
   assert.equal(base.m.gd.income(8), 11);
 });
 
-test('levels 13+ actually grant extra enemy hexes at the start (13/14/15 → 1, 16/17 → 2, 18 → 3)', () => {
-  const at = (level, difficulty = 'ABYSS') => {
-    const h = makeMatch({ mode: 'solo', difficulty, humans: 1, seed: 31, fake: true, protocolLevel: level });
+test('extra enemy hexes: same totals, now spread over rounds 1 / 3 / 5', () => {
+  // 业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」：整局张数不变（13/14/15 → 1、16/17 → 2、18 → 3），
+  // 但第 i 张在第 1 / 3 / 5 回合发 —— 第 i 张的回合就是 PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS[i]。
+  assert.deepEqual([...PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS], [1, 3, 5]);
+  for (const row of PROTOCOL_LEVELS) {
+    const total = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+      .reduce((n, r) => n + protocolLevelExtraHexesAt(row.level, r, 'ABYSS'), 0);
+    assert.equal(total, row.extraEnemyHexes || 0, `L${row.level}: the whole match still gets ${row.extraEnemyHexes || 0}`);
+  }
+  const at = (level) => [1, 2, 3, 4, 5, 6].map((r) => protocolLevelExtraHexesAt(level, r, 'ABYSS'));
+  assert.deepEqual(at(12), [0, 0, 0, 0, 0, 0], 'level 12 has no extra enemy card');
+  assert.deepEqual(at(13), [1, 0, 0, 0, 0, 0], 'one card, on R1');
+  assert.deepEqual(at(16), [1, 0, 1, 0, 0, 0], 'two cards: R1 + R3');
+  assert.deepEqual(at(18), [1, 0, 1, 0, 1, 0], 'three cards: one at each of R1 / R3 / R5');
+  assert.equal(protocolLevelExtraHexesAt(18, 1, 'HARD'), 0, 'only the highest difficulty carries levels');
+
+  // 实战路径：MatchPhases.startRound 逐回合发。先量一条无等级的基线（R1 / R3 各抽 1 张正常的敌方源石），
+  // 再看每个等级在 ROUND_START 时比基线多出来的张数 —— 这样既验证「发在哪一回合」，也不依赖抽到哪几张卡。
+  const counts = (level) => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 31, fake: true, protocolLevel: level });
     h.start();
-    return h.m.enemyHexes.map((e) => e && e.id);
+    const out = { start: h.m.enemyHexes.length };
+    for (const r of [1, 3, 5]) {
+      const ok = h.drive(() => h.m.phase === 'ROUND_START' && h.m.round === r);
+      assert.ok(ok, `reached ROUND_START R${r} (phase ${h.m.phase} R${h.m.round})`);
+      out['r' + r] = h.m.enemyHexes.length;
+    }
+    out.ids = h.m.enemyHexes.map((e) => e && e.id);
+    h.m.dispose();
+    return out;
   };
-  assert.equal(at(0).length, 0, 'off: nothing');
-  assert.equal(at(12).length, 0, 'level 12 has no extra enemy card');
-  assert.equal(at(13).length, 1);
-  assert.equal(at(14).length, 1);
-  assert.equal(at(15).length, 1);
-  assert.equal(at(16).length, 2);
-  assert.equal(at(17).length, 2);
-  const lv18 = at(18);
-  assert.equal(lv18.length, 3);
-  assert.equal(new Set(lv18).size, 3, 'no duplicate enemy cards');
-  assert.equal(at(18, 'HARD').length, 0, 'only the highest difficulty carries levels');
+  const base = counts(0);
+  assert.deepEqual([base.start, base.r1, base.r3, base.r5], [0, 0, 1, 2], 'premise: no extra cards without a level');
+  const extra = (level) => {
+    const c = counts(level);
+    return { r1: c.r1 - base.r1, r3: c.r3 - base.r3, r5: c.r5 - base.r5, unique: new Set(c.ids).size === c.ids.length };
+  };
+  assert.deepEqual(extra(12), { r1: 0, r3: 0, r5: 0, unique: true }, 'level 12 adds nothing');
+  assert.deepEqual(extra(13), { r1: 1, r3: 1, r5: 1, unique: true }, 'L13-15: the R1 card only');
+  assert.deepEqual(extra(16), { r1: 1, r3: 2, r5: 2, unique: true }, 'L16-17: R1 + R3');
+  assert.deepEqual(extra(18), { r1: 1, r3: 2, r5: 3, unique: true }, 'L18: one at each of R1 / R3 / R5, no repeats');
 });
 
 test('the lobby and the protocol carry the level; setLevel refuses it off the highest difficulty', () => {
