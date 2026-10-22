@@ -1089,6 +1089,8 @@ test('盟约获得: floor(largest single-bond gain / 2) goes to every ACTIVE sta
 
 test('投资天才: 投资人 needs 1 fewer member, 获得时 traits fire once more, and every trigger banks +1 投资人', () => {
   const rec = HEXTECH.playerHexes.hex_investgenius;
+  // 业主 2026-10-22「协议投资天才改成三阶」：三个效果一个字没动，换的只是抽取档位（2 阶 → 3 阶）。
+  assert.equal(rec.rarity, 'prismatic', '投资天才 is 3阶 since 2026-10-22');
   assert.deepEqual(rec.effect.bondNeedBonus, { bondId: 'investShip', n: 1 });
   assert.equal(rec.effect.gainTraitExtra, 1);
   const ps = { effects: [{ params: rec.effect }] };

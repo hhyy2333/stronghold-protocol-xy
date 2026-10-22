@@ -1160,10 +1160,12 @@ export const PLAYER_HEXES = [
     effect: { onGainTrait: { halfActiveBonds: true } },
   },
   {
+    // 业主 2026-10-22：「协议投资天才改成三阶」→ rarity gold → prismatic（2 阶 → 3 阶）。三个效果一项没动，换的只是
+    // 它在抽取里的档位：`data/hextech.json` 的 rarities 权重按档位算，所以卡池构成随之把一张从 2 阶挪到 3 阶。
     id: 'hex_investgenius',
     name: '投资天才',
     desc: '你的【投资人】盟约所需人数 −1；「获得时」类特质额外触发 1 次；每次「获得时」类特质触发时，【投资人】+1 层。',
-    rarity: 'gold',
+    rarity: 'prismatic',
     effect: { onGainTrait: { investor: 1 }, gainTraitExtra: 1, bondNeedBonus: { bondId: 'investShip', n: 1 } },
   },
   {
