@@ -12,9 +12,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeMatch, DATA } from './harness.js';
 import { enemyHexMods, matchEnemyMods, bossPoolHpFor } from '../../server/match/hextech.js';
+import { buildNormalWave, withExtraBoss } from '../../server/match/waves.js';
 import {
   PROTOCOL_LEVELS, PROTOCOL_LEVEL_MAX, isProtocolLevel, protocolLevelActive, protocolLevelRow, protocolLevelMods,
   PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS, protocolLevelExtraHexesAt,
+  PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL, PROTOCOL_LEVEL_EXTRA_BOSSES, protocolLevelExtraBossAt,
 } from '../../shared/protocolLevels.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -180,4 +182,134 @@ test('the lobby and the protocol carry the level; setLevel refuses it off the hi
   assert.ok(proto.includes('level: (v) => v == null || isInt(v, 0, PROTOCOL_LEVEL_MAX)'), 'room.queue carries it');
   const mm = readFileSync(path.join(ROOT, 'server/matchmaking.js'), 'utf8');
   assert.ok(mm.includes('e.difficulty === head.difficulty && (e.level || 0) === (head.level || 0)'), 'strict on (difficulty, level)');
+});
+
+// =====================================================================================================================
+// N18 第 10 回合的彩蛋首领（业主 2026-10-22「n18难度增加第10回合会出现黑蛇或梅菲斯特」）
+//
+// 形态：**普通回合里额外刷一只**红蛇 / 梅菲斯特 —— 不碰最终攻势（没有共享血池、不合并团队 LP、R14 照常还是首领关）。
+// 这一组钉住：抽签的边界（只有 ABYSS 18 级、只有 R10、种子决定哪一只）、注入是纯函数（不消耗 rngWaves、不改原 wave），
+// 以及它在实战里真的出场、按普通敌人结算（漏掉照扣 LP、破坏完美作战）。
+// =====================================================================================================================
+
+test('N18 R10 彩蛋首领：只有 ABYSS 18 级、只有第 10 回合、种子决定哪一只', () => {
+  assert.equal(PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, 10);
+  assert.equal(PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL, 18);
+  assert.deepEqual([...PROTOCOL_LEVEL_EXTRA_BOSSES], ['enemy_1515_bsnake', 'enemy_1507_mephi'], 'the two hand-added leaders');
+  // 只在这一级：17 级与关闭都不出
+  assert.equal(protocolLevelExtraBossAt(17, 10, 'ABYSS', 1), null, 'L17 stays as it was');
+  assert.equal(protocolLevelExtraBossAt(0, 10, 'ABYSS', 1), null, 'level off');
+  // 只在 R10
+  for (const round of [1, 9, 11, 14, 15]) assert.equal(protocolLevelExtraBossAt(18, round, 'ABYSS', 1), null, `R${round} is not the round`);
+  // 只在 ABYSS（等级本来就只在 ABYSS 生效，这里再钉一次实际调用点）
+  for (const diff of ['FUNNY', 'NORMAL', 'HARD']) assert.equal(protocolLevelExtraBossAt(18, 10, diff, 1), null, diff);
+  // 同一颗种子必然同一只；两种都抽得到
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const a = protocolLevelExtraBossAt(18, 10, 'ABYSS', seed);
+    assert.equal(a, protocolLevelExtraBossAt(18, 10, 'ABYSS', seed), `seed ${seed} is deterministic`);
+    assert.ok(PROTOCOL_LEVEL_EXTRA_BOSSES.includes(a), `seed ${seed}: ${a}`);
+  }
+  const seen = new Set();
+  for (let seed = 0; seed < 20; seed++) seen.add(protocolLevelExtraBossAt(18, 10, 'ABYSS', seed));
+  assert.equal(seen.size, 2, 'both leaders are reachable');
+});
+
+test('N18 R10 彩蛋首领：注入是纯函数 —— 不改原 wave、不消耗 rngWaves、非 18 级同一个对象', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 5, fake: true, protocolLevel: 18 });
+  h.start();
+  const m = h.m;
+  m.round = 10;
+  const base = buildNormalWave(m.gd, m.rngWaves, m.factions, 10);
+  const before = JSON.stringify(base.spawns);
+  const key = protocolLevelExtraBossAt(m.protocolLevel, 10, m.difficulty, m.seed);
+  assert.ok(key, 'the premise: L18 has the extra leader');
+  // 原 wave 一个字节都不动
+  const wave = withExtraBoss(m.gd, base, key, 10);
+  assert.notEqual(wave, base, 'a new object');
+  assert.equal(JSON.stringify(base.spawns), before, 'the input wave is untouched');
+  assert.equal(wave.spawns.length, base.spawns.length + 1, 'exactly one more spawn');
+  const spec = wave.spawns[wave.spawns.length - 1];
+  assert.equal(spec.enemyKey, key);
+  assert.equal(spec.tag, 'boss');
+  assert.equal(spec.count, 1, 'one body');
+  assert.equal(spec.preview.boss, true, 'the client draws it as a leader at its start tile');
+  assert.ok(Array.isArray(spec.preview.start), 'and knows its spawn tile');
+  assert.equal(spec.mods.hpMul, undefined, 'leaders never take the round HP multiplier');
+  assert.ok(spec.mods.atkMul > 1, 'but they do take ATK');
+  // 没有它就原样返回同一个对象（0–17 级因此逐字节不变）
+  assert.equal(withExtraBoss(m.gd, base, null, 10), base, 'no leader ⇒ the very same object');
+  m.dispose();
+});
+
+test('N18 R10 彩蛋首领：不消耗 rngWaves —— R11–R14 的出怪表一动不动', () => {
+  // 这条是这条规则的关键性质：`rngWaves` 是「本局每一轮出怪表」的同一条随机流，在 R10 多抽一次就会把后半局整体换一份。
+  // 抽签走种子哈希（protocolLevelExtraBossAt），所以两种做法的后续流必须完全一致。
+  const draw = (inject) => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 5, fake: true, protocolLevel: 18 });
+    h.start();
+    h.m.round = 10;
+    const w = buildNormalWave(h.m.gd, h.m.rngWaves, h.m.factions, 10);
+    // 关键：注入**不读也不推进** rngWaves —— 所以这里对 w 怎么处置都不影响后面的流。
+    if (inject) withExtraBoss(h.m.gd, w, protocolLevelExtraBossAt(18, 10, 'ABYSS', h.m.seed), 10);
+    const later = [11, 12, 13].map((r) => buildNormalWave(h.m.gd, h.m.rngWaves, h.m.factions, r).spawns);
+    h.m.dispose();
+    return JSON.stringify(later);
+  };
+  assert.equal(draw(true), draw(false), 'the next rounds are byte-identical with and without the injection');
+});
+
+test('N18 R10 彩蛋首领：实战里真的出场，按普通敌人结算（数据血量、漏掉照扣 LP）', () => {
+  // 不用 `fake: true`：那一条走的是假战斗，不会真的出怪。
+  const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 5, protocolLevel: 18 });
+  h.start();
+  const m = h.m;
+  m.round = 10;
+  const base = buildNormalWave(m.gd, m.rngWaves, m.factions, 10);
+  const key = protocolLevelExtraBossAt(m.protocolLevel, 10, m.difficulty, m.seed);
+  m.wave = withExtraBoss(m.gd, base, key, 10);
+  const ps = h.ps('p_0');
+  const b = m._normalBattle(ps);
+  let spawned = null;
+  b.on('enemySpawn', (c) => { if (c.enemy && c.enemy.defId === key) spawned = c.enemy; }, { priority: -1000, owner: 'test' });
+  // 它 0 秒出场：推几步就够
+  for (let i = 0; i < 90 && !b.finished; i++) b.step();
+  assert.ok(spawned, 'the extra leader spawns');
+  assert.equal(spawned.tag, 'boss', 'as a leader');
+  assert.equal(spawned.isBoss, true);
+  // 血量是数据表的值（不叠本回合 HP 倍率、也不叠 N18 的 bossPoolMul）
+  const def = m.gd.enemy(key);
+  assert.equal(Math.round(spawned.base.maxHp), Math.round(def.stats.maxHp), `${key}: data HP, unscaled`);
+  // 它漏掉时**按普通敌人结算**：`battle/spawns.js` 让 tag 'boss' 的单位 `counted = false`（首领战有血池，不用这个计数），
+  // 而 `_recordLeak` 写漏怪条目时用 `!!e.counted || e.isBoss` —— 于是它在漏怪表里 counted = true，settle 照扣 LP、
+  // 也破坏完美作战。这正是「普通回合里多一只首领」该有的结算方式，用一次强制漏怪把它钉住。
+  const before = b.result().perPlayer[ps.playerId]?.leaked?.length ?? 0;
+  b.leak(spawned);
+  const after = b.result().perPlayer[ps.playerId]?.leaked ?? [];
+  assert.equal(after.length, before + 1, 'the leak is recorded');
+  const row = after.find((l) => l.enemyKey === key);
+  assert.ok(row, 'the leader is in the leaked list');
+  assert.equal(row.counted, true, 'and it counts — settle charges LP and breaks 完美作战 for it');
+  assert.equal(row.boss, true, 'flagged as a leader (the report draws it that way)');
+  b.forceEnd('forced');
+  b.result();
+  m.dispose();
+});
+
+test('N18 R10 彩蛋首领：R10 之外、以及 18 级以外的回合，波次里没有它', () => {
+  // 实战路径：MatchPhases.startRound 里接的是 protocolLevelExtraBossAt —— 这里守着它两侧的边界。
+  const build = (level, round) => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 5, fake: true, protocolLevel: level });
+    h.start();
+    h.m.round = round;
+    const key = protocolLevelExtraBossAt(h.m.protocolLevel, round, h.m.difficulty, h.m.seed);
+    const wave = withExtraBoss(h.m.gd, buildNormalWave(h.m.gd, h.m.rngWaves, h.m.factions, round), key, round);
+    const bosses = wave.spawns.filter((s) => s.tag === 'boss').length;
+    h.m.dispose();
+    return bosses;
+  };
+  assert.equal(build(18, 10), 1, 'L18 R10 has exactly one extra leader');
+  assert.equal(build(18, 9), 0, 'R9 has none');
+  assert.equal(build(18, 11), 0, 'R11 has none');
+  assert.equal(build(17, 10), 0, 'L17 has none');
+  assert.equal(build(0, 10), 0, 'level off has none');
 });

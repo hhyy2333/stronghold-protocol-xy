@@ -69,6 +69,52 @@ export function protocolLevelExtraHexesAt(level, round, difficulty = 'ABYSS') {
   return idx === PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS.length - 1 ? 1 + (extra - PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS.length) : 1;
 }
 
+// =====================================================================================================================
+// N18 第 10 回合的「彩蛋首领」（业主 2026-10-22：「n18难度增加第10回合会出现黑蛇或梅菲斯特」）
+// =====================================================================================================================
+//
+// 形态（业主当场选的口径）：**普通回合里额外刷一只**，不是第二个首领回合 —— 所以它不碰最终攻势那一整套
+// （不合并团队 LP、没有共享血池、没有 BOSS_HIT 播报、R14 照常还是最后一场首领关），只在 R10 的**每个人的
+// 自己那场**战斗里多一只领袖：走本回合的某条地面路线、按数据里的血量出场、被打倒或漏掉都按普通敌人结算
+// （`lpr` 照扣、破坏完美作战、联席的联防也照常把它带进去）。
+//
+// 生效范围：**只有 ABYSS 的 18 级**（`protocolLevelActive` 已经保证「非 ABYSS 一律 0」），且只有 R10。
+// 所以 0–17 级的每一级、以及其它三个难度，逐字节仍然是原来的对局（golden 不动）。
+//
+// 为什么从 `seed` 里抽而不是用 `rngWaves`：`rngWaves` 是「本局每一轮出怪表」的随机流，在 R10 多抽一次就会
+// 把 R11–R14 的出怪**整体换一份**（同一颗种子打出来的后半局与以前不同，已经不是这条规则的本意了）。
+// 这里用种子自己的哈希，抽签与其它任何随机流互不干扰。
+
+/** 彩蛋首领出现在第几回合。 */
+export const PROTOCOL_LEVEL_EXTRA_BOSS_ROUND = 10;
+/** 从第几级开始有这只彩蛋首领（含）。 */
+export const PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL = 18;
+/**
+ * 候选：手加的两只领袖 —— “不死的黑蛇”（`boss_11`）与梅菲斯特（`boss_12`）。
+ * 顺序就是抽签的次序（`seed % 2`），改这个数组就是改抽签结果。
+ */
+export const PROTOCOL_LEVEL_EXTRA_BOSSES = Object.freeze(['enemy_1515_bsnake', 'enemy_1507_mephi']);
+
+/**
+ * R10 这一回合该额外刷哪一只彩蛋首领（`null` = 不刷）。
+ *
+ * 纯函数：同一 `seed` 必然同一只，不读时钟、不消耗任何随机流。
+ * @param {number} level 协议等级（0 = 关闭）
+ * @param {number} round 回合
+ * @param {string} [difficulty]
+ * @param {number} [seed] 对局种子（同一颗种子 ⇒ 同一只）
+ * @returns {string|null} enemyKey
+ */
+export function protocolLevelExtraBossAt(level, round, difficulty = 'ABYSS', seed = 0) {
+  if (!protocolLevelActive(level, difficulty)) return null;
+  if (!(level >= PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL)) return null;
+  if (round !== PROTOCOL_LEVEL_EXTRA_BOSS_ROUND) return null;
+  const n = PROTOCOL_LEVEL_EXTRA_BOSSES.length;
+  if (!n) return null;
+  const idx = (Number(seed) >>> 0) % n;
+  return PROTOCOL_LEVEL_EXTRA_BOSSES[idx] || null;
+}
+
 /** 每一级的数值。`hpMul/atkMul/defMul/resMul` 是**乘数**，`countAdd` 是每波额外敌人数（加法），其余是绝对增减。 */
 export const PROTOCOL_LEVELS = Object.freeze([
   { level: 1, tier: 'steady', label: 'I', enemy: { hpMul: 1.05, atkMul: 1.03 } },

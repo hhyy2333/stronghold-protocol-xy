@@ -202,5 +202,25 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 - **排行榜**：`MatchRecords.board({ difficulty, level, limit })` —— 每 (难度, 等级) 一张榜，每名真人只留「胜 > 通过回合多 >
   更早达成」的最好一局，榜长封顶 50；公开面只有名字与成绩（**不含 playerId**），装载时从 journal 重建。C2S
   `records.board` 取榜，客户端「统计 → 排行榜」按难度 / 等级筛选。
+- **N18 第 10 回合的彩蛋首领**（业主 2026-10-22「n18难度增加第10回合会出现黑蛇或梅菲斯特」）：**普通回合里额外
+  刷一只**「不死的黑蛇」（`enemy_1515_bsnake`）或梅菲斯特（`enemy_1507_mephi`），由对局种子决定是哪一只；只在
+  **ABYSS 18 级**、**只在 R10**。
+
+  形态是业主当场选定的那一条：**不是一个额外的首领回合** —— 它不碰最终攻势那一整套（不合并团队 LP、没有共享
+  血池、没有 BOSS_HIT 播报、R14 照常还是本局唯一那场首领关），而是像波次里任何一个敌人那样打：走本回合第一条
+  地面路线的起点、0 秒出场、按普通敌人结算（漏掉照扣 `lpr`、破坏完美作战，联席的联防也会把它带进去）。
+
+  - 表与抽签：`shared/protocolLevels.js` 的 `PROTOCOL_LEVEL_EXTRA_BOSS_ROUND / _LEVEL / _BOSSES` 与
+    `protocolLevelExtraBossAt(level, round, difficulty, seed)`（纯函数，`(seed % 2)` 决定哪一只）。
+  - 摆进波次：`server/match/waves.js` 的 `withExtraBoss`，由 `MatchPhases.startRound` 在 `buildNormalWave` 之后
+    接一次。**没有它时返回同一个对象** —— 0–17 级与其它三个难度逐字节不变（golden 不移动）。
+  - **不消耗 `rngWaves`**：那是「本局每一轮出怪表」的同一条随机流，在 R10 多抽一次会把 R11–R14 的出怪整体换一份。
+    抽签走种子哈希，所以后半局与以前完全一致（`test/match/protocol-levels.test.js` 钉住这条性质）。
+  - 血量是 `data/enemies.json` 的表值，**不叠**本回合的 `enemyScale.hpMul`、也不叠 N18 的 `bossPoolMul`（那是首领
+    **血池**的倍率，这里没有池子）—— 与最终攻势同一条口径「领袖单位于服务器的生命值加成不受上述加成影响」；
+    攻击 / 移速照旧吃本回合的倍率。
+  - 预览与客户端：spawn 规格带 `tag: 'boss'` 与 `preview.boss / preview.start`，于是它进 `m.private.nextEnemies`
+    的「领袖」组、带上出生格，客户端的 `leaderStand`（`public/js/render/prepfield.js`）因此在备战界面把它直接画在
+    起点上，敌方情报里也照常显示。
 - **待办**：人手实测；L18 的 R8 尖峰（每波 +1 + 3 张额外源石）是刻意的终局强度，实测过狠时先动 18 的 `countAdd`。
 

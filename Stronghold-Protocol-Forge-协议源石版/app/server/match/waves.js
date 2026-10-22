@@ -444,6 +444,74 @@ export function buildNormalWave(gd, rng, factions, round, stageId = null) {
   };
 }
 
+// =====================================================================================================================
+// N18 R10 的「彩蛋首领」（业主 2026-10-22：「n18难度增加第10回合会出现黑蛇或梅菲斯特」）
+// =====================================================================================================================
+//
+// 业主当场选定的形态：**普通回合里额外刷一只**。所以这里只往本回合的 spawns 里追加一条，不碰最终攻势那一整套
+// （不合并团队 LP、没有共享血池、没有 BOSS_HIT 播报、R14 照常还是最后一场首领关）。它按**普通敌人**结算：
+// 漏掉照扣 `lpr`、破坏完美作战、联席的联防也会把它带进去（`counted` 保持 true，和波次里任何一个敌人一样）。
+//
+// 几个刻意的选择：
+//   * **不消耗 `rngWaves`**：那是「本局每一轮出怪表」的随机流，在 R10 多抽一次会把 R11–R14 的出怪整体换一份。
+//     抽签走 `protocolLevelExtraBossAt(level, round, difficulty, seed)`（种子的哈希），与任何随机流互不干扰。
+//   * **一条独立的 spawn 规格**（`tag: 'boss'` + `preview.boss` + `preview.start`）：走本回合第一条**地面**
+//     路线的起点，`templateSpawns` 的普通敌人一条都不动，所以「本回合本来有几只怪」不变，只是多一只领袖。
+//   * **血量走数据表**（`enemies.json` 的 maxHp），不乘本回合的 `enemyScale.hpMul`，也不叠 N18 的
+//     `bossPoolMul`（那是首领**血池**的倍率，这里没有池子）：理由与最终攻势写在同一处注释里 ——
+//     「领袖单位于服务器的生命值加成不受上述加成影响」。攻击 / 移速的倍率照旧吃（`LEADER_MODS` 那一套）。
+//   * 候选与「哪一只」都在 `shared/protocolLevels.js`（唯一一份；服务端与工具共用），这里只负责把它摆进波次。
+//
+// `escort` 是它自己那套宿主护卫（黑蛇的护卫在 R10 不算小数目），默认不带 —— 想要就传 `buildNormalWave` 的
+// `extraBoss.escorts`。
+
+/** 彩蛋首领第几秒出场：**开局就在**（0）——它要走完一整条路线，晚出只是把它挤出战斗时长。 */
+const EXTRA_BOSS_TIME = 0;
+
+/**
+ * 彩蛋首领的 spawn 规格（纯函数，不修改传入的 wave）。`null` = 这一局 / 这一回合没有它。
+ * @param {import('./gamedata.js').GameData} gd
+ * @param {{ spawns: object[], routes: object[] }} wave 本回合的波次
+ * @param {string|null} enemyKey `protocolLevelExtraBossAt` 的结果
+ * @param {number} round
+ * @returns {object|null}
+ */
+export function extraBossSpawn(gd, wave, enemyKey, round) {
+  if (!wave || typeof enemyKey !== 'string' || !gd.enemy(enemyKey)) return null;
+  const routes = Array.isArray(wave.routes) ? wave.routes : [];
+  const routeIndex = routeByMotion(routes, false);
+  const route = routes[routeIndex];
+  const scale = scaleFor(gd, round);
+  // 领袖吃攻击 / 移速（LEADER_MODS），**不吃 HP** —— 与模板里 tag 'boss' 的那条规格同一口径。
+  const mods = { atkMul: scale.atkMul, speedMul: scale.speedMul, slot: classOf(gd, enemyKey) };
+  return {
+    time: EXTRA_BOSS_TIME,
+    enemyKey,
+    routeIndex,
+    count: 1,
+    interval: 0,
+    mods,
+    tag: 'boss',
+    // `preview.boss` + `preview.start` 让它落到「领袖」那一组、并带上自己的出生格：客户端据此把它直接摆在起点上
+    // （render/prepfield.js leaderStand 读的就是这两个字段），敌方情报里也照常显示。
+    preview: previewInfo(gd, enemyKey, route, true, false),
+  };
+}
+
+/**
+ * 本回合的波次 + 彩蛋首领（业主 2026-10-22）。返回**新对象**：原来的 `wave` 不被修改，所以在它之前取过预览的调用方
+ * 也不会被这条规则影响。
+ *
+ * `enemyKey` 由 `protocolLevelExtraBossAt(level, round, difficulty, seed)` 决定（shared/protocolLevels.js，唯一一份），
+ * 这里只把它摆进 spawns。**没有就原样返回**（`=== wave`）—— 于是 0–17 级的每一次调用都与以前逐字节相同。
+ * @param {import('./gamedata.js').GameData} gd @param {object} wave @param {string|null} enemyKey @param {number} round
+ */
+export function withExtraBoss(gd, wave, enemyKey, round) {
+  const spec = extraBossSpawn(gd, wave, enemyKey, round);
+  if (!spec) return wave;
+  return { ...wave, spawns: [...(Array.isArray(wave.spawns) ? wave.spawns : []), spec] };
+}
+
 /**
  * Boss / hidden round template for one boss field; escorts follow the pick of the round's own slot.
  * @param {{ bossId: string, solo: boolean, templateId?: string|null }} opts solo → `_s` template (lone player or solo

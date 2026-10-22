@@ -6,7 +6,8 @@
 
 import { PHASE, ERR } from '../../../shared/constants.js';
 import { msg } from '../../../shared/i18n.js';
-import { buildNormalWave, buildBossWave } from '../waves.js';
+import { buildNormalWave, buildBossWave, withExtraBoss } from '../waves.js';
+import { protocolLevelExtraBossAt } from '../../../shared/protocolLevels.js';
 import { pairPlayers } from '../finalAssault.js';
 import { createRng, deriveSeed } from '../../sim/rng.js';
 import { botPickBand } from '../bot.js';
@@ -314,6 +315,11 @@ export class MatchPhases {
     } else {
       // stageId: a workshop stage may bind its own wave table to a round (shared/waveAuthoring.js; waves.js buildNormalWave)
       this.wave = buildNormalWave(this.gd, this.rngWaves, this.factions, r, this.stageId);
+      // N18 R10 的彩蛋首领（业主 2026-10-22「n18难度增加第10回合会出现黑蛇或梅菲斯特」）：**普通回合里额外刷一只**。
+      // 只在这一轮、只在这一级有；`null` ⇒ withExtraBoss 原样返回同一个对象，所以 0–17 级逐字节不变。
+      // 抽签走种子哈希（protocolLevelExtraBossAt），**不消耗 rngWaves** —— R11–R14 的出怪表因此一动不动。
+      const extraBoss = protocolLevelExtraBossAt(this.protocolLevel, r, this.difficulty, this.seed);
+      if (extraBoss) this.wave = withExtraBoss(this.gd, this.wave, extraBoss, r);
     }
     for (const ps of alive) ps.startRound(r);
     // 助战 (shared/support.js): re-check what each player brought against the pool ONE more time at the first round's

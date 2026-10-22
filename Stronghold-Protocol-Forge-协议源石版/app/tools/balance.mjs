@@ -51,7 +51,8 @@ import { pathToFileURL } from 'node:url';
 import { Match } from '../server/match/Match.js';
 import { VirtualScheduler } from '../server/match/scheduler.js';
 import { getData } from '../server/data.js';
-import { buildNormalWave, buildBossWave } from '../server/match/waves.js';
+import { buildNormalWave, buildBossWave, withExtraBoss } from '../server/match/waves.js';
+import { protocolLevelExtraBossAt } from '../shared/protocolLevels.js';
 import { arrange } from '../server/match/bot.js';
 import { computeBonds } from '../server/match/bondsMeta.js';
 import { basePositionClass } from '../server/match/board.js';
@@ -305,6 +306,9 @@ export function runRound({ data, mode, difficulty, round, seed, rehearsal = 5, p
   const rng = createRng(deriveSeed(seed, `board:${round}`));
   m.round = round;
   m.wave = buildNormalWave(m.gd, m.rngWaves, m.factions, round);
+  // N18 R10 的彩蛋首领（业主 2026-10-22）：和 MatchPhases.startRound 接同一条规则，量出来的才是实战的那一波。
+  const extraBoss = protocolLevelExtraBossAt(m.protocolLevel, round, m.difficulty, m.seed);
+  if (extraBoss) m.wave = withExtraBoss(m.gd, m.wave, extraBoss, round);
   m.lastResults = new Map();
   const cap = m.gd.lpCapPerRound;
   const rows = [];
