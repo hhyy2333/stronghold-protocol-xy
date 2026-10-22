@@ -3274,6 +3274,10 @@ test('黑蛇：普通攻击造成真实伤害并附加【烈焚灼息】（真�
   const boss = put(h, SNAKE, [3, 10], { tag: 'boss' });
   const wall = h.allies()[0];
   assert.ok(h.runUntil(() => hasBuff(wall, 'boss:bsnakeFire'), 20), '普通攻击附加了烈焚灼息');
+  // 0.19.15: 这条断言原先等的是「烈焚灼息出现」，点燃（初始 CD 19 s）正好能满足，于是普攻整个不触发也测不出来。
+  // 普攻间隔 4.5 s，所以第一次施加必须远早于点燃的 19 s。
+  assert.ok(h.b.time < 10, `由普通攻击施加（${h.b.time.toFixed(1)} s < 点燃的 19 s）`);
+  assert.ok(boss.stats.attacks > 0, '普通攻击真的发生了');
   const hp0 = wall.hp;
   h.run(2);
   const early = (hp0 - wall.hp) / 2;               // 头两秒：50/s → 56/s
@@ -3282,6 +3286,28 @@ test('黑蛇：普通攻击造成真实伤害并附加【烈焚灼息】（真�
   h.run(12);
   const late = (hp1 - wall.hp) / 12;               // 十几秒后：100/s 以上
   assert.ok(late > early + 20, `真伤随时间递增（${early.toFixed(1)} → ${late.toFixed(1)}/s）`);
+});
+
+test('黑蛇：普通攻击发出 atk 事件（模型的 Attack_A 靠它播放）', () => {
+  const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 9 }] });
+  h.step();
+  const boss = put(h, SNAKE, [3, 10], { tag: 'boss' });
+  const wall = h.allies()[0];
+  assert.ok(h.runUntil(() => h.eventsOf('atk').some((e) => e[1] === boss.id), 20), '普攻发出 atk 事件');
+  const ev = h.eventsOf('atk').find((e) => e[1] === boss.id);
+  assert.equal(ev[2], wall.id, 'atk 指向被攻击的干员');
+  assert.equal(ev[3], 'none', '无弹道：这一击由 sim 自己的 bsnakeBurn 光束表现');
+  // 射程取数据的 base.rangeRadius（2）加 0.25 碰撞半径：2 格外的干员打得到，3 格外够不着
+  const h2 = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 13 }] });
+  h2.step();
+  const b2 = put(h2, SNAKE, [3, 10], { tag: 'boss' });
+  h2.run(10);
+  assert.equal(b2.stats.attacks, 0, '3 格外够不着');
+  const h3 = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 12 }] });
+  h3.step();
+  const b3 = put(h3, SNAKE, [3, 10], { tag: 'boss' });
+  h3.run(10);
+  assert.ok(b3.stats.attacks > 0, '2 格外打得到');
 });
 
 test('黑蛇：点燃对两名未带【烈焚灼息】的干员施加，引爆打身上的并溅射四格后重新施加', () => {

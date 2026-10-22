@@ -233,5 +233,10 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   这些 msgid 是运行时拼出来的，`tools/i18n.mjs` 的字面量提取看不到它们，所以：四个语言包手工补齐，
   `PROTOCOL_LEVEL_EFFECT_TEXT` 留一份完整清单，`test/match/protocol-levels.test.js` 逐个查
   `public/i18n/*.json`（少一条就报 —— 漏了的表现是界面上直接显示中文原文）。
+- **彩蛋首领各自的实力以 §19 的脚本为准**（0.19.15 补记）：黑蛇的普通攻击在 0.19.15 之前**一次都没打出去过**
+  （射程读了 `e.s.range`，那里只有派生数值；`undefined` 让候选目标恒为空），它的 `atk` 事件也从来不发，
+  所以模型只播 Idle / Move / Die / Reborn。修好之后它才按 PRTS 打真实伤害 + 附加【烈焚灼息】，
+  官方那条「带火的干员对黑蛇伤害降低 50%」也随之第一次生效（见 `docs/BALANCE.md` 的同一节）。
+  R10 彩蛋首领的手感数据是在**修复前**量的，那批数字偏软。
 - **待办**：人手实测；L18 的 R8 尖峰（每波 +1 + 3 张额外源石）是刻意的终局强度，实测过狠时先动 18 的 `countAdd`。
 

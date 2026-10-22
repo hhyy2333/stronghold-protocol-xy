@@ -67,7 +67,7 @@
 // fx kinds: 'beam' 'shell' 'explode' 'telegraph' 'charge' 'link' 'dash' 'column' 'tide' 'rockfall' 'tentacle' 'equip'
 //   'sword' 'vest' 'blink' 'summon' 'grow' 'phase' 'lpLoss' (x, y + extra {id, r, tiles, kind, tx, ty …}).
 
-import { MOVE_SCALE, MAX_ALIVE_ENEMIES } from '../constants.js';
+import { MOVE_SCALE, MAX_ALIVE_ENEMIES, ALLY_COLLIDER_RADIUS } from '../constants.js';
 import { aggroCmp, areaSelectable } from '../targeting.js';
 import { compileRoute } from '../ai.js';
 import { normalizeRoute } from '../simdata.js';
@@ -1213,14 +1213,24 @@ function kitBlackSnake(ab, e) {
     b.addBuff(e, { key: 'boss:bsnakeInvuln', duration: returnInvuln, visible: true, flags: { invulnerable: true } });
   }
 
-  /** Its scripted normal attack: true damage + 烈焚灼息 (PRTS 黑蛇形态). */
+  /**
+   * Its scripted normal attack: true damage + 烈焚灼息 (PRTS 黑蛇形态). Its reach is the data's own attack radius
+   * (`base.rangeRadius`, 2 — `s` only carries the derived numbers, so `e.s.range` was always undefined and the whole
+   * attack never found a target: the leader only ever cast 点燃 / 引爆 until 0.19.15), and it takes an ally whose 0.25
+   * collider touches that circle, as the engine's own attacks do (ai.js enemyAttack, `reach`).
+   */
+  const reach = () => Math.max(e.base.rangeRadius || 0, 1) + ALLY_COLLIDER_RADIUS;
   function attack(b, dt) {
     P.acc += dt;
     if (P.acc < e.s.interval) return;
-    const cands = targetsNear(b, e, e.s.range);
+    const cands = targetsNear(b, e, reach());
     if (!cands.length) return;
     P.acc = 0;
     const t = byPriority(e, cands)[0];
+    // the 'atk' event is what plays the model's Attack_A (`anims.attack`, clipPerAttack: one whole clip per attack) —
+    // without it the leader swung nothing on screen. projKind 'none': the blow is the sim's own 'bsnakeBurn' beam below,
+    // not a second projectile (render/fx/projectiles.js draws 'beam' as a beam of its own).
+    b._ev(['atk', e.id, t.id, 'none']);
     b.fx('beam', { x: e.x, y: e.y, from: e.id, to: t.id, kind: 'bsnakeBurn' });
     b.dealDamage(e, t, { amount: e.s.atk, type: 'true', isAttack: true, canDodge: false });
     applyFire(b, t);
