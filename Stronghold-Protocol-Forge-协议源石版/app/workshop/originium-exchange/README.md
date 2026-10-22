@@ -14,6 +14,10 @@
 >
 > **1.4.0（2026-10-22）**：杠杆 **3x → 5x**（4x / 5x 各配一条自己的追保线，见下）；股价的
 > **显示模式**（「保留小数」/「无小数点」＝ ×100）一颗按钮切换，偏好记在本机 `localStorage`，纯显示、不改成交额。
+>
+> **1.4.1（2026-10-22）**：修「下单后列表跳回最上端」。股票列表是滚动容器，而每收到一帧行情都会清空重建 ——
+> 真浏览器里子节点清空的那一刻内容高度归 0，`scrollTop` 被夹回 0，再塞回同样高的内容也回不去。现在重画前后
+> 记住并写回滚动位置。见下「滚动位置」。
 
 买股票的钱就是本来要买棋子的钱 —— 这是一条真正的取舍：押对了起飞，押错了这局少一个干员。
 
@@ -151,6 +155,20 @@ pct = clamp( 情绪漂移×beta + 共同市场×beta + 个股噪声 + 盟约冷�
 订单回执里的价格也仍然是真实值。偏好写在本机 `localStorage` 的 `sp.oex.priceMode`，刷新 / 下一局都还在；
 读不到或值不认识时退回「保留小数」。切换不发任何网络帧（面板那一行的小字会写明「价格 ×100 · 仅显示，成交按两位小数」）。
 
+### 滚动位置（1.4.1 修）
+
+六支股票在窄屏 / 矮屏上放不下一屏，列表是 `overflow-y: auto` 的滚动容器。而面板**每收到一帧行情都会清空重建**
+列表 —— 买 / 卖之后服务端回的那一帧回执、下一回合的行情帧、资金变化的补帧，都是这样。真浏览器里子节点被清空的
+那一刻内容高度归 0，`scrollTop` 随即被夹回 0；紧接着又塞回六行同样高的内容，滚动位置也已经回不去了。
+
+表现就是业主报的那样：**往下滚到第 4、5 支股票，买一手，列表跳回最上端**。
+
+现在所有列表重画都走同一个入口（`renderStockList`）：重建前记下 `scrollTop`，重建后写回去 —— 顶部时不动它
+（写回 0 只会白触发一次 scroll 事件）。列表变短时浏览器会把 `scrollTop` 夹到新的上限，那是期望行为。
+
+回归用例在 `test/workshop/originium-exchange.test.js` 的「滚动位置」一组：假 DOM 的 `removeChild` 把
+「清空 ⇒ scrollTop 归零」这条真行为模拟了出来，所以把修复退回去，那两条用例会立刻红。
+
 **确定性**：行情 = `mulberry32(Match.seed, 回合, 股票 id, 盐)` —— 同一局同一种子必然同一段行情，
 不读时钟、不用 `Math.random`。资金变动只走引擎唯一写口 `PlayerState.addFunds()`，随既有 `m.private` 同步。
 
@@ -191,7 +209,7 @@ pct = clamp( 情绪漂移×beta + 共同市场×beta + 个股噪声 + 盟约冷�
 
 | 验证 | 结果 |
 |---|---|
-| `node --test test/workshop/originium-exchange.test.js` | **19/19**：情绪块、共同市场肥尾、新闻 45%、±45 边界、波动统计下限（单回合中位数 ≥7.5% / 累计 ≥25%）、金额与数量口径、**1.4.0 杠杆档位/按档追保/5x 满仓不平仓**、假 Match 开市→买入→改价→收盘、假 DOM 面板（行情带/追保/收盘大盘/**五档按钮与显示切换**）、**显式格式纯函数** |
+| `node --test test/workshop/originium-exchange.test.js` | **22/22**：情绪块、共同市场肥尾、新闻 45%、±45 边界、波动统计下限（单回合中位数 ≥7.5% / 累计 ≥25%）、金额与数量口径、**1.4.0 杠杆档位/按档追保/5x 满仓不平仓**、假 Match 开市→买入→改价→收盘、假 DOM 面板（行情带/追保/收盘大盘/**五档按钮与显示切换**）、**显式格式纯函数**、**滚动位置（1.4.1）** |
 | `node tools/workshop-validate.mjs workshop/originium-exchange` | **0 error / 0 warning**，VALID |
 | `eslint workshop/originium-exchange` | 通过 |
 | `node tools/check-imports.mjs` | 通过（包不在扫描范围内，也不引入越界 import） |
@@ -217,7 +235,7 @@ pct = clamp( 情绪漂移×beta + 共同市场×beta + 个股噪声 + 盟约冷�
 
 ```
 app\workshop\originium-exchange\
-  pack.json                  清单：combat、server.modules、client.panels（1.4.0）
+  pack.json                  清单：combat、server.modules、client.panels（1.4.1）
   server\exchange.mjs        服务端：行情/分红/利息/杠杆/爆仓/交易/结算（零 import，全 try/catch）
   ui\exchange.js             面板：mount(ctx) 纯 DOM + 纯函数（手续费、可买股数、数量口径、价格显示格式）
   ui\exchange.css            样式：全部 .oex 作用域、含窄屏

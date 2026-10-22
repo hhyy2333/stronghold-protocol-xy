@@ -472,6 +472,27 @@ export function mount(ctx) {
     }, 5200);
   }
 
+  /**
+   * 重画股票列表，**并保住滚动位置**（业主 2026-10-22「交易所的滑动条在购买后会回到最上端，有bug」）。
+   *
+   * 原来的写法是先 `while (list.firstChild) removeChild(...)` 再逐行 append。`list` 是 `overflow-y: auto`
+   * 的滚动容器（`.oex__list`），子节点全清空的那一刻内容高度归 0，浏览器随即把 `scrollTop` 置 0 ——
+   * 哪怕紧接着又塞回六行同样高的内容，滚动位置也已经回不去了。而每次下单服务端都会回一帧 `state`
+   *（买/卖回执），下一回合还有 `round` / `sync` 帧，于是「买一手就跳回最上面」。
+   *
+   * 所以：重建前记下 `scrollTop`，重建后写回去。列表高度没变的常见情形下这是一次精确还原；如果这一帧
+   * 让列表变短（例如某一行不再渲染），浏览器会把 `scrollTop` 夹到新的上限，这是期望行为。
+   *
+   * 顺带把两处重复的重建逻辑收成一个入口（`renderState` 与显示模式切换原来各写了一遍）。
+   */
+  function renderStockList(stocks) {
+    const top = Number(list.scrollTop) || 0;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    for (const stock of stocks || []) list.appendChild(renderStockRow(stock));
+    // 写回：只有在真的滚过时才动它（顶部时保持原样，免得白白触发一次 scroll 事件）。
+    if (top > 0) list.scrollTop = top;
+  }
+
   function renderStockRow(stock) {
     const row = el('div', 'oex__row');
     const up = Number(stock.chgPct) >= 0;
@@ -565,8 +586,7 @@ export function mount(ctx) {
     dividendText.textContent = data.dividend > 0 ? `分红 +${fmt(data.dividend)}` : '';
     if (typeof data.closed === 'boolean' && data.closed) footHint.textContent = '本局已收盘 · 下一局重新开市';
     else footHint.textContent = '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 12%';
-    while (list.firstChild) list.removeChild(list.firstChild);
-    for (const stock of data.stocks || []) list.appendChild(renderStockRow(stock));
+    renderStockList(data.stocks);
     renderQtyButtons();
     renderDisplayButtons();
     // sync 帧是「资金变了，行情没变」的补帧：只更新数字，不弹订单回执。
@@ -714,10 +734,7 @@ export function mount(ctx) {
       priceMode = mode;
       writePriceMode(mode);
       renderDisplayButtons();
-      if (state) {
-        while (list.firstChild) list.removeChild(list.firstChild);
-        for (const stock of state.stocks || []) list.appendChild(renderStockRow(stock));
-      }
+      if (state) renderStockList(state.stocks);
       return;
     }
     if (action === 'buy' || action === 'sell') {

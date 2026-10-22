@@ -382,10 +382,24 @@ class ShimEl {
     this.ownerDocument = null;
     /** 假 DOM 的事件表：面板把 click 委托在 root 上，测试用 `clickNode` 直接调它。 */
     this.listeners = {};
+    /**
+     * 滚动位置。真浏览器里 `scrollTop` 有个关键行为：**内容高度归 0 时会被夹回 0** ——
+     * 「先清空子节点、再塞回去」这种重画方式会因此丢失滚动位置（业主报的「买完跳回最上端」就是它）。
+     * 这里把它模拟出来，回归用例才能真的抓到那个 bug（`_maxScroll` 由测试按行数设置）。
+     */
+    this.scrollTop = 0;
+    this._maxScroll = 0;
   }
   get firstChild() { return this.childNodes[0] || null; }
   appendChild(child) { if (child.parentNode) child.parentNode.removeChild(child); child.parentNode = this; this.childNodes.push(child); return child; }
-  removeChild(child) { const i = this.childNodes.indexOf(child); if (i >= 0) this.childNodes.splice(i, 1); child.parentNode = null; return child; }
+  /** 清空子节点 = 内容高度归 0 ⇒ 浏览器把 scrollTop 夹到 0（真 DOM 的行为，见上面的注释）。 */
+  removeChild(child) {
+    const i = this.childNodes.indexOf(child);
+    if (i >= 0) this.childNodes.splice(i, 1);
+    child.parentNode = null;
+    if (!this.childNodes.length) this.scrollTop = 0;
+    return child;
+  }
   setAttribute(key, value) { this.attributes[key] = String(value); }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn); }
@@ -582,5 +596,105 @@ test('1.4.0 显示模式是纯显示：×100 只是写法，成交额一分不�
   // 反证：如果有人真按显示出来的 304 去算，能买的股数会差出两个数量级 —— 这不可能是同一个价。
   assert.notEqual(Math.trunc(real), real, 'the displayed integer is not the settlement price');
   assert.ok(maxAffordable(10, real, 60) > maxAffordable(10, 304, 60), 'quoting off the display would tank the count');
+});
+
+// =====================================================================================================================
+// 滚动位置（业主 2026-10-22 报的「交易所的滑动条在购买后会回到最上端，有bug」）
+//
+// 病因：`.oex__list` 是 `overflow-y: auto` 的滚动容器，而每收到一帧行情都会 `while (list.firstChild) removeChild(...)`
+// 再逐行 append。真浏览器里子节点清空的那一刻内容高度归 0，`scrollTop` 被夹回 0 —— 再塞回同样高的内容也回不去。
+// 而每次下单服务端都会回一帧 `state`（买卖回执），所以「买一手就跳回最上面」。
+//
+// 假 DOM 的 ShimEl.removeChild 把「清空 ⇒ scrollTop 归零」这一条真行为模拟了出来，所以这组用例能真的抓到它。
+// =====================================================================================================================
+
+/** 建一个面板 + 一帧行情，返回 { inst, onMarket, list, sent, click }。list 是滚动容器 `.oex__list`。 */
+function panelWithStocks() {
+  const { host } = fakeDoc();
+  let onMarket = null;
+  const sent = [];
+  const ctx = {
+    host,
+    net: { on: (_channel, fn) => { onMarket = fn; return () => {}; }, send: (channel, data) => { sent.push([channel, data]); return true; } },
+    me: { snapshot: () => ({ room: { inMatch: true } }) },
+    log: { warn() {} },
+  };
+  const inst = mountPanel(ctx);
+  const root = host.firstChild;
+  const find = (node, pred, out = []) => {
+    if (pred(node)) out.push(node);
+    for (const child of node.childNodes || []) find(child, pred, out);
+    return out;
+  };
+  const list = find(host, (n) => String(n.className).split(/\s+/).includes('oex__list'))[0];
+  const frame = (over = {}) => ({
+    type: 'state', kind: 'round', round: 5, phase: 'PREP', closed: false,
+    stocks: STOCKS.map((s) => ({ id: s.id, ticker: s.ticker, company: s.company, bondName: s.bondName, price: s.base, chgPct: 0, history: [s.base], shares: 0 })),
+    cash: 40, portfolio: 0, debt: 0, leverage: 1, borrowRoom: 0, netWorth: 40, maintainPct: 70,
+    index: { value: 100, chgPct: 0, history: [100] },
+    sentiment: { kind: 'calm', label: '平静', driftPct: 0, roundsLeft: 2 },
+    marginPct: 0, news: null, dividend: 0, lastOrder: null,
+    limits: { maxShares: 60, leverage: [1, 2, 3, 4, 5], maintainPct: 70, marginByLever: { 1: 70, 2: 70, 3: 70, 4: 88, 5: 93 } },
+    ...over,
+  });
+  const click = (node) => { for (const fn of root.listeners.click || []) fn({ target: node }); };
+  return { inst, onMarket, list, sent, click, frame, find };
+}
+
+test('滚动位置：买入后的回执帧不会把列表跳回最上端', () => {
+  const { inst, onMarket, list, sent, click, frame, find } = panelWithStocks();
+  onMarket(frame());
+  assert.ok(list, 'the panel renders a scroll container');
+  // 玩家往下滚到第 3 行
+  list._maxScroll = 200;
+  list.scrollTop = 120;
+
+  // 点「买」⇒ 面板发一帧订单，服务端回一帧 state（买卖回执，kind: 'trade'）
+  const buyBtn = find(list, (n) => n.dataset && n.dataset.action === 'buy')[0];
+  assert.ok(buyBtn, 'a buy button exists');
+  click(buyBtn);
+  assert.deepEqual(sent.pop(), ['trade', { op: 'buy', stock: STOCKS[0].id, qty: 1, lever: 1 }]);
+  onMarket(frame({ kind: 'trade', lastOrder: { ok: true, text: '买入 1 股' } }));
+  assert.equal(list.scrollTop, 120, 'the scroll position survives the receipt frame');
+  inst.unmount();
+});
+
+test('滚动位置：round / sync 帧、以及切换显示模式也都不动滚动位置', () => {
+  const { inst, onMarket, list, click, frame, find } = panelWithStocks();
+  onMarket(frame());
+  list._maxScroll = 200;
+  list.scrollTop = 90;
+
+  // 下一回合的行情帧
+  onMarket(frame({ kind: 'round', round: 6 }));
+  assert.equal(list.scrollTop, 90, 'a round frame keeps it');
+  // 资金变化的补帧
+  onMarket(frame({ kind: 'sync', cash: 33 }));
+  assert.equal(list.scrollTop, 90, 'a sync frame keeps it');
+  // 切换显示模式（纯本机、也走同一条重画路径）
+  const dispBtn = find(list.parentNode, (n) => n.dataset && n.dataset.action === 'display')[0];
+  assert.ok(dispBtn, 'a display-mode button exists');
+  click(dispBtn);
+  assert.equal(list.scrollTop, 90, 'switching the display mode keeps it');
+  inst.unmount();
+});
+
+test('滚动位置：停在顶部时不写回正数（不白触发一次 scroll）', () => {
+  const { inst, onMarket, list, frame } = panelWithStocks();
+  onMarket(frame());
+  list._maxScroll = 200;
+  list.scrollTop = 0;
+  // 记下每一次写入的值。清空子节点时浏览器自己会把 scrollTop 夹到 0（那是一次合理的写入），
+  // 这里要守的是**我们自己不往上面写一个正数** —— 顶部时写回就是白触发一次 scroll 事件。
+  const writes = [];
+  let current = 0;
+  Object.defineProperty(list, 'scrollTop', {
+    configurable: true,
+    get: () => current,
+    set: (v) => { writes.push(v); current = v; },
+  });
+  onMarket(frame({ kind: 'round', round: 6 }));
+  assert.deepEqual(writes.filter((v) => v > 0), [], 'nothing writes back a positive scrollTop');
+  inst.unmount();
 });
 
