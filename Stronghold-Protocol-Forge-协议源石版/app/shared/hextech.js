@@ -182,7 +182,7 @@ export const ENEMY_VERBS = Object.freeze([
   'physDodge',     // 流星: enemies gain a physical dodge chance
   'thief',         // 窃贼: an operator knocked out costs the NEXT round's income (stacking %, capped)
   'wanted',        // 通缉令: each battle adds one random 惊变 bounty enemy (1–5 资金)
-  'jekyllSquad',   // 通厕大队: adds N 杰斯顿 at (2 + 6x)% of their stats, x = the round number
+  'jekyllSquad',   // 通厕大队: adds N 杰斯顿 at (1 + 5x)% of their stats, x = the round number
 ]);
 
 /** Whether `id` is a known enemy verb (the build-time check and the sim's own guard). */

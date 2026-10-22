@@ -1545,10 +1545,12 @@ export const ENEMY_HEXES = [
   {
     id: 'ehex_jekyll',
     name: '通厕大队',
-    desc: '战斗额外加入 3 个杰斯顿，其属性为原来的（2 + 6x）%（x 为当前回合数）。',
+    // 业主 2026-10-22（削弱）：「削弱敌方协议‘通厕大队’数值改成（1+5x）％」—— basePct 2 → 1、perRoundPct 6 → 5。
+    // （2026-10-19 的原口径是 2 + 6x。）`desc` 是 i18n 的 msgid，改它必须同步改 public/i18n/en.json 的同一条键。
+    desc: '战斗额外加入 3 个杰斯顿，其属性为原来的（1 + 5x）%（x 为当前回合数）。',
     rarity: 'prismatic',
     verb: 'jekyllSquad',
-    params: { count: 3, enemyKey: 'enemy_1516_jakill', basePct: 2, perRoundPct: 6 },
+    params: { count: 3, enemyKey: 'enemy_1516_jakill', basePct: 1, perRoundPct: 5 },
   },];
 
 /**

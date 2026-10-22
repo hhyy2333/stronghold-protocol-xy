@@ -2382,22 +2382,23 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
 
   /**
    * 通厕大队 (业主 2026-10-19): 「战斗增加3个杰斯顿属性为原来的（2+6x%，x为回合数）」.
+   * 业主 2026-10-22 (削弱): 「削弱敌方协议‘通厕大队’数值改成（1+5x）％」 — the same reading, now (1 + 5x)%.
    *
-   * Three 杰斯顿·威廉姆斯 (`enemy_1516_jakill`, the boss-tagged 狱警) added at battle start. "属性为原来的 2 + 6x%" is
-   * read as a PERCENTAGE of the original stats: (2 + 6x)%, so R1 → 8 %, R5 → 32 %, R14 → 86 %. x is the round being
+   * Three 杰斯顿·威廉姆斯 (`enemy_1516_jakill`, the boss-tagged 狱警) added at battle start. "属性为原来的 1 + 5x%" is
+   * read as a PERCENTAGE of the original stats: (1 + 5x)%, so R1 → 6 %, R5 → 26 %, R14 → 71 %. x is the round being
    * fought (`battle.round`, the same reading 腐蚀领域 and 回响 use).
    *
    * The scaling rides `spawnEnemy`'s inline `def` (it normalises a plain data-shaped record), so the official
-   * record is untouched. The three land on route 0 at its start. [ASSUMED: 1) 「2+6x%」 is a percent, not "2 + 6x
-   * times" — a literal ×2 at R1 would already be a boss-grade wall in the first round; 2) HP/ATK/DEF/RES scale, move
+   * record is untouched. The three land on route 0 at its start. [ASSUMED: 1) 「1+5x%」 is a percent, not "1 + 5x
+   * times" — a literal ×(1 + 5x) at R1 would already be a boss-grade wall in the first round; 2) HP/ATK/DEF/RES scale, move
    * speed and attack interval do not (they are not 「属性」 in the sense that would make the card stronger); 3) the
    * three are ordinary spawns: they can leak, be blocked and count toward the enemy total like any wave enemy.]
    */
   jekyllSquad(battle, p) {
     const count = Math.max(1, Math.min(20, Math.trunc(pnum(p.count, 3))));
     const key = typeof p.enemyKey === 'string' && p.enemyKey ? p.enemyKey : 'enemy_1516_jakill';
-    const basePct = Number.isFinite(Number(p.basePct)) ? Number(p.basePct) : 2;
-    const perRoundPct = Number.isFinite(Number(p.perRoundPct)) ? Number(p.perRoundPct) : 6;
+    const basePct = Number.isFinite(Number(p.basePct)) ? Number(p.basePct) : 1;
+    const perRoundPct = Number.isFinite(Number(p.perRoundPct)) ? Number(p.perRoundPct) : 5;
     // content is installed AFTER `start()` emitted battleStart (server/sim/Battle.js), so a verb that must act at battle
     // start runs NOW when the battle has already started, and on the event otherwise (a harness, a future re-order).
     const atStart = (fn) => { if (battle.started) fn(); else battle.on('battleStart', fn); };

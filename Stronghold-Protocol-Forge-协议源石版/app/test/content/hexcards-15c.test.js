@@ -7,6 +7,9 @@
 //   通缉令2阶：每场战斗随机增加一个1~5块（惊变里的）的敌人
 //   通厕大队3阶；战斗增加3个杰斯顿属性为原来的（2+6x%，x为回合数）
 //
+// 通厕大队 was nerfed on 2026-10-22 (业主：「削弱敌方协议‘通厕大队’数值改成（1+5x）％」): basePct 2 → 1 and
+// perRoundPct 6 → 5, so the scaling is (1 + 5x)%. The verbatim quote above stays as the batch's historical wording.
+//
 // These drive `flags.enemyHexIds`, the exact field a real match writes (server/match/match/battleOpts.js), so a card
 // reaches a battle the way it does in production.
 import { test } from 'node:test';
@@ -62,6 +65,9 @@ test('batch15 enemy: the five records carry their verb and params', () => {
   assert.equal(rec('ehex_jekyll').verb, 'jekyllSquad');
   assert.equal(rec('ehex_jekyll').params.enemyKey, 'enemy_1516_jakill');
   assert.equal(rec('ehex_jekyll').params.count, 3);
+  // 业主 2026-10-22：「数值改成（1+5x）％」—— 1 + 5x, not the original 2 + 6x
+  assert.equal(rec('ehex_jekyll').params.basePct, 1);
+  assert.equal(rec('ehex_jekyll').params.perRoundPct, 5);
 });
 
 // =====================================================================================================================
@@ -86,10 +92,10 @@ test('流星: without the card no enemy has the dodge', () => {
 });
 
 // =====================================================================================================================
-// 通厕大队: 3 个杰斯顿，属性 (2 + 6x)%，x = 回合
+// 通厕大队: 3 个杰斯顿，属性 (1 + 5x)%，x = 回合
 // =====================================================================================================================
 
-test('通厕大队: three Jesseltons spawn, scaled to (2 + 6x)% of their stats', () => {
+test('通厕大队: three Jesseltons spawn, scaled to (1 + 5x)% of their stats', () => {
   const JAK = { key: 'enemy_1516_jakill', maxHp: 10000, atk: 1000, def: 500, res: 40, moveSpeed: 0.6, bat: 4, aspd: 100, rangeRadius: 2, blockCnt: 1, massLevel: 6, lpr: 2 };
   for (const round of [1, 5]) {
     const h = verbBattle('ehex_jekyll', { round, enemyKeys: ['enemy_march'], defs: { enemies: { enemy_1516_jakill: JAK } } });
@@ -98,7 +104,7 @@ test('通厕大队: three Jesseltons spawn, scaled to (2 + 6x)% of their stats',
     const isJak = (e) => !!e && ((e.def && e.def.key === 'enemy_1516_jakill') || e.defId === 'enemy_1516_jakill');
     const jak = h.battle.enemies.filter(isJak);
     assert.equal(jak.length, 3, 'round ' + round + ': three Jesseltons, got ' + jak.length);
-    const pct = (2 + 6 * round) / 100;
+    const pct = (1 + 5 * round) / 100;
     for (const e of jak) {
       assert.ok(Math.abs(e.s.maxHp - 10000 * pct) < 1e-6, 'round ' + round + ': maxHp scaled, got ' + e.s.maxHp);
       assert.ok(Math.abs(e.s.atk - 1000 * pct) < 1e-6, 'round ' + round + ': atk scaled, got ' + e.s.atk);
