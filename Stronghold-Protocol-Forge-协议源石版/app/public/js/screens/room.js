@@ -52,7 +52,7 @@ import { ChatPanel } from './chat.js';
 import * as roomMods from '../roomMods.js';
 import { roomModsOf, shortDigest } from '../roomMods.js';
 import { loadCatalog, planAlignment, alignRoom, missingPackIds, storeFor } from '../mods/align.js';
-import { PROTOCOL_LEVEL_MAX } from '../../../shared/protocolLevels.js';
+import { PROTOCOL_LEVEL_MAX, protocolLevelEffects, protocolLevelHeadline } from '../../../shared/protocolLevels.js';
 import { shouldAutoFill, autoFillDigest, AUTO_FILL_DELAY_MS } from '../mods/autoFill.js';
 import { net } from '../net.js';
 import { store, useStore, shallowEqual, emptyMatch, isSpectating, serverNow, loadPref, savePref } from '../store.js';
@@ -742,6 +742,12 @@ export function RoomScreen() {
   const levelTimer = useRef(null);
   useEffect(() => { setLevelDraft(room?.level || 0); }, [room?.level, room?.difficulty]);
   useEffect(() => () => { if (levelTimer.current != null) clearTimeout(levelTimer.current); }, []);
+  // 难度介绍（业主 2026-10-22「有人不知道n18的效果，增加难度介绍」）：底栏只有一格滑块，塞不下一张清单，
+  // 所以点等级徽章展开一份浮层。内容由 shared/protocolLevels.js 的 protocolLevelEffects 现算
+  // （与大厅选择器同一份，界面不写第二份数字）。
+  const [levelHelp, setLevelHelp] = useState(false);
+  const levelEffects = levelDraft > 0 ? protocolLevelEffects(levelDraft) : [];
+  const levelHeadline = levelDraft > 0 ? protocolLevelHeadline(levelDraft) : null;
   const [searchWant, setSearchWant] = useState(false); // the host asked to search and has not stopped
   const [searchSince, setSearchSince] = useState(0);
   const [found, setFound] = useState(false);
@@ -1059,7 +1065,20 @@ export function RoomScreen() {
               onPointerUp=${(e) => applyLevel(Number(e.currentTarget.value))}
               onKeyUp=${(e) => applyLevel(Number(e.currentTarget.value))} />
             <b class="num">${levelDraft > 0 ? 'Lv.' + levelDraft : t('关闭')}</b>
-          </label>` : null}
+            ${levelEffects.length ? html`<button type="button" class="rs-pill__lvhelp" aria-expanded=${levelHelp ? 'true' : 'false'}
+              aria-label=${t('查看这一等级的效果')} title=${t('查看这一等级的效果')}
+              onClick=${(e) => { e.preventDefault(); e.stopPropagation(); setLevelHelp((v) => !v); }}>?</button>` : null}
+          </label>${levelHelp && levelEffects.length ? html`<div class="rs-lvhelp" role="dialog" aria-label=${t('协议等级效果')}>
+            <div class="rs-lvhelp__head">
+              <b>${levelHeadline ? t(levelHeadline.msgid, levelHeadline.params) : ''}</b>
+              <button type="button" class="rs-lvhelp__close" aria-label=${t('关闭')} onClick=${() => setLevelHelp(false)}>×</button>
+            </div>
+            <ul class="rs-lvhelp__list">
+              ${levelEffects.map((e) => html`<li key=${e.id} class=${'rs-lvhelp__item' + (e.id === 'extraBoss' ? ' is-special' : '')}>
+                <span aria-hidden="true">${e.id === 'extraBoss' ? '★' : '·'}</span><span>${t(e.msgid, e.params)}</span>
+              </li>`)}
+            </ul>
+          </div>` : null}` : null}
           ${room.content?.modeId ? html`<span class="room-mode" data-testid="room-mode">${(room.content.modes || []).find((m) => m.id === room.content.modeId)?.name || room.content.modeId}</span>` : null}
           <button type="button" class=${`rs-pill__gear${opts ? ' is-on' : ''}`} onClick=${() => setOpts((v) => !v)} title=${t('同盟设置')} aria-label=${t('同盟设置')} aria-expanded=${opts ? 'true' : 'false'}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill-rule="evenodd" /></svg>

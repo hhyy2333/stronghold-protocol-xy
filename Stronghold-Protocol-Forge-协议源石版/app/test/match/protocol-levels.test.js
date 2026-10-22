@@ -17,6 +17,8 @@ import {
   PROTOCOL_LEVELS, PROTOCOL_LEVEL_MAX, isProtocolLevel, protocolLevelActive, protocolLevelRow, protocolLevelMods,
   PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS, protocolLevelExtraHexesAt,
   PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL, PROTOCOL_LEVEL_EXTRA_BOSSES, protocolLevelExtraBossAt,
+  PROTOCOL_LEVEL_INCOME_FREE_ROUNDS, PROTOCOL_LEVEL_DEEP_FROM, PROTOCOL_LEVEL_EFFECT_TEXT,
+  protocolLevelEffects, protocolLevelHeadline,
 } from '../../shared/protocolLevels.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -312,4 +314,75 @@ test('N18 R10 彩蛋首领：R10 之外、以及 18 级以外的回合，波次�
   assert.equal(build(18, 11), 0, 'R11 has none');
   assert.equal(build(17, 10), 0, 'L17 has none');
   assert.equal(build(0, 10), 0, 'level off has none');
+});
+
+// =====================================================================================================================
+// 难度介绍（业主 2026-10-22「有人不知道n18的效果，增加难度介绍」）
+//
+// 界面上的那份清单不是手写的文案，而是 `protocolLevelEffects` 从表里现算出来的。这一组钉住三件事：
+//   1. 每条说明都对应表里的**一个**字段 —— 表改了，说明跟着改；表里没有的，说明里不许出现；
+//   2. 18 级独有的那一条（R10 彩蛋首领）必须在，且只出现在 18 级；
+//   3. 每一个会被界面显示的 msgid 都在 `public/i18n/en.json` 里（这些 msgid 是运行时拼的，
+//      tools/i18n.mjs 的字面量提取看不见它们 —— 漏了的表现是界面上直接显示中文原文）。
+// =====================================================================================================================
+
+test('难度介绍：每一级的逐条说明都从表里现算，18 级把「新东西」全列出来', () => {
+  // 关闭 = 空
+  assert.deepEqual(protocolLevelEffects(0), []);
+  assert.equal(protocolLevelHeadline(0), null);
+
+  // L1 只有生命 / 攻击两条（表里也只有这两个字段）
+  assert.deepEqual(protocolLevelEffects(1).map((e) => e.id), ['hp', 'atk']);
+
+  // L18 必须把表里每一个非默认字段都翻出来：生命/攻击/防御/法抗、每波 +1、漏怪 +2、收入 −3、
+  // 首领池 +50%、三张敌方源石、以及 R10 的彩蛋首领。
+  const l18 = protocolLevelEffects(18);
+  assert.deepEqual(l18.map((e) => e.id),
+    ['hp', 'atk', 'def', 'res', 'count', 'leakLp', 'income', 'bossPool', 'extraHex', 'extraBoss']);
+  const byId = Object.fromEntries(l18.map((e) => [e.id, e]));
+  assert.equal(byId.hp.params.v, '×2.45', 'the numbers come from the table, not from a literal');
+  assert.equal(byId.atk.params.v, '×1.88');
+  assert.equal(byId.count.params.n, 1, 'L18 adds one body per wave');
+  assert.equal(byId.leakLp.params.n, 2, 'and 2 extra LP per leak');
+  assert.equal(byId.income.params.n, 3);
+  assert.equal(byId.income.params.from, PROTOCOL_LEVEL_INCOME_FREE_ROUNDS + 1, 'the income penalty starts at round 8');
+  assert.equal(byId.bossPool.params.v, '50%');
+  assert.equal(byId.extraHex.params.n, 3);
+  assert.equal(byId.extraHex.params.rounds, '1 / 3 / 5', 'spread over rounds 1 / 3 / 5');
+  assert.equal(byId.extraBoss.params.round, PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, 'and R10 carries the extra leader');
+
+  // 18 级以外没有彩蛋首领那一条
+  for (let lv = 1; lv < 18; lv++) {
+    assert.equal(protocolLevelEffects(lv).some((e) => e.id === 'extraBoss'), false, `L${lv} has no extraBoss line`);
+  }
+  // 深潜区（13+）才有首领池 / 额外源石
+  for (let lv = 1; lv < PROTOCOL_LEVEL_DEEP_FROM; lv++) {
+    const ids = protocolLevelEffects(lv).map((e) => e.id);
+    assert.equal(ids.includes('bossPool') || ids.includes('extraHex'), false, `L${lv} is not 深潜区`);
+  }
+
+  // 18 级最狠：每一条同级都比 17 级更重或一样（生命/攻击严格升，收入/漏怪不回头）
+  const l17 = Object.fromEntries(protocolLevelEffects(17).map((e) => [e.id, e]));
+  assert.equal(byId.hp.params.v !== l17.hp.params.v, true, 'HP differs from L17');
+  assert.equal(byId.extraHex.params.n > l17.extraHex.params.n, true, 'and L18 has one more enemy hex');
+});
+
+test('难度介绍：每一个会显示的 msgid 都在四个语言包里，占位符一致', () => {
+  const emitted = new Set();
+  for (let lv = 1; lv <= PROTOCOL_LEVEL_MAX; lv++) {
+    for (const e of protocolLevelEffects(lv)) emitted.add(e.msgid);
+    const h = protocolLevelHeadline(lv);
+    if (h) emitted.add(h.msgid);
+  }
+  // 清单本身不许漏（清单是给测试与四个语言包用的对照表）
+  assert.deepEqual([...emitted].sort(), [...PROTOCOL_LEVEL_EFFECT_TEXT].sort(), 'PROTOCOL_LEVEL_EFFECT_TEXT lists every emitted msgid');
+  const placeholders = (s) => (s.match(/\{[a-z]+\}/g) || []).sort().join(',');
+  for (const lang of ['en', 'ja', 'ko', 'zh-TW']) {
+    const pack = JSON.parse(readFileSync(path.join(ROOT, 'public/i18n', `${lang}.json`), 'utf8'));
+    for (const msgid of emitted) {
+      assert.equal(typeof pack[msgid], 'string', `${lang}.json is missing ${msgid}`);
+      assert.equal(placeholders(pack[msgid]), placeholders(msgid), `${lang}.json: ${msgid} keeps its placeholders`);
+      if (lang === 'en') assert.equal(/[\u4e00-\u9fff]/.test(pack[msgid].replace(/不死的黑蛇|梅菲斯特/g, '')), false, `en.json: ${msgid} has no Chinese left`);
+    }
+  }
 });

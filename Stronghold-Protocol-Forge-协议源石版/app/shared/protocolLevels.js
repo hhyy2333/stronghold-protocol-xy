@@ -177,3 +177,124 @@ export function protocolLevelEnemyMods(level, difficulty = 'ABYSS') {
   const mods = protocolLevelMods(level, difficulty);
   return mods ? { mods: { ...mods.enemy } } : null;
 }
+
+// =====================================================================================================================
+// 「这一级到底改了什么」—— 给人看的逐条说明（业主 2026-10-22：「有人不知道n18的效果，增加难度介绍」）
+// =====================================================================================================================
+//
+// 为什么放在 shared 而不是写死在界面里：这些数字是**表里那几行**的另一面。写死一份文案，表一改文案就开始说谎
+// （这个仓库里已经有过：等级表的注释写着「13–18 不再标 experimental」，而界面还在读一个没人写的字段）。
+// 这里把每一行翻成一组 `{ msgid, params }`，界面只负责 `t()` 和排版；数字永远从表里现算。
+//
+// 返回的每一条都对应表里的**一个字段**，顺序是「先数值、再规则」：玩家先看伤害，再看机制。18 级独有那条
+// （R10 的彩蛋首领）也在这里，因为它是 `PROTOCOL_LEVEL_EXTRA_BOSS_*` 的另一面。
+
+/** 深潜区门槛：从这里起才有首领池 / 额外敌方源石（表里第一个带 bossPoolMul 的等级）。 */
+export const PROTOCOL_LEVEL_DEEP_FROM = 13;
+
+/**
+ * 一级的逐条效果（`[]` = 0 / 非法等级）。
+ *
+ * 每一条 = `{ id, msgid, params }`：`msgid` 是中文原文（i18n 的 key），`params` 是要代进 `{v}` / `{n}` 的值。
+ * 数值一律来自 `PROTOCOL_LEVELS`，不在任何界面里写第二份。
+ *
+ * 返回的 `msgid` 是**运行时**拼出来的字符串，所以 tools/i18n.mjs 的字面量提取看不到它们 —— 那四张语言包里的
+ * 词条是手工补的（`PROTOCOL_LEVEL_EFFECT_TEXT` 旁边有一份清单，`test/match/protocol-levels.test.js` 钉着
+ * 「每一个 msgid 都在 en.json 里」）。
+ * @param {number} level
+ * @returns {Array<{ id: string, msgid: string, params: Record<string, string|number> }>}
+ */
+export function protocolLevelEffects(level) {
+  const row = protocolLevelRow(level);
+  if (!row) return [];
+  const enemy = row.enemy && typeof row.enemy === 'object' ? row.enemy : {};
+  const out = [];
+  const pct = (v) => `${Math.round(((v - 1) * 100) * 10) / 10}%`;
+  const times = (v) => `×${v.toFixed(2)}`;
+
+  // ---- 数值（敌方全局乘区） ----
+  if (Number.isFinite(enemy.hpMul) && enemy.hpMul > 1) {
+    out.push({ id: 'hp', msgid: '敌方生命值 {v}', params: { v: times(enemy.hpMul) } });
+  }
+  if (Number.isFinite(enemy.atkMul) && enemy.atkMul > 1) {
+    out.push({ id: 'atk', msgid: '敌方攻击力 {v}', params: { v: times(enemy.atkMul) } });
+  }
+  if (Number.isFinite(enemy.defMul) && enemy.defMul > 1) {
+    out.push({ id: 'def', msgid: '敌方防御力 {v}', params: { v: times(enemy.defMul) } });
+  }
+  if (Number.isFinite(enemy.resMul) && enemy.resMul > 1) {
+    out.push({ id: 'res', msgid: '敌方法术抗性 {v}', params: { v: times(enemy.resMul) } });
+  }
+  if (Number.isFinite(enemy.countAdd) && enemy.countAdd > 0) {
+    out.push({ id: 'count', msgid: '每波敌人数量 +{n}', params: { n: Math.trunc(enemy.countAdd) } });
+  }
+
+  // ---- 规则（漏怪 / 收入 / 首领池 / 额外源石） ----
+  if (Number.isFinite(row.leakLp) && row.leakLp > 0) {
+    out.push({ id: 'leakLp', msgid: '每漏掉 1 个敌人，额外扣 {n} 点目标生命值', params: { n: Math.trunc(row.leakLp) } });
+  }
+  if (Number.isFinite(row.incomeDelta) && row.incomeDelta < 0) {
+    out.push({
+      id: 'income',
+      msgid: '第 {from} 回合起，每回合收入 −{n}',
+      params: { from: PROTOCOL_LEVEL_INCOME_FREE_ROUNDS + 1, n: Math.abs(Math.trunc(row.incomeDelta)) },
+    });
+  }
+  if (Number.isFinite(row.bossPoolMul) && row.bossPoolMul > 1) {
+    out.push({ id: 'bossPool', msgid: '首领（最终攻势 / 隐秘核心）血量 {v}', params: { v: pct(row.bossPoolMul) } });
+  }
+  if (Number.isFinite(row.extraEnemyHexes) && row.extraEnemyHexes > 0) {
+    const rounds = PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS.slice(0, Math.max(1, Math.trunc(row.extraEnemyHexes)));
+    out.push({
+      id: 'extraHex',
+      msgid: '额外敌方协议源石 {n} 张，分别在第 {rounds} 回合发放',
+      params: { n: Math.trunc(row.extraEnemyHexes), rounds: rounds.join(' / ') },
+    });
+  }
+
+  // ---- 这一级独有的彩蛋（当前只有 18 级有） ----
+  if (level >= PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL) {
+    out.push({
+      id: 'extraBoss',
+      msgid: '第 {round} 回合（普通回合）会额外刷出「不死的黑蛇」或梅菲斯特之一，随机决定',
+      params: { round: PROTOCOL_LEVEL_EXTRA_BOSS_ROUND },
+    });
+  }
+  return out;
+}
+
+/**
+ * 18 级那一档的「一句话卖点」—— 界面在等级条顶上用它当摘要（缺省等级返回 null）。
+ * 与 `protocolLevelEffects` 分开：摘要要短、要能一眼扫过，逐条列表才是细节。
+ * @param {number} level
+ * @returns {{ id: string, msgid: string, params: Record<string, string|number> }|null}
+ */
+export function protocolLevelHeadline(level) {
+  const row = protocolLevelRow(level);
+  if (!row) return null;
+  const tier = row.tier === 'steady' ? 'steady' : row.tier === 'danger' ? 'danger' : 'deep';
+  return { id: tier, msgid: tier === 'steady' ? '稳定区：只有敌方生命与攻击' : tier === 'danger' ? '危险区：追加防御、法抗、漏怪与收入' : '深潜区：追加首领池、额外敌方协议源石', params: {} };
+}
+
+/**
+ * `protocolLevelEffects` / `protocolLevelHeadline` 会发出的**全部 msgid**（i18n 的一份清单）。
+ *
+ * 为什么要有这张表：那些 msgid 在运行时按 `id` 拼出来，`tools/i18n.mjs extract` 只认字面量，看不到它们。
+ * 这张表是给测试用的 —— `test/match/protocol-levels.test.js` 拿它逐个查 `public/i18n/en.json`，少一条就报。
+ * 加一条新的效果时，这里和四个语言包要一起加（漏了的表现是界面上直接显示中文原文，而不是英文/日文）。
+ */
+export const PROTOCOL_LEVEL_EFFECT_TEXT = Object.freeze([
+  '稳定区：只有敌方生命与攻击',
+  '危险区：追加防御、法抗、漏怪与收入',
+  '深潜区：追加首领池、额外敌方协议源石',
+  '敌方生命值 {v}',
+  '敌方攻击力 {v}',
+  '敌方防御力 {v}',
+  '敌方法术抗性 {v}',
+  '每波敌人数量 +{n}',
+  '每漏掉 1 个敌人，额外扣 {n} 点目标生命值',
+  '第 {from} 回合起，每回合收入 −{n}',
+  '首领（最终攻势 / 隐秘核心）血量 {v}',
+  '额外敌方协议源石 {n} 张，分别在第 {rounds} 回合发放',
+  '第 {round} 回合（普通回合）会额外刷出「不死的黑蛇」或梅菲斯特之一，随机决定',
+]);

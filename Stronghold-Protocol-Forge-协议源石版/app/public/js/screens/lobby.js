@@ -25,7 +25,7 @@ import { ModPicker } from '../ui/modPicker.js';
 import { ResumeMatchButton } from '../ui/resumeMatch.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MIN_SEATS, MAX_SPECTATORS, modeIdFor, clampSeats, ERR, ERR_TEXT } from '../../../shared/constants.js';
-import { PROTOCOL_LEVEL_MAX, protocolLevelRow } from '../../../shared/protocolLevels.js';
+import { PROTOCOL_LEVEL_MAX, protocolLevelEffects, protocolLevelHeadline } from '../../../shared/protocolLevels.js';
 import { RANDOM_MODE } from '../../../shared/randomMode.js';
 import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo, confirmDialog } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
@@ -657,9 +657,18 @@ export function ProtoCard({ roomMode, difficulty, selected, onSelect, matchmakin
 /**
  * 协议等级选择器 (owner's call 2026-10-18): the 1–18 axis; 0 = 关闭. Shown ONLY on the highest difficulty — the server
  * normalizes the level to 0 on every other difficulty, and quick match is strict on (difficulty, level).
+ *
+ * 2026-10-22（业主「有人不知道n18的效果，增加难度介绍」）：原来这里只有一句「敌方生命 ×{hp}、攻击 ×{atk}；等级越高，
+ * 首领池与收入惩罚越重」—— 它既没说清 18 级到底多了什么（每波 +1、漏怪多扣 2 点、首领池 +50%、R1/3/5 各一张敌方
+ * 源石），也没提 18 级新增的 R10 彩蛋首领。很多人因此不知道自己在选什么。
+ *
+ * 现在：等级条下面挂一份**这一级的逐条效果清单**，每条都从 `shared/protocolLevels.js` 的表里现算
+ * （`protocolLevelEffects`），界面上不写第二份数字。18 级那一条（彩蛋首领）单独用一种强调样式，因为它是
+ * 唯一一个「不是数值」的规则。
  */
 function ProtocolLevelPicker({ level = 0, onLevel }) {
-  const row = level > 0 ? protocolLevelRow(level) : null;
+  const effects = level > 0 ? protocolLevelEffects(level) : [];
+  const headline = level > 0 ? protocolLevelHeadline(level) : null;
   return html`<div class="proto-level" data-testid="protocol-level">
     <div class="proto-level__head">
       <span>${t('协议等级')}</span>
@@ -668,9 +677,13 @@ function ProtocolLevelPicker({ level = 0, onLevel }) {
     <input type="range" min="0" max=${PROTOCOL_LEVEL_MAX} step="1" value=${level} aria-label=${t('协议等级')}
       onInput=${(e) => onLevel(Number(e.currentTarget.value))} />
     <div class="proto-level__foot"><span>0</span><span>${PROTOCOL_LEVEL_MAX}</span></div>
-    <p class="proto-level__note">${row
-      ? t('敌方生命 ×{hp}、攻击 ×{atk}；等级越高，首领池与收入惩罚越重', { hp: row.enemy.hpMul.toFixed(2), atk: row.enemy.atkMul.toFixed(2) })
-      : t('关闭：与之前的终极模拟完全一致')}${row?.experimental ? t('（测试中的档位）') : ''}</p>
+    ${headline ? html`<p class="proto-level__tier">${t(headline.msgid, headline.params)}</p>` : null}
+    ${effects.length ? html`<ul class="proto-level__effects" data-testid="protocol-level-effects">
+      ${effects.map((e) => html`<li key=${e.id} class=${'proto-level__effect' + (e.id === 'extraBoss' ? ' is-special' : '')}>
+        <span class="proto-level__bullet" aria-hidden="true">${e.id === 'extraBoss' ? '★' : '·'}</span>
+        <span>${t(e.msgid, e.params)}</span>
+      </li>`)}
+    </ul>` : html`<p class="proto-level__note">${t('关闭：与之前的终极模拟完全一致')}</p>`}
   </div>`;
 }
 

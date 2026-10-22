@@ -222,5 +222,16 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   - 预览与客户端：spawn 规格带 `tag: 'boss'` 与 `preview.boss / preview.start`，于是它进 `m.private.nextEnemies`
     的「领袖」组、带上出生格，客户端的 `leaderStand`（`public/js/render/prepfield.js`）因此在备战界面把它直接画在
     起点上，敌方情报里也照常显示。
+- **难度介绍**（业主 2026-10-22「有人不知道n18的效果，增加难度介绍」）：等级选择器原来只有一句「敌方生命
+  ×{hp}、攻击 ×{atk}；等级越高，首领池与收入惩罚越重」—— 没说清 18 级到底多了什么。现在**每一级**都列一份逐条
+  清单，内容由 `shared/protocolLevels.js` 的 `protocolLevelEffects(level)` 从表里**现算**（界面不写第二份数字：
+  这个仓库里已经出现过「表的注释改了、界面的字样没改」那种谎），每一项 `{ id, msgid, params }`，界面只负责 `t()`
+  与排版；顶上一行 `protocolLevelHeadline` 给出「稳定区 / 危险区 / 深潜区」的一句摘要。两个落点：
+  `public/js/screens/lobby.js` 的 `ProtocolLevelPicker`（选择模拟协议里，等级条下面直接摊开）、
+  `public/js/screens/room.js` 的底栏滑块（空间只有一格，点 `?` 展开浮层 `.rs-lvhelp`）。
+  18 级独有那一条（R10 的彩蛋首领）用 `is-special` 单独标记，因为它是唯一一个「不是数值」的规则。
+  这些 msgid 是运行时拼出来的，`tools/i18n.mjs` 的字面量提取看不到它们，所以：四个语言包手工补齐，
+  `PROTOCOL_LEVEL_EFFECT_TEXT` 留一份完整清单，`test/match/protocol-levels.test.js` 逐个查
+  `public/i18n/*.json`（少一条就报 —— 漏了的表现是界面上直接显示中文原文）。
 - **待办**：人手实测；L18 的 R8 尖峰（每波 +1 + 3 张额外源石）是刻意的终局强度，实测过狠时先动 18 的 `countAdd`。
 

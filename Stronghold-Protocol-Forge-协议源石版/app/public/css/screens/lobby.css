@@ -1449,6 +1449,15 @@ button.sw-eth:hover { border-color: #fff; }
 .proto-level input[type="range"] { width: 100%; accent-color: var(--amber); }
 .proto-level__foot { display: flex; justify-content: space-between; font-size: calc(.12 * var(--t)); color: var(--text-lo); }
 .proto-level__note { margin: 0; font-size: calc(.13 * var(--t)); line-height: 1.5; color: var(--text-lo); }
+/* 这一级的「在哪个区」的一句话（2026-10-22 的难度介绍） */
+.proto-level__tier { margin: 0; font-size: calc(.13 * var(--t)); letter-spacing: .02em; color: var(--amber); opacity: .85; }
+/* 逐条效果清单：每条都从 shared/protocolLevels.js 的表里现算，界面不写第二份数字 */
+.proto-level__effects { display: flex; flex-direction: column; gap: .02rem; margin: .02rem 0 0; padding: 0; list-style: none; }
+.proto-level__effect { display: flex; gap: .06rem; font-size: calc(.13 * var(--t)); line-height: 1.45; color: var(--text-md); }
+.proto-level__bullet { flex: none; width: .12rem; text-align: center; color: var(--text-lo); }
+/* 18 级的彩蛋首领是唯一的「非数值」规则，给它一眼看得见的标记 */
+.proto-level__effect.is-special { color: var(--amber); font-weight: 600; }
+.proto-level__effect.is-special .proto-level__bullet { color: var(--amber); }
 .proto-opts { display: flex; align-items: center; justify-content: space-between; gap: .14rem; }
 .proto-private { display: inline-flex; align-items: center; gap: .08rem; font-size: calc(.17 * var(--t)); color: #c9cecc; cursor: pointer; }
 .proto-private input { width: max(.22rem, 15px); height: max(.22rem, 15px); accent-color: var(--mint-500); }
