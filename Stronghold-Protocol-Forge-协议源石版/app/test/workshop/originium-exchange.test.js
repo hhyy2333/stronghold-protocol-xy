@@ -1,10 +1,14 @@
-// test/workshop/originium-exchange.test.js — 「源石证券交易所」1.3.0 的行情模型、金额口径与面板纯函数。
+// test/workshop/originium-exchange.test.js — 「源石证券交易所」的行情模型、金额口径与面板纯函数。
 //
 // 业主 2026-10-21：「优化交易所 mod，现在波动性还是太小了」+「不要盟约业绩（股票跟着层数增长轮动）」。
 // 这一份钉住三件事：
 //   * 行情由「情绪漂移×beta + 共同市场×beta + 个股噪声 + 冷热 + 新闻」组成，单回合夹 ±45%；
 //   * 波动**不能再悄悄调小**：固定种子下的中位数/p90/大行情占比有下限（统计回归，不是快照）；
 //   * 价格能跌破 1 块之后，「全部」与服务端的金额口径仍然一致（`maxAffordable` 不再整数化）。
+//
+// 1.4.0（业主 2026-10-22「交易行增加到5倍杠杆」+「增加显示模式（无小数点）」）追加两组：
+//   * 杠杆 4x / 5x 的额度，以及**按档位**的维持担保比例（1–3 档一个字都没动，旧手感不回归）；
+//   * 显示模式的纯函数（`formatPrice`）与「切换不改成交额」的边界。
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,9 +16,10 @@ import { readFileSync } from 'node:fs';
 import {
   STOCKS, LIMITS, PRICE_FLOOR, PRICE_CEIL, CLAMP_PCT, REGIME_BLOCK, NEWS_CHANCE,
   regimeAt, marketMoveAt, newsAt, roundPct, nextPrice, stockHeat, dividendOf, interestOf, maxDebtFor, registerServer,
+  marginPctFor, liquidateToPctFor,
 } from '../../workshop/originium-exchange/server/exchange.mjs';
 import {
-  feeFor, maxAffordable, maxBuyable, resolveQty, mount as mountPanel,
+  feeFor, maxAffordable, maxBuyable, resolveQty, formatPrice, mount as mountPanel,
 } from '../../workshop/originium-exchange/ui/exchange.js';
 
 const BONDS = JSON.parse(readFileSync(new URL('../../data/bonds.json', import.meta.url), 'utf8'));
@@ -23,6 +28,8 @@ const pctl = (values, p) => {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(p * (sorted.length - 1))];
 };
+/** 与包内 `round2` 同一口径（两位小数），只在测试里改价时用。 */
+const round2Local = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 // =====================================================================================================================
 // 数据与常量
@@ -188,6 +195,80 @@ test('手续费与分红/利息/杠杆额度口径不变', () => {
   assert.equal(maxDebtFor(3, 50), 100);
 });
 
+// =====================================================================================================================
+// 1.4.0（业主 2026-10-22「交易行增加到5倍杠杆」）：4x / 5x 与**按档位**的维持担保比例
+// =====================================================================================================================
+
+test('1.4.0 杠杆：档位 1..5；4x 借 3 倍净资产、5x 借 4 倍', () => {
+  assert.deepEqual([...LIMITS.leverage], [1, 2, 3, 4, 5]);
+  assert.equal(maxDebtFor(4, 50), 150, '4x ⇒ 3× equity');
+  assert.equal(maxDebtFor(5, 50), 200, '5x ⇒ 4× equity');
+  assert.equal(maxDebtFor(9, 50), 0, 'an unknown level never lends');
+});
+
+test('1.4.0 维持担保比例按档位：1–3 档仍是 70/50，4x/5x 放宽到 88/93', () => {
+  assert.deepEqual({ ...LIMITS.marginByLever }, { 1: 70, 2: 70, 3: 70, 4: 88, 5: 93 });
+  assert.deepEqual({ ...LIMITS.liquidateByLever }, { 1: 50, 2: 50, 3: 50, 4: 82, 5: 87 });
+  for (const level of [1, 2, 3]) {
+    assert.equal(marginPctFor(level), 70, `${level}x keeps the old threshold`);
+    assert.equal(liquidateToPctFor(level), 50, `${level}x keeps the old target`);
+  }
+  assert.equal(marginPctFor(5), 93);
+  assert.equal(marginPctFor(99), 70, 'an unknown level falls back to the default');
+  // 光加档位是玩不了的：满仓的静止担保比例是 (L-1)/L —— 4x = 75%、5x = 80%。阈值必须在其之上，
+  // 否则「满仓一开市就被强平」，那一档等于不存在。
+  for (const level of [2, 3, 4, 5]) {
+    const stationary = ((level - 1) / level) * 100;
+    assert.ok(marginPctFor(level) > stationary, `${level}x: 追保 ${marginPctFor(level)}% must clear the ${stationary.toFixed(1)}% of a full book`);
+  }
+  // 而放宽也不许变成免费午餐：5x 满仓离 93% 只剩 13 个百分点，一根中位数 8% 的阴线就够触线。
+  assert.ok(marginPctFor(5) - 80 <= 15, '5x full book stays within one bad day of the call');
+});
+
+test('1.4.0 假 Match：5x 满仓（担保比例 ≈80%）不会被强平，而旧 70% 阈值下它必被平', () => {
+  const { m, ps } = fakeMatch(23);
+  ps.funds = 200;
+  m.startRound(1);
+  // 切到 5x，然后**按面板的口径**买满：maxBuyable 用的是服务端下发的 borrowRoom，与实际能借到的完全一致。
+  m.handlePackMsg('p1', { pack: 'originium-exchange', channel: 'trade', data: { op: 'lever', level: 5 } });
+  assert.equal(lastFrame(m).leverage, 5);
+  assert.equal(lastFrame(m).maintainPct, 93, 'the frame carries THIS tier\'s threshold');
+  for (const stock of ['kazimierzShip', 'victoriaShip', 'yanShip', 'siracusaShip', 'egirShip', 'kjeragShip']) {
+    const frame = lastFrame(m);
+    const price = frame.stocks.find((row) => row.id === stock).price;
+    const qty = maxBuyable(frame, price, frame.limits.maxShares);
+    if (qty > 0) {
+      m.handlePackMsg('p1', { pack: 'originium-exchange', channel: 'trade', data: { op: 'buy', stock, qty, lever: 5 } });
+    }
+  }
+  const full = lastFrame(m);
+  assert.equal(full.debt > 0, true, 'the book is on margin');
+  assert.ok(full.marginPct > 70, `满仓担保比例应超过旧阈值 70%，got ${full.marginPct}`);
+  assert.ok(full.marginPct <= 80.5, `5x 满仓的静止担保比例约 80%，got ${full.marginPct}`);
+  // 5x 的 93% 阈值：此刻不该平仓（旧代码里 70% 会在这一秒直接平掉一半仓位）。
+  assert.equal(m._oexLiquidate(ps), 0, 'no liquidation at the 5x threshold');
+  assert.equal(lastFrame(m).debt, full.debt, 'and the debt is untouched');
+  // 反证：把价格砍掉 25% 之后必须真的平仓，否则放宽阈值就成了「永不爆仓」。
+  const stocks = m._oexState().prices;
+  for (const id of Object.keys(stocks)) stocks[id] = round2Local(stocks[id] * 0.75);
+  assert.ok(m._oexLiquidate(ps) > 0, 'a 25% crash still liquidates');
+});
+
+test('1.4.0 换档：5x 的额度按 4 倍净资产算，下行帧广播全部五档', () => {
+  const { m, ps } = fakeMatch(31);
+  ps.funds = 100;
+  m.startRound(1);
+  m.handlePackMsg('p1', { pack: 'originium-exchange', channel: 'trade', data: { op: 'lever', level: 5 } });
+  assert.equal(lastFrame(m).leverage, 5);
+  // 100 块现金 + 4× 额度 ⇒ 30 股 6 块的谢拉格矿业 = 180 + 手续费 2（≥10 块收 1%，四舍五入）= 182，
+  // 自有 100，所以借 82。这仍然远在 4×100 的额度之内。
+  m.handlePackMsg('p1', { pack: 'originium-exchange', channel: 'trade', data: { op: 'buy', stock: 'kjeragShip', qty: 30, lever: 5 } });
+  const afterBuy = lastFrame(m);
+  assert.equal(afterBuy.debt, 82, `付不起的 82 块借下来，got ${afterBuy.debt}`);
+  assert.equal(afterBuy.limits.leverage.join(','), '1,2,3,4,5', 'the frame advertises all five tiers');
+  assert.deepEqual({ ...afterBuy.limits.marginByLever }, { 1: 70, 2: 70, 3: 70, 4: 88, 5: 93 }, 'and their thresholds');
+});
+
 test('价格 0.25 / 2.40 时「全部」按精确价计算，不再被 Math.trunc 放大或缩小', () => {
   // 10 块买 0.25 的股票：40 股刚好 10 块但要 1 块手续费 ⇒ 39 股（39 × 0.25 = 9.75，免手续费）。
   assert.equal(maxAffordable(10, 0.25), 39, 'old code said 10');
@@ -299,13 +380,24 @@ class ShimEl {
     this.className = '';
     this.attributes = {};
     this.ownerDocument = null;
+    /** 假 DOM 的事件表：面板把 click 委托在 root 上，测试用 `clickNode` 直接调它。 */
+    this.listeners = {};
   }
   get firstChild() { return this.childNodes[0] || null; }
   appendChild(child) { if (child.parentNode) child.parentNode.removeChild(child); child.parentNode = this; this.childNodes.push(child); return child; }
   removeChild(child) { const i = this.childNodes.indexOf(child); if (i >= 0) this.childNodes.splice(i, 1); child.parentNode = null; return child; }
   setAttribute(key, value) { this.attributes[key] = String(value); }
-  addEventListener() {}
-  removeEventListener() {}
+  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn); }
+  /** 只支持面板用到的两个选择器：`[data-action]` / `[data-stock]`（真实 DOM 的 closest 子集）。 */
+  closest(selector) {
+    const key = /^\[data-([a-z]+)\]$/.exec(String(selector || ''))?.[1];
+    if (!key) return null;
+    for (let node = this; node; node = node.parentNode) {
+      if (node.dataset && node.dataset[key] != null) return node;
+    }
+    return null;
+  }
   get classList() {
     const self = this;
     const list = () => self.className.split(/\s+/).filter(Boolean);
@@ -377,5 +469,106 @@ test('面板假 DOM：行情带（大盘/情绪）、追保预警与收盘大盘
   });
   assert.match(textOf(host), /本局大盘 \+8\.6%/);
   inst.unmount();
+});
+
+// =====================================================================================================================
+// 1.4.0 显示模式（业主 2026-10-22「增加显示模式（无小数点）可在原本与无小数点间切换」）
+// =====================================================================================================================
+
+test('1.4.0 formatPrice：保留小数是原来的两位；无小数点是取整、毛票写 <1', () => {
+  assert.equal(formatPrice(3, 'decimal'), '3.00');
+  assert.equal(formatPrice(3.04, 'decimal'), '3.04');
+  assert.equal(formatPrice(0.25, 'decimal'), '0.25');
+  // 整数模式：四舍五入；< 0.5 的毛票不写成 0（看起来像坏了）也不写成 1（凭空抬价）
+  assert.equal(formatPrice(3, 'integer'), '3');
+  assert.equal(formatPrice(3.04, 'integer'), '3');
+  assert.equal(formatPrice(3.5, 'integer'), '4');
+  assert.equal(formatPrice(0.25, 'integer'), '<1');
+  assert.equal(formatPrice(0.4, 'integer'), '<1');
+  assert.equal(formatPrice(0, 'integer'), '0');
+  assert.equal(formatPrice(99, 'integer'), '99');
+  // 模式不认识时按默认（两位小数）：旧面板 / 脏 localStorage 不会画出一堆 NaN
+  assert.equal(formatPrice(2.5, 'nope'), '2.50');
+  assert.equal(formatPrice(2.5, undefined), '2.50');
+});
+
+test('1.4.0 面板假 DOM：杠杆按钮按下发帧建 5 档、追保标 93%、显示模式切换只重画价格', () => {
+  const { host } = fakeDoc();
+  let onMarket = null;
+  const sent = [];
+  const ctx = {
+    host,
+    net: { on: (_channel, fn) => { onMarket = fn; return () => {}; }, send: (channel, data) => { sent.push([channel, data]); return true; } },
+    me: { snapshot: () => ({ room: { inMatch: true } }) },
+    log: { warn() {} },
+  };
+  const inst = mountPanel(ctx);
+  // 面板把 click 委托在自己的根节点上（`ctx.host` 的第一个子节点），不是 host 本身。
+  const root = host.firstChild;
+  const click = (selectorNode) => {
+    for (const fn of root.listeners.click || []) fn({ target: selectorNode });
+  };
+
+  const stocks = STOCKS.map((stock) => ({
+    id: stock.id, ticker: stock.ticker, company: stock.company, bondName: stock.bondName,
+    price: stock.base, chgPct: 0, history: [stock.base], shares: 0,
+  }));
+  const frame = (extra = {}) => ({
+    type: 'state', kind: 'round', round: 5, phase: 'PREP', closed: false, stocks,
+    cash: 40, portfolio: 0, debt: 0, leverage: 5, borrowRoom: 0, netWorth: 40,
+    maintainPct: 93, index: { value: 100, chgPct: 0, history: [100] },
+    sentiment: { kind: 'calm', label: '平静', driftPct: 0, roundsLeft: 2 },
+    marginPct: 0, news: null, dividend: 0, lastOrder: null,
+    limits: { maxShares: 60, leverage: [1, 2, 3, 4, 5], maintainPct: 70, marginByLever: { 1: 70, 2: 70, 3: 70, 4: 88, 5: 93 } },
+    ...extra,
+  });
+  onMarket(frame());
+
+  // 五颗杠杆按钮（不是写死的三颗），当前档位高亮
+  const levBtns = [];
+  const collect = (node) => {
+    if (node.dataset && node.dataset.action === 'lever') levBtns.push(node);
+    for (const child of node.childNodes || []) collect(child);
+  };
+  collect(host);
+  assert.deepEqual(levBtns.map((btn) => btn.dataset.lever), ['1', '2', '3', '4', '5'], 'the tiers come from limits.leverage');
+  assert.equal(levBtns.find((btn) => btn.dataset.lever === '5').classList.contains('is-active'), true, '5x is highlighted');
+  // 按下 4x ⇒ 发一帧 lever 订单
+  click(levBtns.find((btn) => btn.dataset.lever === '4'));
+  assert.deepEqual(sent.pop(), ['trade', { op: 'lever', level: 4 }]);
+
+  // 无负债时的提示：可借额度 / 追保阈值
+  assert.match(textOf(host), /追保 93%/);
+
+  // 显示模式：默认两位小数 ⇒ 切换成无小数点后价格文字变了，但没有发出任何一条消息
+  assert.match(textOf(host), /6\.00/);
+  const dispBtns = [];
+  const collectDisp = (node) => {
+    if (node.dataset && node.dataset.action === 'display') dispBtns.push(node);
+    for (const child of node.childNodes || []) collectDisp(child);
+  };
+  collectDisp(host);
+  assert.deepEqual(dispBtns.map((btn) => btn.dataset.mode), ['decimal', 'integer']);
+  assert.equal(dispBtns.find((btn) => btn.dataset.mode === 'decimal').classList.contains('is-active'), true);
+  const before = sent.length;
+  click(dispBtns.find((btn) => btn.dataset.mode === 'integer'));
+  assert.equal(sent.length, before, 'switching the display mode sends nothing to the server');
+  const afterText = textOf(host);
+  assert.ok(!/6\.00/.test(afterText), `no two-decimal price is left: ${afterText.slice(0, 200)}`);
+  assert.match(afterText, /仅显示取整 · 成交按两位小数/);
+  inst.unmount();
+});
+
+test('1.4.0 显示模式是纯显示：切换不发帧、不改这一单的成交额', () => {
+  // 这条用例守的是边界：显示模式只影响画出来的字符串。`maxAffordable` / `resolveQty` / 手续费都拿真实价算，
+  // 与显示模式无关 —— 所以「整数模式看着像 3 块，其实 3.04 块」不会变成「少付 4 分钱」。
+  const real = 3.04;
+  assert.equal(formatPrice(real, 'integer'), '3', 'the screen rounds it away');
+  assert.equal(maxAffordable(10, real, 60), maxAffordable(10, real, 60), 'the arithmetic ignores the mode');
+  assert.equal(feeFor(100), 1, 'and so does the fee');
+  // 一句人话：整数模式下 10 块能买的股数与小数模式完全一致（两者用的是同一个 real price）。
+  const asInt = Math.trunc(real);
+  assert.notEqual(asInt, real, 'the integer display is NOT the price used for settlement');
+  assert.ok(maxAffordable(10, real, 60) <= maxAffordable(10, asInt, 60), 'rounding the display DOWN would over-quote');
 });
 

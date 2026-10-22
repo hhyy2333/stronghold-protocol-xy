@@ -42,7 +42,35 @@ const fmt = (value) => {
   return n.toLocaleString('zh-CN');
 };
 /** 股价保留两位小数（服务端就是两位小数口径；`.00` 也照显示，免得「7」和「7.04」看起来像两个精度）。 */
-const fmtPrice = (value) => (Math.round((Number(value) || 0) * 100) / 100).toFixed(2);
+const fmtPrice2 = (value) => (Math.round((Number(value) || 0) * 100) / 100).toFixed(2);
+/**
+ * 股价的**两种显示模式**（业主 2026-10-22「增加显示模式（无小数点）可在原本与无小数点间切换」）。
+ *
+ *   * `'decimal'`（默认，也就是 1.3.x 的样子）：两位小数，成交口径与屏幕上的数字一致；
+ *   * `'integer'`：四舍五入到整数，**没有小数点**；不足 0.5 的毛票写成 `<1`（写成 0 看起来像坏了，
+ *     写成 1 又把它抬高了两倍多）。
+ *
+ * 这是**纯显示**：算钱、算可买股数、下单、强平全用服务端的两位小数真实价，切换不会改变任何一单的成交额。
+ * 所以整数模式下屏幕上的价只是「一眼看个大概」，订单回执里的价格仍是真实值。
+ */
+const PRICE_MODES = Object.freeze(['decimal', 'integer']);
+const PRICE_MODE_KEY = 'sp.oex.priceMode';
+/**
+ * 股价按当前显示模式格式化（纯函数，可单测）。
+ * @param {number} value 真实价（两位小数）
+ * @param {'decimal'|'integer'} mode
+ * @returns {string}
+ */
+export function formatPrice(value, mode) {
+  if (mode !== 'integer') return fmtPrice2(value);
+  const raw = Math.round((Number(value) || 0) * 100) / 100;
+  const n = Math.round(raw);
+  if (n >= 1) return String(n);
+  return raw > 0 ? '<1' : '0';
+}
+const fmtPrice = formatPrice;
+/** 面板里那一颗显示模式按钮的文案。 */
+const PRICE_MODE_TEXT = Object.freeze({ decimal: '保留小数', integer: '无小数点' });
 /** 源石大盘保留一位小数（100 起）。 */
 const fmtIndex = (value) => (Math.round((Number(value) || 0) * 10) / 10).toFixed(1);
 
@@ -130,6 +158,32 @@ export function resolveQty(mode, state, stockId, op) {
   return Math.min(wanted, available);
 }
 
+/**
+ * 读显示模式偏好（`localStorage` 的 `sp.oex.priceMode`）。读不到 / 值不认识 / 存储不可用 ⇒ 默认 `'decimal'`。
+ *
+ * 面板的注入面里没有 storage，但**浏览器自己的 `localStorage` 是可用的**（面板模块就是站点上的一个
+ * ES 模块，不是 worker）：这里只存一个显示偏好的字符串，不碰对局状态（WORKSHOP §1.9.3 的那条边界讲的是
+ * 「面板改不了对局结果」，不是「面板不许记自己长什么样」——引擎自己的 `sp.pref.*` 偏好也是这么存的）。
+ * 全部包 try/catch：隐私模式下 `localStorage` 会抛异常，那时静默退回默认值即可。
+ */
+export function readPriceMode() {
+  try {
+    if (typeof localStorage === 'undefined') return 'decimal';
+    const raw = localStorage.getItem(PRICE_MODE_KEY);
+    return PRICE_MODES.includes(raw) ? raw : 'decimal';
+  } catch {
+    return 'decimal';
+  }
+}
+
+/** 写显示模式偏好（失败就静默：偏好丢了不影响这一局）。 */
+function writePriceMode(mode) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(PRICE_MODE_KEY, mode);
+  } catch { /* storage unavailable */ }
+}
+
 /** 迷你走势图（SVG polyline）。没有 createElementNS 的环境（测试 stub）退化成一根横线。 */
 function drawSparkline(doc, history, up) {
   const width = 64;
@@ -194,6 +248,7 @@ export function mount(ctx) {
   let open = false;          // 抽屉是否展开
   let userCollapsed = false; // 用户手动收起之后，新行情不自动弹开
   let qtyMode = 1;           // 1 / 5 / 10 / 'max'
+  let priceMode = readPriceMode(); // 'decimal' | 'integer'（纯显示，见 PRICE_MODES）
   let toast = null;          // { text, ok }
   let toastTimer = null;
   let seenState = false;
@@ -286,17 +341,39 @@ export function mount(ctx) {
   const levBar = el('div', 'oex__lever');
   levBar.appendChild(el('span', 'oex__qty-label', '杠杆'));
   const levButtons = el('div', 'oex__qty-buttons');
-  const LEV_MODES = [1, 2, 3];
-  for (const level of LEV_MODES) {
-    const btn = el('button', 'oex__qty-btn oex__lev-btn', `${level}x`);
-    btn.type = 'button';
-    btn.dataset.action = 'lever';
-    btn.dataset.lever = String(level);
-    levButtons.appendChild(btn);
-  }
+  // 档位**不在面板里写死**：从下发的 `limits.leverage` 建按钮（1.4.0 起是 1..5）。
+  // 第一帧之前用 1.3.x 那三档兜底，帧一到就按真实表重建 —— 老引擎（没有 4x / 5x）不会画出两个按了被拒的按钮。
+  let levModes = [1, 2, 3];
+  const buildLevButtons = (modes) => {
+    levModes = Array.isArray(modes) && modes.length ? modes : [1, 2, 3];
+    while (levButtons.firstChild) levButtons.removeChild(levButtons.firstChild);
+    for (const level of levModes) {
+      const btn = el('button', 'oex__qty-btn oex__lev-btn', `${level}x`);
+      btn.type = 'button';
+      btn.dataset.action = 'lever';
+      btn.dataset.lever = String(level);
+      levButtons.appendChild(btn);
+    }
+  };
+  buildLevButtons(levModes);
   levBar.appendChild(levButtons);
   const levHint = el('span', 'oex__lev-hint', '');
   levBar.appendChild(levHint);
+
+  // 显示模式（业主 2026-10-22）：股价「保留小数」/「无小数点」之间切换，偏好存在 localStorage。
+  const dispBar = el('div', 'oex__display');
+  dispBar.appendChild(el('span', 'oex__qty-label', '显示'));
+  const dispButtons = el('div', 'oex__qty-buttons');
+  for (const mode of PRICE_MODES) {
+    const btn = el('button', 'oex__qty-btn oex__disp-btn', PRICE_MODE_TEXT[mode]);
+    btn.type = 'button';
+    btn.dataset.action = 'display';
+    btn.dataset.mode = mode;
+    dispButtons.appendChild(btn);
+  }
+  dispBar.appendChild(dispButtons);
+  const dispHint = el('span', 'oex__lev-hint', '');
+  dispBar.appendChild(dispHint);
 
   const list = el('div', 'oex__list');
 
@@ -331,6 +408,7 @@ export function mount(ctx) {
   panel.appendChild(newsBar);
   panel.appendChild(qtyBar);
   panel.appendChild(levBar);
+  panel.appendChild(dispBar);
   panel.appendChild(list);
   panel.appendChild(toastBar);
   panel.appendChild(foot);
@@ -356,6 +434,14 @@ export function mount(ctx) {
       if (!btn || !btn.dataset) continue;
       btn.classList.toggle('is-active', String(btn.dataset.qty) === String(qtyMode));
     }
+  }
+
+  function renderDisplayButtons() {
+    for (const btn of dispButtons.childNodes || []) {
+      if (!btn || !btn.dataset) continue;
+      btn.classList.toggle('is-active', String(btn.dataset.mode) === priceMode);
+    }
+    dispHint.textContent = priceMode === 'integer' ? '仅显示取整 · 成交按两位小数' : '按两位小数显示';
   }
 
   function renderToast() {
@@ -389,7 +475,7 @@ export function mount(ctx) {
     idBox.appendChild(el('span', 'oex__ticker', stock.ticker || '???'));
     idBox.appendChild(el('span', 'oex__company', stock.company || ''));
     const priceBox = el('div', 'oex__price-box');
-    priceBox.appendChild(el('span', 'oex__price', fmtPrice(stock.price)));
+    priceBox.appendChild(el('span', 'oex__price', fmtPrice(stock.price, priceMode)));
     priceBox.appendChild(chg);
     const chart = drawSparkline(doc, stock.history, up);
     const hold = el('span', 'oex__hold', `持 ${fmt(stock.shares || 0)}`);
@@ -442,10 +528,17 @@ export function mount(ctx) {
     const debt = Number(data.debt) || 0;
     const marginPct = Number(data.marginPct) || 0;
     debtValue.textContent = debt > 0 ? `-${fmt(debt)}` : '0';
-    // 追保距离：负债 / 持仓 ≥55% 变黄、≥65% 变红（70% 服务端强平）。
-    debtBox.classList.toggle('is-warn', debt > 0 && marginPct >= 55 && marginPct < 65);
-    debtBox.classList.toggle('is-danger', debt > 0 && marginPct >= 65);
-    // 杠杆：当前档位高亮 + 还能借多少（服务端算好的 borrowRoom，面板不重算）。
+    // 追保距离：**按这一档的**维持担保比例算（服务端下行帧的 `maintainPct`；1x–3x 是 70，4x/5x 更宽）。
+    // 黄线 = 阈值 −15 个百分点，红线 = 阈值 −5。旧代码把 55/65/70 三个数字写死，加了 4x/5x 之后
+    // 5x 的 88% 会在「还没到 65%」时就把人强平，面板却一个字都不预警 —— 那是最坏的一种谎。
+    const maintainPct = Number(data.maintainPct) || Number(data.limits && data.limits.maintainPct) || 70;
+    const warnPct = Math.max(0, maintainPct - 15);
+    const dangerPct = Math.max(0, maintainPct - 5);
+    debtBox.classList.toggle('is-warn', debt > 0 && marginPct >= warnPct && marginPct < dangerPct);
+    debtBox.classList.toggle('is-danger', debt > 0 && marginPct >= dangerPct);
+    // 杠杆：档位按钮按服务端的 `limits.leverage` 建过一次就照用，当前档位高亮 + 还能借多少。
+    const limits = data.limits || {};
+    if (Array.isArray(limits.leverage) && limits.leverage.join(',') !== levModes.join(',')) buildLevButtons(limits.leverage);
     const level = Number(data.leverage) || 1;
     for (const btn of levButtons.childNodes || []) {
       if (!btn || !btn.dataset) continue;
@@ -453,9 +546,9 @@ export function mount(ctx) {
     }
     const room = Number(data.borrowRoom) || 0;
     levHint.textContent = debt > 0
-      ? `负债率 ${marginPct.toFixed(0)}% · 追保 70%`
+      ? `负债率 ${marginPct.toFixed(0)}% · 追保 ${maintainPct}%`
       : level > 1
-        ? (room > 0 ? `可借 ${fmt(room)}` : '额度已用满')
+        ? (room > 0 ? `可借 ${fmt(room)}` : `额度已用满 · 追保 ${maintainPct}%`)
         : '不借钱';
     if (data.news && data.news.text) {
       newsText.textContent = `${data.news.text}（${data.news.pct > 0 ? '+' : ''}${data.news.pct}%）`;
@@ -470,6 +563,7 @@ export function mount(ctx) {
     while (list.firstChild) list.removeChild(list.firstChild);
     for (const stock of data.stocks || []) list.appendChild(renderStockRow(stock));
     renderQtyButtons();
+    renderDisplayButtons();
     // sync 帧是「资金变了，行情没变」的补帧：只更新数字，不弹订单回执。
     if (data.lastOrder && data.kind !== 'sync') showToast(data.lastOrder);
     if (closing) renderClose(closing);
@@ -608,6 +702,19 @@ export function mount(ctx) {
       ctx.net.send('trade', { op: 'lever', level });
       return;
     }
+    if (action === 'display') {
+      // 显示模式是**纯本机偏好**：不发帧、不问服务端，只重画列表（价格文字随之变化）。
+      const mode = actionNode.dataset.mode;
+      if (!PRICE_MODES.includes(mode) || mode === priceMode) return;
+      priceMode = mode;
+      writePriceMode(mode);
+      renderDisplayButtons();
+      if (state) {
+        while (list.firstChild) list.removeChild(list.firstChild);
+        for (const stock of state.stocks || []) list.appendChild(renderStockRow(stock));
+      }
+      return;
+    }
     if (action === 'buy' || action === 'sell') {
       const stockId = currentStockId(actionNode);
       if (!stockId || !state) return;
@@ -632,6 +739,7 @@ export function mount(ctx) {
   // ---- 生命周期 ----------------------------------------------------------------------------------------------
   // 初始收起：面板一挂上时页面上**什么都不多**（第一份 state 帧到达才出现抽屉）。
   applyOpen(false, false);
+  renderDisplayButtons();
   setTimeout(pollRoom, 1200);
 
   return {

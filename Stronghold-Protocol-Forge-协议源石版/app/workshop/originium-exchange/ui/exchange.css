@@ -241,6 +241,19 @@
   background: rgba(240, 198, 116, 0.03);
 }
 .oex__lev-btn { min-width: 30px; font-weight: 700; }
+
+/* ---- 显示模式（1.4.0）：股价「保留小数」/「无小数点」 ------------------------------------------- */
+
+/* 与杠杆条同一套骨架，但底色更淡：它是**显示偏好**，不是会影响成交的设置。 */
+.oex__display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.oex__disp-btn { min-width: 46px; }
 .oex__lev-hint {
   flex: 1;
   text-align: right;
@@ -449,7 +462,9 @@
   .oex__head { padding-top: 6px; padding-bottom: 4px; }
   .oex__tape { padding-top: 2px; padding-bottom: 2px; }
   .oex__sum { padding-top: 4px; padding-bottom: 4px; }
-  .oex__qty, .oex__lev { padding-top: 3px; padding-bottom: 3px; }
+  /* 1.4.0：这一行原来写的是 `.oex__lev`，而杠杆条的类名是 `.oex__lever` —— 选择器一直匹配不到任何节点，
+     于是矮屏上杠杆条没跟着压缩（买/卖按钮更靠下）。顺手改成真名，并把新增的显示条一起纳入。 */
+  .oex__qty, .oex__lever, .oex__display { padding-top: 3px; padding-bottom: 3px; }
   .oex__foot { padding: 4px 10px 6px; }
   .oex__list { min-height: 120px; }
 }

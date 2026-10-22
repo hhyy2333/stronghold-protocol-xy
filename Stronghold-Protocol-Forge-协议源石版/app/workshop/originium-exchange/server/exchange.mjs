@@ -64,24 +64,54 @@ export const STOCKS = Object.freeze([
  * 交易规则。数值都在这里，UI 从下发帧的 `limits` 里读同一份（面板不写死第二份）。
  *
  * 杠杆：
- *   * `leverage` 是可选档位，1 = 不借钱；2 / 3 = 最多借到 (档位-1) 倍净资产；
+ *   * `leverage` 是可选档位，1 = 不借钱；L = 最多借到 (L-1) 倍净资产；
  *   * `interestBps` 每回合对未清负债计息（12%），付不出就**资本化进负债**（利滚利）；
- *   * `maintainPct` 维持担保比例：负债 / 持仓市值 超过 70% ⇒ **强制平仓**，卖到 ≤ 50% 为止。
+ *   * 维持担保比例：负债 / 持仓市值 超过阈值 ⇒ **强制平仓**，卖到下一个阈值以下为止；
+ *   * 阈值**按档位分表**（`marginByLever` / `liquidateByLever`），理由见下面「为什么 4x / 5x 要另给阈值」。
  *
  * **分红率必须显著低于借款利率**（2026-10-20 收益测试）：分红按**全部持仓**发，利息只按**负债**收 ——
  * 只要分红率 > 利率 × 负债/持仓，借钱满仓就是正期望的印钞机（实测 30/30 全胜）。
  * 现在 1.2% 对 12%：2x 档满仓时负债 ≈ 1× 净资产，利息 ≈ 持仓市值的 12%，
  * 分红只有 1.2% —— 借钱买股变成真赌注，而且**红利本身也不再是免费午餐**。
+ *
+ * ===== v1.4.0（业主 2026-10-22「交易行增加到5倍杠杆」）=====
+ * 档位 3 → 5，多了 **4x / 5x** 两档。但**光加档位是玩不了的**：满仓时的「静止担保比例」是 (L-1)/L ——
+ * 3x 是 66.7%，刚好压在旧的 70% 下面；4x 是 75%、5x 是 80%，都在 70% 之上，于是每一次满仓
+ * 都会在下一回合「一开市就被强平」，5x 就等于不存在。再叠加 12% 的利息资本化：
+ * 5x 满仓次回合的负债是 4.48× 净资产、担保比例 89.6%，比 4x 的 84% 还高。
+ * 所以 4x / 5x 各给一档**更宽的阈值**（88% / 93%），让「满仓 + 价格不跌」这件事在物理上可能成立，
+ * 同时又不至于变成免费午餐：
+ *   * 5x 满仓的静止担保比例是 80%，离 93% 只有 13 个百分点 —— 一根中位数 8% 的阴线就够触线；
+ *   * 利息不变（还是 12%/回合），5x 满仓每回合光利息就吃掉 48% 的净资产，**必须靠上涨付账**；
+ *   * 1x / 2x / 3x 的阈值**一个字都没动**（还是 70% / 50%），旧手感不回归。
+ * 别把 5x 用满：档位只决定「最多能借多少」，借多少由这一单自己决定 —— 5x 档借 1 倍净资产，风控与 2x 一样。
  */
 export const LIMITS = Object.freeze({
   maxShares: 60,
   commissionBps: 100,
   dividendBps: 120,
-  leverage: Object.freeze([1, 2, 3]),
+  leverage: Object.freeze([1, 2, 3, 4, 5]),
   interestBps: 1200,
+  /** 现行阈值（1x–3x 的默认口径，面板从下发帧里读这一份）。 */
   maintainPct: 70,
   liquidateToPct: 50,
+  /**
+   * 按档位的维持担保比例（负债 / 持仓市值超过它 ⇒ 强平）与强平目标（卖到它以下）。
+   * 1–3 档与 1.3.x 完全一致；4x / 5x 的推导见文件头「为什么 4x / 5x 要另给阈值」。
+   */
+  marginByLever: Object.freeze({ 1: 70, 2: 70, 3: 70, 4: 88, 5: 93 }),
+  liquidateByLever: Object.freeze({ 1: 50, 2: 50, 3: 50, 4: 82, 5: 87 }),
 });
+
+/** 这一档的维持担保比例（百分点）；非法档位按 1x 算。 */
+export function marginPctFor(level) {
+  return LIMITS.marginByLever[level] ?? LIMITS.maintainPct;
+}
+
+/** 这一档被强平时要卖到的担保比例（百分点）；非法档位按 1x 算。 */
+export function liquidateToPctFor(level) {
+  return LIMITS.liquidateByLever[level] ?? LIMITS.liquidateToPct;
+}
 export const PRICE_FLOOR = 0.25;
 export const PRICE_CEIL = 99;
 /** 价格保留两位小数（见 nextPrice 的说明）。 */
@@ -605,7 +635,7 @@ export function registerServer(host) {
         if (!st) {
           this._oexOpen();
           const opened = this._oexState();
-          this._oexTicker('【源石证交所】开市：六支盟约概念股挂牌，休整期可交易；单回合涨跌最高 ±45%，0.25~99 块一股（支持 2x / 3x 杠杆）。');
+          this._oexTicker('【源石证交所】开市：六支盟约概念股挂牌，休整期可交易；单回合涨跌最高 ±45%，0.25~99 块一股（支持 2x~5x 杠杆）。');
           this._oexPushAll('open');
           if (opened) opened.openedRound = round;
           return;
@@ -720,8 +750,11 @@ export function registerServer(host) {
       }
 
       /**
-       * 强制平仓：负债 / 持仓市值 > maintainPct% 时，从最不值钱的那支开始卖，
-       * 卖到负债 / 持仓市值 ≤ liquidateToPct%（或者卖光）为止。返回卖掉的总股数。
+       * 强制平仓：负债 / 持仓市值 超过**这一档的**维持担保比例时，从最不值钱的那支开始卖，
+       * 卖到负债 / 持仓市值 ≤ 这一档的强平目标（或者卖光）为止。返回卖掉的总股数。
+       *
+       * 阈值按玩家**当前档位**取（`marginPctFor` / `liquidateToPctFor`）：1x–3x 仍是 70% / 50%，
+       * 4x / 5x 是 88%/82% 与 93%/87%（推导见 LIMITS 的注释）。
        */
       _oexLiquidate(ps) {
         const st = this._oexState();
@@ -731,15 +764,19 @@ export function registerServer(host) {
         if (!debt) return 0;
         let portfolio = this._oexPortfolioOf(ps.playerId);
         if (!portfolio) return 0;
-        if (debt * 100 <= portfolio * LIMITS.maintainPct) return 0;
+        const level = st.lever.get(ps.playerId) || 1;
+        const marginPct = marginPctFor(level);
+        const targetPct = liquidateToPctFor(level);
+        if (debt * 100 <= portfolio * marginPct) return 0;
         // 每一轮都重新挑「市值最小」的那一支卖 1 股，再重算担保比例 —— 整数股、有限轮，
         // 最多卖到清仓（`maxShares` 是单支上限，总持仓受六支之和约束，所以这个 guard 只会多不会少）。
+        // 档位可能在平仓过程中被别的帧改掉吗？不会：这一轮是同步跑的，`lever` 只由 `_oexSetLever` 写。
         let sold = 0;
         const guardLimit = LIMITS.maxShares * STOCKS.length + 1;
         for (let guard = 0; guard < guardLimit; guard += 1) {
           if (debt <= 0) break;
           if (portfolio <= 0) break;
-          if (debt * 100 <= portfolio * LIMITS.liquidateToPct) break;
+          if (debt * 100 <= portfolio * targetPct) break;
           const pick = STOCKS
             .map((stock) => ({ stock, shares: row[stock.id] || 0, price: st.prices[stock.id] || 0 }))
             .filter((entry) => entry.shares > 0 && entry.price > 0)
@@ -997,6 +1034,8 @@ export function registerServer(host) {
             },
             sentiment: { kind: regime.kind, label: regime.label, driftPct: regime.driftPct, roundsLeft: regime.roundsLeft },
             marginPct,
+            /** 这一档的维持担保比例（百分点）：面板的「追保 X%」与黄/红变色按它算，1x–3x 仍是 70。 */
+            maintainPct: marginPctFor(level),
             news: st.lastNews
               ? { text: st.lastNews.text, stockId: st.lastNews.stockId, pct: st.lastNews.pct }
               : null,
@@ -1009,6 +1048,8 @@ export function registerServer(host) {
               leverage: [...LIMITS.leverage],
               interestBps: LIMITS.interestBps,
               maintainPct: LIMITS.maintainPct,
+              /** 每档的维持担保比例，面板据此画「追保」并决定黄/红预警线（没有它就只能按 70 硬编码）。 */
+              marginByLever: { ...LIMITS.marginByLever },
               clampPct: CLAMP_PCT,
               priceFloor: PRICE_FLOOR,
               priceCeil: PRICE_CEIL,
