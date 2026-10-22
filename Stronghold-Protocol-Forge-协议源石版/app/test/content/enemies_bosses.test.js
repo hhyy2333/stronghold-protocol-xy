@@ -2884,6 +2884,37 @@ test('“余音”: 10-hit unit held only by block ≥2; pulses when hit; forms 
   assert.ok(!e.alive, 'the 10th hit knocks it out');
 });
 
+// 2026-10-22 线上卡死回归：脉冲在 `echoHit` 自己的循环里被再次触发（友方受击 → 反击回余音 → 余音的 taken → echoHit），
+// 队列边遍历边增长，`if (ab.pulsing) return` 挡不住 push ⇒ 单线程 node 主线程 100% 空转、全站 HTTP/WS 超时 4 分钟。
+// 修复是给一次 echoHit 的脉冲数封顶（MAX_ECHO_PULSES）；这个用例在修复前会永远跑不完。
+test('余音：同一次 echoHit 里被再次触发时脉冲数有界（2026-10-22 线上卡死回归）', () => {
+  // 现场（当晚线上停了约 4 分钟）：脉冲 → 友方受击 → 反击/反伤打回余音 → 余音的 taken 再调 echoHit，
+  // 而 `if (ab.pulsing) return` 只挡住了递归、挡不住那次 push；于是 `for (i < ab.pulses.length)`
+  // 边遍历边变长，单线程 node 主线程 100% 空转，所有 HTTP/WS 一起超时。
+  // 这里把「余音打不死」（dmgCap 0）和「墙会被打死」（HP 调小）凑齐：没有封顶时环会自己跑到上千次，
+  // 有封顶时停在 MAX_ECHO_PULSES —— 所以这个用例两边都能在有限时间内结束，断言的是次数上界，不是超时。
+  // 注：`damaged` 事件只在 battle 声明了这条 hook 时才派发（damage.js: `if (battle._hooks.damaged)`）。
+  const h = bossArena({
+    chess: { t_wall: WALL('t_wall', { stats: { maxHp: 12000 } }) },
+    units: [{ chessId: 't_wall', row: 10, col: 6 }],
+    kits: { t_wall: NOATK },
+    hooks: ['damaged'],
+  });
+  h.step();
+  const echo = put(h, 'enemy_9023_acdums', [3, 6], { tag: 'part' });
+  const wall = h.unit('t_wall');
+  echo.mem.dmgCap = 0;   // 余音不会被打死，环不会自己停
+  h.b.on('damaged', (x) => {
+    if (x.target === wall && wall.alive) h.b.dealDamage(wall, echo, { amount: 1e-9, type: 'phys' });
+  }, { priority: -1e9 });
+  bossesMod.echoHit(h.b, echo);
+  const pulses = h.eventsOf('fx').filter((f) => f[1] === 'explode' && f[4] && f[4].kind === 'echoPulse').length;
+  assert.ok(pulses > 1, `自我喂养的环确实转起来了（${pulses} 次脉冲）`);
+  assert.ok(pulses <= 256, `一次 echoHit 的脉冲数必须封顶（实际 ${pulses}）`);
+  assert.equal(echo.mem.ab.pulses.length, 0, '处理完必须清空队列');
+  assert.equal(echo.mem.ab.pulsing, false, 'pulsing 标记必须复位');
+});
+
 test('盐风主教昆图斯: 2 highest-DEF targets + neural; 崩坍 / 大潮 / 断裂生殖; growth by lost HP; 物种爆发 LP loss', () => {
   const tpl = W.act1autochess_h07_04;
   const ov = JSON.parse(JSON.stringify(tpl.overrides));

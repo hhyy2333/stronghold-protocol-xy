@@ -780,6 +780,17 @@ export function setEchoForm(b, echo, form) {
   b.fx('phase', { x: echo.x, y: echo.y, id: echo.id, kind: `echo_${form}` });
 }
 
+/**
+ * Upper bound on pulses resolved in one `echoHit` call (2026-10-22). The queue is filled from inside its own loop:
+ * a pulse hurts an ally, the ally's counter damages the echo, the echo's `taken` calls `echoHit` again, which pushes
+ * another pulse `if (ab.pulsing) return` never stopped. With nothing removing the echo's hit-count HP that cycle never
+ * ends — it spins the single-threaded server at 100% and every HTTP/WebSocket request hangs (live incident that night:
+ * ~4 minutes of downtime until a restart, `applyHpLoss → dealDamage → emit` repeating in the debugger stack).
+ * Legitimate recursion is "dozens" of pulses (a counter removing dozens of hit-count HP), so 256 leaves every real
+ * case untouched and only cuts a runaway. Extra pulses beyond the cap are dropped; the queue is cleared either way.
+ */
+const MAX_ECHO_PULSES = 256;
+
 /** An echo takes a strike/hit: pulse around it (PRTS “余音” "受到伤害时对半径1.6范围内的我方单位造成…": an area selection of the
  *  echo — no unblocking 隐匿 operator) and count towards the form switch. */
 export function echoHit(b, echo) {
@@ -792,7 +803,7 @@ export function echoHit(b, echo) {
   if (ab.pulsing) return;
   ab.pulsing = true;
   try {
-    for (let i = 0; i < ab.pulses.length; i++) {
+    for (let i = 0; i < ab.pulses.length && i < MAX_ECHO_PULSES; i++) {
       const atk = ab.pulses[i];
       b.fx('explode', { x: echo.x, y: echo.y, r: ECHO_PULSE_RADIUS, kind: 'echoPulse' });
       for (const u of areaAllies(b, echo, echo.x, echo.y, ECHO_PULSE_RADIUS)) {
