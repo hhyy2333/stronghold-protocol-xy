@@ -3497,7 +3497,11 @@ function attachWaveEnemies(ctx, entries, enemies) {
       if (r.isFlyEnemy !== entry.fly || r.rank !== anchor.rank) return false;
       if (have.some((x) => x.key === e.key)) return false;
       const ratio = r.attrPower / anchor.attrPower;
-      return ratio >= band[0] && ratio <= band[1];
+      // a batch enemy declared `band: 'wide'` (research file) accepts the wider [0.7, 1.5] here: those batches are small
+      // and every member must reach the waves; the tight band stays the default so a big batch cannot shift counts.
+      const lo = e.band === 'wide' ? FORK_POWER_BAND_WIDE[0] : band[0];
+      const hi = e.band === 'wide' ? FORK_POWER_BAND_WIDE[1] : band[1];
+      return ratio >= lo && ratio <= hi;
     });
     const byNeed = (a, b) => {
       const ua = used.get(a.key) || 0, ub = used.get(b.key) || 0;

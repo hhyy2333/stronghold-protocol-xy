@@ -13,7 +13,8 @@
       "模型没有走社区的 web dump：社区 dump 只有 245 个敌人模型，除 3 个外全都已收录，未收录的 1322 个里只有 49 个能借到同族模型 —— 真正的新面孔只能从本地客户端抽取。",
       "挂载规则（tools/build-data.mjs attachWaveEnemies）：官方 key 恒在 N/E 的 [0]，fork key 追加在后面；同类（isFlyEnemy）、同档（rank）、强度带 [0.85, 1.25] 相对该池锚点，每池最多 1 个 fork key（官方仍占约 63% 的槽位）。",
       "例外：enemy_1018_aoemag（高阶术师，ELITE，attrPower 8710）对每一个 ELITE 池锚点都低于 0.85，按规则挂不上，所以它只进图鉴、不进波次。要让它上场就把带宽放到 [0.7, 1.5]，代价是每回合人数相对官方的偏差从 8.2 % 升到约 14 %。",
-      "实测（20 局 × 13 回合）：21 个里 20 个会真的刷出来；每回合人数相对官方分布的偏差 8.2 %，FLY 回合占比 9.9 %（官方约 10 %）。"
+      "实测（20 局 × 13 回合）：21 个里 20 个会真的刷出来；每回合人数相对官方分布的偏差 8.2 %，FLY 回合占比 9.9 %（官方约 10 %）。",
+      "第二批（2026-10-23）只挑「会真的打人、机制能用引擎原语表达、模型客户端里有」的 6 个；带结晶 / 装备 / 狂欢时刻 / 摄影区域这类本模式没有的系统的敌人一律不做，避免半残机制上线。"
     ]
   },
   "batches": [
@@ -272,6 +273,96 @@
           "res": 20,
           "attrPower": 25960,
           "why": "零技能零天赋，纯数值怪"
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "note": "第二批 6 个：带机制的小怪，全部用引擎已有的原语实现（deathBoom / spawnChildren / onHit 减益），对应 server/sim/content/enemies/forkwave.js。",
+      "enemies": [
+        {
+          "key": "enemy_1352_eslime",
+          "rank": "NORMAL",
+          "name": "辐能源石虫",
+          "handbookIndex": "B11",
+          "hp": 2000,
+          "atk": 90,
+          "def": 50,
+          "res": 10,
+          "attrPower": 2630,
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "why": "辐能源石虫 · 死亡后对周围造成法术伤害（boom.atk_scale × ATK）",
+          "band": "wide"
+        },
+        {
+          "key": "enemy_1138_tumor",
+          "rank": "NORMAL",
+          "name": "畸变恶性瘤",
+          "handbookIndex": "R15",
+          "hp": 1500,
+          "atk": 200,
+          "def": 0,
+          "res": 0,
+          "attrPower": 2500,
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "why": "畸变恶性瘤 · 被阻挡时使阻挡单位的攻击速度极大幅降低（−80）",
+          "band": "wide"
+        },
+        {
+          "key": "enemy_1004_mslime",
+          "rank": "NORMAL",
+          "name": "酸液源石虫",
+          "handbookIndex": "B4",
+          "hp": 2080,
+          "atk": 180,
+          "def": 80,
+          "res": 0,
+          "attrPower": 3220,
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "why": "酸液源石虫 · 每次攻击降低击中目标的防御（−10，可叠加刷新）",
+          "band": "wide"
+        },
+        {
+          "key": "enemy_1130_infstr",
+          "rank": "NORMAL",
+          "name": "畸变体傀儡",
+          "handbookIndex": "R1",
+          "hp": 1900,
+          "atk": 210,
+          "def": 100,
+          "res": 0,
+          "attrPower": 3250,
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "why": "畸变体傀儡 · 死亡时分裂两个同类",
+          "band": "wide"
+        },
+        {
+          "key": "enemy_1126_spslme",
+          "rank": "NORMAL",
+          "name": "“得意”",
+          "handbookIndex": "SF09",
+          "hp": 2460,
+          "atk": 120,
+          "def": 0,
+          "res": 0,
+          "attrPower": 3060,
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "why": "“得意” · 死亡后爆炸造成法术伤害（本模式没有阴阳属性，只做基础档）",
+          "band": "wide"
+        },
+        {
+          "key": "enemy_1028_mocock",
+          "rank": "NORMAL",
+          "name": "鸡尾酒投掷者",
+          "handbookIndex": "A9",
+          "hp": 1550,
+          "atk": 180,
+          "def": 50,
+          "res": 0,
+          "attrPower": 2600,
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "why": "鸡尾酒投掷者 · 数据里没有能力文本，纯远程射手",
+          "band": "wide"
         }
       ]
     }

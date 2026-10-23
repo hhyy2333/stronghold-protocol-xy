@@ -147,6 +147,9 @@ ENEMY_SPINES += [
     'enemy_1137_plasm', 'enemy_1147_dshond_2', 'enemy_1190_krgbow', 'enemy_1301_ymcnon',
     'enemy_1391_dhbow', 'enemy_1428_lrsoul', 'enemy_2046_smwar', 'enemy_4048_mubarn',
     'enemy_5504_arcslmi',
+    # batch 2 (the ones with a mechanic, server/sim/content/enemies/forkwave.js)
+    'enemy_1352_eslime', 'enemy_1126_spslme', 'enemy_1138_tumor',
+    'enemy_1004_mslime', 'enemy_1130_infstr', 'enemy_1028_mocock',
 ]
 ENEMY_ART = 'refs/arts/enm_art_*.ab'
 ENEMY_SPINE_SUB = 'spine/enemy'

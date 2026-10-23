@@ -10,7 +10,10 @@ import { DATA } from '../match/harness.js';
 
 const J = (rel) => JSON.parse(fs.readFileSync(new URL(rel, import.meta.url), 'utf8'));
 const RESEARCH = J('../../docs/research/16-extra-enemies.json');
+/** Every batch flattened: batch 1 is the plain stat-only wave filler, batch 2 the ones with a mechanic. */
+const ALL = (RESEARCH.batches || []).flatMap((b) => (b.enemies || []).map((e) => ({ ...e, batch: b.id })));
 const BATCH = (RESEARCH.batches?.[0]?.enemies) || [];
+const MECHANIC = ALL.filter((e) => e.kit);
 const E = DATA.enemies;
 const F = DATA.factions.entries;
 const ACT = JSON.parse(fs.readFileSync(new URL('../../.cache/gamedata/excel/activity_table.json', import.meta.url), 'utf8'));
@@ -24,12 +27,12 @@ test('research file: a non-empty batch of well-formed enemy keys', () => {
     assert.ok(e.rank === 'NORMAL' || e.rank === 'ELITE', `${e.key}: rank ${e.rank}`);
     assert.ok(Number.isFinite(e.attrPower) && e.attrPower > 0, `${e.key}: attrPower`);
   }
-  assert.equal(new Set(BATCH.map((e) => e.key)).size, BATCH.length, 'no duplicate keys');
+  assert.equal(new Set(ALL.map((e) => e.key)).size, ALL.length, 'no duplicate keys across the batches');
 });
 
 test('every batch enemy has a data row: stats, rank, an attack clip and a model', () => {
   const assets = J('../../data/assets.json').enemies;
-  for (const e of BATCH) {
+  for (const e of ALL) {
     const r = E[e.key];
     assert.ok(r, `${e.key} is in data/enemies.json`);
     assert.equal(r.rank, e.rank, `${e.key}: rank`);
@@ -71,17 +74,20 @@ test('attached to a special-entry pool without moving the official keys', () => 
     }
   }
   assert.ok(attached >= 60, `${attached} fork attachments (the batch is actually wired into the pools)`);
-  assert.ok(wide.length <= 4, `${wide.length} wide-band rescues: ${wide.join(' ')}`);
+  // Batch 2's enemies are declared `band: 'wide'` in the research file (they are all weaker than the pool anchors they
+  // fit), so a fifth of the attachments may sit outside the tight band — the per-round count drift (waves-official's
+  // ±12 %) is the real guard and is measured separately.
+  assert.ok(wide.length <= Math.ceil(attached * 0.25), `${wide.length}/${attached} wide-band attachments: ${wide.slice(0, 6).join(' ')}`);
   const wired = new Set();
   for (const entry of Object.values(F)) for (const cls of ['N', 'E']) for (const x of entry[cls] || []) if (x.fork) wired.add(x.key);
-  const missing = BATCH.filter((e) => !wired.has(e.key)).map((e) => e.key);
+  const missing = ALL.filter((e) => !wired.has(e.key)).map((e) => e.key);
   // one documented exception: 高阶术师 is weaker than every ELITE pool anchor, so the band keeps it out of the waves
   assert.deepEqual(missing, ['enemy_1018_aoemag'], 'only the documented outlier stays unwired');
 });
 
 test('they really come out of the wave generator', () => {
   const gd = new GameData(DATA, 'mode_multi_abyss');
-  const want = new Set(BATCH.map((e) => e.key));
+  const want = new Set(ALL.map((e) => e.key));
   const seen = new Set();
   for (let seed = 1; seed <= 12; seed++) {
     const setup = setupMatchWaves(gd, createRng(seed * 7919));
@@ -90,5 +96,60 @@ test('they really come out of the wave generator', () => {
       for (const s of w.spawns) if (want.has(s.enemyKey)) seen.add(s.enemyKey);
     }
   }
-  assert.ok(seen.size >= 12, `${seen.size} of the ${want.size} batch enemies spawned over 12 matches`);
+  assert.ok(seen.size >= 24, `${seen.size} of the ${want.size} batch enemies spawned over 12 matches`);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// batch 2: the ones with a mechanic (server/sim/content/enemies/forkwave.js)
+
+test('batch 2: every mechanic key is authored in forkwave.js and NOT also listed as stats-only', async () => {
+  const mod = await import('../../server/sim/content/enemies.js');
+  assert.ok(MECHANIC.length >= 5, `${MECHANIC.length} enemies with a mechanic`);
+  for (const e of MECHANIC) {
+    assert.ok(mod.KITS[e.key], `${e.key}: a kit is registered`);
+    assert.ok(!mod.STATS_ONLY[e.key], `${e.key}: not in STATS_ONLY as well`);
+    assert.equal(e.kit, 'server/sim/content/enemies/forkwave.js', `${e.key}: the research file names its kit file`);
+  }
+});
+
+test('batch 2 mechanics in a real battle: self-destruct, split, and the on-hit debuffs', async () => {
+  const { makeBattle, chessRec } = await import('../helpers/battleHarness.js');
+  const enemiesMod = await import('../../server/sim/content/enemies.js');
+  const bossesMod = await import('../../server/sim/content/bosses.js');
+  const WALL = (id) => chessRec({ id, profession: 'TANK', stats: { atk: 0, maxHp: 3e4, def: 0, res: 0, blockCnt: 3 }, rangeGrid: [[0, 0]], skill: null });
+  /** Spawn one enemy next to a silent wall, let it attack 8 s, then kill it with a true-damage hit. */
+  const run = (key) => {
+    const h = makeBattle({
+      content: 'generic', extraContent: [enemiesMod, bossesMod], seed: 5, autoFinish: false, timeLimit: 200,
+      defs: { chess: { t_wall: WALL('t_wall') } }, kits: { t_wall: () => ({ trait: { noAttack: true } }) },
+      units: [{ chessId: 't_wall', row: 10, col: 5 }],
+    });
+    h.step();
+    const e = h.spawn(key, { pos: [10, 5], routeIndex: 0 });
+    const wall = h.allies()[0];
+    h.run(8);
+    const aspd = (wall.buffs || []).filter((b) => b.mods && b.mods.aspd).map((b) => b.mods.aspd);
+    const defFlat = (wall.buffs || []).filter((b) => b.mods && b.mods.defFlat).map((b) => b.mods.defFlat);
+    const hp0 = wall.hp;
+    h.b.dealDamage(wall, e, { amount: 1e6, type: 'true', canDodge: false });
+    h.run(0.4);
+    return { boom: Math.round(hp0 - h.allies()[0].hp), aspd, defFlat, leftovers: h.enemies().length, atk: E[key].stats.atk };
+  };
+
+  // 辐能源石虫: Boom.atk_scale × ATK arts blast on death (the blackboard key really is capital-B for this enemy)
+  const slug = run('enemy_1352_eslime');
+  assert.equal(slug.boom, Math.round(slug.atk * 4), `辐能源石虫 death blast = ATK×4 (${slug.boom})`);
+
+  // 「得意」: lowercase boom.atk_scale, arts blast; no yin/yang system so only the base scale
+  const fang = run('enemy_1126_spslme');
+  assert.equal(fang.boom, Math.round(fang.atk * 4), `“得意” death blast = ATK×4 (${fang.boom})`);
+
+  // 畸变恶性瘤: the blocked unit's attack speed drops by 80
+  assert.deepEqual(run('enemy_1138_tumor').aspd, [-0.8], '畸变恶性瘤 lowers the blocker ASPD');
+
+  // 酸液源石虫: every hit lowers the target's DEF by 10
+  assert.deepEqual(run('enemy_1004_mslime').defFlat, [-10], '酸液源石虫 lowers the target DEF');
+
+  // 畸变体傀儡: killed → two of itself (the split is silence-flagged in the handbook, so it carries sil: true)
+  assert.equal(run('enemy_1130_infstr').leftovers, 2, '畸变体傀儡 splits into two');
 });

@@ -118,6 +118,7 @@ import { DOT_KITS } from './enemies/dot.js';
 import { REFLECTION_KITS } from './enemies/reflection.js';
 import { FLY_KITS } from './enemies/fly.js';
 import { SPECIAL_KITS } from './enemies/special.js';
+import { FORK_WAVE_KITS } from './enemies/forkwave.js';
 import { LEADER_KITS } from './enemies/leaders.js';
 import { hypot } from '../detmath.js';
 
@@ -288,6 +289,8 @@ export const KITS = Object.freeze({
   ...FLY_KITS,
   ...SPECIAL_KITS,
   ...LEADER_KITS,
+  // the fork's own wave enemies whose handbook line needs a mechanic (docs/research/16-extra-enemies.json batch 2)
+  ...FORK_WAVE_KITS,
 });
 
 /** Keys deliberately left to their data stats (reason). */

@@ -445,6 +445,22 @@ The fork adds enemies this repository did not carry before, declared in
   `attackAnim` up from it (`enemyAttackAnim` prefers `spineLocal` over the web/aliased `spine`).
 - Bounty pools (`types[type].pool`), `types`, `placeholders` and `generation` are untouched.
 
+**Batch 2 (0.19.19) — the ones with a mechanic.** Six more enemies whose handbook line needs behaviour, authored in
+`server/sim/content/enemies/forkwave.js` on the primitives the engine already has:
+
+| key | mechanic | primitive |
+|---|---|---|
+| `enemy_1352_eslime` 辐能源石虫 | death: arts blast, ATK × `Boom.atk_scale` (capital B in this enemy's blackboard) | `deathBoom` |
+| `enemy_1126_spslme` “得意” | death: arts blast, ATK × `boom.atk_scale` (lowercase here); the 阴阳 same/diff variants are **not** modelled (the mode has no 属性 system) | `deathBoom` |
+| `enemy_1138_tumor` 畸变恶性瘤 | the unit it attacks/blocking it loses 80 attack speed | `dealt` → `addBuff(aspd)` |
+| `enemy_1004_mslime` 酸液源石虫 | every hit lowers the target's DEF by 10 | `dealt` → `addBuff(defFlat)` |
+| `enemy_1130_infstr` 畸变体傀儡 | killed → splits into two of itself (handbook flags the line SILENCE → `sil: true`) | `spawnChildren` |
+| `enemy_1028_mocock` 鸡尾酒投掷者 | none (plain ranged attacker; the kit exists only so it is not double-listed) | — |
+
+Their research rows carry `kit: 'server/sim/content/enemies/forkwave.js'` and `band: 'wide'`: they are all weaker than
+the pool anchors that fit them, so they attach at the wider [0.7, 1.5] power band and stay out of `STATS_ONLY`
+(`test/content/extra-enemies.test.js` asserts a key is in `KITS` **or** `STATS_ONLY`, never both).
+
 ## 11. `waves.json` — `{ [templateId]: Wave }` (42 templates)
 
 Non-boss rounds use `act1autochess_01…07`, `h01…h06`; leaders `h07_0X` (+`_s` solo; boss_5 is `act2autochess_h07_05`);

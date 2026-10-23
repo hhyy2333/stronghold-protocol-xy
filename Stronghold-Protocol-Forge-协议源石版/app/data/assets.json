@@ -54353,6 +54353,352 @@
      "height": 434
     }
    }
+  },
+  "enemy_1352_eslime": {
+   "spineLocal": {
+    "group": "spine/enemy/enemy_1352_eslime",
+    "skel": "enemy_1352_eslime.skel",
+    "atlas": "enemy_1352_eslime.atlas",
+    "textures": [
+     "enemy_1352_eslime.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1.267,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 1,
+     "Move": 1
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.4
+     ]
+    },
+    "bounds": {
+     "x": -151.259,
+     "y": -24.258,
+     "width": 281.341,
+     "height": 237.5
+    }
+   }
+  },
+  "enemy_1138_tumor": {
+   "spineLocal": {
+    "group": "spine/enemy/enemy_1138_tumor",
+    "skel": "enemy_1138_tumor.skel",
+    "atlas": "enemy_1138_tumor.atlas",
+    "textures": [
+     "enemy_1138_tumor.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Start",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 2.667,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 4,
+     "Move": 1,
+     "Start": 1
+    },
+    "events": [
+     "OnAttack",
+     "OnStart"
+    ],
+    "hits": {
+     "Attack": [
+      0.4
+     ]
+    },
+    "bounds": {
+     "x": -106.427,
+     "y": -5.444,
+     "width": 167.045,
+     "height": 100.609
+    }
+   }
+  },
+  "enemy_1004_mslime": {
+   "spineLocal": {
+    "group": "spine/enemy/enemy_1004_mslime",
+    "skel": "enemy_1004_mslime.skel",
+    "atlas": "enemy_1004_mslime.atlas",
+    "textures": [
+     "enemy_1004_mslime.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": "Move_Begin",
+      "loop": "Move_Loop",
+      "end": "Move_End"
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1.333,
+     "Default": 0,
+     "Die": 0.833,
+     "Idle": 2,
+     "Move_Begin": 0.333,
+     "Move_End": 0.333,
+     "Move_Loop": 2
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.833
+     ]
+    },
+    "bounds": {
+     "x": -142.484,
+     "y": -1.977,
+     "width": 341.497,
+     "height": 229.503
+    }
+   }
+  },
+  "enemy_1130_infstr": {
+   "spineLocal": {
+    "group": "spine/enemy/enemy_1130_infstr",
+    "skel": "enemy_1130_infstr.skel",
+    "atlas": "enemy_1130_infstr.atlas",
+    "textures": [
+     "enemy_1130_infstr.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 1,
+     "Move": 1
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.333
+     ]
+    },
+    "bounds": {
+     "x": -105.949,
+     "y": -1.73,
+     "width": 214.563,
+     "height": 355.99
+    }
+   }
+  },
+  "enemy_1126_spslme": {
+   "spineLocal": {
+    "group": "spine/enemy/enemy_1126_spslme",
+    "skel": "enemy_1126_spslme.skel",
+    "atlas": "enemy_1126_spslme.atlas",
+    "textures": [
+     "enemy_1126_spslme.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1.333,
+     "Default": 0,
+     "Die": 0.5,
+     "Idle": 4,
+     "Move": 3.333
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.4
+     ]
+    },
+    "bounds": {
+     "x": -148.636,
+     "y": 26.723,
+     "width": 293.001,
+     "height": 369.521
+    }
+   }
+  },
+  "enemy_1028_mocock": {
+   "spineLocal": {
+    "group": "spine/enemy/enemy_1028_mocock",
+    "skel": "enemy_1028_mocock.skel",
+    "atlas": "enemy_1028_mocock.atlas",
+    "textures": [
+     "enemy_1028_mocock.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1.5,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 1,
+     "Move": 1
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.733
+     ]
+    },
+    "bounds": {
+     "x": -99.52,
+     "y": -2.266,
+     "width": 230.673,
+     "height": 364.104
+    }
+   }
   }
  },
  "tokens": {
