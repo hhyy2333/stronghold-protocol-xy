@@ -333,7 +333,7 @@ full-rank build from the others; the build fails unless `atRank` rebuilds every 
 | `rangeGrid` | `[[0,0]]` | Arts area (画卷 `[[0,0],[0,1]]`) |
 | `flavor` | | |
 
-## 6. `bands.json` — `{ [bandId]: Band }` (40)
+## 6. `bands.json` — `{ [bandId]: Band }` (41: the 40 official + 管理员)
 
 | Field | Example | Meaning |
 |---|---|---|
@@ -345,9 +345,11 @@ full-rank build from the others; the build fails unless `atRank` rebuilds every 
 | `victorCount`, `rewardModulus`, `unlockDesc` | `3`, `1`, `null` | |
 | `bondIds` | `["lateranoShip"]` (潘格尼尼) / `[]` | the bonds the strategy is built around (`shared/bandBonds.js`: the bond names in <…> of its text — the official note "在<X>部分干员缺席时体验可能不完整" among them — and the bond ids / bond pools of its blackboards, `pool` → choices.json `pools[pool].bond`); 9 bands are tied. The bot never picks, and the strategy draft marks 本局禁用, a band whose bond the mode switches off (DESIGN §21.26) |
 
-## 7. `effects.json` — `{ [effectId]: Effect }` (361: every effect of the season)
+**管理员** (业主 2026-10-26) is the one hand-authored strategy: it has no `bandDataListDict` row, so `tools/build-data.mjs` writes it from `CUSTOM_BANDS` + its effect `aceffect_band_admin` (`CUSTOM_BAND_EFFECTS`) instead of copying one. Everything textual lives on that effect, so the two tables cannot drift; `iconId: "icon_admin"` has no art behind it and `ui/gameComponents.js BandIcon` falls back to the name's first character (what a hextech card without its tier art does). Its single buff `band_hex_copy_once { count: 1 }` is match-side code, not a `bands/meta.js` handler: 「当你获得协议源石时，复制一个。限一次。」 needs another 协议源石 GAIN, and only `server/match/hextech.js applyHex` may grant one (`applyBandHexCopy`). So `band_admin` is one of the three bands with neither a prep handler nor a battle part (the others: 鸭爵, 歌利亚).
 
-Types: `BAND_INITIAL` 41, `BOND` 23, `EQUIP` 115, `ENEMY_GAIN` 129 (悬赏), `BUFF_GAIN` 43 (战术决策), `ENEMY` 6 (`aceffect_enemy_*` global modifiers), `CHAR_MAP` 4 (角色练度映射 — the 自持有 练度 tiers `aceffect_char_1…4`, 未精英化 / 精英阶段1 / 精英阶段2 / 精英阶段2-60级, in `autoChessData.cultivateEffectList` order: their `char_attribute_mul` buff — `atk` / `def` / `max_hp` 1, 1.05, 1.1 — is the unit's 练度 multiplier, `shared/potential.js cultivateMul`, 0.2.2).
+## 7. `effects.json` — `{ [effectId]: Effect }` (362: every effect of the season)
+
+Types: `BAND_INITIAL` 42, `BOND` 23, `EQUIP` 115, `ENEMY_GAIN` 129 (悬赏), `BUFF_GAIN` 43 (战术决策), `ENEMY` 6 (`aceffect_enemy_*` global modifiers), `CHAR_MAP` 4 (角色练度映射 — the 自持有 练度 tiers `aceffect_char_1…4`, 未精英化 / 精英阶段1 / 精英阶段2 / 精英阶段2-60级, in `autoChessData.cultivateEffectList` order: their `char_attribute_mul` buff — `atk` / `def` / `max_hp` 1, 1.05, 1.1 — is the unit's 练度 multiplier, `shared/potential.js cultivateMul`, 0.2.2).
 
 | Field | Example | Meaning |
 |---|---|---|
@@ -422,6 +424,26 @@ The official generator (implemented by `server/match/waves.js`):
    f32(P(new)/f(new)))), 1, 5)` (P = `enemies[k].attrPower`, f = `beFactor`), unit *i* at
    `time + i·max(n·interval/n', 0.05·n·interval)`. Literal keys and the T / TF token keys are kept.
 3. **Leader / hidden rounds** use the pick of their own slot (14 / 15; solo 标准 9): only E **or** EF escorts spawn.
+
+### Fork wave enemies (0.19.17, owner 2026-10-22「做d」)
+
+The fork adds enemies this repository did not carry before, declared in
+[`docs/research/16-extra-enemies.json`](research/16-extra-enemies.json) and merged by `tools/build-data.mjs`:
+
+- `customWaveEnemies()` reads the batches and adds each key to `collectEnemyKeys` **and to its `direct` set** — reached
+  only through `keys` they would be `tokenOnly`, which 联防 routes as summons.
+- `attachWaveEnemies()` appends them to the special entries' `N` / `E` pools. The official key stays at index 0
+  (`waves-crosscheck` and the 429 official fixtures read `[0]`); a fork key is `{key, fork: true}` and must share the
+  entry's movement class and rank, and sit within `attrPower` ×[0.85, 1.25] of the pool anchor — the count formula
+  divides by that ratio and clamps to 1..5, so a much stronger enemy would turn a wave of five into a wave of one.
+  At most `FORK_EXTRA_PER_POOL` (1) fork key per pool, so the official enemies keep ~63 % of the slots. A batch key the
+  tight band cannot place anywhere gets one wide-band (0.7–1.5) rescue; measured counts stay within 8.2 % of the
+  official distribution.
+- Models: the community dump has no spine for these (245 enemy models, all but 3 already shipped), so they come from
+  `tools/local-extract/extract.py` `ENEMY_SPINES` run against a local client. **Two-pass build**: this tool writes the
+  enemy rows first, `fetch-assets.mjs --local-spines` then indexes `spineLocal`, and the next `build-data` run picks
+  `attackAnim` up from it (`enemyAttackAnim` prefers `spineLocal` over the web/aliased `spine`).
+- Bounty pools (`types[type].pool`), `types`, `placeholders` and `generation` are untouched.
 
 ## 11. `waves.json` — `{ [templateId]: Wave }` (42 templates)
 
@@ -611,8 +633,8 @@ by `tools/build-data.mjs` (no official `bossInfoDict` row exists for them).
 
 ## 16. Counts (current build)
 
-`chess 266 (112 visible; 283 selectable skills over the visible chess, 185 module choices over 129 goldens; 74 PRESET / 55 NORMAL / 4 DIY base chess)`, `bonds 23`, `garrisons 249 (43 effect keys)`, `items 115`, `bands 40`, `effects 361`,
-`enemies 249`, `factions 67 entries`, `waves 38`, `stages 11 (8 active)`, `bosses 10`, `tokens 22`, `choice events 109`,
+`chess 266 (112 visible; 283 selectable skills over the visible chess, 185 module choices over 129 goldens; 74 PRESET / 55 NORMAL / 4 DIY base chess)`, `bonds 23`, `garrisons 249 (43 effect keys)`, `items 115`, `bands 41`, `effects 362`,
+`enemies 272`, `factions 67 entries`, `waves 42`, `stages 13 (8 active)`, `bosses 12`, `tokens 22`, `choice events 109`,
 `bounty cards 129`, `tactic cards 43`, `backups: 89 units (17 stand-ins, 72 owned-6★ picks; 259 forms), 38 自选 summons, 4 DIY slots, 15 / 9 prototype picks (tier 5 / 6), 72 owned-6★ picks (7 collab operators excluded)`, potential (§2.3): `256 chess records, 219 forms / variants with potDown; 442 + 401 + 19 chained talent entries (chess, backups, tokens)`.
 
 ## 17. Integrity guarantees (checked by the builder and `test/data.test.js`)

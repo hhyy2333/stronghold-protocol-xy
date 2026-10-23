@@ -297,6 +297,7 @@ node tools/fetch-assets.mjs --cache-dir=D:\sp-cache  # an absolute path
 | Bond icons (the real autochess glyphs) | ArknightsAssets2 `cn` `ui/autochess/[uc]autochesscommon/arts/bondicon/`. Fallback: the camp logo. | `bond/{bondId}.png` |
 | Shop item icons | AA2 `…/arts/shopitemicon/` | `item/{trapId}.png` |
 | Band (strategy) icons | AA2 `…/arts/bandicon/` | `band/{bandId}.png` |
+| 策略「管理员」's icon (the one hand-authored band, `tools/build-data.mjs CUSTOM_BANDS`) | **none** — no official band exists, so the file ships in the tree (square, 680², the owner's art) | `band/band_admin.png`; `tools/assets/plan.mjs HAND_BAND_ICONS` gives the leaf no URL, so a `fetch-assets` rebuild keeps the entry from the file on disk (`resolveTemplate` publishes what it finds) instead of dropping it as a miss |
 | Profession, sub-profession and battle-card icons | AA2 `arts/profession_hub`, `arts/ui/subprofessionicon`, `ui_battle_new/battlecard` | `prof/icon_{p}.png`, `prof/large_{p}.png`, `prof/battlecard_{p}.png`, `prof/sub/{subProfessionId}.png` |
 | UI sprites (see below) | AA2 `ui/autochess/**`, `arts/**`, `activity/[uc]act2autochess/**`, `battle/[pack]common/sprites` | `ui/{group}/{key}.png` |
 | Statistics artwork and fonts | [Official statistics template](https://ak-webview.hypergryph.com/autoChess/act1autochess) | `ui/statistics/`; fetched by asset setup, or separately with `node tools/fetch-stats-assets.mjs` |
@@ -566,8 +567,7 @@ Other renderer rules from research 07 §5.4–5.5:
 - **Attack speed:** set the attack `timeScale` to `duration / attackInterval`.
 - **Model size:** every skeleton is drawn at one `UNIT.modelScale` (render/style.js, 320 skeleton units per tile), which stands for the official standard. The official client also scales each enemy model in its battle prefab: the Graphic / FaceSwitcher / Spine transforms multiply to 0.27 for most enemies and for the operators' battle skins, but not for all of them. For example, 威龙 is 0.16, 妖怪 0.20 and 青铜镜 0.6. The skeletons themselves carry no such scale, because every enemy SkeletonDataAsset uses 0.01. So an enemy is drawn × data/enemies.json `modelScale` (its prefab's product ÷ 0.27, see docs/DATA.md; user playtest #6: 威龙 used to be drawn 1.35× a 妖怪 instead of 1.08×), and its HP bar sits on that model: at its setup-pose bounds' height × the same factors, or, for a skeleton without bounds, at the chibi headroom × `modelScale` (bosses 2.2 tiles). `tools/local-extract/enemy_scales.py` reads the products from a local client, and `tools/build-data.mjs MODEL_SCALES` keeps them. Two prefab quirks on top (PR #211 by @xcdoge; the owner's decision of 2026-10-06; docs/research/12 §3.1): the two 帝国炮火先兆者 are stretched vertically (`modelScaleY` 1.263: their Graphic scale is (0.19, 0.24, 0.24)) and 木制瑞印 is mirrored (`mirrorX`: a negative Graphic X scale) — `tools/local-extract/enemy_model_offsets.py` reads them, `tools/build-data.mjs MODEL_STRETCH_Y` / `MIRRORED_PREFABS` keep them.
 - **Flying units** hover `FLY_HOVER` = 1.3 tiles up (render/units.js; the client's single fly offset 0.35 in its character space, whose unit is the standard prefab scale 0.27 — docs/research/12) — an enemy flyer above the road whatever tile it crosses (a high-ground or forbidden block under it is no step, GitHub #277), an operator or summon above its tile: the body, its HP bar, damage numbers and hits ride the lift, the shadow stays on the ground tile (the block top under an enemy flyer crossing one), on the 2D and the 3D board alike (one camera drives both).
-- **Enemy aliases:** `enemies[id].spineAliasOf` means the model belongs to another enemy. Two cases:
-  - `_2` variants whose official prefab is the base one (鸭爵, 高普尼克, 流泪小子, 圆仔, 假想敌：胄, 假想敌：铳): the base model, as in the game.
+- **Enemy aliases:** `enemies[id].spineAliasOf` means the model belongs to another enemy. Two cases:  - `_2` variants whose official prefab is the base one (鸭爵, 高普尼克, 流泪小子, 圆仔, 假想敌：胄, 假想敌：铳): the base model, as in the game.
   - an enemy whose own model no dump carries: 灼热源石虫 / 炽焰源石虫 (`enemy_1305_mhslim` / `_2`) use the plain 源石虫 on
     the web (`plan.mjs ENEMY_SPINE_ALIAS`). The reason is upstream: isHarryh/Ark-Models *indexes* `1305_mhslim` /
     `1305_mhslim_2` but with an **empty `assetList`** — registered, never uploaded — so `arkModel()` finds no files for
@@ -586,6 +586,12 @@ Other renderer rules from research 07 §5.4–5.5:
     - The metadata comes from the committed `tools/assets/local-enemy-spines.json` (`fetch-assets --local-spines`
       parses the extracted models into it), never from the disk: `data/assets.json` is byte-identical with or without
       the extraction, it has no `/assets/local/` URL, and setup / doctor / the manifest tests never miss these files.
+    - **The fork's own wave enemies** (`docs/research/16-extra-enemies.json`, 0.19.17) go through the same channel:
+      their ids are appended to `extract.py`'s `ENEMY_SPINES`, `--local-spines` records them in the same metadata file,
+      and their manifest entries carry only `spineLocal` (no web `spine`, no `spineAliasOf` — the alias chain would
+      otherwise hand them an unrelated skeleton). `build-data` reads `attackAnim` off `spineLocal` for them
+      (`enemyAttackAnim`), which is why a fresh batch needs the two-pass build: build → extract → `--local-spines` →
+      build again.
     - The client (`assets.js spineEntry`, with `assets.local()`, which `createFieldView` awaits with the manifest) draws
       the official model when the local manifest lists every file of it; otherwise, or when it fails to load
       (`UnitView`: the entry's `fallback`), the web alias, tinted toward the slug's own lava colours

@@ -25,7 +25,94 @@ node 进程还活着、主线程 100% 空转、`/healthz` 也超时，nginx 满�
 - 回归用例：`test/enemies_bosses`「余音：同一次 echoHit 里被再次触发时脉冲数有界」—— 修复前 29 ms 内失败（实际 **521** 次），修复后通过。用例把「余音打不死（`mem.dmgCap = 0`）+ 墙会被打死」凑齐，让环在有限时间内自己跑到上千次，不靠超时判定。
 - 只影响「单次调用超过 256 个脉冲」的病态状态；正常对局与既有 golden 场景不动。
 
+### 战地商店（工坊包 `field-store`）+ 引擎一格 `Match.grantHex`
+
+业主 2026-10-23：「做个局内商店，商品是装备，和抽取协议源石。装备价格是原来的 3 倍。抽取协议源石 12 块一次」
+→ 同日补一句「每回合都是全部装备（不包括协议源石的装备）」。
+
+- **纯工坊包** `workshop/field-store/`（战地商店）：**全部 51 件可上架装备**按
+  **原价 ×3** 出售（原本 `hideInShop` 的那 7 件协议源石专属装备天然不在货架 —— 与引擎 `isShopItem` 同一条判据），
+  另可 **12 块一次**抽 1 张随机协议源石（1/2/3 阶加权 46/38/16，跳过已拥有与本局自己禁用的）。入口是商店栏
+  按钮行里 `冻结` 左边那颗横排「商店」（新槽位 `screen.game.shopTools`），点开是从商店栏上方弹出的抽屉。
+  **卡上只写价格本身**（业主同日「直接显示价格不要显示原价1-3」）：3 倍仍是规则，算式不写在卡上。
+- **两个包都挪进那一行**（业主同日「把源石交易所的按钮也改到这」）：`originium-exchange` 1.4.3 把
+  `slot` 从 `screen.game.aside` 改成 `screen.game.shopTools`，收起态是一颗「¥ 交易所」横排按钮、抽屉仍贴右上角。
+- **进局不再自动弹界面**（业主同日「进局不要自动显示两个界面了」）：两个面板的默认状态都是收起，帧只更新数据，
+  只有点按钮才展开（交易所那把 `userCollapsed` 豁免与「收到行情就 applyOpen」一起删掉）。
+- **引擎多一格挂载点**：`client.panels[].slot` 的闭枚举加 `screen.game.shopTools` —— 商店栏的按钮行改成 flex
+  两行（`ui/shopBar.js` 里 `冻结` / `刷新` 外面包了一层 `.shopbar__toolrow`），引擎渲染
+  `<span class="mod-host" data-mod-slot="screen.game.shopTools">`；没有包声明它时是空壳（`display: contents`，
+  不产生盒子、不吃点击）。`shared/workshop.js CLIENT_PANEL_SLOTS` 与 `public/js/ui/extensions.js MOD_PANEL_SLOTS`
+  两份名单同步（11 个），`docs/WORKSHOP.md` / `docs/SYNC-POINTS.md` / `docs/UPSTREAM-UPGRADE.md` / §28.8 一起改。
+- **引擎只加一格能力**：`Match.grantHex(ps, hexId)`（DESIGN §28.58）—— 正式发放路径（onPick 即时效果 + 持久
+  `hex:<id>` + 战斗半边 + 镜像协议等 extras）收成一个包可调用的方法；`g.testHex`（测试场）改为复用同一个，
+  于是「测试面板发的卡」与「商店买到的卡」在引擎里只有一条路。
+- 表面表加一行 `server.modules.matchHex`（`shared/modSurface.js` + `docs/MOD-SURFACE.md`），
+  `docs/SYNC-POINTS.md` 加「加一格包能调的 Match 方法 —— 5 处」。
+- 不新增 `C2S`、`PROTOCOL_VERSION` / `MOD_API_VERSION` 不动、基础对局不调用 `grantHex` ⇒ **golden 不移动**。
+- 测试：`test/match/grantHex.test.js`（4）+ `test/workshop/field-store.test.js`（21）。
+  `test/modSurface.test.js` **本检出不存在**，所以那一行的判据由前者实际执行（已在两处文档点名）。
+
+### 战斗 HUD：费用条横过来挂到顶栏下面 + 状态栏滚动（业主 2026-10-23）
+
+- **「费用显示横过来挂到条的下面」**：`.dpbox`（`ui/hud.js DpCounter`）从「竖排、右侧正中」改成**横排**
+  （图标 + 数字 + COST 并排），挂在**顶栏下方**右侧（`top: 1.08rem`；顶栏胶囊底边在 1.0rem，留 .08rem 缝）。
+  右边缘仍止于 `right: 1.1rem` —— 右侧效果列是 `right: .3rem` + 宽 `.5rem`（左边缘 `right .8rem`），
+  横向留出 .3rem，所以两者永远不会互相压住。`.hexdirs`（指令之意小牌）跟着挪到计数器正下方（`1.66rem`）。
+- **「状态栏增加滚动条」**：`.gm__effects`（右侧效果列）加 `max-height: max(2.8rem, calc(100vh - 6.2rem))` +
+  `overflow-y: auto` + 细滚动条（Firefox 的 `scrollbar-width/color`，WebKit 的 `::-webkit-scrollbar`），
+  矮屏 / 效果多的时候不再一路长出屏幕；`max()` 保证手机横屏至少露出 2~3 块磁贴。
+- 只动**客户端**：`public/css/screens/game.css` 与 `test/ui/effectsColumn.test.js`（第二条用例从「右侧正中、竖排」
+  改成钉新位置：顶栏下方、效果列上方、横排、没有 translateY；另加一条效果列滚动的用例）。
+  无协议、无服务端、无 `data/*.json`、golden 不移动。
+
+### 百变的卡片写出「由哪两件装备融合」（业主 2026-10-24）
+
+业主：「我希望百变的描述里有由哪两个装备融合」。
+
+- **为什么不能在 `data` 里写**：`chess_item_9_97_e_a` 是**一条共享记录**，每一件百变吃的是不同的两件 —— 把名字写进
+  `desc` 只会写死某一对。两个 id 本来就在**棋子**上（`merged: [idA, idB]`，`server/match/hextech.js applyForgeFusion`
+  → `player/views.js pieceView`，这一批已经做好），所以卡片从那里读。
+- **新组件 `FusedFrom`**（`public/js/ui/detailPanel.js`）：一行说明「【锻炉】融合的两件装备：」，下面每件一行 ——
+  **名字 + 它自己的效果文本**（`descRaw`）。所以「百变的效果是两件装备的效果」这句话就写在玩家读它的地方，
+  而不是让他自己去记当初合了哪两件。装在两个位置：干员卡的**装备行**（`ItemRow` 多一个 `merged`）与点开百变时的
+  **道具卡**（`ItemDetail`，`piece.merged`）。
+- **没有 `merged` 时逐字不变**：图鉴 / 商店 / 一条没有合成过的百变记录 ⇒ `FusedFrom` 返回 `null`，一个节点都不多画；
+  普通装备的行也一字未动。`merged` 读得很防御（不是数组、只有一项、项不是字符串 ⇒ 不画），一帧坏数据不会让卡片炸掉。
+- 样式 `public/css/screens/game-panels.css` 的 `.dfuse*`（左侧一道竖线缩进在百变那行下面，像它的脚注）。
+- 界面字符串「【锻炉】融合的两件装备：」进了四个语言包（en / ja / ko / zh-TW）。
+- 测试：`test/ui/fused-item-card.test.js`（5 条：干员卡两件都列名字与效果、道具卡同样、没有 `merged` 时不多画、
+  `data-item` / `data-fused` 可被页面与测试定位、坏数据不炸）。
+- 只动**客户端 + i18n**：无协议、无服务端、无 `data/*.json`、golden 不移动。
+
 ---
+
+## 0.19.17 — 2026-10-23
+
+**新增 21 个「小怪」与「精英怪」进波次**（业主 2026-10-22「我需要更多小怪和精英怪」→「做d」）。以前一回合里的小怪/精英种类取决于当回合抽中的那一个特训条目，而每个条目只挂了 1 个小怪 + 1 个精英；这批敌人从目录里已有的池子之外补充进来，而且全部是**游戏本体里有、这个仓库原本没有收录**的敌人。
+
+### 新增的 21 个敌人
+
+| 小怪（10） | 精英（11） |
+|---|---|
+| 畸变赘生物 · 术师 · 弩手组长 · 果冻丁 · 盐水健身客 | 高阶术师 · 护盾高阶术师 · 伐木机 · 屠夫 · 重装防御者-N型 |
+| 狂暴的猎狗pro · 蚀 · 魂灵涡流 · 冰原猎人 · 富营养的狂奔者 | 乌萨斯突击者队长 · 伐木老手 · “红标”精英根除者 · 重装防御者-S型 · “破坚” · 木裂战士 |
+
+- 全部**零技能零天赋**（纯数值怪），所以通用 AI 就是忠实实现，不需要写 kit；名单与理由是 `docs/research/16-extra-enemies.json`。
+- **模型来自本机客户端抽取**：社区 dump 只有 245 个敌人模型、除 3 个外全都已收录，未收录的 1322 个里只有 49 个能借到同族模型 —— 真新面孔只能从《明日方舟》客户端的 `refs/arts/enm_art_*.ab` 里取（`tools/local-extract/extract.py` 的 `ENEMY_SPINES` 加了这 21 个 id）。
+- 接进波次的方式：`tools/build-data.mjs` 的 `attachWaveEnemies()` 把它们追加到特训条目的 `N` / `E` 池**尾部**（官方 key 恒在 `[0]`，429 条官方 fixture 与 crosscheck 都读它），同类同档、强度带 [0.85, 1.25]、每池最多 1 个 fork key。
+
+### 实测（`tools/balance.mjs`，ABYSS）
+
+| 指标 | 值 |
+|---|---|
+| 21 个在 20 局 × 13 回合里的出场覆盖 | **20 / 21** |
+| 每回合人数相对官方分布的偏差 | **8.2 %** |
+| fork key 占 N/E 槽位 | **37 %**（官方仍占 63 %） |
+| 真实波次 R6 / R9 / R12（各 6 局） | 出场 25 / 24 / 26，**全部被击杀、零漏怪** |
+| 漏怪 | solo 平均 0.67、multi 1.08（没有恶化） |
+
+一个例外：`enemy_1018_aoemag`（高阶术师，attrPower 8710）比每一个 ELITE 池锚点都低，按 0.85 的下限挂不上，**只进图鉴、不进波次**；放宽到 0.7 会让每回合人数偏差升到约 14 %（超出官方分布 ±12 % 的守卫），所以先不动。
 
 ## 0.19.16 — 2026-10-22
 
