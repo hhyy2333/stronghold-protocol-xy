@@ -505,12 +505,13 @@ frame the server already sends**: `welcome.modPanels` (`server/lobby.js welcomeI
 no `client` produces no new request, no new DOM and no new global — the same "a JSON-safe module list, built by the
 server" shape `spec.workshopKits` has for kits (§28.13), and the reason the list is not fetched.
 
-- **Nine slots, in two kinds, and no container exists until something needs one.** The first four are 0.11.0's fixed
+- **Eleven slots, in two kinds, and no container exists until something needs one.** The first four are 0.11.0's fixed
   overlays: the registry creates the `[data-mod-slot]` container on demand (`browserSlotHost`, styled by
   `public/css/components.css`) and appends a `<div>` of its own inside it — not a Preact child, because Preact owns
   everything under `#app` and a raw child a re-render does not know about is how a pack's UI disappears on the next
-  frame. The other five (owner's ruling 2026-10-10) live **inside components the engine already renders** — a shop card,
-  the bond strip, the HUD layer, a full-screen layer over the game screen, 干员详情 — and there the component renders the
+  frame. The other seven (owner's ruling 2026-10-10) live **inside components the engine already renders** — a shop card,
+  the shop bar's tool row (left of 冻结 / 刷新: `screen.game.shopTools`), the bond strip, the HUD layer, a full-screen
+  layer over the game screen, 干员详情, the room screen's aside — and there the component renders the
   `[data-mod-slot]` element itself; the registry only **looks it up** (absent means "not yet", never "failed", and never
   a container invented at a position nobody recognises). `screen.game.shopCard` is **repeatable**: one container per
   card, the panel mounts into every one of them and learns which through `ctx.hostKey`. A page whose packs declare no
@@ -4260,3 +4261,48 @@ supervisor 拉起；**缺省路径的行为与字节零变化**，且任何异�
 `.github/game-overlap-check.mjs` 逐条核对。那两个文件是**他们那条分支**的受控例外机制，我方树里没有 ——
 带进来就是指向不存在文件的悬空引用。我方这一格的判据落在 `test/modRoomHold.test.mjs` 与
 `test/roomModSet.test.js` / `test/roomKeep.test.js` 那一组房间测试上。
+
+### 28.58 `Match.grantHex`：包能把一张协议源石真的发到手上
+
+**要解决的问题**：§28.14 把整个对局交给了 `matchClass` 包装器 —— 包能读 `ps.funds`、能调 `ps.spend` /
+`ps.acquireItem` / `this.itemPool`，商店类的包因此**一行引擎都不用改**（先例 `workshop/originium-exchange`）。
+但「发一张协议源石」不在这条路上：一次正式发放是 `server/match/hextech.js` 的 `applyHex`，它内含私有的
+`addHexRef`（持久 `hex:<id>` EffectRef）、`hasBattlePart`（战斗半边）、`dispatcher.runKey('hex:<id>',
+'onHexPick')`，以及镜像协议 / 二次抽取 / 债务 / 队伍卡扩散这些 extras。包有两条路都不能走：
+
+* **不能 import 引擎内部**：包的入口模块零 import（同一份字节要在服务器上跑、要能装进别人的 workshop 目录），
+  `server.modules` 的静态扫描虽只拦 `process`/`globalThis`/`require`/`eval`，但跨包 import 引擎路径是一份
+  会随引擎升级静默失效的耦合；
+* **更不能自己拼一份**：把 `applyHex` 的规则抄进包里，就是本层到处在拒的「一份会静默漂移的副本」——
+  引擎改了 extras 的顺序或 `battle` 的判定，包里那份不会跟着动，而且**没有任何测试会红**。
+
+**这一格给什么**：`Match.grantHex(ps, hexId)`（实现在 `server/match/match/hexDraft.js`，与草稿的 `_applyHex`
+同源）。它只做「把这张发到手上」：校验 id 在**我方卡池**（`gd.hexPlayerPool()`，敌方卡的 `mods`/`verb`
+不是玩家能拥有的东西）、走 `applyHex` 的正式路径，然后 `ps.recompute()` + `markPrivate(ps)`；返回发放的
+记录，拒绝时返回 `null`（**不抛**）。同一张发两次是允许的：ref 去重、即时部分再跑一次 —— 与测试场
+`g.testHex` 今日的行为逐字一致。
+
+**谁负责什么**（这一格刻意只切到「发」，不切到「卖」）：
+
+| 归引擎 | 归调用方（包 / 测试场） |
+|---|---|
+| 我方卡池判定、`applyHex` 的整条路径（ref / 战斗半边 / extras） | 该不该发、发哪一张、收多少钱 |
+| 重复发放时 ref 去重、即时部分重跑 | 扣钱与退款（**`null` 时一分钱都不能扣**） |
+| 抛错时 `reportError` 并返回 `null` | 相位 / 座位 / 库存这些前置闸门 |
+
+**为什么不动协议号**：没有新 `C2S`（消息仍走包通道 `pack.msg`，§28.14/§28.23），没有新下行类型
+（`hex:<id>` ref 走既有的 `m.private`），`PROTOCOL_VERSION` / `MOD_API_VERSION` 一个字都不改 —— 加一个
+Match 方法是纯加法，老包看不到它、也不会因为它的存在而改变任何字节。**golden 不动**：基础对局里没有任何
+一处调用它（`g.testHex` 的调用点原先自己调 `applyHex`，现在改调这一个；测试场是 run-only 的测试模式，
+不进 golden）。
+
+**为什么放在表面表里**：作者要么从文档、要么从别的包学到「能调哪些 Match 方法」。`handlePackMsg` 是
+`server.modules` 那一行的散文（§28.14），这一格是第二个这样的能力，于是单独立一行
+（`server.modules.matchHex`），指向 `MatchHexDraft` 这个真实导出与 `test/match/grantHex.test.js` 这枚测试。
+⚠ **本检出不带 `test/modSurface.test.js`**（`shared/modSurface.js` 里 43 行点名的 63 个测试文件全部缺失），
+所以这一行的判据实际由那枚测试执行；行上的 `anchors[].module = "hexDraft"` 是本仓库第一次用这个键，
+上游闸门若恢复，需要在它的锚点模块表里登记 `hexDraft → server/match/match/hexDraft.js`。
+
+**第一个使用者**：`workshop/field-store`（战地商店）——「12 块抽一张」，抽到哪张由包自己的确定性随机流决定，
+扣钱由包负责，发放走这一格。同一份实现也被 `MatchTestField.testHex` 复用（`testField.js` 不再自己调
+`applyHex`），于是「测试面板发的卡」与「商店买到的卡」在引擎里**只有一条路**。

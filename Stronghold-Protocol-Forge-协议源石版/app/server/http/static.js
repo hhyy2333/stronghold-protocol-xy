@@ -44,6 +44,8 @@
 //
 // `/assets/` and `/fonts/` answer 412 and never touch the file system when a pack declared
 // `assets.serverPolicy: "cache-only"` (DESIGN §28.13.4): the file is supposed to come from the client's own cache.
+// When they are NOT there and a mirror table is configured (`server/http/assetJump.js`), the two prefixes are
+// 302-redirected to that mirror instead of the 404 below — the local file always wins, so a plain install is unchanged.
 //
 // Traversal & dotfile protection, a directory without its trailing slash → 301, 404 page; an absent
 // data/local-assets.json is answered with an empty manifest. Files go out through files.js serveFile.
@@ -211,6 +213,9 @@ export function createStaticHandler({
   // 内容哈希（`server/http/assetIndex.js`）与它服务出来的清单（`server/http/assetViews.js`）：null = 没有索引
   // （`assetIndex: false` / SP_ASSET_INDEX=0），两条 ~hash 路由与两条清单视图整块跳过，行为与从前逐字节相同。
   assetIndex = null, views = null,
+  // 素材兜底跳转（server/http/assetJump.js，可选）：**本机确实没有这个文件**时，才问它一句「该 302 到哪个镜像」。
+  // null = 没配置镜像（普通安装与开发机都是这一档），那个分支整块跳过，行为与从前逐字节相同。
+  assetJump = null,
   // 视觉集（server/plugins/visualSet.js，DESIGN §34 P1a）与「带玩法插件的内容集」（server/plugins/contentSets.js，
   // DESIGN §34.6）：两者缺省都是从上文的 `registry` 现起（内容集没有 `contents` 时只答原生那一份 /cs/ 清单）。
   visual = null, contents = null,
@@ -688,6 +693,17 @@ export function createStaticHandler({
         res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-cache', 'Content-Length': EMPTY_LOCAL_ART.length });
         res.end(req.method === 'HEAD' ? undefined : EMPTY_LOCAL_ART);
       } else if (e && (e.code === 'ENOENT' || e.code === 'ENOTDIR' || e.code === 'EISDIR' || e.code === 'ENAMETOOLONG')) {
+        // 素材兜底跳转（server/http/assetJump.js）：磁盘上没有这个文件时才走这里 —— 把 /assets/** 与 /fonts/** 的
+        // 静态素材 302 到配置好的镜像。**本机有的文件永远走不到这一行**，所以没配置镜像时行为与从前逐字节相同；
+        // 它只答「归不归我管」与「302 到哪」，路径校验、扩展名白名单、源表都在那一处实现（这里不抄第二份规则）。
+        if (assetJump) {
+          const out = await assetJump(decoded, query, req.method);
+          if (out) {
+            res.writeHead(out.status, out.headers);
+            res.end();
+            return;
+          }
+        }
         sendError(req, res, 404, '页面不存在 · Not found', decoded.length <= 200 ? decoded : '');
       } else if (e && (e.code === 'EACCES' || e.code === 'EPERM')) {
         sendError(req, res, 403, '禁止访问 · Forbidden');

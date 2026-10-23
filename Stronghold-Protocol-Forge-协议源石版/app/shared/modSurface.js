@@ -213,6 +213,25 @@ export const MOD_SURFACE = Object.freeze([
     spec: '§28.14',
   },
   {
+    // `handlePackMsg` 之外，`matchClass` 包装器能调的**第二个** Match 能力（§28.58）：把一张协议源石真的发到
+    // 玩家手上。单独一行是因为它和「收消息」是两件事：一行是入口，这行是出口（改了玩家状态）。
+    id: 'server.modules.matchHex',
+    layer: 'B',
+    decl: 'server.modules[].uses 含 "matchClass" ⇒ 包装器可调 `this.grantHex(ps, hexId)`',
+    anchors: [{ symbol: 'MatchHexDraft', module: 'hexDraft' }],
+    requires: [
+      '只发**我方**卡池（`gd.hexPlayerPool()`）：敌方卡的 mods / verb 不是玩家能拥有的东西，传进来返回 `null`，不抛',
+      '走**正式发放路径**（`applyHex`：onPick 即时效果 + 持久 `hex:<id>` EffectRef + 战斗半边 + 镜像协议 / 二次抽取 / 债务这些 extras）—— 包不许自己拼 ref（那是会静默漂移的副本）',
+      '**扣钱与「发哪一张」是调用方的事**：引擎只负责发。返回 `null` 时调用方必须一分钱不扣（商店包 §28.58 的验收就是这一条）',
+      '同一张发两次 = ref 去重、即时部分再跑一次（与 `g.testHex` 同一条规则；重复发放不是错误）',
+      '外层仍是 §28.14 的 `server.modules`：静态确定性扫描、`uses` 闭枚举、`combat: true` 都不变 —— 这一格只点名**它能调的 Match 方法**',
+      '⚠ 本检出**不带** `test/modSurface.test.js`（表里 43 行点名的 63 个测试文件全缺），这一行的判据实际由 `test/match/grantHex.test.js` 执行；`anchors[].module = "hexDraft"` 是本仓库第一次用这个键，上游闸门恢复时要在它的锚点模块表里登记 `hexDraft → server/match/match/hexDraft.js`',
+    ],
+    files: ['server/match/match/hexDraft.js', 'server/match/match/testField.js', 'server/match/hextech.js'],
+    tests: ['test/match/grantHex.test.js'],
+    spec: '§28.58',
+  },
+  {
     id: 'server.transport',
     layer: 'B',
     decl: 'pack.json.server.transport = { deflate, threshold?, level?, memLevel?, concurrencyLimit?, … }',

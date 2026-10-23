@@ -692,23 +692,37 @@ test('超载协议 (overdrive): every skill start drains 4 % of max HP, never le
   h.invariants();
 });
 
-test('战地医院 (fieldHospital): each knock-out heals the lowest-HP-ratio ally by 10 % of its max HP', () => {
-  const h = soloBattle({ hexes: ['hex_fieldhospital'], enemies: [{ key: 'enemy_walker', time: 0, route: 0 }], timeLimit: 40 });
+test('战地医院 (fieldHospital): 造成伤害时 heals the allies in the attacker’s range by 50 % of its ATK (业主 2026-10-24)', () => {
+  // 业主 2026-10-24:「改成造成伤害时恢复攻击范围内的干员50%攻击力的生命」 — the trigger is DAMAGE DEALT (not a knock-out),
+  // and the healed set is the attacker's own attack range. `t_gun` covers the whole field, so a guard standing anywhere
+  // is inside it; a second, far-away operator of ANOTHER owner is not this card's business.
+  const h = soloBattle({
+    hexes: ['hex_fieldhospital'],
+    chess: { test_guard: guard(), t_gun: gun() },
+    units: [
+      { uid: 1, kind: 'chess', chessId: 't_gun', row: 9, col: 6 },
+      { uid: 2, kind: 'chess', chessId: 'test_guard', row: 9, col: 5 },
+    ],
+    enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }],
+    timeLimit: 20,
+  });
   h.run(1);
-  const u = one(h);
-  u.hp = u.s.maxHp * 0.3;
-  const hp0 = u.hp;
-  h.battle.emit('kill', { killer: u, victim: { side: 'enemy', alive: false } });
-  assert.ok(Math.abs((u.hp - hp0) - u.s.maxHp * 0.1) < 1e-6, `+10 % of 2000 = 200 (got ${u.hp - hp0})`);
+  const shooter = ops(h).find((u) => u.def && u.def.id === 't_gun');
+  const guardU = ops(h).find((u) => u !== shooter);
+  assert.ok(shooter && guardU, 'both operators (premise)');
+  guardU.hp = guardU.s.maxHp * 0.3;
+  const hp0 = guardU.hp;
+  const enemy = h.enemies()[0];
+  assert.ok(enemy, 'an enemy is on the field (premise)');
+  h.battle.dealDamage(shooter, enemy, h.battle.makeDamage({ amount: 100, type: 'phys', isAttack: true, canDodge: false }));
+  const want = shooter.s.atk * 0.5;
+  assert.ok(want > 0, 'the card heals a flat share of ATK (premise)');
+  assert.ok(Math.abs((guardU.hp - hp0) - want) < 1e-6, `+50 % of ${shooter.s.atk} = ${want} (got ${guardU.hp - hp0})`);
   // a full-HP operator is not overhealed
-  u.hp = u.s.maxHp;
-  h.battle.emit('kill', { killer: u, victim: { side: 'enemy', alive: false } });
-  assert.equal(u.hp, u.s.maxHp, 'no overheal at full HP');
-  // a knock-out by another owner's operator does not heal this player's board
-  u.hp = u.s.maxHp * 0.3;
-  const before = u.hp;
-  h.battle.emit('kill', { killer: { side: 'ally', ownerId: 'someone_else' }, victim: { side: 'enemy', alive: false } });
-  assert.equal(u.hp, before, 'another player’s kill heals nothing here');
+  guardU.hp = guardU.s.maxHp;
+  const full = guardU.hp;
+  h.battle.dealDamage(shooter, enemy, h.battle.makeDamage({ amount: 100, type: 'phys', isAttack: true, canDodge: false }));
+  assert.equal(guardU.hp, full, 'no overheal at full HP');
   h.invariants();
 });
 
@@ -1541,7 +1555,9 @@ test('你我一体: two members attacking the SAME enemy deal ×1.5; a lone atta
   const h = mk(['hex_onebody'], two);
   assert.ok(h.runUntil(() => new Set(allied(h).map((c) => c.source.uid)).size >= 2, 25), 'both attacked (premise)');
   const boosted = allied(h).pop().amount;
-  assert.ok(Math.abs(boosted - baseDmg * 1.5) < 1e-6, `×1.5 on a shared target (${baseDmg} → ${boosted})`);
+  // 业主 2026-10-24 added 「每一个增加50%攻击力」: two copies now deal ATK ×1.5 first, and the focus fire multiplies ×1.5 on
+  // top of that — 500 → 750 → 1125.
+  assert.ok(Math.abs(boosted - baseDmg * 1.5 * 1.5) < 1e-6, `ATK +50 % then ×1.5 on a shared target (${baseDmg} → ${boosted})`);
 
   // a single copy never reaches two attackers, so it stays at ×1
   const lone = mk(['hex_onebody'], [two[0]]);
@@ -1693,7 +1709,7 @@ test('损伤加强 (elemAmp): every second every enemy on the field takes 100 er
 // §29.34 (the owner's own list of 2026-10-13): 背水一战's battle half. The sim has no LP, so the match stamps whether
 // the card's window is open into the ref (`onBattleStart.lastDitchArm`); the sim only reads that flag.
 
-test('背水一战 (lastDitch): while the window is open every bond layer gain in battle is ×2', () => {
+test('背水一战 (lastDitch): while the window is open every bond layer gain in battle is ×1.5', () => {
   const rec = HEXTECH.playerHexes.hex_lastditch;
   const pact = (active) => ({
     ...refOf('hex_lastditch'),
@@ -1711,7 +1727,7 @@ test('背水一战 (lastDitch): while the window is open every bond layer gain i
   const open = mk(pact(true));
   open.run(0.5);
   open.b.addLayers('p1', 'preciShip', 5);
-  assert.equal(open.b.getPlayer('p1').bonds.preciShip.layers, 10, 'the open window doubles the gain');
+  assert.equal(open.b.getPlayer('p1').bonds.preciShip.layers, 7, 'the open window adds 50 % (floor(5 × 1.5) = 7)');
   const closed = mk(pact(false));
   closed.run(0.5);
   closed.b.addLayers('p1', 'preciShip', 5);
@@ -1749,5 +1765,141 @@ test('心之钢 (heartsteel): a 坚守 operator procs every 3 s — 100 % max HP
   assert.equal(u.s.maxHp, 2000 + 150 * stacks[0].stacks, `+150 max HP per proc (got ${u.s.maxHp})`);
   const ps = h.battle.getPlayer('p1');
   assert.ok((ps.bonds.steadShip?.layers || 0) >= 2 * stacks[0].stacks, 'the 坚守 layer gain follows the procs');
+  h.invariants();
+});
+
+// =====================================================================================================================
+// §29.40 — the sixteenth batch (业主 2026-10-24): the seven new battle scripts, driven through the real simulation.
+// =====================================================================================================================
+
+test('自适应成长 (adaptiveGrowth): +8 % ATK / DEF / max HP per TIER of the enemy’s own 协议源石', () => {
+  // ehex_abyss is 3阶, ehex_corrode 1阶 ⇒ 4 tiers ⇒ +32 % on all three axes
+  const flags = { enemyHexIds: ['ehex_abyss', 'ehex_corrode'] };
+  const withCard = soloBattle({ hexes: ['hex_adaptivegrowth'], flags, timeLimit: 10 });
+  withCard.run(1);
+  const u = one(withCard);
+  const b = buffsOf(u, 'hex:adaptivegrowth')[0];
+  assert.ok(b, 'the card installed a passive');
+  assert.ok(Math.abs(b.mods.atkPct - 0.32) < 1e-9, `+32 % ATK (got ${b.mods.atkPct})`);
+  assert.ok(Math.abs(b.mods.defPct - 0.32) < 1e-9, 'and DEF');
+  assert.ok(Math.abs(b.mods.hpPct - 0.32) < 1e-9, 'and max HP');
+  // no enemy cards ⇒ no bonus at all
+  const bare = soloBattle({ hexes: ['hex_adaptivegrowth'], timeLimit: 10 });
+  bare.run(1);
+  assert.equal(buffsOf(one(bare), 'hex:adaptivegrowth').length, 0, 'an enemy with no card grants nothing');
+  withCard.invariants();
+  bare.invariants();
+});
+
+test('亮剑 (drawBlade): only RANGED operators get the mods, the lifesteal and the borrowed 突袭 bond', () => {
+  const ranged = () => chessRec({
+    id: 'test_ranged', profession: 'CASTER', position: 'RANGED',
+    stats: { maxHp: 1200, atk: 200, def: 100, res: 0, aspd: 100, bat: 1, blockCnt: 0, respawnTime: 20 },
+    skill: null,
+  });
+  const melee = () => chessRec({
+    id: 'test_melee', profession: 'WARRIOR', position: 'MELEE',
+    stats: { maxHp: 1200, atk: 200, def: 100, res: 0, aspd: 100, bat: 1, blockCnt: 1, respawnTime: 20 },
+    skill: null,
+  });
+  const mk = (chessId) => makeBattle({
+    defs: { chess: { test_ranged: ranged(), test_melee: melee() }, enemies: { enemy_dummy: dummy() } },
+    players: [{
+      playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_drawblade')],
+      units: [{ uid: 1, kind: 'chess', chessId, row: 9, col: 5 }],
+    }],
+    enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }], autoFinish: false, timeLimit: 10,
+  });
+  const hr = mk('test_ranged');
+  for (let i = 0; i < 60; i++) hr.step();
+  const ur = hr.battle.allyUnits.find((u) => u.kind === 'op');
+  const b = buffsOf(ur, 'hex:drawblade')[0];
+  assert.ok(b, 'a RANGED operator is covered');
+  assert.ok(Math.abs(b.mods.atkPct - 0.5) < 1e-9, 'ATK 150 % ⇒ +50 %');
+  assert.ok(Math.abs(b.mods.defPct - 2) < 1e-9, 'DEF 300 % ⇒ +200 %');
+  assert.ok(Math.abs(b.mods.hpPct - 2) < 1e-9, 'max HP 300 % ⇒ +200 %');
+  assert.ok(Array.isArray(ur.extraBonds) && ur.extraBonds.includes('raidShip'), 'and it counts as a 突袭 member');
+  const hm = mk('test_melee');
+  for (let i = 0; i < 60; i++) hm.step();
+  const um = hm.battle.allyUnits.find((u) => u.kind === 'op');
+  assert.equal(buffsOf(um, 'hex:drawblade').length, 0, 'a MELEE operator is untouched');
+  assert.ok(!(um.extraBonds || []).includes('raidShip'), 'and borrows no bond');
+  hr.invariants();
+  hm.invariants();
+});
+
+test('高压锅 (pressureCooker): a ground operator burns the enemies around it every second — arts + 灼燃', () => {
+  const h = soloBattle({
+    hexes: ['hex_pressurecooker'], timeLimit: 10,
+    enemies: [{ key: 'enemy_dummy', time: 0, route: 0, pos: [9, 7] }],
+  });
+  h.run(0.5);
+  const u = one(h);
+  const e = h.enemies()[0];
+  assert.ok(u && e, 'both are on the field (premise)');
+  const hp0 = e.hp;
+  const gauge0 = e.elem.burn || 0;
+  h.run(4);
+  assert.ok(e.hp < hp0, `the pulse damaged it (${hp0} → ${e.hp})`);
+  assert.ok((e.elem.burn || 0) > gauge0, `and fed the 灼燃 gauge (${gauge0} → ${e.elem.burn})`);
+  h.invariants();
+});
+
+test('神射法师 (spellArcher): an arts instance also deals an equal PHYS instance', () => {
+  const h = soloBattle({ hexes: ['hex_spellarcher'], enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }], hooks: ['damaged'], captureNoisy: true, timeLimit: 10 });
+  h.run(0.5);
+  const u = one(h);
+  const e = h.enemies()[0];
+  h.battle.dealDamage(u, e, h.battle.makeDamage({ amount: 300, type: 'arts', canDodge: false }));
+  const phys = h.hooksOf('damaged').filter((c) => c.dmg && c.dmg.spellArcher);
+  assert.equal(phys.length, 1, 'exactly one echoed instance');
+  assert.equal(phys[0].dmg.type, 'phys', 'and it is PHYS');
+  assert.equal(phys[0].amount, 300, '等额');
+  h.invariants();
+});
+
+test('惊惧 (dread): the FIRST ground-operator attack 战栗s the enemy for 2 s', () => {
+  // the enemy stands ON the operator's tile line (speed 0), so the melee guard blocks and attacks it
+  const h = soloBattle({ hexes: ['hex_dread'], enemies: [{ key: 'enemy_dummy', time: 0, route: 0, pos: [9, 7] }], timeLimit: 10 });
+  h.run(2);
+  const e = h.enemies()[0];
+  assert.ok(e, 'an enemy is on the field (premise)');
+  const st = (e.buffs || []).filter((b) => b.status === 'tremble');
+  assert.equal(st.length, 1, 'one 战栗 instance');
+  assert.ok(st[0].timeLeft > 0 && st[0].timeLeft <= 2 + 1e-6, `2 s (got ${st[0].timeLeft})`);
+  h.invariants();
+});
+
+test('炼狱导管 (infernalConduit): every attack stacks an independent 100/s burn that also feeds 灼燃', () => {
+  const h = soloBattle({ hexes: ['hex_infernalconduit'], enemies: [{ key: 'enemy_dummy', time: 0, route: 0, pos: [9, 7] }], timeLimit: 20 });
+  h.run(4);
+  const e = h.enemies()[0];
+  assert.ok(e, 'an enemy is on the field (premise)');
+  const stacks = buffsOf(e, 'hex:infernal');
+  assert.ok(stacks.length >= 2, `one instance per attack (got ${stacks.length})`);
+  assert.equal(stacks[0].interval, 1, 'one tick a second');
+  assert.ok(Math.abs(stacks[0].timeLeft - 5) <= 5, 'each instance is a 5 s timer');
+  const hp0 = e.hp;
+  const gauge0 = e.elem.burn || 0;
+  h.run(1.5);
+  assert.ok(e.hp < hp0, 'the burn ticks arts damage');
+  assert.ok((e.elem.burn || 0) > gauge0, 'and feeds the 灼燃 gauge');
+  h.invariants();
+});
+
+test('灵魂炸弹 (soulBomb): every 10 s it hits every enemy for the banked healing total and heals the board by it', () => {
+  // the match stamps `soulBomb.heal` (server/sim/content/hextech.js applySpec `soulBombArm`); here it is 500
+  const rec = hex('hex_soulbomb');
+  const ref = refOf('hex_soulbomb', { params: { ...rec.effect, soulBomb: { ...rec.effect.soulBomb, heal: 500 } } });
+  const h = soloBattle({ hexes: [ref], enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }], timeLimit: 20 });
+  h.run(1);
+  const u = one(h);
+  const e = h.enemies()[0];
+  u.hp = u.s.maxHp * 0.5;
+  const hp0 = e.hp;
+  const uHp0 = u.hp;
+  h.run(10.5);
+  assert.ok(e.hp <= hp0 - 500 + 1e-6, `one 500 pts pulse landed (${hp0} → ${e.hp})`);
+  assert.ok(u.hp > uHp0, `and the board was healed by the same number (${uHp0} → ${u.hp})`);
   h.invariants();
 });

@@ -73,7 +73,7 @@ The offer is recipient-private, including after reconnect, and never enters `m.p
 ### 6.3 Bonds & layers (bondsMeta.js)
 
 - `count` = number of **distinct base chess** on the board carrying the bond (`BOARD`); `BOARD_AND_DECK` bonds also count the hand; 绝技 counts elites on board; 调和 adds +1 to each core bond count that has a real member on the board (the views mark such an entry `harmony: 1`, §21.26), etc. (research 02).
-- 变形同构体: an operator wearing it together with an item that has a `giveBondId` is a member of that bond — counted like any member (BOARD: on the board only; once per operator), in the battle, and in the client's member list (tagged 同构) and bond chips (§21.11).
+- 变形同构体: an operator wearing it together with an item that has a `giveBondId` is a member of that bond — counted like any member (BOARD: on the board only; once per operator), in the battle, and in the client's member list (tagged 同构) and bond chips (§21.11). A fused 百变 (锻炉) counts as wearing both items it swallowed: every reader expands the piece's `merged: [idA, idB]` through `shared/morph.js itemRecs`, so the pairing survives the fusion while the 百变 still uses one equipment slot.
 - `tier` from thresholds; `active = tier ≥ 1`.
 - `layers[bondId]` persist all match; gains come from garrisons/bands/items/choices/bond effects; IN_BATTLE gains are collected from `BattleResult.layerGains` at SETTLE (disabled in unite/boss/hidden).
 - Layer milestones (维多利亚's 维式重锤 every 25, 远见's funds every 10 and its 80 / 150 discounts, 奇迹's funds every 100) pay only while the bond is active; those owed for layers gained while it was off pay as soon as it lights up — `PlayerState.recompute` dispatches `onActiveBonds` whenever the set of active bonds changes, so placing the third 维多利亚 member in prep grants the hammer at once (the maintainer's report of the official game, 2026-10-15; §34.14.31). Each milestone pays once, however often the bond goes off and on.
@@ -181,6 +181,12 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   单调曲线（生命/攻击逐级升；数量、漏怪、收入惩罚、首领池、额外敌方源石在 13–18 都不回头）。
 - **表**：`shared/protocolLevels.js`。每级只动 1–2 个玩家能感知的量，乘法曲线，每 3 级一个拐点：
   1–6 敌方生命/攻击；7–12 追加防御/法抗、漏怪 LP、每波数量、收入；13–18 首领池、额外敌方协议源石、收入惩罚。
+- **回合爬升（2026-10-24，业主「削弱敌方前期加强后期」→「k = 1 落在第 6 回合」）**：同一级的乘区在**局内**按回合缩放
+  「高于 1 的那一段」——`有效乘区 = 1 + (表值 - 1) × k(round)`，k = R1–2 0.45 / R3–4 0.60 / R5 0.80 /
+  **R6–10 1.00** / R11–13 1.20 / R14–15 1.35（`PROTOCOL_LEVEL_ROUND_RAMP` / `protocolLevelRoundK`）。18 行表值不为它
+  改动，所以 R6–R10 与改前逐字节相同。`countAdd` 另走一条阶梯（`protocolLevelCountAddAt`：R1–5 = 0、R6–10 = 表值、
+  R11 起 +1）；`bossPoolMul` 不吃 k（它只在首领回合生效），改成直接抬表值 13/14 = 1.25 … 18 = 1.80。
+  `round` 缺失或非整数 ⇒ k = 1（开局前的读取路径与旧口径一致）。
 - **收入惩罚从第 8 回合起生效**（`PROTOCOL_LEVEL_INCOME_FREE_ROUNDS = 7`，业主 2026-10-18：「n18 经济惩罚太重」
   →「从第 8 回合开始减少钱」）。这条惩罚是**绝对减**，而开局是自走棋最脆弱的地方：Lv18 的 `incomeDelta: -3`
   曾把第 1 回合的 4 金砍到 1 金（最便宜的棋子 2 金）—— 那不是「更难」，是开局就被判死。豁免前 7 回合后，

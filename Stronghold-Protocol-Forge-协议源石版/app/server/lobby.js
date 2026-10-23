@@ -699,6 +699,16 @@ export class Lobby {  /**
      */
     this.workshop = workshop && typeof workshop === 'object' ? workshop : null;
     /**
+     * 工坊包 `pack.json.operators` 声明的自选池干员 charId（server/index.js 从已装载的包里算好传进来）：
+     * 它们是工坊包**有意放进 自选池**的干员，所以与引擎的 KITTED_CHARS 一起视为「自选槽可上阵」——
+     * 否则客户端 `welcome.diyKitted` 把它们过滤掉，玩家在自选界面里**永远看不到**（本包 结城理 就是这样）。
+     * 没有工坊包时是空数组，行为与从前逐字节相同。
+     * @type {string[]}
+     */
+    this.workshopDiyKitted = workshop && Array.isArray(workshop.diyKitted)
+      ? workshop.diyKitted.filter((id) => typeof id === 'string' && id)
+      : [];
+    /**
      * 包通道白名单（docs/WORKSHOP.md §1.9.6）：`<包id>` → 这个包声明过的通道名集合。由**面板清单**推出来 ——
      * 面板就是通道的声明人（`client.panels[].messages`），所以这里不存在第二份真相：`welcome.modPanels` 与这一份
      * 是同一批数据的两个读者。没有包声明 `client` 时它是空表，`pack.msg` 一律回 `BAD_MSG`。
@@ -2550,10 +2560,24 @@ export class Lobby {  /**
     if (room?.modded) {
       try {
         const k = this.plugins?.kittedOf?.(room.content.cs);
-        if (Array.isArray(k)) return k;
+        if (Array.isArray(k)) return this.withWorkshopKitted(k);
       } catch (e) { this.log.error(`[lobby] ${room.code} content 自选 list failed`, e); }
     }
-    return KITTED_CHARS;
+    return this.withWorkshopKitted(KITTED_CHARS);
+  }
+
+  /**
+   * 引擎的 KITTED_CHARS 再加上工坊包声明进自选池的干员（`welcome.diyKitted` 与房间校验共用同一份口径）。
+   * 没有工坊声明时原样返回入参，welcome 帧因此一个字节都不变。
+   * @param {Iterable<string>} list
+   * @returns {string[]}
+   */
+  withWorkshopKitted(list) {
+    if (!this.workshopDiyKitted || !this.workshopDiyKitted.length) return list;
+    const base = new Set(list);
+    const out = [...list];
+    for (const id of this.workshopDiyKitted) if (!base.has(id)) out.push(id);
+    return out;
   }
 
   /** The content a setting stored now is checked for: the room's cs, else the server's vanilla one. @param {Room | null} room */
@@ -2648,7 +2672,7 @@ export class Lobby {  /**
       ? { content: n > 0 ? { vanilla: this.vanilla.cs, plugins: n } : { vanilla: this.vanilla.cs } }
       : {};
     return {
-      diyKitted: KITTED_CHARS,
+      diyKitted: this.withWorkshopKitted(KITTED_CHARS),
       ...contentInfo,
       // 本房座位上限 (业主裁令 2026-10-12): **总是发** —— 缺省上限已经是 20（不是官方 `MAX_SEATS`），没有「官方那一档」
       // 可以省掉它了。`SP_MAX_SEATS=4` 的部署会拿到 `maxSeats: 4`，而它的 `room.state` 帧照旧逐字节不变
@@ -2749,6 +2773,8 @@ export class Lobby {  /**
         ...(room.content?.vs ? { vs: room.content.vs } : {}),
         ...(modded ? { requireCs: true } : {}),
         data,
+        // 自选池的可上阵名单（工坊包 operators 声明；没有工坊包时这一键不出现，Match 走 KITTED_CHARS）
+        ...(this.workshopDiyKitted.length ? { kitted: this.kittedFor(room) } : {}),
         // 工坊行为层: the same kits must reach the battles the server runs AND the browser's (see the Lobby constructor)
         workshopKits: assets ? assets.kits : (this.workshop && this.workshop.kits ? this.workshop.kits : null),
         workshopKitModules: assets ? assets.modules : (this.workshop && Array.isArray(this.workshop.modules) ? this.workshop.modules : []),

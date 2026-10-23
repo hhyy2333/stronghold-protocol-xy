@@ -1,8 +1,12 @@
-// server/sim/content/bands/meta.js — prep side of the 40 strategies (bands, data/bands.json).
+// server/sim/content/bands/meta.js — prep side of the 40 official strategies (bands, data/bands.json).
 //
 // Every band handler is assembled from the band's buffs by their official buff key (numbers from bb / bbStr, never
 // hard-coded); keys that only act in battle (env_gbuff_new_with_verify, auto_chess_change_map) live in battle.js.
 // Starting LP (totalHp) and 坎诺特's leftover funds are the match's own rules.
+// 管理员 (the one hand-authored strategy, tools/build-data.mjs CUSTOM_BANDS) is match-side for the same reason: its
+// `band_hex_copy_once {count}` grants another 协议源石, and only server/match/hextech.js `applyHex` may do that
+// (applyBandHexCopy). It therefore has no handler here and `REG.has('band:band_admin')` stays false — see
+// test/content/bands.test.js 「bands.js wires both parts」.
 //
 //   prep_finish_char_bond_add_layer {layer}            华法琳   prep end: per distinct board tier, 1 random op → its bonds +layer (无需激活)
 //   band_first_self_refresh_present_char {count,bond}  杜遥夜   first 2 manual refreshes/round: ≥count <bond> chess (tier ≤ shop level)

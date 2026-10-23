@@ -19,6 +19,8 @@ import {
   PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL, PROTOCOL_LEVEL_EXTRA_BOSSES, protocolLevelExtraBossAt,
   PROTOCOL_LEVEL_INCOME_FREE_ROUNDS, PROTOCOL_LEVEL_DEEP_FROM, PROTOCOL_LEVEL_EFFECT_TEXT,
   protocolLevelEffects, protocolLevelHeadline,
+  PROTOCOL_LEVEL_ROUND_RAMP, PROTOCOL_LEVEL_FULL_ROUND, PROTOCOL_LEVEL_LATE_ROUND, protocolLevelRoundK,
+  protocolLevelEnemyMods, protocolLevelCountAddAt,
 } from '../../shared/protocolLevels.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -89,14 +91,103 @@ test('a level folds into enemy mods, income and the leader pool — and only on 
   assert.equal(lv12.m.gd.income(7), base.m.gd.income(7), 'round 7 is still exempt');
   assert.equal(lv12.m.gd.income(8) >= 0, true);
   const bossId = Object.keys(DATA.bosses)[0];
-  assert.equal(lv18.m.gd.bossPoolHp(bossId, 2), Math.round(base.m.gd.bossPoolHp(bossId, 2) * 1.5));
+  assert.equal(lv18.m.gd.bossPoolHp(bossId, 2), Math.round(base.m.gd.bossPoolHp(bossId, 2) * 1.8));
   // the pool a real boss round builds (bossPoolHpFor → finalAssault.bossPoolHp) carries it too — one source, both halves
-  assert.equal(bossPoolHpFor(lv18.m, bossId), Math.round(bossPoolHpFor(base.m, bossId) * 1.5), 'real boss pool ×1.5 at level 18');
+  assert.equal(bossPoolHpFor(lv18.m, bossId), Math.round(bossPoolHpFor(base.m, bossId) * 1.8), 'real boss pool ×1.8 at level 18');
   assert.equal(bossPoolHpFor(lv6.m, bossId), bossPoolHpFor(base.m, bossId), 'levels below 13 leave the pool alone');
   // another difficulty normalizes the level away
   const hard = makeMatch({ mode: 'solo', difficulty: 'HARD', humans: 1, seed: 21, fake: true, protocolLevel: 6 });
   assert.equal(hard.m.protocolLevel, 0);
   assert.deepEqual(matchEnemyMods(hard.m), {});
+});
+
+// =====================================================================================================================
+// 回合爬升（业主 2026-10-24：「调整 n1-18，计划是削弱敌方前期加强后期」→「k = 1 落在第 6 回合」）
+//
+// 钉住三件事：
+//   1. k 表本身（冻结、R6 恰好 = 1、随回合不减、非法回合 ⇒ 1）；
+//   2. 折入是「1 + (表值 - 1) × k」—— 按**增量**缩放，等级之间的差别在任何回合都保得住，18 行表值一个字没动；
+//   3. `countAdd` 的阶梯：R1–R5 = 0、R6–R10 = 表值、R11 起 = 表值 + 1；且实战折入点真的按 `m.round` 取值。
+// =====================================================================================================================
+
+test('回合爬升：k 表冻结、R6 满额、随回合不减', () => {
+  assert.equal(PROTOCOL_LEVEL_FULL_ROUND, 6, 'k = 1 lands on round 6 (the owner\'s call)');
+  assert.equal(PROTOCOL_LEVEL_LATE_ROUND, 11);
+  assert.deepEqual(PROTOCOL_LEVEL_ROUND_RAMP.map((s) => [s.from, s.k]),
+    [[1, 0.45], [3, 0.6], [5, 0.8], [6, 1], [11, 1.2], [14, 1.35]]);
+  assert.ok(Object.isFrozen(PROTOCOL_LEVEL_ROUND_RAMP), 'the ramp table is frozen');
+  assert.equal(protocolLevelRoundK(1), 0.45);
+  assert.equal(protocolLevelRoundK(2), 0.45);
+  assert.equal(protocolLevelRoundK(3), 0.6);
+  assert.equal(protocolLevelRoundK(5), 0.8);
+  assert.equal(protocolLevelRoundK(6), 1, 'round 6 is the first full-strength round');
+  assert.equal(protocolLevelRoundK(10), 1, 'and it holds through R10');
+  assert.equal(protocolLevelRoundK(11), 1.2);
+  assert.equal(protocolLevelRoundK(14), 1.35);
+  assert.equal(protocolLevelRoundK(15), 1.35);
+  // 不在对局回合里（0 / 负数 / 非整数 / 非数字）⇒ 旧的平曲线
+  for (const bad of [0, -1, 2.5, null, undefined, NaN, '6']) assert.equal(protocolLevelRoundK(bad), 1, String(bad));
+  // 随回合不减
+  let prev = 0;
+  for (let r = 1; r <= 15; r++) {
+    const k = protocolLevelRoundK(r);
+    assert.ok(k >= prev, `k never falls at R${r}`);
+    prev = k;
+  }
+});
+
+test('回合爬升：折入按增量缩放，前期削、R6 满额、后期加码', () => {
+  const n18 = protocolLevelMods(18, 'ABYSS').enemy;
+  assert.equal(n18.hpMul, 2.45, 'the table value is untouched');
+  const at = (level, round) => protocolLevelEnemyMods(level, 'ABYSS', round).mods;
+  assert.deepEqual(at(18, 1), { hpMul: 1.6525, atkMul: 1.396, defMul: 1.099, resMul: 1.0855, countAdd: 0 },
+    'R1: the bonus is scaled by 0.45, and no extra bodies');
+  assert.deepEqual(at(18, 3), { hpMul: 1.87, atkMul: 1.528, defMul: 1.132, resMul: 1.114, countAdd: 0 });
+  assert.deepEqual(at(18, 5), { hpMul: 2.16, atkMul: 1.704, defMul: 1.176, resMul: 1.152, countAdd: 0 });
+  // R6 起逐字节等于今天（表值 + 每波 +1）
+  assert.deepEqual(at(18, 6), { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 1 }, 'R6 = the old curve');
+  assert.deepEqual(at(18, 10), at(18, 6), 'and stays there through R10');
+  // 后期加码：k > 1，数量再 +1
+  assert.deepEqual(at(18, 11), { hpMul: 2.74, atkMul: 2.056, defMul: 1.264, resMul: 1.228, countAdd: 2 });
+  assert.deepEqual(at(18, 14), { hpMul: 2.9575, atkMul: 2.188, defMul: 1.297, resMul: 1.2565, countAdd: 2 });
+  // 一个等级在所有回合上「不低于 1」；R11 之前不超过表值，R6 起不再低于表值
+  for (const row of PROTOCOL_LEVELS) {
+    for (const round of [1, 3, 5, 6, 8, 11, 14]) {
+      const m = at(row.level, round);
+      assert.ok(m.hpMul >= 1, `L${row.level} R${round}: never below 1`);
+      if (round < PROTOCOL_LEVEL_LATE_ROUND) assert.ok(m.hpMul <= row.enemy.hpMul + 1e-9, `L${row.level} R${round}: never above the table`);
+      if (round >= PROTOCOL_LEVEL_FULL_ROUND) assert.ok(m.hpMul >= row.enemy.hpMul, `L${row.level} R${round}: full strength or more`);
+    }
+  }
+  // 后期的加码真的落在表值之上（业主的「加强后期」）
+  assert.ok(at(18, 14).hpMul > n18.hpMul, 'R14 is above the table value');
+  assert.ok(at(18, 12).atkMul > n18.atkMul, 'R12 ATK is above the table value');
+  // 同一回合上跨级单调（增量缩放保住了等级差别）
+  for (const round of [1, 6, 14]) {
+    for (let lv = 2; lv <= PROTOCOL_LEVEL_MAX; lv++) {
+      assert.ok(at(lv, round).hpMul > at(lv - 1, round).hpMul, `R${round}: L${lv} still outweighs L${lv - 1}`);
+    }
+  }
+  // countAdd 阶梯只对有数量的等级生效
+  assert.deepEqual([1, 5, 6, 10, 11, 15].map((r) => protocolLevelCountAddAt(18, r)), [0, 0, 1, 1, 2, 2]);
+  assert.equal(protocolLevelCountAddAt(17, 11), 0, 'levels without countAdd stay at 0');
+  // 不传回合 ⇒ 与 2026-10-24 之前的输出一致（表值，不含爬升）
+  assert.deepEqual(protocolLevelEnemyMods(18, 'ABYSS').mods, at(18, 6));
+  assert.equal(protocolLevelEnemyMods(0, 'ABYSS', 6), null);
+  assert.equal(protocolLevelEnemyMods(18, 'HARD', 6), null);
+});
+
+test('回合爬升：实战折入点读的是 m.round（预览与实战同一个 fold）', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true, protocolLevel: 18 });
+  const m = h.m;
+  m.round = 1;
+  assert.equal(matchEnemyMods(m).hpMul, 1.6525, 'R1 folds the early ramp');
+  m.round = 6;
+  assert.deepEqual(matchEnemyMods(m), { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 1 }, 'R6 is the table again');
+  m.round = 12;
+  assert.equal(matchEnemyMods(m).hpMul, 2.74);
+  assert.equal(matchEnemyMods(m).countAdd, 2, 'R11+ adds a second body');
+  m.dispose();
 });
 
 // 业主 2026-10-18：「n18 经济惩罚太重」，随后定为「从第 8 回合开始减少钱」。收入惩罚是绝对减，而开局是
@@ -331,22 +422,28 @@ test('难度介绍：每一级的逐条说明都从表里现算，18 级把「�
   assert.deepEqual(protocolLevelEffects(0), []);
   assert.equal(protocolLevelHeadline(0), null);
 
-  // L1 只有生命 / 攻击两条（表里也只有这两个字段）
-  assert.deepEqual(protocolLevelEffects(1).map((e) => e.id), ['hp', 'atk']);
+  // L1 只有爬升 + 生命 / 攻击三条（表里也只有这两个字段）
+  assert.deepEqual(protocolLevelEffects(1).map((e) => e.id), ['ramp', 'hp', 'atk']);
 
-  // L18 必须把表里每一个非默认字段都翻出来：生命/攻击/防御/法抗、每波 +1、漏怪 +2、收入 −3、
-  // 首领池 +50%、三张敌方源石、以及 R10 的彩蛋首领。
+  // L18 必须把表里每一个非默认字段都翻出来：回合爬升、生命/攻击/防御/法抗、每波 +1（R6 起、R11 起 +2）、漏怪 +2、
+  // 收入 −3、首领池 +80%、三张敌方源石、以及 R10 的彩蛋首领。
   const l18 = protocolLevelEffects(18);
   assert.deepEqual(l18.map((e) => e.id),
-    ['hp', 'atk', 'def', 'res', 'count', 'leakLp', 'income', 'bossPool', 'extraHex', 'extraBoss']);
+    ['ramp', 'hp', 'atk', 'def', 'res', 'count', 'leakLp', 'income', 'bossPool', 'extraHex', 'extraBoss']);
   const byId = Object.fromEntries(l18.map((e) => [e.id, e]));
   assert.equal(byId.hp.params.v, '×2.45', 'the numbers come from the table, not from a literal');
   assert.equal(byId.atk.params.v, '×1.88');
-  assert.equal(byId.count.params.n, 1, 'L18 adds one body per wave');
+  assert.equal(byId.ramp.params.end, PROTOCOL_LEVEL_FULL_ROUND - 1, 'the ramp line names the weakened window');
+  assert.equal(byId.ramp.params.from, PROTOCOL_LEVEL_FULL_ROUND);
+  assert.equal(byId.ramp.params.late, PROTOCOL_LEVEL_LATE_ROUND);
+  assert.equal(byId.count.params.n, 1, 'L18 adds one body per wave from R6');
+  assert.equal(byId.count.params.n2, 2, 'and a second one from R11');
+  assert.equal(byId.count.params.from, PROTOCOL_LEVEL_FULL_ROUND);
+  assert.equal(byId.count.params.late, PROTOCOL_LEVEL_LATE_ROUND);
   assert.equal(byId.leakLp.params.n, 2, 'and 2 extra LP per leak');
   assert.equal(byId.income.params.n, 3);
   assert.equal(byId.income.params.from, PROTOCOL_LEVEL_INCOME_FREE_ROUNDS + 1, 'the income penalty starts at round 8');
-  assert.equal(byId.bossPool.params.v, '50%');
+  assert.equal(byId.bossPool.params.v, '80%');
   assert.equal(byId.extraHex.params.n, 3);
   assert.equal(byId.extraHex.params.rounds, '1 / 3 / 5', 'spread over rounds 1 / 3 / 5');
   assert.equal(byId.extraBoss.params.round, PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, 'and R10 carries the extra leader');

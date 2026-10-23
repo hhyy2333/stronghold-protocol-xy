@@ -18,7 +18,7 @@
 //                               RIGHT = col + 1; board piece views carry `dir`, sim/dir.js)
 
 import { frontOf } from '../../dir.js';
-import { grantedBondsByTrait } from '../../../../shared/morph.js';
+import { grantedBondsByTrait, itemRecs } from '../../../../shared/morph.js';
 
 export function registerSupportMeta(registry) {
   registry.global('contentb_info', {
@@ -71,7 +71,9 @@ function withGrants(ctx, piece, bonds, rec) {
   const traitIds = grantedBondsByTrait(rec && rec.trait, { hasBond: (id) => !!ctx.gd.bond(id) });
   const morph = () => {
     if (items.length < 2) return bonds;
-    const recs = items.map((it) => ctx.gd.item(it.id)).filter(Boolean);
+    // 锻炉: `itemRecs` 展开融合件（百变）—— 它是一件占位的装备，但「穿着」的是它吞掉的那两件，所以「配对的两件」与
+    // 「哪一件授予盟约」两条判据都看展开后的记录（与 bondsMeta.pieceBonds / support unitBonds 同一条）。
+    const recs = itemRecs(items, (id) => ctx.gd.item(id));
     if (!recs.some((r) => r.canGiveBond)) return bonds;
     const out = bonds.slice();
     for (const r of recs) if (!r.canGiveBond && typeof r.giveBondId === 'string' && ctx.gd.bond(r.giveBondId) && !out.includes(r.giveBondId)) out.push(r.giveBondId);

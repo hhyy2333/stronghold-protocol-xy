@@ -159,6 +159,30 @@ export function installShieldwall(hooks) {
     return Number.isFinite(ratio) ? ratio : 0;
   };
 
+  // ---- 庇护 20 % (业主 2026-10-24: 「盾墙，额外增加效果 20% 庇护」) ----------------------------------------------
+  // 庇护 is the ENGINE's shared effect (kits/shared/tier1.js holdProtect): `battle.applyStrongest(u, 'protect', …)` with
+  // `physTakenMul / artsTakenMul = 1 − v` and 同名效果取最高, so a card value never stacks with itself and a stronger
+  // source elsewhere simply wins. Applied to every operator of an owner at battle start (and to each later deployment),
+  // which is what 「己方所有干员」 means — the split above stays limited to the 重装 pool.
+  const protectFor = (pid) => {
+    const spec = typeof specOf === 'function' ? specOf(pid, HEX_ID, SPEC_KEY) : null;
+    const v = Number(spec && spec.protectPct);
+    return Number.isFinite(v) && v > 0 ? Math.min(100, v) / 100 : 0;
+  };
+  const protectMods = (v) => ({ physTakenMul: 1 - v, artsTakenMul: 1 - v });
+  const hold = (u) => {
+    if (!u || u.kind !== 'op' || u.side !== 'ally' || !ownerSet.has(u.ownerId)) return;
+    const v = protectFor(u.ownerId);
+    if (!(v > 0)) return;
+    battle.applyStrongest(u, 'protect', { duration: Infinity, value: v, mods: protectMods, source: null });
+  };
+  if (typeof battle.on === 'function') {
+    battle.on('battleStart', () => {
+      for (const u of battle.allyUnits) hold(u);
+    }, { priority: -10 });
+    battle.on('deploy', (c) => { if (c && c.unit) hold(c.unit); });
+  }
+
   // ---- damage split ------------------------------------------------------------------------------------------------
   // The same -20 slot 坚守盟约's redirect uses: it cuts the incoming amount first (also by touching `dmg.mul`), and this
   // split then takes its share of what is left. Both are plain multipliers on the one DamageInfo, so the order cannot

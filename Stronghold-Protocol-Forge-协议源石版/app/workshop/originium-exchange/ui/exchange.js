@@ -113,7 +113,7 @@ export function feeFor(gross) {
  * @param {number} maxShares
  * @param {number} carryCents 交易所尾差（分，正 = 交易所欠你），会抵扣这一单
  */
-export function maxAffordable(budgetYuan, price, maxShares = 60, carryCents = 0) {
+export function maxAffordable(budgetYuan, price, maxShares = 300, carryCents = 0) {
   const budget = Math.max(0, Math.trunc(Number(budgetYuan) || 0));
   const unit = Math.round((Number(price) || 0) * 100);
   if (!(unit > 0)) return 0;
@@ -133,7 +133,7 @@ export function maxAffordable(budgetYuan, price, maxShares = 60, carryCents = 0)
  * 这一单在**含杠杆**之后最多能买几股（纯函数）。`state.borrowRoom` 是服务端算好的剩余额度，
  * 面板不自己重算额度（两份判据会漂）：现金 + 尾差 + 可用额度 = 预算上限。
  */
-export function maxBuyable(state, price, maxShares = 60) {
+export function maxBuyable(state, price, maxShares = 300) {
   if (!state) return 0;
   const cash = Math.max(0, Math.trunc(Number(state.cash) || 0));
   const room = Math.max(0, Math.trunc(Number(state.borrowRoom) || 0));
@@ -153,7 +153,7 @@ export function resolveQty(mode, state, stockId, op) {
   if (!state || !Array.isArray(state.stocks)) return 0;
   const stock = state.stocks.find((row) => row && row.id === stockId);
   if (!stock) return 0;
-  const maxShares = clampInt((state.limits && state.limits.maxShares) || 60, 1, 999);
+  const maxShares = clampInt((state.limits && state.limits.maxShares) || 300, 1, 9999);
   const held = clampInt(stock.shares || 0, 0, maxShares);
   const buyable = Math.max(0, Math.min(maxShares - held, maxBuyable(state, stock.price, maxShares)));
   const available = op === 'buy' ? buyable : held;
@@ -250,8 +250,7 @@ export function mount(ctx) {
   let disposed = false;
   let state = null;          // 最近一份 state 帧
   let closing = null;        // 最近一份 close 帧
-  let open = false;          // 抽屉是否展开
-  let userCollapsed = false; // 用户手动收起之后，新行情不自动弹开
+  let open = false;          // 抽屉是否展开（默认收起：进局不自动弹界面，点按钮才开）
   let qtyMode = 1;           // 1 / 5 / 10 / 'max'
   let priceMode = readPriceMode(); // 'decimal' | 'integer'（纯显示，见 PRICE_MODES）
   let toast = null;          // { text, ok }
@@ -264,12 +263,13 @@ export function mount(ctx) {
   const root = el('div', 'oex');
   root.hidden = true;
 
+  // 入口是商店栏按钮行里的一颗横排按钮（`screen.game.shopTools`，冻结的左边，与「商店」并排）。
   const tab = el('button', 'oex__tab');
   tab.type = 'button';
   tab.dataset.action = 'toggle';
-  tab.title = '打开源石证券交易所';
+  tab.title = '源石证券交易所（休整期营业）';
   tab.appendChild(el('span', 'oex__tab-glyph', '¥'));
-  tab.appendChild(el('span', 'oex__tab-text', '源石证交所'));
+  tab.appendChild(el('span', 'oex__tab-text', '交易所'));
 
   const panel = el('section', 'oex__panel');
   panel.setAttribute('role', 'dialog');
@@ -383,7 +383,7 @@ export function mount(ctx) {
   const list = el('div', 'oex__list');
 
   const foot = el('footer', 'oex__foot');
-  const footHint = el('span', 'oex__foot-hint', '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 12%');
+  const footHint = el('span', 'oex__foot-hint', '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 0.4%');
   foot.appendChild(footHint);
 
   const toastBar = el('div', 'oex__toast');
@@ -423,14 +423,11 @@ export function mount(ctx) {
   ctx.host.appendChild(root);
 
   // ---- 渲染 --------------------------------------------------------------------------------------------------
-  function applyOpen(next, userInitiated = false) {
+  function applyOpen(next) {
     open = next;
-    // 只有**用户自己**收起时才记住「别再自动弹开」；初始状态与离开房间的重置都不算。
-    if (userInitiated) userCollapsed = !next;
-    else if (next) userCollapsed = false;
     root.classList.toggle('is-open', open);
     panel.hidden = !open;
-    tab.hidden = !!open;
+    tab.classList.toggle('is-on', open);
   }
 
   function renderQtyButtons() {
@@ -585,7 +582,7 @@ export function mount(ctx) {
     }
     dividendText.textContent = data.dividend > 0 ? `分红 +${fmt(data.dividend)}` : '';
     if (typeof data.closed === 'boolean' && data.closed) footHint.textContent = '本局已收盘 · 下一局重新开市';
-    else footHint.textContent = '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 12%';
+    else footHint.textContent = '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 0.4%';
     renderStockList(data.stocks);
     renderQtyButtons();
     renderDisplayButtons();
@@ -619,8 +616,7 @@ export function mount(ctx) {
     toast = null;
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
     root.hidden = true;
-    applyOpen(false, false);
-    userCollapsed = false;
+    applyOpen(false);
     panel.hidden = true;
     closeLayer.hidden = true;
     renderToast();
@@ -662,9 +658,9 @@ export function mount(ctx) {
       closing = data;
       if (state) renderClose(data);
       else {
-        // 极端情况：面板在收盘之后才挂上（重连）——直接开面板显示结算。
+        // 极端情况：面板在收盘之后才挂上（重连）——把结算层准备好，但**不替玩家把抽屉弹开**（进局/重连都不自动
+        // 显示界面；点一下按钮就能看到）。
         root.hidden = false;
-        if (!userCollapsed) applyOpen(true, false);
         closeLayer.hidden = false;
         renderClose(data);
       }
@@ -679,22 +675,21 @@ export function mount(ctx) {
     }
     // 业主 2026-10-22（玩家反馈）：「手机端搞交易所，发现投不进钱，关上以后发现在悬赏页面选不了」。
     //
-    // 两条症状同一个原因：这一层挂在 `screen.game.aside`（z-index 62），比机变 / 悬赏那一整屏的浮层（`.spov`，z 20）
-    // 还高，而它**收到任何一份 state 帧都会自动展开**（原来下面那两行是无条件的）。于是离开休整期之后面板仍然盖在
-    // 机变 / 战斗界面上：牌被面板挡住点不到（选不了），按买 / 卖又因为不在休整期被服务端拒掉（投不进钱）；
-    // 玩家手动收起它，下一帧行情回来它又自己弹开 —— 看起来就是「关上也没用」。
+    // 病因是**任何一份 state 帧都自动展开**：离开休整期之后面板仍然盖在机变 / 悬赏界面上，牌被挡住点不到、
+    // 下单又被服务端按相位拒掉；玩家手动收起它，下一帧行情回来它又自己弹开。
     //
-    // 交易所本来就只在休整期能下单，所以非休整期整块收起来（连那颗标签一起）：不占屏、不挡任何界面；回到休整期
-    // 的那一帧照常自动展开（玩家自己收起过的仍然尊重 `userCollapsed`）。
+    // 交易所本来就只在休整期能下单，所以非休整期整块收起来（连按钮一起）：不占屏、不挡任何界面。
+    // 业主 2026-10-23「进局不要自动显示两个界面了」：回到休整期也**不自动展开** —— 收起状态才是默认状态，
+    // 玩家点按钮才打开。1.4.3 起按钮住在商店栏（`screen.game.shopTools`），商店栏本来也只在休整期渲染，
+    // 所以下面这条 root.hidden 是双保险（相位切换的那一帧先藏起来，别等卸载）。
     const tradeable = data.phase === 'PREP' && !data.closed;
     if (!tradeable) {
-      if (open) applyOpen(false, false);
+      if (open) applyOpen(false);
       root.hidden = true;
       renderState(data);   // 数字照旧更新，回到休整期时直接是新的
       return;
     }
     root.hidden = false;
-    if (!userCollapsed && !open) applyOpen(true, false);
     renderState(data);
   };
 
@@ -712,7 +707,7 @@ export function mount(ctx) {
     const action = actionNode && actionNode.dataset ? actionNode.dataset.action : null;
     if (!action) return;
     if (action === 'toggle') {
-      applyOpen(!open, true);
+      applyOpen(!open);
       return;
     }
     if (action === 'qty') {
@@ -759,8 +754,8 @@ export function mount(ctx) {
   root.addEventListener('click', onRootClick);
 
   // ---- 生命周期 ----------------------------------------------------------------------------------------------
-  // 初始收起：面板一挂上时页面上**什么都不多**（第一份 state 帧到达才出现抽屉）。
-  applyOpen(false, false);
+  // 初始收起：面板一挂上时页面上只有按钮行里那一颗「交易所」，**不自动弹抽屉**（业主 2026-10-23）。
+  applyOpen(false);
   renderDisplayButtons();
   setTimeout(pollRoom, 1200);
 

@@ -396,7 +396,22 @@
 .pavatar__x .icon, .pavatar__door .icon { width: 60%; height: 60%; filter: drop-shadow(0 0 4px #000); }
 
 /* ---- effects ---------------------------------------------------------------------------------------------- */
-.gm__effects { position: absolute; right: .3rem; top: 2.4rem; }
+/* 业主 2026-10-23「状态栏增加滚动条」：右侧这条效果列在矮屏 / 效果多的时候会一路长到屏幕外（最下面几块磁贴
+   根本点不到、也看不到）。现在给它自己的滚动条，并留出底部商店栏的位置（战斗里没有商店栏，但同一份样式两边
+   共用；多留的那一点只是没画东西的一列空白）。`max()` 保证矮屏（手机横屏 ~5rem 高）上至少露出 2~3 块磁贴。 */
+.gm__effects {
+  position: absolute; right: .3rem; top: 2.4rem;
+  max-height: max(2.8rem, calc(100vh - 6.2rem));
+  overflow-y: auto; overflow-x: hidden;
+  padding-right: .06rem;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(126, 227, 192, .5) transparent;
+}
+.gm__effects::-webkit-scrollbar { width: .07rem; }
+.gm__effects::-webkit-scrollbar-track { background: transparent; }
+.gm__effects::-webkit-scrollbar-thumb { background: rgba(126, 227, 192, .45); border-radius: .04rem; }
+.gm__effects::-webkit-scrollbar-thumb:hover { background: rgba(126, 227, 192, .75); }
 /* 准备就绪 refused (the temp row holds pieces): its reason shows under the button and pushes the ready count down —
    the effects column follows, or the count runs into it on phones */
 .gm.has-readywhy .gm__effects { top: calc(2.4rem + max(.3rem, 16px)); }
@@ -613,25 +628,27 @@
 
 .chud { position: absolute; inset: 0; pointer-events: none; }
 .chud > * { pointer-events: auto; }
-/* 战斗时的部署费用（DP）计数器。
-   `right` 不能是 .3rem：右侧那一列 effect 磁贴（.gm__effects 右 .3rem + .effect 宽 .5rem ⇒ 左边缘在 right .8rem）
-   从 2.4rem 往下长，长到屏幕中部就撞上这个计数器，把玩家自己的协议源石 / 策略磁贴盖住 ——
-   业主 2026-10-13 报过「战斗时费用显示位置遮挡己方buff」+「计数器左移一些」，2026-10-16 又报了一次
-   「挡住右侧状态栏」。横向让开之后与窗口高度无关。
-   test/ui/effectsColumn.test.js 把这三个偏移量互相校验钉住了（它按正则读 CSS，所以注释必须在选择器**外面**）。 */
+/* 战斗时的部署费用（DP）计数器 —— 业主 2026-10-23「费用显示横过来挂到条的下面」：
+   **横排**（图标 + 数字 + COST 三个并排），挂在**顶栏下面**的右侧（顶栏胶囊底边 ≈ .2rem + .78rem，留 .08rem 缝）。
+   横向仍然止于 right 1.1rem：右侧那一列 effect 磁贴是 right .3rem + 宽 .5rem（左边缘在 right .8rem），
+   两者之间留 .3rem，所以无论窗口多高、效果列多长都不会被计数器盖住。
+   test/ui/effectsColumn.test.js 按正则读这条 CSS 与效果列互相校验（注释必须在选择器**外面**）。 */
 .dpbox {
-  position: absolute; right: 1.1rem; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: .02rem; padding: .1rem .12rem;
+  position: absolute; right: 1.1rem; top: 1.08rem;
+  display: flex; flex-direction: row; align-items: center; gap: .06rem;
+  min-height: .46rem; box-sizing: border-box; padding: .05rem .12rem;
   background: rgba(8, 11, 10, .85); border: 1px solid var(--line-2); border-right: 3px solid var(--mint-500);
 }
-.dpbox__icon { width: .26rem; height: .26rem; color: var(--mint-500); }
-.dpbox b { font-size: .34rem; line-height: 1; color: #fff; }
+.dpbox__icon { width: .22rem; height: .22rem; flex: 0 0 auto; color: var(--mint-500); }
+.dpbox b { font-size: .28rem; line-height: 1; color: #fff; }
+.dpbox .micro { font-size: .1rem; letter-spacing: .08em; color: var(--text-md); }
 /* 指令之意 / 指令之意·改 的「本局指定了什么」小牌（ui/combatHud.js HexDirectives）。
-   挂在 DP 计数器正下方，与它共用同一条横向分界：右侧那一列 effect 磁贴在 right .3rem、宽 .5rem（左边缘在
-   right .8rem），而这里和计数器都止于 right 1.1rem —— 所以无论窗口多高都不会盖住那一列（与 .dpbox 同一条理由，
-   test/ui/effectsColumn.test.js 钉的就是这类不变量）。 */
+   挂在 DP 计数器**正下方**（计数器从 1.08rem 起、约 .46rem 高 ⇒ 1.66rem 起），与它共用同一条横向分界：
+   右侧那一列 effect 磁贴在 right .3rem、宽 .5rem（左边缘在 right .8rem），而这里和计数器都止于 right 1.1rem
+   —— 所以无论窗口多高都不会盖住那一列（与 .dpbox 同一条理由，test/ui/effectsColumn.test.js 与
+   test/sim/hextech-directive.test.js 钉的就是这类不变量）。 */
 .hexdirs {
-  position: absolute; right: 1.1rem; top: 50%; transform: translateY(calc(-50% + 1.05rem));
+  position: absolute; right: 1.1rem; top: 1.66rem;
   display: flex; flex-direction: column; align-items: flex-end; gap: .06rem; max-width: 2.6rem;
 }
 .hexdir {

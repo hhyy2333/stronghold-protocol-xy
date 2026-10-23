@@ -83,17 +83,18 @@ const S2C_TYPES = new Set(S2C);
 
 /**
  * The mount points (DESIGN §28.8). The first four are 0.11.0's **overlays** — the registry creates their container on
- * demand and `public/css/components.css` fixes them. The last six live **inside components the engine already renders**
+ * demand and `public/css/components.css` fixes them. The last seven live **inside components the engine already renders**
  * (the owner's ruling of 2026-10-10): the component renders `[data-mod-slot="…"]` and the panel fills it, which is how a
- * pack marks a shop card, adds a gesture to the bond strip, inserts a section into 操作员详情 or hangs a block in the
- * room screen's aside (`screen.room.aside`, 房间屏的旁栏).
+ * pack marks a shop card, puts a button in the shop bar's tool row (left of 冻结 / 刷新, `screen.game.shopTools`), adds a
+ * gesture to the bond strip, inserts a section into 操作员详情 or hangs a block in the room screen's aside
+ * (`screen.room.aside`, 房间屏的旁栏).
  *
  * Kept here as its own table because importing `shared/workshop.js` would pull the whole pack schema into the page; a
  * test pins the two tables together, the same way `test/kitImports.test.js` pins the import map to the whitelist.
  */
 export const MOD_PANEL_SLOTS = Object.freeze([
   'root.overlays', 'root.guide', 'screen.game.aside', 'screen.result.footer',
-  'screen.game.shopCard', 'screen.game.bondStrip', 'screen.game.hud', 'screen.game.overlay',
+  'screen.game.shopCard', 'screen.game.shopTools', 'screen.game.bondStrip', 'screen.game.hud', 'screen.game.overlay',
   'screen.loadout.detail', 'screen.room.aside',
 ]);
 
@@ -1744,11 +1745,30 @@ export function createPanelRegistry(deps) {
     if (setComponentWraps(byComponent)) onWrapsChanged(links);
   }
 
+  /**
+   * 槽位容器会被页面重建（商店栏在战斗 / 收起时整块卸载，下个休整期又渲染出一只新的
+   * `[data-mod-slot]`）。旧容器里的 .mod-panel 已经不在文档里，但 mounted / hosts 还记着它，
+   * flush 于是永远不会往新容器挂第二次 —— 表现正是「第一回合面板按钮在，打完一仗回来就没了」。
+   * 每轮 flush 前丢掉 isConnected === false 的挂载（先调用面板自己的 unmount 退订通道，避免一份面板两份监听），
+   * 下一轮 hostTargets 拿到新容器时就会重新挂上。
+   */
+  function pruneDetachedHosts() {
+    for (const [mk, el] of [...hosts]) {
+      if (!el || el.isConnected !== false) continue;
+      const entry = mounted.get(mk);
+      try { entry?.unmount?.(); } catch (err) { log?.warn?.('[mod-panels] unmount after host detach failed', err); }
+      mounted.delete(mk);
+      hosts.delete(mk);
+      blocked.delete(mk);
+    }
+  }
+
   async function flush() {
     if (disposed) return;
     if (flushing) { dirty = true; return; }
     flushing = true;
     try {
+      pruneDetachedHosts();
       for (const rec of panels) {
         if (disposed) return;
         if (blockedPanels.has(rec.key)) continue;

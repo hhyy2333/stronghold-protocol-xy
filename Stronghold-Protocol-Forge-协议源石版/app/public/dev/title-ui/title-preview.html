@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>标题页视觉优化 · 对照预览</title>
+<!-- 真实的样式表（不重写），只把 title.js 的 DOM 结构手写成静态版：
+     ?v=before → 旧结构 + 旧 title.css；?v=after → 新结构 + 现行 title.css -->
+<link rel="stylesheet" href="../../fonts/fonts.css" />
+<link rel="stylesheet" href="../../css/theme.css" />
+<link rel="stylesheet" href="../../css/components.css" />
+<link rel="stylesheet" href="../../css/devices.css" />
+<link id="title-css" rel="stylesheet" href="../../css/screens/title.css" />
+<style>
+  /* 预览专用：补上 screens/game.css 里那几个全局分段控件的最小样式（真实客户端才加载它） */
+  .set-seg { display: inline-flex; border: 1px solid var(--line-2); }
+  .set-seg button { min-width: .74rem; height: .3rem; background: #0a0d0c; border: 0; border-right: 1px solid var(--line-2); color: var(--text-lo); font-size: calc(.14 * var(--t)); }
+  .set-seg button:last-child { border-right: 0; }
+  .set-seg button.is-on { background: var(--mint-500); color: var(--text-on-mint); font-weight: 700; }
+  .lang-select select { height: .3rem; padding: 0 .18rem 0 .12rem; background: #0a0d0c; border: 0; color: var(--text-hi); font-size: calc(.14 * var(--t)); }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="title-preview.js"></script>
+</body>
+</html>

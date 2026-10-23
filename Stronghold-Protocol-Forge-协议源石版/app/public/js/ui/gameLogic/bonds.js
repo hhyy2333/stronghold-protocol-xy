@@ -7,7 +7,7 @@ import { t } from '../../../../shared/i18n.js';
 // 第 7 段把**同一格开关的另外半条**（装备位语义）也收在那里：`morphSlotPolicy` 给出这一页的策略对象。
 // §28.49（`trait.grantsBonds`）：成员资格的**合并**也收在那边（`memberBonds`），所以客户端与服务端/战斗调的
 // 还是同一个函数 —— 只是它现在多了一条腿（特质）。客户端不必再知道「有几种成员资格来源」。
-import { memberBonds, morphSlotPolicy, OFFICIAL_SLOT_POLICY } from '../../../../shared/morph.js';
+import { memberBonds, itemRecs, itemIds, morphSlotPolicy, OFFICIAL_SLOT_POLICY } from '../../../../shared/morph.js';
 
 /**
  * 这一页的 `morphPairing` 档位（房间的包声明里派生的**有效档位**）。`setMorphPairing()` 由
@@ -107,8 +107,9 @@ export function nextThreshold(count, thresholds) {
  * @returns {string[]}
  */
 export function grantedBonds(items, getItem = () => null) {
-  const list = Array.isArray(items) ? items : [];
-  const recs = list.map((it) => getItem(typeof it === 'string' ? it : it?.id)).filter(isObj);
+  // 锻炉 (业主 2026-10-24): `itemRecs` 把融合件（百变）展开成它吞掉的那两件 —— 百变本身是一条空记录，只看 id 会让
+  // 「变形同构体 + 维式重锤」融成百变之后卡片与备战侧一起丢掉维多利亚的成员资格（战斗侧一直是对的）。
+  const recs = itemRecs(items, (id) => getItem(id));
   // `memberBonds([])` = every GRANTED bond: 变形同构体 pairing + 装备自己的 grantsBonds (心之钢, 业主 2026-10-21).
   return memberBonds([], { recs, morphed: morphOption() });
 }
@@ -129,8 +130,7 @@ export function grantedBonds(items, getItem = () => null) {
  * @returns {string[]}
  */
 const grantedBondsOf = (own, trait, items, getItem, hasBond) => {
-  const list = Array.isArray(items) ? items : [];
-  const recs = list.map((it) => getItem(typeof it === 'string' ? it : it?.id)).filter(isObj);
+  const recs = itemRecs(items, (id) => getItem(id));
   return memberBonds(own, { trait, recs, morphed: morphOption(), hasBond });
 };
 
@@ -159,12 +159,14 @@ export function pieceBondIds(chess, items, getItem = () => null, hasBond = null)
  * @param {{ off?: Set<string>|null, carried?: Array<string|{id:string}>|null }} [opts]
  * @returns {Array<{ bondId: string, name: string, off: boolean, worn: boolean, items: Array<{ id: string, name: string, worn: boolean }> }>}
  */
-export function morphPairings(itemRecs, bondRecs, { off = null, carried = null } = {}) {
-  const recs = [...(itemRecs || [])].filter(isObj);
+export function morphPairings(allItems, bondRecs, { off = null, carried = null } = {}) {
+  const recs = [...(allItems || [])].filter(isObj);
   const byId = new Map(recs.map((r) => [r.id, r]));
   const getItem = (id) => byId.get(id) || null;
   const worn = new Set(grantedBonds(carried, getItem));
-  const carriedIds = new Set((Array.isArray(carried) ? carried : []).map((it) => (typeof it === 'string' ? it : it?.id)).filter((x) => typeof x === 'string'));
+  // 锻炉: the wearer's ids with the fused 百变 expanded — 「身上有维式重锤」 must answer yes after a fusion, like the
+  // membership question does (both read the same expansion, shared/morph.js `itemIds`).
+  const carriedIds = new Set(itemIds(carried));
   const famOf = (r) => (typeof r.baseId === 'string' && r.baseId ? r.baseId : r.id);
   /** bondId → family id → { id, name, tier, order, ids } */
   const groups = new Map();
@@ -271,13 +273,14 @@ export function bondMembers(bond, priv, banned = [], getChess = () => null, getI
     diy.set(rec.diyFor, { on, hand, owned: true, rec: diyOfBond(normal) && normal.diyFor === rec.diyFor ? normal : rec, pick });
     return true;
   };
-  const itemIds = (p) => p.items.map((it) => (typeof it === 'string' ? it : it?.id)).filter((x) => typeof x === 'string');
+  // 锻炉: the wearer's item ids with the fused 百变 expanded (the member row names the components, like its bonds)
+  const itemIdsOf = (p) => itemIds(p.items);
   for (const p of Array.isArray(priv?.board) ? priv.board : []) {
     if (p?.kind !== 'chess') continue;
     const base = baseOf(p.id);
     onBoard.add(base); owned.add(base);
     if (diyOf(p, true, false)) continue;
-    if (!memberSet.has(base) && !granted.has(base) && grants(p)) granted.set(base, { on: true, hand: false, items: itemIds(p) });
+    if (!memberSet.has(base) && !granted.has(base) && grants(p)) granted.set(base, { on: true, hand: false, items: itemIdsOf(p) });
   }
   for (const [list, hand] of [[priv?.hand, true], [priv?.temp, false]]) {
     for (const p of Array.isArray(list) ? list : []) {
@@ -288,7 +291,7 @@ export function bondMembers(bond, priv, banned = [], getChess = () => null, getI
       if (diyOf(p, false, hand)) continue;
       if (memberSet.has(base) || !grants(p)) continue;
       const g = granted.get(base);
-      if (!g) granted.set(base, { on: false, hand, items: itemIds(p) });
+      if (!g) granted.set(base, { on: false, hand, items: itemIdsOf(p) });
       else if (hand) g.hand = true;
     }
   }

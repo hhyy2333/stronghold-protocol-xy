@@ -207,7 +207,11 @@ export class PlayerState {
     this._ownPool = null;
     /** slotted slots without stock: every bond of the operator is switched off this match */
     this.diyBanned = Object.freeze([]);
-    if (!this.isBot && seat.diy) this.setDiy(seat.diy);
+    if (!this.isBot && seat.diy) {
+      // 工坊包声明的自选干员（Lobby 算好的 kitted 名单）：没有工坊时这一支不存在，行为与从前逐字节相同。
+      if (this.m && Array.isArray(this.m.kitted)) this.setDiy(seat.diy, { kitted: this.m.kitted });
+      else this.setDiy(seat.diy);
+    }
     // 可露希尔大降价: `freeBuyWindow` = how many of the card's free REFRESHES are still ahead — purchases cost nothing
     // while it lasts, chess and equipment alike (owner's ruling 2026-10-18: 「免费购买是在三次刷新内有效」). It is tied
     // to the shop's refreshes: economy.js refresh() spends one, round.js startRound closes it (本回合内).

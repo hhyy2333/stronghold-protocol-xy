@@ -56,9 +56,14 @@ export function parseArgs(argv) {
   return o;
 }
 
-/** The server's environment: PORT / HOST, and SP_PLUGIN_SCRIPTS from --scripts (off removes an inherited one). */
+/**
+ * The server's environment: PORT / HOST, and SP_PLUGIN_SCRIPTS from --scripts (off removes an inherited one).
+ * 限伤（首领单次 ≥ 300000 整次作废，shared/constants.js `bossHitLimitFrom`）在本地启动时默认关闭：
+ * 只有**完全没设**这个变量时才写 `off`，显式给数字 / `inf` / 空串（空串 = 回到官方 300000）一律照旧。
+ */
 export function serverEnv(o, base = process.env) {
   const env = { ...base, PORT: String(o.port), HOST: o.host };
+  if (env.SP_BOSS_HIT_LIMIT === undefined) env.SP_BOSS_HIT_LIMIT = 'off';
   if (o.scripts === 'off') delete env.SP_PLUGIN_SCRIPTS;
   else if (o.scripts) env.SP_PLUGIN_SCRIPTS = o.scripts;
   return env;

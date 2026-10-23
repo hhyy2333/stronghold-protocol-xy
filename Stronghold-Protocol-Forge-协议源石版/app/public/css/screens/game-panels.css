@@ -216,6 +216,14 @@
 .ditem__text { display: flex; flex-direction: column; gap: .02rem; min-width: 0; }
 .ditem__text b { font-size: calc(.15 * var(--t)); }
 .ditem__desc { font-size: calc(.13 * var(--t)); line-height: 1.55; color: var(--text-lo); }
+/* 百变 (锻炉): which two items the fused piece swallowed (detailPanel FusedFrom) — a lead line + one row per component
+   (name + its own effect text), indented under the 百变 line like a footnote to it. */
+.dfuse { display: flex; flex-direction: column; gap: .03rem; margin-top: .04rem; padding-left: .08rem; border-left: 2px solid var(--line-3); }
+.dfuse__lead { margin: 0; font-size: calc(.12 * var(--t)); color: var(--text-dim); }
+.dfuse__list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .02rem; }
+.dfuse__row { font-size: calc(.12 * var(--t)); line-height: 1.5; color: var(--text-lo); overflow-wrap: anywhere; }
+.dfuse__name { margin-right: .06rem; color: var(--mint-400); font-size: calc(.13 * var(--t)); }
+.dfuse__desc { color: var(--text-lo); }
 .dempty { font-size: calc(.14 * var(--t)); }
 .dhint { display: flex; align-items: flex-start; gap: .06rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); line-height: 1.6; }
 .dhint .icon { width: .16rem; height: .16rem; margin-top: .03rem; flex: none; }
@@ -959,11 +967,28 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
   flex: 1; min-width: 0; padding: .04rem .06rem; font: inherit; color: var(--text-hi);
   background: var(--bg-2); border: 1px solid var(--line); border-radius: .03rem;
 }
-/* the card grid: scrolls on its own (the section is the flex child that gives up height), 4 cards per row */
+/* the card grid: scrolls on its own (the section is the flex child that gives up height), 4 cards per row.
+   业主 2026-10-24「给测试场的选择界面加个滚动条」 — the root cause was NOT a missing `overflow`: the grid already scrolled.
+   `grid-auto-rows` defaults to `auto`, and an `auto` track in a grid whose height is fixed by its flex parent may shrink
+   to the items' MIN-content height — and a card's min-content is just its border + padding (the plate is an
+   `aspect-ratio` box, the name `nowrap`), so all 79 cards were squashed to ~17 px and the grid never overflowed. With
+   nothing to overflow, no bar could ever appear. `grid-auto-rows: max-content` gives every row its full card height, and
+   the pool (18 rows) then really overflows the capped panel.
+   The bar itself is drawn here rather than inherited: the global 6 px `--line-2` thumb all but vanishes on the
+   near-black panel, so a tester never learned there was more below — same treatment as the effects column
+   (`screens/game.css` `.gm__effects`). `overflow-x: hidden` keeps a vertical bar from re-flowing the columns. */
 .tarena__grid {
-  flex: 1; min-height: 0; overflow: auto; display: grid; gap: .06rem;
-  grid-template-columns: repeat(auto-fill, minmax(.62rem, 1fr)); align-content: start; padding-right: .02rem;
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: grid; gap: .06rem;
+  grid-template-columns: repeat(auto-fill, minmax(.62rem, 1fr)); grid-auto-rows: max-content;
+  align-content: start; padding-right: .02rem;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-3) transparent;
 }
+.tarena__grid::-webkit-scrollbar { width: max(.06rem, 6px); }
+.tarena__grid::-webkit-scrollbar-track { background: rgba(0, 0, 0, .4); }
+.tarena__grid::-webkit-scrollbar-thumb { background: var(--line-3); border-radius: max(.03rem, 3px); }
+.tarena__grid::-webkit-scrollbar-thumb:hover { background: var(--mint-700); }
 .tarena__empty { padding: .16rem 0; font-size: max(calc(.13 * var(--t)), 10px); }
 /* the label row of the card section: the 我方 / 敌方 tabs (the shared Tabs component, compact) plus 清空 */
 .tarena__sec--hex .tarena__label { flex-wrap: wrap; row-gap: .04rem; }

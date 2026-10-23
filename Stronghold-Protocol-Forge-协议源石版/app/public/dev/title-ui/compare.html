@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>标题页视觉优化 · 前后对照</title>
+<style>
+  :root {
+    --bg: #0a0d0c;
+    --panel: #121614;
+    --line: #26302b;
+    --mint: #4ed8af;
+    --mint-glow: #17f9b7;
+    --hi: #f2f2f2;
+    --md: #a8b2ad;
+    --lo: #6d7873;
+    font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--hi); overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+
+  header {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 14px 22px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #12161400, #12161466), #0c100e;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand b { font-size: 15px; letter-spacing: .04em; }
+  .brand span { font-size: 11px; color: var(--lo); letter-spacing: .22em; text-transform: uppercase; }
+  .brand i { width: 9px; height: 9px; border: 1px solid var(--mint); display: inline-block; transform: rotate(45deg); }
+
+  .group { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  .group > label { font-size: 11px; color: var(--lo); letter-spacing: .12em; margin-right: 2px; }
+  button.chip {
+    height: 30px; padding: 0 12px; font: inherit; font-size: 12px; cursor: pointer;
+    color: var(--md); background: #161b19; border: 1px solid var(--line);
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  button.chip:hover { color: var(--hi); border-color: #3a4842; }
+  button.chip[aria-pressed="true"] { color: #06110d; background: var(--mint); border-color: var(--mint); font-weight: 700; }
+
+  main { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; padding: 18px; }
+  .stage-wrap { position: relative; }
+
+  /* 两个 iframe 同尺寸叠放，上层用 clip-path 切开：拖动分割线即是对照 */
+  .stage { position: relative; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 18px 50px #0009; }
+  .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0c0f0e; }
+  .stage iframe.top { clip-path: inset(0 calc(100% - var(--p, 50%)) 0 0); }
+  .stage .divider {
+    position: absolute; top: 0; bottom: 0; left: var(--p, 50%); width: 1px;
+    background: var(--mint); box-shadow: 0 0 12px #17f9b788; pointer-events: none;
+  }
+  .stage .divider::after {
+    content: '‹ ›'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%;
+    background: #0c0f0e; border: 1px solid var(--mint); color: var(--mint); font-size: 12px; letter-spacing: 1px;
+  }
+  .stage .tagbefore, .stage .tagafter {
+    position: absolute; top: 10px; padding: 4px 10px; font-size: 11px; letter-spacing: .16em;
+    background: #0c0f0ed9; border: 1px solid var(--line); color: var(--md); pointer-events: none;
+  }
+  .stage .tagbefore { left: 10px; }
+  .stage .tagafter { right: 10px; color: var(--mint); border-color: #2a9e7f88; }
+  input[type="range"] {
+    position: absolute; left: 0; right: 0; bottom: 0; width: 100%; margin: 0; height: 100%;
+    opacity: 0; cursor: col-resize;
+  }
+  footer { padding: 10px 22px 16px; font-size: 12px; color: var(--lo); line-height: 1.7; }
+  footer b { color: var(--md); font-weight: 500; }
+  kbd { font: inherit; font-size: 11px; border: 1px solid var(--line); padding: 1px 5px; color: var(--md); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><i></i><b>卫戍协议 · 开始界面</b><span>title screen · 未来感改版</span></div>
+  <div class="group">
+    <label>左侧对照</label>
+    <button class="chip" data-left="tactical" aria-pressed="true">上一版 · 战术</button>
+    <button class="chip" data-left="before" aria-pressed="false">原始版</button>
+  </div>
+  <div class="group">
+    <label>视口</label>
+    <button class="chip" data-size="1600x900" aria-pressed="true">桌面 1600×900</button>
+    <button class="chip" data-size="1366x768" aria-pressed="false">笔记本 1366×768</button>
+    <button class="chip" data-size="844x390" aria-pressed="false">手机横屏 844×390</button>
+    <button class="chip" data-size="1920x1080" aria-pressed="false">1080p</button>
+  </div>
+</header>
+
+<main>
+  <div class="stage-wrap" id="wrap">
+    <div class="stage" id="stage">
+      <iframe class="base" src="title-preview.html?v=tactical" title="上一版"></iframe>
+      <iframe class="top" src="title-preview.html?v=after" title="本版"></iframe>
+      <div class="divider"></div>
+      <span class="tagbefore">上一版 · 战术</span>
+      <span class="tagafter">本版 · 未来感</span>
+      <input type="range" min="0" max="100" value="50" aria-label="对照分割线" />
+    </div>
+  </div>
+</main>
+
+<footer>
+  <b>拖动画面上的分割线</b>（或按 <kbd>←</kbd> <kbd>→</kbd>）左右对照；左侧可选「上一版 · 战术」或「原始版」，右侧是本次的未来感改版。两个 iframe 都用真实样式表渲染，只切换 <code>title.css</code> 与 <code>title.js</code> 的结构，因此差别就是这次改动的全部内容。
+</footer>
+
+<script src="compare.js"></script>
+</body>
+</html>

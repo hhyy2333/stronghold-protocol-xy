@@ -15,10 +15,13 @@
    bar's parts take the pointer: its box spans the empty space left of the tools, which used to swallow drags and taps
    on bench slots 5–9. */
 .gm__hud > .shopbar { pointer-events: none; }
-.shopbar__row, .shopbar__tools > button { pointer-events: auto; }
-.shopbar__tools { display: grid; grid-template-columns: auto auto; justify-content: end; align-items: center; gap: .06rem .12rem; }
+.shopbar__row, .shopbar__toolrow > button { pointer-events: auto; }
+/* 两行：上排「剩余可放置角色」，下排是按钮行。按钮行是 flex（不是 grid），因为**包插件要往冻结左边插一格**
+   （`[data-mod-slot="screen.game.shopTools"]`，DESIGN §28.8）—— grid 的两列一旦插进第三项，刷新会被挤到第三行。 */
+.shopbar__tools { display: flex; flex-direction: column; align-items: flex-end; gap: .06rem; }
+.shopbar__toolrow { display: flex; align-items: center; gap: .12rem; }
 .shopbar__remain {
-  grid-column: 1 / -1; justify-self: end; pointer-events: none;
+  pointer-events: none;
   font-size: .16rem; color: var(--text-md); padding: .04rem .14rem; background: rgba(8, 11, 10, .78);
   border-left: 3px solid var(--mint-500);
 }

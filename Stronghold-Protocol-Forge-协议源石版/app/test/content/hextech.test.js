@@ -12,7 +12,7 @@ import { DATA } from '../match/harness.js';
 import { getDefaultRegistry } from '../../server/match/effectsMeta.js';
 import { buildHextech, hextechText, validateHextech, OUT_FILE } from '../../tools/build-hextech.mjs';
 import { hexIds, battleModsOf, BATTLE_SPEC_KEYS, hasBattlePart, HEX_SCRIPT_KEYS } from '../../server/sim/content/hextech.js';
-import { applyEnemyHexes, enemyHexPayout, enemyHexPayoutFor, gainTraitExtraOf, bondNeedBonusOf } from '../../server/match/hextech.js';
+import { applyEnemyHexes, enemyHexPayout, enemyHexPayoutFor, gainTraitExtraOf, bondNeedBonusOf, hexAvailableTo, FORGE_ITEM_ID } from '../../server/match/hextech.js';
 import {
   rollOffers, pickEnemyRarity, pickEnemyHex, sumEnemyMods, rarityFallbackOrder, RARITY_ORDER, HEX_ROUNDS, hexEffectKey,
   ENEMY_VERBS,
@@ -28,19 +28,21 @@ test('data/hextech.json is what tools/build-hextech.mjs generates (run: node too
   assert.equal(fs.readFileSync(OUT_FILE, 'utf8'), hextechText(buildHextech()));
 });
 
-test('roster: 111 player + 43 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
+test('roster: 123 player + 43 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
   assert.deepEqual(validateHextech(buildHextech()), []);
   // tenth batch (the owner's list of 2026-10-15): 11 more player cards (79 -> 90) — 反击装甲 and 紧急拨款 are
   // REBALANCES of existing records, not additions, so they do not move the count.
   // thirteenth batch (业主 2026-10-19): 10 more player cards (90 -> 100).
   // fourteenth batch (业主 2026-10-19): 8 more player cards (100 -> 108).
   // fifteenth batch (业主 2026-10-21): 3 more player cards (108 -> 111).
-  assert.equal(PLAYER.length, 111);
+  // sixteenth batch (业主 2026-10-24): 11 more player cards (111 -> 122).
+  // seventeenth batch (业主 2026-10-24): 1 more — 核心盟约专属协议·维多利亚·锻炉 (122 -> 123).
+  assert.equal(PLAYER.length, 123);
   // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
   // fourteenth batch (业主 2026-10-19): 5 more enemy cards. 38 -> 43.
   assert.equal(ENEMY.length, 43);
   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
-  assert.equal(ids.size, 154);
+  assert.equal(ids.size, 166);
   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
   assert.deepEqual([...rarities], [...RARITY_ORDER]);
   for (const h of PLAYER) {
@@ -81,7 +83,7 @@ test('roster: 111 player + 43 enemy hexes, unique ids, known rarities and an eff
 test('every player hex has a registered hex: handler with onHexPick and onRoundStart (choices.test.js style)', () => {
   const reg = getDefaultRegistry();
   const ids = hexIds();
-  assert.equal(ids.length, 111);
+  assert.equal(ids.length, 123);
   for (const id of ids) {
     const h = reg.get(hexEffectKey(id));
     assert.ok(h, `hex:${id} handler`);
@@ -685,7 +687,8 @@ test('every sixth-batch card that acts in battle declares a BATTLE_SPEC_KEYS key
 
 test('幽魂形态: the item spec names ONE items.json record — the remake’s own 幽魂, and the id branch grants it', () => {
   const rec = HEXTECH.playerHexes.hex_ghostform;
-  assert.deepEqual(rec.effect.onPick, { item: { id: 'chess_item_9_90_e_a', count: 1 } });
+  // 业主 2026-10-24:「幽魂形态，加个转职球效果然后发两件」 — two copies, and the item itself is a 变形同构体 carrier.
+  assert.deepEqual(rec.effect.onPick, { item: { id: 'chess_item_9_90_e_a', count: 2 } });
   // the id must resolve in the GENERATED data (the roster cannot check that itself, so the test does)
   const item = DATA.items['chess_item_9_90_e_a'];
   assert.ok(item, 'the id resolves in data/items.json');
@@ -705,7 +708,7 @@ test('幽魂形态: the item spec names ONE items.json record — the remake’s
     grantItem: (id) => { grants.push(id); return { id }; },
   });
   reg.get(hexEffectKey('hex_ghostform')).onHexPick(ctx);
-  assert.deepEqual(grants, ['chess_item_9_90_e_a'], 'the record the card names is what lands in the hand');
+  assert.deepEqual(grants, ['chess_item_9_90_e_a', 'chess_item_9_90_e_a'], 'the record the card names is what lands in the hand — twice');
   assert.ok(reg.get(hexEffectKey('hex_ghostform')), 'hex:hex_ghostform handler');
 });
 
@@ -727,7 +730,8 @@ test('every tenth-batch card that acts in battle declares a BATTLE_SPEC_KEYS key
   }
   // the owner's numbers, verbatim: 120 % of ATK / 9999999, and ×1.5
   assert.deepEqual(HEXTECH.playerHexes.hex_logos.effect.logos, { atkPct: 120, damage: 9999999 });
-  assert.deepEqual(HEXTECH.playerHexes.hex_onebody.effect.oneBody, { dmgPct: 150 });
+  // 业主 2026-10-24: the duplicate-count + ATK half joined the shared pool / focus fire.
+  assert.deepEqual(HEXTECH.playerHexes.hex_onebody.effect.oneBody, { dmgPct: 150, atkPerCopyPct: 50 });
 });
 
 // =====================================================================================================================
@@ -749,7 +753,7 @@ test('the eleventh batch: 79 player hexes, the owner’s names and tiers verbati
     assert.equal(rec.name, name, `${id} name`);
     assert.equal(rec.rarity, rarity, `${id} tier`);
   }
-  assert.equal(Object.keys(HEXTECH.playerHexes).length, 111, '111 player hexes after the fifteenth batch');
+  assert.equal(Object.keys(HEXTECH.playerHexes).length, 123, '123 player hexes after the seventeenth batch');
 });
 
 
@@ -901,28 +905,23 @@ test('均衡盟约: a noStack bond (独行 / 绝技 / 调和 / 协防干员) tak
   assert.deepEqual(sets2, [], 'a single layer-holding bond needs no equalizing (the noStack ones are not participants)');
 });
 
-test('背水一战: below the LP threshold the round’s first refresh is free, and above it nothing happens', () => {
+test('背水一战: the card always arms the battle half, and the LP is SET to 1 on pick (业主 2026-10-24 rework)', () => {
   const reg = getDefaultRegistry();
   const h = reg.get(hexEffectKey('hex_lastditch'));
-  const low = ctxStub({ lp: () => 4 });
-  h.onRoundStart(low);
-  assert.equal(low.freeRefresh, 1, 'LP 4 < 5 ⇒ one free refresh');
-  const edge = ctxStub({ lp: () => 5 });
-  h.onRoundStart(edge);
-  assert.equal(edge.freeRefresh, undefined, 'LP 5 is NOT below 5');
-  // the battle arm the sim reads: the match stamps whether the window is open on the ref and on the input’s copy
+  // the battle arm the sim reads: the match stamps it ALWAYS (the card no longer waits for a low LP)
   const input = { playerEffects: [{ key: 'hex:hex_lastditch', data: { hexId: 'hex_lastditch' }, params: {} }] };
-  const arm = ctxStub({ lp: () => 3 });
+  const arm = ctxStub({});
   arm.effects['hex:hex_lastditch'] = { id: 'hex:hex_lastditch', params: {} };
   arm.ev = { input };
   h.onBattleStart(arm);
   assert.equal(arm.effects['hex:hex_lastditch'].params.lastDitch.active, true, 'the ref carries active: true');
   assert.equal(input.playerEffects[0].params.lastDitch.active, true, 'and the battle input’s own copy too');
-  const arm2 = ctxStub({ lp: () => 9 });
-  arm2.effects['hex:hex_lastditch'] = { id: 'hex:hex_lastditch', params: {} };
-  arm2.ev = { input: { playerEffects: [] } };
-  h.onBattleStart(arm2);
-  assert.equal(arm2.effects['hex:hex_lastditch'].params.lastDitch.active, false, 'above the threshold the arm says closed');
+  // the record itself: 「目标生命自动变为1然后锁血两回合。干员攻击力+50叠层+50%」
+  const rec = HEXTECH.playerHexes.hex_lastditch;
+  assert.equal(rec.effect.onPick.lpSet, 1, 'the pick sets the LP to 1');
+  assert.equal(rec.effect.lastDitch.lockRounds, 2, 'LP loss is locked for two rounds');
+  assert.equal(rec.effect.lastDitch.layerMul, 1.5, '叠层 +50%');
+  assert.equal(rec.effect.battle.atkPct, 50, '干员攻击力 +50%');
 });
 
 /** `ctx.gd` for the two 主权 / 寄生 card tests: the raw data plus the two lookups the handlers ask for. */
@@ -1141,4 +1140,166 @@ test('心之钢: the card and its equipment are wired end to end, and the item g
   round();                                     // R6
   assert.equal(grants.length, 3, 'three in total, then the `total` cap stops it');
   assert.ok(grants.every((id) => id === 'chess_item_9_96_e_a'));
+});
+
+// =====================================================================================================================
+// §29.40 — the sixteenth batch (业主 2026-10-24): eleven new player cards + twelve rebalances.
+// =====================================================================================================================
+
+test('sixteenth batch: eleven new cards — tiers, spec keys and the battle wiring', () => {
+  const BATTLE = {
+    hex_adaptivegrowth: 'adaptiveGrowth', hex_drawblade: 'drawBlade', hex_pressurecooker: 'pressureCooker',
+    hex_spellarcher: 'spellArcher', hex_soulbomb: 'soulBomb', hex_dread: 'dread',
+    hex_infernalconduit: 'infernalConduit',
+  };
+  const tiers = {
+    hex_selfless: 'prismatic', hex_dollwholesale: 'gold', hex_pager: 'gold', hex_adaptivegrowth: 'prismatic',
+    hex_drawblade: 'prismatic', hex_pressurecooker: 'prismatic', hex_spellarcher: 'gold', hex_soulbomb: 'prismatic',
+    hex_dread: 'silver', hex_infernalconduit: 'prismatic', hex_artifactkit: 'prismatic',
+  };
+  for (const [id, rarity] of Object.entries(tiers)) {
+    const rec = HEXTECH.playerHexes[id];
+    assert.ok(rec, `${id} is in the roster`);
+    assert.equal(rec.rarity, rarity, `${id} tier`);
+    assert.ok(rec.desc && rec.desc.length > 4, `${id} carries the owner’s text`);
+  }
+  for (const [id, key] of Object.entries(BATTLE)) {
+    const rec = HEXTECH.playerHexes[id];
+    assert.ok(Object.keys(rec.effect).includes(key), `${id} declares ${key}`);
+    assert.ok(BATTLE_SPEC_KEYS.includes(key), `${key} must be in BATTLE_SPEC_KEYS`);
+    assert.equal(HEX_SCRIPT_KEYS[id], key, `${id} is wired to its module`);
+    assert.ok(hasBattlePart(rec.effect), `${id}: the ref must reach a battle`);
+    assert.ok(getDefaultRegistry().get(hexEffectKey(id)), `hex:${id} handler`);
+  }
+  // 幽魂形态's SP-cut half joined the SAME card (no new record, a second script key)
+  const echo = HEXTECH.playerHexes.hex_echoform;
+  assert.ok(BATTLE_SPEC_KEYS.includes('echoForm'));
+  assert.equal(HEX_SCRIPT_KEYS.hex_echoform, 'echoForm');
+  assert.deepEqual(echo.effect.battle, { extraCharges: 1 }, 'the charge half is unchanged');
+});
+
+test('玩偶批发商 / 寻呼高手: the item grants of the sixteenth batch', () => {
+  const reg = getDefaultRegistry();
+  const dolls = reg.get(hexEffectKey('hex_dollwholesale'));
+  const grants = [];
+  // ctx.rng() = 0 ⇒ the FIRST id of the list
+  const ctx = ctxStub({ grantItem: (id) => { grants.push(id); return { id }; }, rng: () => 0 });
+  dolls.onRoundStart(ctx);
+  assert.deepEqual(grants, ['chess_item_2_05_e_a'], 'the roll picks one of the two dolls');
+  const r2 = [];
+  dolls.onRoundStart(ctxStub({ grantItem: (id) => { r2.push(id); return { id }; }, rng: () => 0.99 }));
+  assert.deepEqual(r2, ['chess_item_2_07_e_a'], 'and the other one at the other end of the stream');
+
+  const pager = reg.get(hexEffectKey('hex_pager'));
+  const got = [];
+  const pctx = ctxStub({ grantItem: (id) => { got.push(id); return { id }; } });
+  pager.onHexPick(pctx);
+  assert.deepEqual(got, ['chess_item_4_01_e_a'], 'the pick hands one out at once');
+  pager.onRoundStart(pctx);                    // n = 1: skipFirst
+  assert.equal(got.length, 1, 'the first round start after the pick is skipped');
+  pager.onRoundStart(pctx);                    // n = 2: (n − 1) % 2 ≠ 0
+  assert.equal(got.length, 1);
+  pager.onRoundStart(pctx);                    // n = 3: the first scheduled one
+  assert.equal(got.length, 2, 'every two rounds after that');
+});
+
+// 业主 2026-10-24：「协议神器整备修改成获得1阶协议源石的装备2阶协议源石的装备3阶协议源石的装备」——追问里业主选的
+// 是「A 只发凭证装备」＋「时机不变」，所以这里断言的是**发哪几件**，不再是之前那三阶「进阶装备」。
+const ARTIFACT_T1 = 'chess_item_9_93_e_a';                    // 【加护】← 协议源石【加护】（1阶 silver）
+const ARTIFACT_T2 = 'chess_item_9_92_e_a';                    // 【残光】← 协议源石【残光】（2阶 gold）
+const ARTIFACT_T3 = [                                         // 五张 3阶（prismatic）源石的凭证，随机一件
+  'chess_item_9_90_e_a',                                      // 【幽魂】← 幽魂形态
+  'chess_item_9_91_e_a',                                      // 【恶魔之契】← 恶魔形态
+  'chess_item_9_94_e_a',                                      // 【万物归虚】← 万物归虚
+  'chess_item_9_95_e_a',                                      // 【尸山】← 尸山
+  'chess_item_9_96_e_a',                                      // 【心之钢】← 心之钢
+];
+
+test('神器整备: 按协议源石的阶位发装备 —— 1阶 on pick, 2阶 next round, 3阶 three rounds after', () => {
+  const reg = getDefaultRegistry();
+  const h = reg.get(hexEffectKey('hex_artifactkit'));
+  const grants = [];
+  let round = 5;
+  // ctx.rng() = 0 ⇒ the FIRST id of every rung's own list
+  const ctx = ctxStub({ round, rng: () => 0, grantItem: (id) => { grants.push(id); return { id }; } });
+  h.onHexPick(ctx);
+  assert.deepEqual(grants, [ARTIFACT_T1], 'the pick hands out 加护, the 1阶 stone equipment');
+  ctx.round = 6;                                // the NEXT round
+  h.onRoundStart(ctx);
+  assert.deepEqual(grants, [ARTIFACT_T1, ARTIFACT_T2], 'and 残光, the 2阶 one, next round');
+  ctx.round = 7;
+  h.onRoundStart(ctx);
+  assert.equal(grants.length, 2, 'round +2 pays nothing yet');
+  ctx.round = 8;                                // three rounds after the pick
+  h.onRoundStart(ctx);
+  assert.equal(grants.length, 3, 'one 3阶 stone equipment three rounds after the pick');
+  assert.ok(ARTIFACT_T3.includes(grants[2]), `the 3阶 rung grants one of the five (got ${grants[2]})`);
+  ctx.round = 9;
+  h.onRoundStart(ctx);
+  assert.equal(grants.length, 3, 'then the ladder is spent');
+  // the other end of the stream takes the LAST id of the 3阶 list — the roll really covers the whole pool
+  const seen = [];
+  const ctx2 = ctxStub({ round: 20, rng: () => 0.999, grantItem: (id) => { seen.push(id); return { id }; } });
+  h.onHexPick(ctx2);
+  ctx2.round = 24;                              // pick + 4 ≥ delta 3
+  h.onRoundStart(ctx2);
+  assert.deepEqual(seen, [ARTIFACT_T1, ARTIFACT_T2, ARTIFACT_T3[ARTIFACT_T3.length - 1]]);
+});
+
+test('神器整备 的三档装备各自来自「对应阶位」的协议源石（反查 data/hextech.json）', () => {
+  const rec = HEXTECH.playerHexes.hex_artifactkit;
+  const rungs = rec.effect.onRoundStart.artifactStage.rungs;
+  // item id → the card that hands it out: the 凭证 equipment is granted by its stone's own onPick.item
+  const owner = new Map();
+  for (const card of Object.values(HEXTECH.playerHexes)) {
+    const it = card.effect && card.effect.onPick && card.effect.onPick.item;
+    if (it && typeof it.id === 'string' && !owner.has(it.id)) owner.set(it.id, card);
+  }
+  const tierOf = { silver: 1, gold: 2, prismatic: 3 };
+  const check = (ids, tier) => {
+    for (const id of ids) {
+      assert.ok(DATA.items[id], `${id} resolves in data/items.json`);
+      const stone = owner.get(id);
+      assert.ok(stone, `${id} is handed out by a 协议源石 card`);
+      assert.equal(tierOf[stone.rarity], tier, `${id} must come from a ${tier} 阶 stone (its card is ${stone.id} / ${stone.rarity})`);
+    }
+  };
+  check(rec.effect.onPick.artifactKit.ids, 1);
+  check(rungs[0].ids, 2);
+  check(rungs[1].ids, 3);
+  // the timing the owner kept: 下一回合 = delta 1, 3 回合后 = delta 3
+  assert.deepEqual(rungs.map((r) => r.delta), [1, 3]);
+  // 【百变】(9_97) is 【锻炉】's FUSION product — it carries no effect of its own, so it never enters a rung
+  const all = [rec.effect.onPick.artifactKit.ids, ...rungs.map((r) => r.ids)].flat();
+  assert.ok(!all.includes('chess_item_9_97_e_a'), '百变 is a fusion product, not a stone grant');
+});
+
+// =====================================================================================================================
+// §29.41 — 核心盟约专属协议 · 维多利亚 · 锻炉（业主 2026-10-24）
+// =====================================================================================================================
+
+test('锻炉 (专属·维多利亚): the card, its bond gate and the 百变 item record', () => {
+  const rec = HEXTECH.playerHexes.hex_forge;
+  assert.ok(rec, 'the card is in the roster');
+  assert.equal(rec.rarity, 'gold', '2阶');
+  assert.equal(rec.requiresBond, 'victoriaShip', 'only offered while 【维多利亚】 is active');
+  assert.ok(DATA.bonds[rec.requiresBond], 'the gated bond resolves in data/bonds.json');
+  assert.deepEqual(rec.effect.forge, { itemId: FORGE_ITEM_ID });
+  assert.equal(hasBattlePart(rec.effect), false, 'the card itself never reaches a battle — its ITEM does');
+  // the fused item
+  const item = DATA.items[FORGE_ITEM_ID];
+  assert.ok(item, 'the id resolves in data/items.json');
+  assert.equal(item.name, '百变');
+  assert.equal(item.itemType, 'EQUIP');
+  assert.equal(item.mergeable, false, 'never re-merged by the 3-copy rule');
+  assert.equal(item.upgradeNum, 100, 'the official "never merges" marker');
+  assert.equal(item.shopExcluded, true, 'no shop / 道具补给 / pool draw can offer it');
+  assert.equal(item.canGiveBond, false, '百变 itself is NOT a 变形同构体 — its components still are');
+  assert.ok(DATA.effects[item.effectId], 'its effect record resolves (data integrity pass)');
+  // the gate predicate: no field = everyone; an INACTIVE bond = nobody
+  assert.equal(hexAvailableTo({ bonds: {} }, rec), false);
+  assert.equal(hexAvailableTo({ bonds: { victoriaShip: { active: false } } }, rec), false);
+  assert.equal(hexAvailableTo({ bonds: { victoriaShip: { active: true } } }, rec), true);
+  // and every other card is untouched by the rule (no regression for the rest of the pool)
+  assert.equal(hexAvailableTo({ bonds: {} }, HEXTECH.playerHexes.hex_stipend), true);
 });

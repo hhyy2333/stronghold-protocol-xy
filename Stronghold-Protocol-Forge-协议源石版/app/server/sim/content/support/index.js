@@ -19,7 +19,7 @@
 
 import { getData } from '../../../data.js';
 import { COLS, DIRECT_BONUS_STACKING } from '../../constants.js';
-import { memberBonds } from '../../../../shared/morph.js';
+import { memberBonds, itemRecs } from '../../../../shared/morph.js';
 import { frontOf, offsetTile } from '../../dir.js';
 import { bodyInKeys, bodyDist, bodyInRadius, bodyOnTile, bodyTileReach, bodyInRange } from '../../body.js';
 
@@ -304,7 +304,7 @@ export function unitBonds(u) {
   // 是 `simdata.js` 投影出来的 trait **文本字符串**，它没有子键，读错了会静默地什么都不授予。
   // 缓存键不加特质：`u.def` 对一名单位是固定的（与下面这条 `def.bonds` 是同一条既有假设）。
   const own = Array.isArray(u.def?.bonds) ? u.def.bonds : Array.isArray(u.def?.raw?.bonds) ? u.def.raw.bonds : [];
-  const recs = items.map((id) => itemRecord(id)).filter(Boolean);
+  const recs = itemRecs(items, (id) => itemRecord(id));
   // `extraBonds` = 盟约共鸣借来的那些（已在 `battleInput` 里按数据表挡过不存在的 id），作为**第四条腿**并入；
   // 合并仍然只走 `memberBonds`，与装备 / 特质两条腿同一份判据。
   const out = memberBonds(own.concat(extra.filter((b) => !own.includes(b))), {

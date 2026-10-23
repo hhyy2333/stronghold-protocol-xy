@@ -24,7 +24,7 @@
 // Layers (`ps.layers[bondId]`) persist the whole match; they are reported for every bond but only matter while active.
 
 import { layerGainRoom } from '../../shared/constants.js';
-import { memberBonds } from '../../shared/morph.js';
+import { memberBonds, itemRecs } from '../../shared/morph.js';
 import { ownsHex, bondCapOf, fissionBondIds, bondNeedBonusOf } from './hextech.js';
 
 export const HARMONY_BOND = 'maniShip';
@@ -42,7 +42,9 @@ export const DEPUTY_BOND = 'deputShip';
 export function pieceBonds(gd, piece) {
   const c = gd.chess(piece.id);
   const items = Array.isArray(piece.items) ? piece.items : [];
-  const recs = items.map((it) => gd.item(it.id)).filter(Boolean);
+  // 锻炉 (业主 2026-10-24): `itemRecs` 把融合件（百变）展开成它吞掉的那两件 —— 百变本身是一条空记录，只看 `it.id`
+  // 会让「变形同构体 + 维式重锤」融成百变之后**丢掉**维多利亚的成员资格（战斗侧早就展开过，所以只有备战侧会错）。
+  const recs = itemRecs(items, (id) => gd.item(id));
   // 成员资格的**合并**在 `shared/morph.js` 的 `memberBonds`（一处判据、三处同源）：自己的 `bonds` ∪ 装备授予 ∪
   // **特质授予**（`c.trait.grantsBonds`，DESIGN §28.49）。这一处、战斗里的 `unitBonds` 与客户端的 `pieceBondIds`
   // 调的是同一个函数 —— 三处各写一份 push 循环正是这条规则历史上最容易分叉的地方。
@@ -75,23 +77,38 @@ function membership(gd, ps) {
   const inHand = new Map();
   const add = (m, bond, key) => { let s = m.get(bond); if (!s) m.set(bond, (s = new Set())); s.add(key); };
   const resonance = ownsHex(ps, 'hex_bondresonance');
+  // 你我一体 (业主 2026-10-24): 「相同干员均可增加盟约人数（原来只算一个）」 — while the player owns the card the member key is
+  // the PIECE (uid), not its base id, so two copies of one operator really are two members. Everything downstream
+  // (activation thresholds, 助力's variant tiers, the strip's count) reads the same `count`, so nothing else changes.
+  const dupeMembers = ownsHex(ps, 'hex_onebody');
+  // 亮剑 (业主 2026-10-24): 「所有远程干员盟约增加突袭」 — a RANGED board operator counts as a 突袭 (raidShip) member on the
+  // prep side too. Without this the bond would never ACTIVATE (activation is a member count), and the battle-side
+  // `extraBonds` it also grants would have nothing to trigger.
+  const drawBlade = ownsHex(ps, 'hex_drawblade');
+  const memberKey = (p, base) => (dupeMembers && p && p.uid != null ? `${base}#${p.uid}` : base);
   const at = (r, c) => { const p = ps.board.get(`${r},${c}`); return p && p.kind === 'chess' ? p : null; };
   for (const [key, p] of ps.board) {
     if (!p || p.kind !== 'chess') continue;
     const base = gd.baseIdOf(p.id);
     const golden = gd.isGolden(p.id);
-    for (const b of pieceBonds(gd, p)) { add(onBoard, b, base); add(onBoardVariant, b, `${base}|${golden ? 1 : 0}`); }
+    const mk = memberKey(p, base);
+    for (const b of pieceBonds(gd, p)) { add(onBoard, b, mk); add(onBoardVariant, b, `${base}|${golden ? 1 : 0}`); }
+    if (drawBlade) {
+      const rec = gd.chess(p.id);
+      if (rec && rec.position === 'RANGED') { add(onBoard, 'raidShip', mk); add(onBoardVariant, 'raidShip', `${base}|${golden ? 1 : 0}`); }
+    }
     if (!resonance) continue;
     const [r, c] = String(key).split(',').map(Number);
     for (const [dr, dc] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
       const n = at(r + dr, c + dc);
       if (!n) continue;
-      for (const b of pieceBonds(gd, n)) { add(onBoard, b, base); add(onBoardVariant, b, `${base}|${golden ? 1 : 0}`); }
+      for (const b of pieceBonds(gd, n)) { add(onBoard, b, mk); add(onBoardVariant, b, `${base}|${golden ? 1 : 0}`); }
     }
   }
   for (const p of handChess) {
     const base = gd.baseIdOf(p.id);
-    for (const b of pieceBonds(gd, p)) add(inHand, b, base);
+    const mk = memberKey(p, base);
+    for (const b of pieceBonds(gd, p)) add(inHand, b, mk);
   }
   return { onBoard, onBoardVariant, inHand, goldenOnBoard: boardChess.filter((p) => gd.isGolden(p.id)).length };
 }

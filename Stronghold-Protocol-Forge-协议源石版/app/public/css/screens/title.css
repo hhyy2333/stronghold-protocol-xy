@@ -1,12 +1,48 @@
 /* ==========================================================================================
-   screens/title.css — title screen: radar + ridgeline backdrop, dot-matrix emblem, big title,
-   nickname console. Pure CSS/SVG art; an optional backdrop image fades in underneath.
+   screens/title.css — title screen: holographic console, dot-matrix emblem, neon wordmark.
+
+   Look (2026-10-24, "futurism" pass): the tactical-paper frame is replaced by a holo-console —
+     · a perspective grid floor under everything, drifting slowly toward the viewer
+     · neon mint (#35ffc4) as the only light source, ice cyan (#7ce7ff) as the secondary read
+     · the console is a sheet of glass: 1px neon edge, inner scanlines, a light sweep every 7 s,
+       an angular lead-in bar on the top edge and bracket corners
+     · the primary action is notched on the bottom-right, the rule under the tagline is a ruler
+   Rhythm and alignment from the layout pass are kept: one 8 px grid (--tg-1/2/3), every row of the
+   console shares the same left/right gutter, the whole page sits on one centre line.
    ========================================================================================== */
 
-.title-screen { align-items: center; justify-content: center; }
+.title-screen {
+  align-items: center;
+  justify-content: center;
+  /* one rhythm for the whole screen: 8 design px, doubled and tripled */
+  --tg-1: .08rem;
+  --tg-2: .16rem;
+  --tg-3: .24rem;
+  /* neon */
+  --fx: #35ffc4;
+  --fx-soft: rgba(53, 255, 196, .16);
+  --fx-line: rgba(53, 255, 196, .22);
+  --fx-ice: #7ce7ff;
+  /* the console width + the brand type sizes are the only things the compact mode below changes */
+  --console-w: 5.6rem;
+  --emblem-h: 1.34rem;
+  --word-a: .27rem;
+  --word-b: .40rem;
+  --title-size: 1.06rem;
+  --tag-size: .17rem;
+}
 
 /* ---- backdrop ----------------------------------------------------------------------------------- */
-.title-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.title-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* the camera for the floor grid below: the vanishing point sits at 52% of the screen, which is
+     where the grid's far edge is meant to melt into the dark */
+  perspective: 44rem;
+  perspective-origin: 50% 52%;
+}
 .title-bg__art {
   position: absolute;
   inset: 0;
@@ -15,10 +51,10 @@
   object-fit: cover;
   opacity: 0;
   object-position: center 30%;
-  filter: saturate(.8) brightness(.9);
+  filter: saturate(.62) brightness(.72) hue-rotate(-8deg);
   transition: opacity 600ms ease;
 }
-.title-bg.has-art .title-bg__art { opacity: .8; }
+.title-bg.has-art .title-bg__art { opacity: .78; }
 /* The real backdrop already carries a radar + target point; keep only the sweep over it. */
 .title-bg.has-art .title-bg__target { display: none; }
 .title-bg.has-art .title-bg__radar { opacity: .35; }
@@ -32,6 +68,7 @@
   background-position: center bottom;
   background-size: auto 100%;
   opacity: 0;
+  filter: saturate(.7) brightness(.85);
   transition: opacity 600ms ease;
 }
 .title-bg.has-ridges .title-bg__ridge-art { opacity: 1; }
@@ -42,14 +79,34 @@
   left: -10%;
   right: -10%;
   bottom: 0;
-  height: 6rem;
+  height: 6.2rem;
   background:
-    radial-gradient(48% 42% at 50% 78%, rgba(23, 249, 183, .40), rgba(23, 249, 183, .08) 62%, transparent 76%),
-    radial-gradient(26% 26% at 50% 80%, rgba(120, 255, 215, .30), transparent 70%);
-  filter: blur(6px);
+    radial-gradient(46% 40% at 50% 80%, rgba(53, 255, 196, .34), rgba(53, 255, 196, .06) 62%, transparent 76%),
+    radial-gradient(28% 26% at 50% 82%, rgba(124, 231, 255, .18), transparent 70%);
+  filter: blur(7px);
   animation: glow-breathe 7s ease-in-out infinite;
 }
-@keyframes glow-breathe { 50% { opacity: .78; } }
+@keyframes glow-breathe { 50% { opacity: .72; } }
+
+/* holographic floor: a perspective grid receding to the horizon, drifting toward the viewer */
+.title-bg__grid {
+  position: absolute;
+  left: -60%;
+  right: -60%;
+  bottom: 0;
+  height: 120%;
+  background:
+    repeating-linear-gradient(90deg, rgba(53, 255, 196, .22) 0 1px, transparent 1px 2.4rem),
+    repeating-linear-gradient(0deg, rgba(53, 255, 196, .14) 0 1px, transparent 1px 1.4rem);
+  background-position: 0 0, 0 0;
+  transform: rotateX(65deg);
+  transform-origin: 50% 100%;
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 30%, rgba(0, 0, 0, .5) 72%, transparent 96%);
+  mask-image: linear-gradient(to top, #000 0%, #000 30%, rgba(0, 0, 0, .5) 72%, transparent 96%);
+  opacity: .5;
+  animation: grid-drift 18s linear infinite;
+}
+@keyframes grid-drift { to { background-position: 0 0, 0 1.4rem; } }
 
 .title-bg__radar {
   position: absolute;
@@ -60,13 +117,13 @@
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background:
-    radial-gradient(circle, transparent 0 .05rem, rgba(78, 216, 175, .5) .05rem .065rem, transparent .065rem),
-    repeating-radial-gradient(circle, transparent 0 .69rem, rgba(78, 216, 175, .16) .69rem .7rem),
-    linear-gradient(rgba(78, 216, 175, .12), rgba(78, 216, 175, .12)) center / 100% 1px no-repeat,
-    linear-gradient(rgba(78, 216, 175, .12), rgba(78, 216, 175, .12)) center / 1px 100% no-repeat;
+    radial-gradient(circle, transparent 0 .05rem, rgba(53, 255, 196, .55) .05rem .065rem, transparent .065rem),
+    repeating-radial-gradient(circle, transparent 0 .69rem, rgba(53, 255, 196, .14) .69rem .7rem),
+    linear-gradient(rgba(53, 255, 196, .13), rgba(53, 255, 196, .13)) center / 100% 1px no-repeat,
+    linear-gradient(rgba(53, 255, 196, .13), rgba(53, 255, 196, .13)) center / 1px 100% no-repeat;
   -webkit-mask-image: radial-gradient(circle, #000 55%, transparent 71%);
   mask-image: radial-gradient(circle, #000 55%, transparent 71%);
-  opacity: .8;
+  opacity: .85;
 }
 .title-bg__sweep {
   position: absolute;
@@ -76,7 +133,7 @@
      clockwise from 0deg (12 o'clock), and radar-sweep rotates clockwise too — so the bright end has
      to sit at 100% (== 0deg) and fade counter-clockwise from there. Written the other way round
      (bright at 0% fading to 22%) the glow fans out AHEAD of the beam and the sweep reads backwards. */
-  background: conic-gradient(from 0deg, transparent 0 78%, rgba(23, 249, 183, .28) 100%);
+  background: conic-gradient(from 0deg, transparent 0 78%, rgba(53, 255, 196, .30) 100%);
   animation: radar-sweep 6s linear infinite;
 }
 @keyframes radar-sweep { to { transform: rotate(360deg); } }
@@ -114,28 +171,44 @@
 .title-bg__ridges { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 40%; }
 .title-bg__ridges .ridge { stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .title-bg__ridges .ridge--far { opacity: .95; }
+/* Cooler and deeper than the tactical pass: the neon lines and the grid are the only bright things,
+   so the middle of the screen has to stay close to black for them to read as light. */
 .title-bg__haze {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(12, 15, 14, .6) 0%, transparent 25%, transparent 70%, rgba(6, 8, 7, .7) 100%),
-    radial-gradient(46% 42% at 50% 44%, rgba(10, 13, 12, .82), rgba(10, 13, 12, .4) 60%, transparent 80%);
+    linear-gradient(180deg, rgba(4, 8, 12, .82) 0%, rgba(4, 8, 12, .18) 26%, rgba(3, 6, 9, .1) 58%, rgba(2, 5, 7, .88) 100%),
+    radial-gradient(44% 40% at 50% 46%, rgba(3, 7, 10, .74), rgba(3, 7, 10, .34) 62%, transparent 82%);
 }
 
 /* ---- corners ------------------------------------------------------------------------------------- */
-.title-corner { position: absolute; z-index: 2; display: flex; align-items: flex-start; gap: .12rem; line-height: 1.7; }
+.title-corner {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  gap: .12rem;
+  line-height: 1.55;
+}
 .title-corner--tl { left: .44rem; top: .38rem; }
-.title-corner--tr { right: .44rem; top: .38rem; text-align: right; }
+.title-corner--tr { right: .44rem; top: .38rem; }
 .title-corner__mark {
+  flex: none;
   width: .32rem;
   height: .32rem;
-  margin-top: .02rem;
-  border: 1px solid var(--mint-700);
+  margin-top: .03rem;
+  border: 1px solid var(--fx-line);
   background:
-    linear-gradient(var(--mint-500), var(--mint-500)) center / 40% 2px no-repeat,
-    linear-gradient(var(--mint-500), var(--mint-500)) center / 2px 40% no-repeat;
+    linear-gradient(var(--fx), var(--fx)) center / 40% 2px no-repeat,
+    linear-gradient(var(--fx), var(--fx)) center / 2px 40% no-repeat;
   clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  filter: drop-shadow(0 0 .1rem rgba(53, 255, 196, .5));
 }
+.title-corner__text .micro { display: inline-block; }
+/* the caption hangs under the tool row and shares its right edge, so the top-right block reads as
+   one column instead of two floating lines */
+.title-corner__stack { display: flex; flex-direction: column; align-items: flex-end; gap: .1rem; }
+.title-corner--tr .title-corner__caption { text-align: right; line-height: 1.55; }
 
 /* ---- centre column ------------------------------------------------------------------------------- */
 .title-main {
@@ -144,99 +217,264 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: -.3rem;
+  /* optical centring: the block sits a hair above the geometric middle, the footer owns the bottom */
+  margin-bottom: .14rem;
 }
 
-.emblem { position: relative; display: flex; align-items: center; gap: .26rem; margin-bottom: .26rem; animation: rise-in 600ms var(--ease-out) backwards; }
-.emblem__svg { width: 1.3rem; height: 1.4rem; overflow: visible; filter: drop-shadow(0 0 .12rem rgba(210, 255, 240, .25)); }
-.emblem__svg circle { fill: #dfe6e2; animation: dot-twinkle 4.8s ease-in-out infinite; }
+/* the brand block (emblem / wordmark / title / tagline) is one column; the short-viewport rules below
+   can turn the whole page into a row — brand on the left, console on the right — which is what a
+   landscape phone's 2:1 aspect actually has room for */
+.title-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.emblem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .26rem;
+  margin-bottom: .18rem;
+  animation: rise-in 600ms var(--ease-out) backwards;
+}
+/* the emblem is a projection, not a drawing: a soft mint halo behind the dot matrix */
+.emblem::before {
+  content: '';
+  position: absolute;
+  inset: -32% -18%;
+  background: radial-gradient(closest-side, rgba(53, 255, 196, .18), rgba(53, 255, 196, .06) 55%, transparent 76%);
+  filter: blur(5px);
+  pointer-events: none;
+}
+.emblem__svg { width: 1.18rem; height: 1.27rem; overflow: visible; filter: drop-shadow(0 0 .14rem rgba(53, 255, 196, .35)); }
+.emblem__svg circle { fill: #d9fff2; animation: dot-twinkle 4.8s ease-in-out infinite; }
 .emblem__svg circle.d1 { animation-delay: -.7s; }
 .emblem__svg circle.d2 { animation-delay: -1.4s; }
 .emblem__svg circle.d3 { animation-delay: -2.1s; }
 .emblem__svg circle.d4 { animation-delay: -2.8s; }
 .emblem__svg circle.d5 { animation-delay: -3.5s; }
 .emblem__svg circle.d6 { animation-delay: -4.2s; }
-.emblem__svg circle.is-accent { fill: var(--mint-glow); filter: drop-shadow(0 0 .04rem var(--mint-glow)); animation: none; }
-@keyframes dot-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
-.emblem__bracket { width: .16rem; height: 1.7rem; border: 2px solid rgba(223, 230, 226, .45); }
+.emblem__svg circle.is-accent { fill: var(--fx); filter: drop-shadow(0 0 .06rem var(--fx)); animation: none; }
+@keyframes dot-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+.emblem__bracket { width: .15rem; height: 1.52rem; border: 2px solid rgba(53, 255, 196, .38); }
 .emblem__bracket--l { border-right: 0; }
 .emblem__bracket--r { border-left: 0; }
 
+/* wordmark: the two lines step by size and colour (small grey tracking line → larger neon line), so
+   the eye lands on ALLIANCE and then on the Chinese title underneath */
 .title-en {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: .02rem;
+  gap: .04rem;
   font-family: var(--font-display);
   text-transform: uppercase;
   line-height: 1;
   animation: rise-in 600ms 80ms var(--ease-out) backwards;
 }
-.title-en__a { font-size: .34rem; font-weight: 500; letter-spacing: .3em; padding-left: .3em; color: #cdd6d1; }
+.title-en__a { font-size: var(--word-a); font-weight: 500; letter-spacing: .32em; padding-left: .32em; color: #9fb4ae; }
 .title-en__b {
-  font-size: .38rem;
+  font-size: var(--word-b);
   font-weight: 700;
   letter-spacing: .34em;
   padding-left: .34em;
-  color: var(--mint-500);
-  text-shadow: 0 0 .18rem rgba(23, 249, 183, .45);
+  color: var(--fx);
+  text-shadow: 0 0 .1rem rgba(53, 255, 196, .55), 0 0 .3rem rgba(53, 255, 196, .3), 0 0 .7rem rgba(53, 255, 196, .16);
 }
 .title-cn {
-  margin-top: .14rem;
-  font-size: 1.02rem;
+  margin-top: .18rem;
+  font-size: var(--title-size);
   font-weight: 900;
-  line-height: 1.12;
-  letter-spacing: .06em;
+  line-height: 1.1;
+  letter-spacing: .05em;
   color: #f4f6f5;
-  text-shadow: 0 .04rem .2rem rgba(0, 0, 0, .7);
+  text-shadow: 0 .04rem .2rem rgba(0, 0, 0, .78), 0 0 .5rem rgba(0, 0, 0, .5);
   animation: rise-in 600ms 140ms var(--ease-out) backwards;
 }
-.title-cn__colon { color: #f4f6f5; }
+/* the colon is punctuation between two halves, not a third word — it steps back so 卫戍协议 and 盟约
+   read as the two halves of one name */
+.title-cn__colon { color: #f4f6f5; opacity: .45; }
 /* a title in an alphabetic script (English …; screens/title.js): the display face, smaller so "Stronghold Protocol: Alliance" fits one line */
 .title-cn--latin { font-family: var(--font-display); font-size: .6rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
-.title-cn em { font-style: normal; color: var(--mint-500); text-shadow: 0 0 .26rem rgba(23, 249, 183, .45); }
+.title-cn em {
+  font-style: normal;
+  color: #5dffd0;
+  text-shadow: 0 0 .1rem rgba(53, 255, 196, .55), 0 0 .34rem rgba(53, 255, 196, .32), 0 0 .8rem rgba(53, 255, 196, .16);
+}
+/* the tagline is a subtitle, not a second headline: tighter tracking than the old .1em, one weight up
+   from --text-lo; the ruler under it is the HUD's "measure" mark */
 .title-tag {
-  margin-top: .12rem;
-  font-size: calc(.19 * var(--t));
-  color: var(--text-lo);
-  letter-spacing: .1em;
+  position: relative;
+  margin-top: .14rem;
+  padding-bottom: .2rem;
+  max-width: 9rem;
+  font-size: var(--tag-size);
+  line-height: 1.55;
+  color: #a6b0ab;
+  letter-spacing: .04em;
+  text-align: center;
   animation: rise-in 600ms 200ms var(--ease-out) backwards;
+}
+.title-tag::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 6.2rem;
+  height: .07rem;
+  transform: translateX(-50%);
+  background:
+    repeating-linear-gradient(90deg, rgba(53, 255, 196, .5) 0 1px, transparent 1px .2rem) left bottom / 100% .07rem no-repeat,
+    linear-gradient(90deg, transparent, rgba(53, 255, 196, .32) 14%, rgba(53, 255, 196, .32) 86%, transparent) left bottom / 100% 1px no-repeat;
+  opacity: .8;
 }
 @keyframes rise-in { from { opacity: 0; transform: translateY(.14rem); } }
 
+/* ---- the console (a sheet of glass) ---------------------------------------------------------------- */
 .title-login {
-  --bk-c: var(--mint-500);
+  --bk-c: var(--fx);
   position: relative;
-  width: 4.9rem;
-  margin-top: .42rem;
+  width: var(--console-w);
+  max-width: calc(100vw - .48rem);
+  margin-top: .3rem;
   display: flex;
   flex-direction: column;
-  gap: .16rem;
-  padding: .24rem .28rem .2rem;
-  background: linear-gradient(180deg, rgba(20, 25, 23, .82), rgba(10, 13, 12, .88));
-  border: 1px solid var(--line-2);
-  box-shadow: 0 .2rem .5rem rgba(0, 0, 0, .5), 0 0 .5rem rgba(23, 249, 183, .06);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
+  /* the rhythm lives on `> * + *` so the blocks below only have to say where they differ */
+  padding: .22rem .32rem .2rem;
+  background:
+    linear-gradient(180deg, rgba(10, 24, 22, .82), rgba(4, 9, 10, .94)),
+    radial-gradient(120% 60% at 50% 0%, rgba(53, 255, 196, .07), transparent 70%);
+  border: 1px solid var(--fx-line);
+  box-shadow:
+    inset 0 1px 0 rgba(53, 255, 196, .22),
+    inset 0 0 .6rem rgba(53, 255, 196, .05),
+    0 0 1.4rem rgba(53, 255, 196, .1),
+    0 .3rem .8rem rgba(0, 0, 0, .6);
+  -webkit-backdrop-filter: blur(9px) saturate(1.2);
+  backdrop-filter: blur(9px) saturate(1.2);
   animation: rise-in 600ms 260ms var(--ease-out) backwards;
 }
+.title-login > * + * { margin-top: var(--tg-2); }
+/* console header: an angular lead-in bar on the top edge, then the rule fades out to the right */
 .title-login::before {
   content: '';
   position: absolute;
   left: -1px;
-  right: -1px;
   top: -1px;
-  height: 2px;
-  background: linear-gradient(90deg, var(--mint-500), transparent 60%);
+  width: 2.4rem;
+  height: 3px;
+  background: linear-gradient(90deg, var(--fx), rgba(53, 255, 196, .1));
+  clip-path: polygon(0 0, 100% 0, calc(100% - .12rem) 100%, 0 100%);
+  filter: drop-shadow(0 0 .08rem rgba(53, 255, 196, .7));
 }
-.title-login .btn--xl { letter-spacing: .6em; padding-left: calc(.48rem + .3em); }
-/* 下载完整素材 and 导入素材包 side by side under the login box (ui/assetDownload.js, ui/assetImport.js), each with its hint line;
-   a label too long for its half (a larger 文字大小) wraps inside its button instead of spilling over the other one */
-.title-assets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .12rem; width: 4.9rem; margin-top: .12rem; text-align: center; }
+/* bracket corners (the frame language): top-left and bottom-right in mint, top-right and bottom-left
+   as short ice ticks — the asymmetry is what makes it read as a HUD window, not a card */
+.title-login::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--fx), var(--fx)) top left / .2rem 2px no-repeat,
+    linear-gradient(var(--fx), var(--fx)) top left / 2px .2rem no-repeat,
+    linear-gradient(var(--fx), var(--fx)) bottom right / .2rem 2px no-repeat,
+    linear-gradient(var(--fx), var(--fx)) bottom right / 2px .2rem no-repeat,
+    linear-gradient(var(--fx-ice), var(--fx-ice)) top right / .1rem 1px no-repeat,
+    linear-gradient(var(--fx-ice), var(--fx-ice)) bottom left / .1rem 1px no-repeat;
+  opacity: .85;
+}
+/* scanlines + the light sweep (a child, so both pseudo elements of the panel stay available) */
+.title-login__holo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.title-login__holo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(120, 255, 220, .05) 0 1px, transparent 1px 3px);
+  opacity: .8;
+}
+.title-login__holo::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 38%;
+  background: linear-gradient(180deg, transparent, rgba(53, 255, 196, .05) 62%, rgba(53, 255, 196, .3) 98%, transparent);
+  animation: holo-sweep 7s cubic-bezier(.45, 0, .55, 1) infinite;
+}
+@keyframes holo-sweep {
+  0% { transform: translateY(-105%); opacity: 0; }
+  8% { opacity: .9; }
+  92% { opacity: .9; }
+  100% { transform: translateY(268%); opacity: 0; }
+}
+
+.title-login__id { display: block; }
+.title-login__act { display: block; margin-top: .2rem; }
+/* 开始: the primary action. Notched on the bottom-right (a hardware key, not a rectangle); the label
+   keeps a little track so the chevrons are not pushed into the hatch strip. Inside the notch the
+   button's own hover brackets would be clipped away, so the feedback is an inner edge light. */
+.title-login .btn--xl {
+  height: .78rem;
+  letter-spacing: .2em;
+  padding-left: calc(.32rem + .2em);
+  background-size: .26rem 100%, 100% 100%;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - .14rem), calc(100% - .14rem) 100%, 0 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), inset 0 .22rem .5rem rgba(255, 255, 255, .16);
+}
+.title-login .btn--xl:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #d9fff2, inset 0 .22rem .6rem rgba(255, 255, 255, .3); }
+.title-login .btn--xl .btn__icon { width: 1.05em; height: 1.05em; opacity: .95; }
+html[data-script="alphabetic"] .title-login .btn--xl { letter-spacing: .12em; padding-left: calc(.32rem + .12em); }
+
+/* 预载素材 / 导入素材包 — secondary to the point of being quiet: no fill, a hairline border, and the
+   hint line under each one. They used to be `.btn--secondary` and, together with the panel border and
+   the 开始 button, made three competing boxes; and the grid was a fixed 4.9rem inside a 4.9rem panel,
+   i.e. wider than the panel's own gutters (it is 100% now). */
+.title-assets {
+  display: grid;
+  /* one column per button, not two fixed ones: on a phone the 导入素材包 entry can be absent
+     (ui/assetImport.js importButtonShown is false without the File System APIs), and a fixed
+     2-column grid then left 预载素材 at half width with a hole beside it */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: .16rem;
+  width: 100%;
+  margin-top: .18rem;
+  text-align: center;
+}
 .title-assets__item { min-width: 0; }
 /* (`>`: the dialogs render inside the items — their buttons keep the shared sizes) */
-.title-assets__item > .btn { height: auto; min-height: .36rem; padding-top: .04rem; padding-bottom: .04rem; white-space: normal; line-height: 1.15; }
-.title-assets__item > small { display: block; margin-top: .06rem; color: var(--text-lo); font-size: calc(.12 * var(--t)); line-height: 1.35; }
+.title-assets__item > .btn {
+  height: auto;
+  min-height: .4rem;
+  padding: .05rem .12rem;
+  white-space: normal;
+  line-height: 1.25;
+  --btn-bg: rgba(53, 255, 196, .03);
+  --btn-bg-hover: rgba(53, 255, 196, .1);
+  --btn-fg: var(--text-md);
+  --btn-bd: rgba(53, 255, 196, .18);
+  --btn-bd-hover: rgba(53, 255, 196, .55);
+  --btn-glow: rgba(53, 255, 196, .2);
+  --bk-c: var(--fx);
+  font-size: calc(.145 * var(--t));
+  letter-spacing: .04em;
+}
+.title-assets__item > small {
+  display: block;
+  margin-top: .07rem;
+  color: var(--text-lo);
+  font-size: calc(.118 * var(--t));
+  line-height: 1.5;
+  text-align: left;
+  text-wrap: pretty;
+}
 .asset-download, .asset-import-dialog { text-align: left; }
 .asset-download p, .asset-import-dialog p { margin: .12rem 0; line-height: 1.6; }
 .asset-import-dialog .asset-import__status:empty { margin: 0; }
@@ -263,10 +501,13 @@
   border: 0;
 }
 .asset-import__reason { color: var(--text-lo); }
+
+/* an invitation waiting (ui/…pendingJoin): amber, above the field, inside the same gutters */
 .title-invite {
   display: flex;
   align-items: center;
   gap: .08rem;
+  margin-bottom: .14rem;
   padding: .08rem .12rem;
   background: rgba(246, 163, 41, .08);
   border: 1px solid rgba(246, 163, 41, .35);
@@ -275,37 +516,102 @@
 }
 .title-invite .icon { width: .2rem; height: .2rem; }
 .title-invite b { font-size: calc(.2 * var(--t)); letter-spacing: .2em; color: #ffd08a; }
-.title-conn { display: flex; align-items: center; justify-content: center; gap: .1rem; min-height: .32rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
+
+/* ---- status + tools -------------------------------------------------------------------------------- */
+/* one rule separates "is the server reachable" (left) from "what else can I open" (right); it is a HUD
+   rule now — bright at the left edge, gone by the right one */
+.title-conn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .12rem;
+  margin-top: .18rem;
+  padding-top: .14rem;
+  min-height: .36rem;
+  font-size: calc(.14 * var(--t));
+  color: var(--text-lo);
+}
+.title-conn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(53, 255, 196, .6), rgba(53, 255, 196, .14) 42%, transparent 88%);
+}
+.title-conn__state { display: inline-flex; align-items: center; gap: .08rem; min-width: 0; }
+/* the state line may wrap on its own (a long 「服务器已满（4/4），请稍后再试」 at 文字大小 特大) — it must
+   never push the tool buttons out of the card, so the tools are flex: none and the text takes the rest */
+.title-conn__state > span:not(.status-dot):not(.ping) { min-width: 0; text-wrap: pretty; }
+.title-conn__tools { display: inline-flex; align-items: center; gap: .06rem; flex: none; }
+.title-conn .ping { height: max(.26rem, 1.6em); font-size: calc(.14 * var(--t)); }
+/* a live indicator beats */
+.title-conn .status-dot.is-on {
+  box-shadow: 0 0 .1rem var(--fx), 0 0 0 2px rgba(53, 255, 196, .14);
+  animation: dot-live 2.6s ease-in-out infinite;
+}
+@keyframes dot-live { 50% { box-shadow: 0 0 .16rem var(--fx), 0 0 0 5px rgba(53, 255, 196, .05); } }
+/* 玩法说明 reads as a tool, not a link: ghost button, same height as the two glyph buttons */
+.title-conn .title-guide { height: .36rem; padding: 0 .1rem 0 .08rem; font-size: calc(.14 * var(--t)); letter-spacing: .04em; color: var(--text-lo); }
+.title-conn .title-guide:hover { color: var(--fx); }
+.title-conn .title-guide .icon { width: .17rem; height: .17rem; }
+/* the three tool buttons share one square (devices.css sizes ⚙ / ⛶ at .4rem with a .06rem left
+   margin, which made 玩法说明 34 px against their 40 px — this rule wins on specificity, not order) */
+.title-conn .title-fs, .title-conn .title-settings { width: .36rem; height: .36rem; margin-left: 0; }
+.title-conn .fsbtn { background: rgba(53, 255, 196, .04); border-color: rgba(53, 255, 196, .16); }
+.title-conn .fsbtn:hover { border-color: rgba(53, 255, 196, .5); color: var(--fx); }
+.title-conn .fsbtn .icon { width: .19rem; height: .19rem; }
+
 /* 统计 (the local stats page) beside the language menu in the top-right corner */
-.title-corner__tools { display: flex; align-items: center; justify-content: flex-end; gap: .1rem; margin-bottom: .1rem; }
+.title-corner__tools { display: flex; align-items: center; justify-content: flex-end; gap: .06rem; }
+.title-corner__tools .btn--sm { height: .3rem; padding: 0 .1rem; font-size: calc(.135 * var(--t)); }
 .title-corner__tools .title-lang { margin-bottom: 0; }
 /* language menu (中文 | English | …, ui/lang.js) in the top-right corner; more than four languages make it a list.
    The height is max(design, 1.4em) so the buttons still hold their text at 设置 →「文字大小」 大 / 特大 (on a phone
    1rem is clamped at 40 px and .3rem is only 12 px, less than the enlarged label). */
-.title-lang { display: inline-flex; margin-bottom: .1rem; }
+.title-lang { display: inline-flex; margin-bottom: 0; }
 .title-lang button { min-width: .74rem; height: max(.3rem, 1.4em); font-size: calc(.14 * var(--t)); cursor: pointer; }
-.lang-select select { height: max(.38rem, 1.4em); min-width: 1.6rem; padding: 0 .12rem; background: #0a0d0c; border: 0; color: var(--text-hi); font-size: calc(.16 * var(--t)); cursor: pointer; }
+.lang-select select { height: max(.38rem, 1.4em); min-width: 1.6rem; padding: 0 .12rem; background: #04100e; border: 0; color: var(--text-hi); font-size: calc(.16 * var(--t)); cursor: pointer; }
 .title-lang.lang-select select { height: max(.3rem, 1.4em); font-size: calc(.14 * var(--t)); }
-html[data-script="alphabetic"] .title-login .btn--xl { letter-spacing: .3em; }
-.title-conn .ping { height: max(.26rem, 1.6em); font-size: calc(.15 * var(--t)); }
 
+/* ---- footer ---------------------------------------------------------------------------------------- */
+/* three columns, the legal line always on the page's centre line (it used `space-between`, so the
+   notice drifted left whenever 添加到桌面 / 继续对局 were not both there) */
 .title-foot {
   position: absolute;
   z-index: 2;
   left: .44rem;
   right: .44rem;
   bottom: .3rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: .12rem .2rem;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: .1rem .2rem;
   font-size: calc(.13 * var(--t));
-  color: var(--text-dim);
+  color: var(--text-lo);
 }
-.title-foot__meta { display: flex; align-items: flex-end; gap: .16rem; flex-wrap: wrap; justify-content: flex-end; }
+.title-foot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -.14rem;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(53, 255, 196, 0), rgba(53, 255, 196, .12) 18%, rgba(53, 255, 196, .12) 82%, rgba(53, 255, 196, 0));
+}
+/* The footer is a full-width band lying over the 连接状态 / ⚙ / ⛶ row on a cramped landscape phone
+   (test/ui/fsGate.test.js measured the ⛶ losing its hit box there): the band itself takes no clicks,
+   only the controls inside it do. */
+.title-foot { pointer-events: none; }
+.title-foot a, .title-foot button { pointer-events: auto; }
+.title-foot__left { display: flex; align-items: center; gap: .1rem; min-width: 0; }
+.title-foot__legal { text-align: center; color: var(--text-lo); white-space: nowrap; }
+.title-foot__meta { display: flex; align-items: center; justify-content: flex-end; gap: .1rem .16rem; flex-wrap: wrap; }
+.title-foot__meta .micro { color: var(--text-dim); }
 .title-repo { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
-.title-repo:hover, .title-repo:focus-visible { color: var(--text-hi); border-bottom-color: currentColor; }
+.title-repo:hover, .title-repo:focus-visible { color: var(--fx); border-bottom-color: currentColor; }
 /* a development build (shared/constants.js DEV_BUILD): an unmissable tag in the footer */
 .title-dev {
   padding: .03rem .1rem;
@@ -322,3 +628,70 @@ html[data-script="alphabetic"] .title-login .btn--xl { letter-spacing: .3em; }
   border: 1px solid rgba(255, 159, 67, .5); color: #ffb066; background: rgba(255, 159, 67, .08); font-size: inherit;
 }
 .title-plugins .icon { width: .15rem; height: .15rem; }
+
+/* ---- short viewports ------------------------------------------------------------------------------ */
+/* 1rem is clamped at 40 px, so a landscape phone / a short laptop window drops below the 1080p scale
+   while the page keeps its own sizes — shrink the brand block instead of letting it run into the
+   footer. The wordmark goes first (the emblem still carries the identity), then the type steps down. */
+@media (max-height: 660px) {
+  .title-screen { --console-w: 5.1rem; --word-a: .23rem; --word-b: .33rem; --title-size: .82rem; --tag-size: .155rem; }
+  .emblem { margin-bottom: .14rem; transform: scale(.82); }
+  .title-login { margin-top: .24rem; padding: .2rem .26rem .18rem; }
+  .title-assets__item > small { font-size: calc(.115 * var(--t)); line-height: 1.4; }
+  .title-tag { max-width: 7.2rem; }
+  .title-tag::after { width: 4.8rem; }
+}
+/* 1rem is floored at 40 px while a landscape phone's visible height is often under 400 px: the design
+   canvas (10.8 rem) can be taller than the viewport, and an absolutely positioned footer then lands
+   below the fold. Under 560 px the footer joins the flex column instead, and the brand block centres
+   itself in whatever height is actually left. */
+@media (max-height: 560px) {
+  .title-screen { justify-content: flex-start; padding-bottom: .14rem; }
+  .title-main { flex: 1 1 auto; min-height: 0; justify-content: center; margin-bottom: 0; }
+  .title-foot {
+    position: static;
+    align-self: stretch;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    padding: 0 .44rem;
+    margin-top: .1rem;
+  }
+  .title-foot::before { display: none; }
+}
+/* A landscape phone is ~2:1: one centred column leaves the card at a quarter of the width with dead
+   space on both sides. From 620 px wide, put the brand block beside the console instead. */
+@media (max-height: 560px) and (min-width: 620px) {
+  .title-main { flex-direction: row; align-items: center; justify-content: center; gap: .44rem; }
+  .title-brand { flex: none; align-items: flex-end; }
+  .title-en { align-items: flex-end; }
+  .title-tag { text-align: right; }
+  .title-login { margin-top: 0; }
+  .title-screen { --console-w: 6.2rem; --title-size: 1.04rem; --word-b: .38rem; --word-a: .26rem; }
+}
+
+@media (max-height: 520px) {
+  .emblem { display: none; }
+  .title-tag { display: none; }
+  .title-cn { margin-top: .08rem; }
+  .title-login > * + * { margin-top: .12rem; }
+  .title-assets__item > small { display: none; }
+  .title-foot__legal { display: none; }
+  /* a landscape phone's console is ~200 px wide: the latency pill and the 玩法说明 label do not fit
+     beside the state text, so the row keeps the dot + state and three glyph buttons (aria-labels stay) */
+  .title-conn .ping { display: none; }
+  .title-conn .title-guide { width: .36rem; min-width: .36rem; padding: 0; }
+  .title-conn .title-guide .btn__label { display: none; }
+}
+/* a phone held in portrait: the console takes the width it has; the footer stacks instead of guessing */
+@media (max-aspect-ratio: 1/1) {
+  .title-screen { --console-w: calc(100vw - .48rem); }
+  .title-foot { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .title-foot__left, .title-foot__meta { justify-content: center; }
+  .title-foot__legal { white-space: normal; }
+  .title-corner__caption { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .title-bg__sweep, .title-bg__grid, .title-login__holo::after, .title-conn .status-dot.is-on { animation: none; }
+  .title-login__holo::after { opacity: 0; }
+}

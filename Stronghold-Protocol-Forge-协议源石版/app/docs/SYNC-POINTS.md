@@ -85,7 +85,7 @@
 
 | # | 同步点 | 漏了会怎样 |
 |---|---|---|
-| ① | `shared/workshop.js` 的 **`CLIENT_PANEL_SLOTS`**（**今天 10 个**）；宿主若可重复还要登记 **`CLIENT_PANEL_REPEATABLE`**（今天 1 个：`screen.game.shopCard`） | 槽位是**闭枚举**：拼错 / 未登记的槽位 ⇒ 面板**永远不出现**，而且**没有任何错误** |
+| ① | `shared/workshop.js` 的 **`CLIENT_PANEL_SLOTS`**（**今天 11 个**）；宿主若可重复还要登记 **`CLIENT_PANEL_REPEATABLE`**（今天 1 个：`screen.game.shopCard`） | 槽位是**闭枚举**：拼错 / 未登记的槽位 ⇒ 面板**永远不出现**，而且**没有任何错误** |
 | ② | **客户端渲染点**：该槽位的宿主元素。两档 —— **组件自己渲染** `[data-mod-slot="…"]`（如 `public/js/screens/game.js`、`public/js/ui/bondStrip.js`、`public/js/ui/detailPanel.js`、`public/js/ui/shopBar.js`）；**浮层**那一档由 `public/js/ui/extensions.js` 的 `MOD_PANEL_SLOTS` 与注册点负责 | 面板挂到一个**不存在的容器**上 ⇒ 静默不显示 |
 | ③ | `test/modPanelWraps.test.js` | 两处名单（形状层副本 / 客户端真相）没人钉在一起 ⇒ 可以各说各话 |
 
@@ -153,3 +153,24 @@
 
 **钉它的测试**：`test/modSurface.test.js` —— 它会断言**锚点符号还在声明的模块里**、**实现文件与测试文件都还在**、
 **文档的那一行还在**，以及**引擎里每一个「包可声明的名单」都被某条表面引用**（加了一格却没进清单**也红**）。
+
+## 8. 加一格「包能调的 Match 方法」—— **5 处**
+
+`server.modules` 的 `matchClass` 包装器拿到的 `this` 就是整局对局，所以包能读 `ps.funds`、能调 `ps.spend` /
+`ps.acquireItem` / `this.itemPool`。但**能改玩家状态**的入口不止「读」：`handlePackMsg` 是收消息那一条
+（§28.14），`Match.grantHex(ps, hexId)` 是发卡那一条（§28.58，第一个用户 `workshop/field-store`）。
+加这种能力时，**五处**一起动：
+
+1. **实现**：`server/match/match/<容器>.js` 里加方法（`Match.js` 会把它装到 `Match.prototype`；同一个名字
+   定义两次会**装载期抛错**）。
+2. **表面行**：`shared/modSurface.js` 加一行（`layer: 'B'`、`decl` 写「`matchClass` 包装器可调什么」、
+   `anchors` 指一个**真实导出**、`files` / `tests` 是真路径、`spec` 是 `§28.NN`）。加行**不用**改
+   `MOD_SURFACE_FROZEN`（增量不抬世代）。
+3. **设计稿**：`docs/design/mod-layer.md` 加一节 `### 28.NN` —— 写清「包为什么自己做不到」「谁负责扣钱 /
+   谁负责发放」「失败方向」「golden 与协议号为什么不动」。
+4. **作者文档**：`docs/MOD-SURFACE.md` 的表里那一行（同一句话的人读版）。
+5. **测试**：一枚真跑的测试，钉住方法的契约（`test/match/grantHex.test.js` 是这一格的样板：正式路径、
+   去重规则、拒绝时**不抛**且调用方可以一分钱不扣）。⚠ 本检出**不带** `test/modSurface.test.js`，所以
+   第 2 步那枚「测试文件还在」的断言实际由这枚测试自己承担。
+
+失败方向按本层的老规矩：**拒绝要有一句话**（返回可判别的值或点名，不静默成功），别让作者等到玩家报 bug。

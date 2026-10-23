@@ -11,7 +11,7 @@
 import { PHASE, ERR } from '../../../shared/constants.js';
 import { rollOffers, pickEnemyRarity, pickEnemyHex } from '../../../shared/hextech.js';
 import { protocolLevelExtraHexesAt } from '../../../shared/protocolLevels.js';
-import { applyHex, hexIdsOf } from '../hextech.js';
+import { applyHex, hexIdsOf, hexPoolFor } from '../hextech.js';
 import { OK, fail, DELAYS } from './common.js';
 
 export class MatchHexDraft {
@@ -21,11 +21,9 @@ export class MatchHexDraft {
     const alive = this.alivePlayers();
     // 协议源石禁用 (业主 2026-10-21): each player's own ≤ 3 bans only narrow THAT player's pool — never a teammate's,
     // never the enemy pool, never a card another effect grants.
-    const poolFor = (ps) => {
-      const bans = Array.isArray(ps.hexBans) ? ps.hexBans : [];
-      const pool = gd.hexPlayerPool();
-      return bans.length ? pool.filter((h) => !bans.includes(h && h.id)) : pool;
-    };
+    // 核心盟约专属协议 (业主 2026-10-24): a card with `requiresBond` is only offered while that bond is ACTIVE for the
+    // player — same per-player narrowing, hence the shared `hexPoolFor` (bans + requiresBond).
+    const poolFor = (ps) => hexPoolFor(ps, gd);
     const pool = gd.hexPlayerPool();
     // Nothing to offer (no alive player, or a data set without the roster): the round still continues through
     // afterHexDraft — a same-round 机变 must run even when 海克斯 cannot (test/match/harness.js withoutHextech).
@@ -112,9 +110,8 @@ export class MatchHexDraft {
     // 不含当前 offer 的三张。只传 owned 的话，新抽的三张可能又是刚被换掉的那几张 —— 池子小的时候（测试/少人数局）
     // 几乎必然如此（实测：3 张卡的池子，20 个种子里 5 次刷出与原来完全相同的三张）。
     const offered = this.hexOfferOf(ps.playerId);
-    const bans = Array.isArray(ps.hexBans) ? ps.hexBans : [];
-    const base = gd.hexPlayerPool();
-    const pool = bans.length ? base.filter((h) => !bans.includes(h && h.id)) : base;
+    // 禁用 + 专属（`requiresBond`）一起在这里收窄：刷新与首次抽取必须是同一个池子，否则刷一下就能刷出没激活盟约的专属卡
+    const pool = hexPoolFor(ps, gd);
     const weights = gd.hexWeights();
     if (Number.isInteger(idx)) {
       // one slot: everything else about the batch is kept, so the other two cards must be excluded from the draw as well
@@ -143,6 +140,32 @@ export class MatchHexDraft {
     // the transition to PREP is deferred by one tick, like the other drafts (MatchSpDraft.finishSpDraft runs from a
     // `later` too): the phase ends on a clean step boundary instead of inside the intent that completed it
     if (this.hexDraftDone() && this.phase === PHASE.HEX_DRAFT) this.later(0, () => this.finishHexDraft());
+  }
+
+  /**
+   * Grant ONE player one 协议源石 through the **production pick path** (DESIGN §28.58) — the method a workshop pack's
+   * `server.modules[].matchClass` wrapper may call (`server.modules` is the only mount point that can touch a match).
+   * It is `_applyHex` minus the draft state: the same `applyHex` (the immediate `onPick` part, the persistent `hex:<id>`
+   * EffectRef, its battle half, and every extra it carries), then a recompute and a private-view push.
+   *
+   * The CALLER owns "should this player get one, and which one" (the shop charges 12 first, the test panel gates on the
+   * test field). Here it only refuses ids outside the PLAYER roster: an enemy card's `mods` / `verb` is not a thing a
+   * player may own. The same card twice is allowed, exactly like `g.testHex`: `applyHex` dedupes the ref while the
+   * immediate part runs again.
+   * @param {any} ps the player to grant to
+   * @param {string} hexId a player-roster hex id (data/hextech.json `playerHexes`)
+   * @returns {object|null} the granted record, or null (unknown id / not a player hex / applyHex threw)
+   */
+  grantHex(ps, hexId) {
+    if (!ps) return null;
+    const hex = typeof hexId === 'string' ? this.gd.hex(hexId) : null;
+    if (!hex) return null;
+    const playerPool = this.gd.hexPlayerPool();
+    if (!playerPool.some((h) => h && h.id === hex.id)) return null;
+    try { applyHex(this, ps, hex); } catch (e) { this.reportError(`grantHex ${hex.id}`, e); return null; }
+    ps.recompute();
+    this.markPrivate(ps);
+    return hex;
   }
 
   /** The bot's pick: the dearest rarity, with a small jitter (mirrors botPickCard's scoring style). */

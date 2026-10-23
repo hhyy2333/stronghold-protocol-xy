@@ -9,7 +9,9 @@
 // scheduler runs battles synchronously; default true), timerScale, battleContent, botRehearsal (default 0),
 // botSliceMs (bot rehearsal slice budget; default: unbounded in virtual time), aiPicksLast (the room option
 // AI 队友最后选择: the drafts order every human seat before every AI seat), test (the room flag 测试场: no 协议源石 draft
-// and the g.test* intents are accepted — server/match/match/testField.js).
+// and the g.test* intents are accepted — server/match/match/testField.js), MatchClass (a wrapped Match class to
+// instantiate instead of the engine's own — how a workshop pack's `matchClass` layer is exercised, e.g.
+// test/workshop/field-store.test.js).
 // Combat mode: clientCombat (default false here: the legacy server-run mode most suites were written for; production
 // defaults to client-side combat, DESIGN §14). With clientCombat: true every human gets a scripted browser
 // (test/match/simClient.js SimClient: h.clients) unless clients: false; pace 'instant' | 'paced', perPlayer
@@ -72,7 +74,7 @@ export function makeMatch(o = {}) {
     FakeBattle.reset();
     if (o.script) FakeBattle.script = o.script;
   }
-  h.m = new Match({
+  h.m = new (o.MatchClass ?? Match)({
     roomCode: 'TEST', mode, difficulty, seats, spectators: o.spectators, seed: o.seed ?? 1, matchNo: o.matchNo, data: o.data ?? DATA, log,
     // 协议等级 (owner's call 2026-10-18): normalized by GameData against the mode's difficulty
     ...(o.protocolLevel != null ? { protocolLevel: o.protocolLevel } : {}),

@@ -17,7 +17,9 @@ export class PlayerViews {
       id: p.id,
       golden: !!(rec && rec.isGolden),
       tier: rec && Number.isInteger(rec.tier) ? rec.tier : null,
-      items: p.kind === 'chess' ? (p.items || []).map((it) => ({ uid: it.uid, id: it.id })) : [],
+      // 锻炉 (业主 2026-10-24): a fused 百变 rides `merged: [idA, idB]` — the client draws the ONE item (百变) and can name
+      // what it swallowed without a second lookup.
+      items: p.kind === 'chess' ? (p.items || []).map((it) => ({ uid: it.uid, id: it.id, ...(Array.isArray(it.merged) ? { merged: it.merged.slice() } : null) })) : [],
       count: p.kind === 'token' ? (p.count || 1) : 1,
       ownerUid: p.kind === 'token' ? p.ownerUid ?? null : null,
     };

@@ -174,11 +174,13 @@ export const PUBLIC_ROOMS_URL = '/api/rooms';
  * 不重复放一份。
  *
  * `withTraffic`（`?traffic=1`，只对 loopback / 内网客户端）加上流量计数与内容哈希索引的状态（traffic.js /
- * assetIndex.js / assetViews.js）。
+ * assetIndex.js / assetViews.js），以及素材兜底跳转的状态（assetJump.js：源顺序 / 健康 / 实测测速 / 缺件表）——
+ * 后者只在真的配了镜像时才出现，干净安装的 `/healthz` 与从前逐字节相同。
  * @param {{ startedAt: number, network: import('../net.js').Network, registry: import('../net.js').SessionRegistry,
  *           lobby: import('../lobby.js').Lobby, modHealth?: (() => Record<string, any>)|null,
  *           traffic?: ReturnType<typeof import('./traffic.js').createTrafficCounter>,
  *           assetIndex?: ReturnType<typeof import('./assetIndex.js').createAssetIndex> | null,
+ *           assetJump?: ReturnType<typeof import('./assetJump.js').createAssetJump> | null,
  *           views?: ReturnType<typeof import('./assetViews.js').createManifestViews> | null }} health
  * @param {boolean} [withTraffic]
  */
@@ -197,7 +199,7 @@ function contentSets(lobby) {
 /**
  * **D19（取并集）**：上游的 `content` / `trusted` 照加法接；**我们的 `modHealth` 保留**。
  */
-export function healthReport({ startedAt, network, registry, lobby, modHealth = null, content = null, traffic, assetIndex, views, trusted }, withTraffic = false) {
+export function healthReport({ startedAt, network, registry, lobby, modHealth = null, content = null, traffic, assetIndex, views, assetJump = null, trusted }, withTraffic = false) {
   /** @type {Record<string, any>} */
   const out = {
     ok: true, version: PROTOCOL_VERSION, app: APP_VERSION, uptimeSec: Math.round((Date.now() - startedAt) / 1000),
@@ -225,6 +227,11 @@ export function healthReport({ startedAt, network, registry, lobby, modHealth = 
   if (withTraffic && traffic) out.traffic = traffic.snapshot();
   // content-hashed asset URLs (assetIndex.js / assetViews.js): off, building, or ready with how many files and URLs
   if (withTraffic) out.assetHashes = assetIndex ? { ...assetIndex.stats(), views: views ? views.stats() : null } : null;
+  // 素材兜底跳转（server/http/assetJump.js，可选）：只在真的配了镜像时出现。运维问的是三件事 ——
+  // 现在按什么顺序跳、每个源通不通、哪些路径在哪些镜像上**没有**（缺件表就是「该往哪儿补传」的清单）。
+  if (withTraffic && assetJump && typeof assetJump.status === 'function') {
+    try { out.assetJump = assetJump.status(); } catch { out.assetJump = { enabled: true, error: 'status failed' }; }
+  }
   return out;
 }
 

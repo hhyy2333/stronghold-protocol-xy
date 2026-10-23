@@ -26,7 +26,7 @@
  * @param {{ ds: any, battleContent?: string, log?: object }} owner the Match (`this`)
  * @param {object} opts the round's own options (fieldId, kind, seed, …)
  */
-import { enemyVerbIds, enemyHexWantedKey } from '../hextech.js';
+import { enemyVerbIds, enemyHexWantedKey, adaptiveTierTotalOf } from '../hextech.js';
 
 export function baseBattleOpts(owner, opts = {}) {
   return { data: owner.ds, content: owner.battleContent, logger: owner.log, ...opts };
@@ -87,6 +87,13 @@ export function battleOptsFromMatch(owner, opts = {}) {
  */
 export function withEnemyHexes(owner, opts) {
   if (!opts || typeof opts !== 'object') return opts;
+  // 自适应成长 (业主 2026-10-24): the enemy's TOTAL tier, for the player card that scales off it. Stamped here for the
+  // same reason the verb ids are: all three battle-building paths share this function, and the number is match state.
+  // Only present when a player owns the card, so every other battle keeps its byte-for-byte options object.
+  if (!opts.flags || !Number.isFinite(opts.flags.enemyHexTiers)) {
+    const tiers = typeof adaptiveTierTotalOf === 'function' ? adaptiveTierTotalOf(owner) : 0;
+    if (tiers > 0) opts.flags = { ...(opts.flags || {}), enemyHexTiers: tiers };
+  }
   if (opts.flags && Array.isArray(opts.flags.enemyHexIds)) return opts;
   const ids = typeof enemyVerbIds === 'function' ? enemyVerbIds(owner) : [];
   if (ids.length) opts.flags = { ...(opts.flags || {}), enemyHexIds: ids };

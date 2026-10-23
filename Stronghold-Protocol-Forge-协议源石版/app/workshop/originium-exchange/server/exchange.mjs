@@ -65,7 +65,7 @@ export const STOCKS = Object.freeze([
  *
  * 杠杆：
  *   * `leverage` 是可选档位，1 = 不借钱；L = 最多借到 (L-1) 倍净资产；
- *   * `interestBps` 每回合对未清负债计息（12%），付不出就**资本化进负债**（利滚利）；
+ *   * `interestBps` 每回合对未清负债计息（2%），付不出就**资本化进负债**（利滚利）；
  *   * 维持担保比例：负债 / 持仓市值 超过阈值 ⇒ **强制平仓**，卖到下一个阈值以下为止；
  *   * 阈值**按档位分表**（`marginByLever` / `liquidateByLever`），理由见下面「为什么 4x / 5x 要另给阈值」。
  *
@@ -85,13 +85,46 @@ export const STOCKS = Object.freeze([
  *   * 利息不变（还是 12%/回合），5x 满仓每回合光利息就吃掉 48% 的净资产，**必须靠上涨付账**；
  *   * 1x / 2x / 3x 的阈值**一个字都没动**（还是 70% / 50%），旧手感不回归。
  * 别把 5x 用满：档位只决定「最多能借多少」，借多少由这一单自己决定 —— 5x 档借 1 倍净资产，风控与 2x 一样。
+ *
+ * **利率为什么从 12% 降到 2%（2026-10-23）**：市场的平均单回合涨跌只有 **+0.45%**（实测 6480 个样本），
+ * 而 12% 的利率意味着借钱炒股**每回合要赚 12% 才打平** —— 缺口 27 倍，杠杆在数学上就不可能赢。
+ * 这种量级的利率不是「风险定价」，是「必然亏损」。降到 2% 之后，借款成本与市场回报处在同一量级，
+ * 杠杆才回到「赌方向」而不是「交罚金」。上限提到 300 之后，多借的钱才真的换得到更多股数。
  */
 export const LIMITS = Object.freeze({
-  maxShares: 60,
+  /**
+   * 每支股票的持仓上限（股）。
+   *
+   * 2026-10-23 从 60 提到 300：60 是这个 mod 里杠杆**必然亏钱**的真正原因，跟利率无关。
+   * 实测（`08-interest-scan.mjs` / `10-leverage-trace.mjs`）：1x 和 2x 都在 R6–R7 撞到 60 股上限，
+   * 之后持仓市值完全一样（都是 48.6），但 2x 还背着 31 的负债 ⇒ 净资产 28.6 vs 63.4。
+   * 杠杆帮你**更早**撞上上限，然后只剩利息和爆仓风险 —— 即使把利率降到 0%，2x 依然亏（33.2 vs 54.4）。
+   * 上限抬高之后，多借的钱才真的能换成更多股数。
+   */
+  maxShares: 300,
   commissionBps: 100,
   dividendBps: 120,
   leverage: Object.freeze([1, 2, 3, 4, 5]),
-  interestBps: 1200,
+  /**
+   * 每回合对未清负债计息（**0.4%**）。2026-10-23 从 1200 → 200 → 40，第三次才定下来。
+   *
+   * 定值的依据是**实测扫描**（`09-interest-rates.mjs`，20 个种子 × 9 回合，每个利率都满仓借钱）：
+   *
+   *   利率    1x      2x      3x      5x     最优档
+   *   0%     73.7    74.3    72.4    62.2     2x
+   *   0.2%   73.7    74.3    71.9    61.5     2x
+   *   0.4%   73.7    73.9    71.0    60.1     2x    ← 这里
+   *   0.6%   73.7    73.2    70.4    59.0     1x
+   *   1%     73.7    72.5    69.1    57.5     1x
+   *   2%     73.7    70.0    66.2    53.1     1x
+   *
+   * 0.4% 是 2x 唯一还是「最优档」的最高利率，同时 3x / 5x 已经递减 —— 这正是要的形状：
+   * **适度杠杆有回报，过度杠杆纯亏**。再高一点（0.6%）杠杆就全线跑输不借钱，档位形同虚设。
+   *
+   * 为什么这么低：市场平均单回合涨跌只有 **+0.45%**（实测 6480 个样本）。利率必须和它同量级，
+   * 否则「借钱炒股」在数学上就不可能赢，跟「风险定价」没有关系。
+   */
+  interestBps: 40,
   /** 现行阈值（1x–3x 的默认口径，面板从下发帧里读这一份）。 */
   maintainPct: 70,
   liquidateToPct: 50,
@@ -355,11 +388,18 @@ export function dividendOf(price, shares) {
   return Math.floor((centsOf(price) * shares * LIMITS.dividendBps) / 100);
 }
 
-/** 每回合利息（纯函数）：负债 × interestBps，四舍五入；有负债就至少 1。 */
+/**
+ * 每回合利息（纯函数）：返回**万分之一元**的整数。
+ *
+ * 与 `dividendOf` 同一套「小单位 + 累计」做法，理由也一样：2% 的利率下，负债 10 元一回合只该收
+ * 0.2 元。若按「元」取整并保底 1 元，负债 1 元就会收 1 元（实际费率 100%）、负债 40 元收 1 元（2.5%）——
+ * **小负债被罚、大负债反而便宜**，费率完全不守声明值（2026-10-23 实测表见 08/09 脚本）。
+ * 这里按万分之一元算，调用方用 `interestCarry` 累计，攒够 1 元才真的收。
+ */
 export function interestOf(debt) {
   const d = nonNegInt(debt);
   if (!d) return 0;
-  return Math.max(1, Math.round((d * LIMITS.interestBps) / 10000));
+  return Math.floor((d * LIMITS.interestBps * 100) / 100);
 }
 
 /**
@@ -521,6 +561,8 @@ export function registerServer(host) {
           dividendsPaid: new Map(),
           /** 分红的小数余额（万分之一元）：不够 1 元的部分留到下一回合，见 dividendOf。 */
           dividendCarry: new Map(),
+          /** 利息的小数余额（万分之一元）：与分红同一套累计口径，见 interestOf。 */
+          interestCarry: new Map(),
           /**
            * 每名玩家在交易所的**尾差**（分，正 = 交易所欠他、负 = 他欠交易所）。
            * 引擎资金是整数元，而成交额是两位小数：把不足 1 元的零头记在这里，
@@ -653,6 +695,7 @@ export function registerServer(host) {
             st.debt.delete(ps.playerId);
             st.lever.delete(ps.playerId);
             st.dividendCarry.delete(ps.playerId);
+            st.interestCarry.delete(ps.playerId);
             st.cents.delete(ps.playerId);
             continue;
           }
@@ -678,7 +721,12 @@ export function registerServer(host) {
           if (!ps.alive) continue;
           const debt = this._oexDebtOf(ps.playerId);
           if (!debt) continue;
-          const interest = interestOf(debt);
+          // 按「万分之一元」累计：整数部分这一回合真的收，小数部分留到下一回合（见 interestOf）。
+          let carry = (st.interestCarry.get(ps.playerId) || 0);
+          carry += interestOf(debt);
+          const interest = Math.floor(carry / 10000);
+          st.interestCarry.set(ps.playerId, carry - interest * 10000);
+          if (interest <= 0) continue;
           const cash = Math.max(0, Math.trunc(ps.funds));
           const paid = Math.min(cash, interest);
           if (paid > 0) ps.addFunds(-paid, { reason: 'exchange-interest' });

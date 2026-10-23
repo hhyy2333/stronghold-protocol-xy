@@ -51,7 +51,7 @@ import { onGiftTicker } from './botEmotes.js';
 // applyHex joined this import for 潘多拉魔盒 (the owner's list of 2026-10-15): the card replaces the player's whole
 // hex set, and each replacement must run the ORDINARY pick path — so it re-enters the pipeline rather than rebuilding
 // a ref by hand. This module already imported from ./hextech.js, so the edge exists and no cycle is added.
-import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf, applyHex, gainTraitExtraOf } from './hextech.js';
+import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf, applyHex, gainTraitExtraOf, hexPoolFor } from './hextech.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
 import { previewContext } from './preview.js';
 
@@ -105,6 +105,17 @@ export class MetaRegistry {
     }
     this._h.set(key, h);
     return this;
+  }
+
+  /**
+   * 这一局的副本（`server/match/metaPack.js buildRoomRegistry` 的 base）：逐包装配只改副本，进程级那一份
+   * 一个键都不动。缺了它，任何声明 `server.meta` 的包都会在开局装配时抛 `reg.fork is not a function`。
+   */
+  fork() {
+    const next = new MetaRegistry();
+    next._h = new Map(this._h);
+    next.warnings = this.warnings.slice();
+    return next;
   }
 
   unregister(key) { return this._h.delete(key); }
@@ -928,7 +939,9 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
       // hexPlayerPool() returns the RECORDS themselves (not ids) — verified against the built data, where every
       // element carries `id` / `rarity` / `effect`. Filtering the array as if it held ids found nothing and the card
       // silently did nothing, so the shape is read off the elements.
-      const pool = typeof gd.hexPlayerPool === 'function' ? gd.hexPlayerPool() : [];
+      // 核心盟约专属协议 (业主 2026-10-24): the replacement pool is the player's OWN offer pool — a 专属 3阶 card whose bond
+      // is not active must not be handed out by 潘多拉 either (hexPoolFor = bans + requiresBond).
+      const pool = typeof gd.hexPlayerPool === 'function' ? hexPoolFor(ps, gd) : [];
       const prism = pool.filter((rec) => rec && rec.rarity === 'prismatic' && typeof rec.id === 'string');
       if (!prism.length) return [];
       const mine = (ps.effects || []).filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:'));

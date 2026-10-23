@@ -1,0 +1,306 @@
+﻿/* ui/store.css —— 「战地商店」面板的样式（pack.json.client.panels[].styles）。
+ *
+ * 全部选择器收在 `.fst` 下：这块 CSS 会跟引擎与其它包的样式表同住一个 <head>，前缀是唯一的边界。
+ * 位置：面板挂在 `screen.game.shopTools`（DESIGN §28.8）—— **商店栏按钮行里、冻结的左边**。所以
+ * 收起态是按钮行里的一格（横排，跟冻结 / 刷新同一行同一高度），展开态是从那颗按钮往上弹的抽屉
+ * （锚在商店栏上方、右对齐）。交易所（originium-exchange）在上半屏右侧，抽屉只占下半屏，互不打架。
+ * 尺寸用 px 而不是 rem：对局 HUD 的 rem 会随 --t 缩放，浮层面板跟着缩放会在小屏上挤成一条；
+ * 但**按钮**要跟冻结一样高，所以只有按钮那一格用 rem。
+ */
+
+.fst {
+  /* 宿主（.mod-host，display: contents）把这一层直接塞进商店栏的按钮行，所以这里是「行内一格」，
+     不再自己定位；抽屉是它的 fixed 子元素，锚在商店栏上方。 */
+  position: static;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  font: 12px/1.45 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  color: #dfe9e3;
+  -webkit-font-smoothing: antialiased;
+}
+
+.fst > * { pointer-events: auto; }
+
+/* ---- 收起态：按钮行里的一颗「商店」（与冻结 / 刷新同高）------------------------------------------------- */
+
+.fst__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: .08rem;
+  height: .48rem;
+  padding: 0 .16rem;
+  border: 2px solid var(--mint-500, #4ed8af);
+  background: rgba(8, 11, 10, .9);
+  color: var(--mint-300, #9ff0d3);
+  font-size: .19rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  box-shadow: 0 .04rem .14rem rgba(0, 0, 0, .45);
+  cursor: pointer;
+  transition: background var(--t-fast, .12s), box-shadow var(--t-fast, .12s), transform var(--t-fast, .12s);
+}
+.fst__tab:hover { background: rgba(78, 216, 175, .18); color: #eafff6; box-shadow: 0 0 .18rem rgba(126, 227, 192, .45); }
+.fst__tab:active { transform: translateY(1px); }
+.fst__tab-text { line-height: 1; }
+.fst__tab-badge {
+  position: absolute;
+  top: -.04rem;
+  right: -.04rem;
+  width: .12rem;
+  height: .12rem;
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: 50%;
+  background: #ff6b5e;
+  box-shadow: 0 0 6px rgba(255, 107, 94, .9);
+}
+.fst__tab-badge[hidden] { display: none; }
+
+/* ---- 展开态：抽屉（从按钮那一行往上弹，右对齐到商店栏）-------------------------------------------------- */
+/* ⚠ 这是 `position: fixed` 的元素：**百分比宽度相对视口解析，不是相对 `.fst`**。
+ *   `width: 100%` 会把抽屉铺满整屏；必须写死 px + 一条视口夹。
+ *   `bottom` 让开商店栏本身（工具行 + 卡行 ≈ 3.6rem，见 game-shop.css），留 .15rem 的缝。 */
+
+.fst__panel {
+  position: fixed;
+  right: .26rem;
+  bottom: 3.75rem;
+  left: auto;
+  width: 344px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 4.1rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(126, 227, 192, .35);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(11, 18, 16, .97), rgba(7, 11, 10, .97));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+  backdrop-filter: blur(6px);
+}
+.fst__panel[hidden] { display: none; }
+
+.fst__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(126, 227, 192, .16);
+}
+.fst__head-titles { display: flex; flex-direction: column; gap: 1px; }
+.fst__kicker { font-size: 9px; letter-spacing: .22em; color: rgba(126, 227, 192, .6); }
+.fst__title { margin: 0; font-size: 15px; font-weight: 700; color: #f2fbf6; }
+.fst__round { font-size: 10px; color: rgba(223, 233, 227, .55); }
+.fst__head-actions { display: flex; align-items: center; gap: 8px; }
+.fst__cash {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 208, 102, .35);
+  border-radius: 6px;
+  background: rgba(255, 208, 102, .07);
+}
+.fst__cash-label { font-size: 9px; color: rgba(255, 208, 102, .75); }
+.fst__cash-value { font-size: 15px; font-weight: 700; color: #ffd066; font-variant-numeric: tabular-nums; }
+.fst__collapse {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(126, 227, 192, .3);
+  border-radius: 5px;
+  background: transparent;
+  color: #cfe9dd;
+  cursor: pointer;
+  line-height: 1;
+}
+.fst__collapse:hover { border-color: rgba(126, 227, 192, .8); }
+
+.fst__tabs { display: flex; gap: 4px; padding: 8px 12px 0; }
+.fst__tab-btn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: rgba(223, 233, 227, .6);
+  font-size: 12px;
+  cursor: pointer;
+}
+.fst__tab-btn.is-active {
+  color: #f2fbf6;
+  border-bottom-color: #7ee3c0;
+  background: rgba(126, 227, 192, .08);
+}
+
+.fst__view { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.fst__view[hidden] { display: none; }
+
+/* ---- 装备页：过滤 + 列表 ------------------------------------------------------------------------------- */
+
+.fst__filters { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
+.fst__chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.fst__chip {
+  padding: 2px 7px;
+  border: 1px solid rgba(126, 227, 192, .22);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(223, 233, 227, .7);
+  font-size: 10px;
+  cursor: pointer;
+}
+.fst__chip.is-active { border-color: rgba(126, 227, 192, .8); color: #9ff0d3; background: rgba(126, 227, 192, .12); }
+.fst__search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid rgba(126, 227, 192, .2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .35);
+  color: #e8f3ee;
+  font-size: 11px;
+  outline: none;
+}
+.fst__search:focus { border-color: rgba(126, 227, 192, .7); }
+
+.fst__list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+.fst__list::-webkit-scrollbar { width: 6px; }
+.fst__list::-webkit-scrollbar-thumb { background: rgba(126, 227, 192, .25); border-radius: 3px; }
+
+.fst__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .025);
+}
+.fst__row:hover { border-color: rgba(126, 227, 192, .35); background: rgba(126, 227, 192, .05); }
+.fst__row.is-off { opacity: .55; }
+
+.fst__icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(126, 227, 192, .25);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .4);
+  color: #9ff0d3;
+  font-weight: 700;
+}
+.fst__icon-img { width: 100%; height: 100%; object-fit: contain; }
+
+.fst__body { flex: 1; min-width: 0; }
+.fst__name-line { display: flex; align-items: center; gap: 5px; }
+.fst__name { font-size: 12px; font-weight: 600; color: #f2fbf6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fst__tier {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(126, 227, 192, .16);
+  color: #9ff0d3;
+  font-size: 9px;
+  line-height: 14px;
+}
+.fst__bond { flex: 0 0 auto; font-size: 9px; color: rgba(255, 208, 102, .8); }
+.fst__desc {
+  margin-top: 1px;
+  font-size: 10px;
+  color: rgba(223, 233, 227, .55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fst__side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.fst__price { font-size: 10px; color: rgba(255, 208, 102, .95); font-variant-numeric: tabular-nums; }
+.fst__buy {
+  min-width: 52px;
+  padding: 3px 8px;
+  border: 1px solid rgba(126, 227, 192, .55);
+  border-radius: 5px;
+  background: rgba(126, 227, 192, .12);
+  color: #b9f5de;
+  font-size: 11px;
+  cursor: pointer;
+}
+.fst__buy:hover:not(:disabled) { background: rgba(126, 227, 192, .26); color: #fff; }
+.fst__buy.is-armed { border-color: #ffd066; background: rgba(255, 208, 102, .18); color: #ffe6a8; }
+.fst__buy:disabled { border-color: rgba(255, 255, 255, .12); background: transparent; color: rgba(223, 233, 227, .35); cursor: not-allowed; }
+
+.fst__empty { padding: 16px 12px; text-align: center; font-size: 11px; color: rgba(223, 233, 227, .45); }
+.fst__empty[hidden] { display: none; }
+
+/* ---- 协议源石页 --------------------------------------------------------------------------------------- */
+
+.fst__view--hex { padding: 10px 12px 12px; gap: 8px; overflow-y: auto; }
+.fst__draw {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 12px;
+  border: 1px solid rgba(255, 208, 102, .45);
+  border-radius: 10px;
+  background: radial-gradient(120% 100% at 50% 0%, rgba(255, 208, 102, .12), rgba(0, 0, 0, .25));
+  text-align: center;
+}
+.fst__draw-kicker { font-size: 9px; letter-spacing: .24em; color: rgba(255, 208, 102, .65); }
+.fst__draw-title { font-size: 17px; font-weight: 700; color: #ffe6a8; }
+.fst__draw-price { font-size: 12px; color: rgba(255, 208, 102, .9); }
+.fst__draw-remain { font-size: 10px; color: rgba(223, 233, 227, .55); }
+.fst__draw-btn {
+  margin: 4px auto 0;
+  padding: 8px 26px;
+  border: 1px solid rgba(255, 208, 102, .8);
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(255, 208, 102, .3), rgba(255, 208, 102, .14));
+  color: #fff4d6;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+.fst__draw-btn:hover:not(:disabled) { background: linear-gradient(180deg, rgba(255, 208, 102, .45), rgba(255, 208, 102, .2)); }
+.fst__draw-btn.is-armed { border-color: #fff; box-shadow: 0 0 0 2px rgba(255, 208, 102, .35) inset; }
+.fst__draw-btn:disabled { border-color: rgba(255, 255, 255, .14); background: transparent; color: rgba(223, 233, 227, .35); cursor: not-allowed; }
+.fst__draw-result { font-size: 11px; color: #b9f5de; }
+.fst__draw-note { font-size: 10px; line-height: 1.6; color: rgba(223, 233, 227, .45); }
+
+/* ---- 回执行 -------------------------------------------------------------------------------------------- */
+
+.fst__toast {
+  margin: 0 12px 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.fst__toast[hidden] { display: none; }
+.fst__toast.is-ok { border: 1px solid rgba(126, 227, 192, .45); background: rgba(126, 227, 192, .1); color: #b9f5de; }
+.fst__toast.is-bad { border: 1px solid rgba(255, 107, 94, .45); background: rgba(255, 107, 94, .1); color: #ffb9b3; }
+
+/* ---- 窄屏：底部抽屉 ------------------------------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+  /* 窄屏：抽屉铺满宽度，仍然从商店栏上方往上弹（按钮那一行照旧在商店栏里）。 */
+  .fst__panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    bottom: 3.75rem;
+    max-height: calc(100vh - 4.1rem);
+  }
+}
+
+/* ---- 矮屏 ---------------------------------------------------------------------------------------------- */
+
+@media (max-height: 560px) {
+  .fst__panel { max-height: calc(100vh - 4.1rem); }
+}

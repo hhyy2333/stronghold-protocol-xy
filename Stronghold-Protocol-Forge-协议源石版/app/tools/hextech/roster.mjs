@@ -397,11 +397,14 @@ export const PLAYER_HEXES = [
     },
   },
   {
+    // 业主 2026-10-24：「装备转化 … 增加效果购买装备时直接获得进阶形态，然后在本回合失效」
+    // The refund half is unchanged; the new half upgrades the equipment a purchase lands (`onBuy` with `kind: 'item'`)
+    // and then lapses FOR THAT ROUND (the counter is keyed by the round number, the 配给制 / 三连透支 convention).
     id: 'hex_itemrefund',
     name: '装备转化',
-    desc: '你弃置装备时，返还其购买价格。',
+    desc: '你弃置装备时，返还其购买价格；你购买装备时，直接获得其进阶形态，然后本回合内该效果失效。',
     rarity: 'silver',
-    effect: { onDestroy: { itemRefund: true } },
+    effect: { onDestroy: { itemRefund: true }, onBuy: { equipGolden: true } },
   },
   {
     id: 'hex_fullkit',
@@ -501,11 +504,13 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_shieldwall',
     name: '盾墙',
-    desc: '作战中，己方所有干员阻挡数 +1，生命值上限 +20%；相邻的己方单位受到的伤害与治疗，按 50% 分摊给每个相邻的【重装】干员。',
+    // 业主 2026-10-24：「盾墙，额外增加效果 20% 庇护」
+    desc: '作战中，己方所有干员阻挡数 +1，生命值上限 +20%，受到的物理与法术伤害降低 20%；相邻的己方单位受到的伤害与治疗，按 50% 分摊给每个相邻的【重装】干员。',
     rarity: 'gold',
     // fifth batch: static +1 block / +20 % max HP; the adjacent-重装 split is the `shieldwall` script
     // (hexcards/shieldwall.js). `ratio` is a PERCENTAGE (50 = 50 %). Only 4-neighbour, same-owner 重装 join the pool.
-    effect: { battle: { blockCnt: 1, maxHpPct: 20 }, shieldwall: { ratio: 50 } },
+    // 2026-10-24: `protectPct` = the shared 庇护 (the strongest source holds, `battle.applyStrongest` under PROTECT).
+    effect: { battle: { blockCnt: 1, maxHpPct: 20 }, shieldwall: { ratio: 50, protectPct: 20 } },
   },
   {
     id: 'hex_arsenal',
@@ -531,9 +536,12 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_fieldhospital',
     name: '战地医院',
-    desc: '作战中，你的干员每击倒 1 名敌人，为当前生命值比例最低的己方干员回复其最大生命值的 10%。',
+    // 业主 2026-10-24：「战地医院，改成造成伤害时恢复攻击范围内的干员50%攻击力的生命」
+    desc: '作战中，己方干员造成伤害时，为自身攻击范围内的所有己方干员回复相当于该干员攻击力 50% 的生命。',
     rarity: 'gold',
-    effect: { fieldHospital: { healPct: 10 } },
+    // The whole mechanic is the `fieldHospital` script (install in server/sim/content/hextech.js): every damage instance
+    // an own operator deals heals the own operators standing in ITS CURRENT attack range by `atkPct`% of its ATK.
+    effect: { fieldHospital: { atkPct: 50 } },
   },
   {
     id: 'hex_lossamp',
@@ -659,23 +667,28 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_minefield',
     name: '雷区',
-    desc: '战斗开始时，在6个随机可部署地块，放置多萝西的2技能的召唤物地雷（地雷攻击力1000，命中后束缚5秒；只命中1名敌人时束缚10秒）；此后每5秒在随机可部署地块生成1个地雷。',
+    desc: '战斗开始时，在6个随机可部署地块，放置多萝西的2技能的召唤物地雷（地雷攻击力2万，命中后束缚5秒；只命中1名敌人时束缚10秒）；此后每5秒在随机可部署地块生成1个地雷。',
     rarity: 'silver',
-    effect: { minefield: { count: 6, atk: 1000, bind: 5, bindSingle: 10, periodicSec: 5, periodicCount: 1 } },
+    // 业主 2026-10-24：「雷区的召唤物攻击力改成2万」 → atk 1000 → 20000 (the mine's own `s.atk`; the blast is
+    // `s.atk × atk_scale` 2.6, so one mine now hits for 52000).
+    effect: { minefield: { count: 6, atk: 20000, bind: 5, bindSingle: 10, periodicSec: 5, periodicCount: 1 } },
   },
   {
     id: 'hex_breaker',
     name: '破隐',
-    desc: '敌人隐匿效果失效',
+    // 业主 2026-10-24：「破隐，加强对队友也生效」 → `team: true`: every alive teammate owns the card through its own
+    // ctx, so the reveal survives the picker's elimination (an eliminated player's refs are not in any battle input).
+    desc: '敌人隐匿效果失效（对队友同样生效）。',
     rarity: 'silver',
-    effect: { breaker: true },
+    effect: { team: true, breaker: true },
   },
   {
     id: 'hex_neurotoxin',
     name: '神经毒素',
-    desc: '干员攻击使目标中毒，在3秒内每秒受到115+2％目标最大生命（不可叠加，伤害最高为1万）点法术伤害。',
+    // 业主 2026-10-24：「神经毒素，数值改变115+8%最大生命值（上限10万）点法术伤害」
+    desc: '干员攻击使目标中毒，在3秒内每秒受到115+8％目标最大生命（不可叠加，伤害最高为10万）点法术伤害。',
     rarity: 'gold',
-    effect: { neurotoxin: { flat: 115, pct: 2, seconds: 3, cap: 10000 } },
+    effect: { neurotoxin: { flat: 115, pct: 8, seconds: 3, cap: 100000 } },
   },
   {
     id: 'hex_ricochet',
@@ -688,9 +701,12 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_echoform',
     name: '回响形态',
-    desc: '作战中，己方所有干员的技能额外获得 1 次充能上限；原本不能蓄力的技能也可以蓄力 1 次。',
+    // 业主 2026-10-24：「回响形态增加效果技力消耗-30%」
+    desc: '作战中，己方所有干员的技能额外获得 1 次充能上限；原本不能蓄力的技能也可以蓄力 1 次；技能技力消耗 −30%。',
     rarity: 'prismatic',
-    effect: { battle: { extraCharges: 1 } },
+    // `battle.extraCharges` is the install-side half; `echoForm.spCostPct` is the battle script of batch16.js
+    // (`Skill.spCostMul`, the field 旧日之力 uses — a −30 % here means ×0.7).
+    effect: { battle: { extraCharges: 1 }, echoForm: { spCostPct: -30 } },
   },
   {
     id: 'hex_voidform',
@@ -731,9 +747,12 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_ghostform',
     name: '幽魂形态',
-    desc: '获得时立即得到装备【幽魂】：阻挡数变为 0，每次受到的伤害不超过 100。',
+    // 业主 2026-10-24：「幽魂形态，加个转职球效果然后发两件」
+    // Two copies of 【幽魂】, and the item itself now carries 变形同构体 (`canGiveBond: true` in tools/build-data.mjs
+    // CUSTOM_ITEMS) so worn with a faction item it counts as that item's bond — the 转职球 effect.
+    desc: '获得时立即得到 2 件装备【幽魂】：阻挡数变为 0，每次受到的伤害不超过 100；【幽魂】同时视为【变形同构体】。',
     rarity: 'prismatic',
-    effect: { onPick: { item: { id: 'chess_item_9_90_e_a', count: 1 } } },
+    effect: { onPick: { item: { id: 'chess_item_9_90_e_a', count: 2 } } },
   },
   // ---- tenth batch (the owner's list of 2026-10-12, §29.27): two 3阶 cards -------------------------------------
   // Both are ENGINE-side, each a module under server/sim/content/hexcards/ dispatched by installHexCards:
@@ -755,9 +774,12 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_onebody',
     name: '你我一体',
-    desc: '作战中，你场上相同的干员生命上限叠加、生命共享；这些干员攻击同一名敌人时，伤害提高至 150%。',
+    // 业主 2026-10-24：「你我一体，增加效果：相同干员均可增加盟约人数（原来只算一个），每一个增加50%攻击力」
+    // The member-count half lives in server/match/bondsMeta.js (a duplicate counts by uid, not by base id, while the
+    // player owns this card); `atkPerCopyPct` is the battle half (hexcards/onebody.js).
+    desc: '作战中，你场上相同的干员生命上限叠加、生命共享；这些干员攻击同一名敌人时，伤害提高至 150%；相同的每一名干员都会增加盟约人数（不再只算一个），且每多一名相同的干员，他们攻击力 +50%。',
     rarity: 'prismatic',
-    effect: { oneBody: { dmgPct: 150 } },
+    effect: { oneBody: { dmgPct: 150, atkPerCopyPct: 50 } },
   },
   // ---- eleventh batch (the owner's own list of 2026-10-13, §29.34): 13 more player hexes ---------------------------
   // The names, tiers and effects are the owner's list; the `desc` keeps the owner's own wording (only the shorthand
@@ -838,18 +860,26 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_lastditch',
     name: '背水一战',
-    desc: '目标生命值低于 5 时，所有盟约的叠层速度翻倍，且每回合第一次刷新免费。',
+    // 业主 2026-10-24：「背水一战，改成目标生命自动变为1然后锁血两回合。干员攻击力+50叠层+50%」
+    // The whole card is the new shape: LP is set to 1 on pick (`onPick.lpSet`), LP LOSS is ignored for `lockRounds`
+    // rounds (`lastDitch.lockRounds`, read by the settlement), every own operator gets `battle.atkPct` and every bond
+    // layer gain is ×`layerMul` (1.5) while the window is open. The old 「LP < 5 ⇒ ×2 + free refresh」 is gone with it.
+    desc: '获得时目标生命值变为 1；接下来的 2 回合内，目标生命值不会因漏怪而减少。作战中己方所有干员攻击力 +50%，所有盟约叠层速度 +50%。',
     rarity: 'gold',
     effect: {
-      lastDitch: { lpBelow: 5, layerMul: 2, freeRefresh: true },
-      onRoundStart: { lastDitchRefresh: true },
+      onPick: { lpSet: 1 },
+      battle: { atkPct: 50 },
+      lastDitch: { lpSet: 1, lockRounds: 2, atkPct: 50, layerMul: 1.5 },
       onBattleStart: { lastDitchArm: true },
     },
   },
   {
     id: 'hex_bondparasite',
     name: '盟约寄生',
-    desc: '获得时随机选择一名队友；每回合开始时，该队友上一回合获得的总层数平均（向上取整）加到你所有可叠层的已激活盟约上。',
+    // 业主 2026-10-24：「盟约寄生加一条可以让寄生者和被寄生者都知道寄生对象」
+    // Both sides now see the pairing: the picker's ref carries `parasite.partnerName` (its `desc` is rewritten at pick
+    // time by server/match/hextech.js), and the host gets a watcher ref of its own that names the picker.
+    desc: '获得时随机选择一名队友（你和该队友都能看到寄生对象）；每回合开始时，该队友上一回合获得的总层数平均（向上取整）加到你所有可叠层的已激活盟约上。',
     rarity: 'silver',
     // 业主 2026-10-21 改版：原来是「战斗开始时整备区每名干员给最高层盟约 +2 层」。现在随机选一名队友，按该队友
     // 上一回合新增总层数平均分配到自己的可叠层已激活盟约。选人/快照在 match 侧（server/match/hextech.js
@@ -1094,9 +1124,10 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_umbrellabreak',
     name: '破伞',
-    desc: '作战中，己方干员被击中时有 30% 概率免受此次伤害，并对攻击方造成「此次伤害值 × 2」的法术伤害。',
+    // 业主 2026-10-24：「破伞，数值改成40%概率反伤800%」
+    desc: '作战中，己方干员被击中时有 40% 概率免受此次伤害，并对攻击方造成「此次伤害值 × 8」的法术伤害。',
     rarity: 'prismatic',
-    effect: { umbrellabreak: { chance: 30, reflectMul: 200 } },
+    effect: { umbrellabreak: { chance: 40, reflectMul: 800 } },
   },
   {
     id: 'hex_warding',
@@ -1178,6 +1209,151 @@ export const PLAYER_HEXES = [
       onRoundStart: { everyRounds: 2, skipFirst: true, item: { id: 'chess_item_9_96_e_a', count: 1, total: 3 } },
       heartsteel: { every: 3, dmgMaxHpPct: 100, maxHpGain: 150, layerGain: 2 },
     },
+  },
+  // ---- sixteenth batch (业主 2026-10-24): eleven new player cards -----------------------------------------------
+  // The owner's list, verbatim, one card per line. The spec keys this batch introduces are documented beside their
+  // readers:
+  //   onPick.otherRandomHexes N   无私奉献 (server/match/hextech.js applyHexExtras): every OTHER alive teammate gains N
+  //                               random hexes (weighted, never one it owns). `team: true` cannot express it — that
+  //                               reaches the picker too, and the card says 除自己外.
+  //   onRoundStart.randomItem     玩偶批发商 (applySpec): one random item out of `ids`.
+  //   adaptiveGrowth { pctPerTier }  自适应成长 (hexcards/batch16.js): ATK / DEF / max-HP +8 % per TIER of the enemy's
+  //                               own 协议源石 (battle.flags.enemyHexIds → data/hextech.json rarities), so a 16 %-weight
+  //                               3阶 plus two 1阶 is 5 tiers = +40 %.
+  //   drawBlade { atkPct, defPct, hpPct, lifestealPct, bond }  亮剑 (batch16.js): own RANGED operators ×1.5 ATK, ×3
+  //                               DEF / max HP, 20 % lifesteal, and they count as 【突袭】 members.
+  //   pressureCooker { hpPct, elemPct, radius }  高压锅 (batch16.js): every second each own GROUND operator deals
+  //                               `hpPct`% of its max HP as arts damage around itself + `elemPct`% of that as 灼燃.
+  //   spellArcher { pct }         神射法师 (batch16.js): an own operator's arts damage instance also deals `pct`% of it
+  //                               as a separate PHYS instance.
+  //   soulBomb { every } + onBattleStart.soulBombArm  灵魂炸弹 (batch16.js + server/match/player/round.js): the match
+  //                               banks every 医疗 operator's healing for the whole game into the ref; every `every`
+  //                               seconds the battle hits every enemy for that number and heals every own operator by it.
+  //   dread { seconds }           惊惧 (batch16.js): the FIRST ground-operator hit on an enemy 战栗s it for `seconds`.
+  //   infernalConduit { dps, seconds, elemPct }   炼狱导管 (batch16.js): every attack adds an independent 灼烧 stack
+  //                               (`dps` arts/s for `seconds`, unlimited stacks) + `elemPct`% of it as 灼燃.
+  //   onPick.artifactKit { ids } + onRoundStart.artifactStage { rungs: [{ delta, ids }] }   神器整备 (applySpec):
+  //                               one piece of the equipment a 1阶 (silver) 协议源石 itself hands out on the pick, one
+  //                               from the 2阶 (gold) tier at the next round start, one from the 3阶 (prismatic) tier
+  //                               three rounds after the pick (业主 2026-10-24 — the pools are the card's OWN ids).
+  {
+    id: 'hex_selfless',
+    name: '无私奉献',
+    desc: '获得时，除你之外，每名队友额外随机获得一枚协议源石。',
+    rarity: 'prismatic',
+    effect: { onPick: { otherRandomHexes: 1 } },
+  },
+  {
+    id: 'hex_dollwholesale',
+    name: '玩偶批发商',
+    // 业主原文是「阿米娅玩偶 / 可露希尔玩偶」；本作装备表里只有两个【玩偶】记录（可露希尔柜台的两种玩偶），
+    // 所以这张卡在这两个之间随机：[ASSUMED] 精打细算玩偶 / 见钱眼开玩偶。
+    desc: '每回合开始时，随机获得一个【精打细算玩偶】或【见钱眼开玩偶】。',
+    rarity: 'gold',
+    effect: { onRoundStart: { randomItem: { ids: ['chess_item_2_05_e_a', 'chess_item_2_07_e_a'] } } },
+  },
+  {
+    id: 'hex_pager',
+    name: '寻呼高手',
+    // 寻呼唤机 → the game's own 寻呼模块 (chess_item_4_01_e_a).
+    desc: '获得时立即得到 1 件【寻呼模块】；此后每 2 回合开始时再得到 1 件【寻呼模块】。',
+    rarity: 'gold',
+    effect: {
+      onPick: { item: { id: 'chess_item_4_01_e_a', count: 1 } },
+      onRoundStart: { everyRounds: 2, skipFirst: true, item: { id: 'chess_item_4_01_e_a', count: 1 } },
+    },
+  },
+  {
+    id: 'hex_adaptivegrowth',
+    name: '自适应成长',
+    desc: '作战中，己方所有干员攻击力、防御力、生命值上限按敌人协议源石的总阶数提升：每一阶 +8%（1 阶 +8%、2 阶 +16%、3 阶 +24%，逐枚相加）。',
+    rarity: 'prismatic',
+    effect: { adaptiveGrowth: { pctPerTier: 8 } },
+  },
+  {
+    id: 'hex_drawblade',
+    name: '亮剑',
+    desc: '作战中，己方所有远程干员视为【突袭】盟约成员；他们的攻击力提升至 150%，防御力与生命值提升至 300%，并获得 20% 吸血。',
+    rarity: 'prismatic',
+    effect: { drawBlade: { atkPct: 50, defPct: 200, hpPct: 200, lifestealPct: 20, bond: 'raidShip' } },
+  },
+  {
+    id: 'hex_pressurecooker',
+    name: '高压锅',
+    desc: '作战中，己方所有地面干员每秒对周围敌人造成相当于自身最大生命值 50% 的法术伤害，并附加该伤害 30% 的灼燃损伤。',
+    rarity: 'prismatic',
+    effect: { pressureCooker: { hpPct: 50, elemPct: 30, radius: 1.25 } },
+  },
+  {
+    id: 'hex_spellarcher',
+    name: '神射法师',
+    desc: '作战中，己方干员造成法术伤害时，额外造成等额的物理伤害。',
+    rarity: 'gold',
+    effect: { spellArcher: { pct: 100 } },
+  },
+  {
+    id: 'hex_soulbomb',
+    name: '灵魂炸弹',
+    desc: '本局累计统计医疗干员造成的治疗量；作战中每 10 秒对全体敌人造成一次该累计数值的法术伤害，并为全体己方干员回复一次该数值的生命。',
+    rarity: 'prismatic',
+    effect: { onBattleStart: { soulBombArm: true }, soulBomb: { every: 10 } },
+  },
+  {
+    id: 'hex_dread',
+    name: '惊惧',
+    desc: '作战中，所有敌人第一次受到地面干员攻击后，战栗 2 秒。',
+    rarity: 'silver',
+    effect: { dread: { seconds: 2 } },
+  },
+  {
+    id: 'hex_infernalconduit',
+    name: '炼狱导管',
+    desc: '作战中，己方干员的攻击额外附加一层灼烧：每秒造成 100 点法术伤害，持续 5 秒，可无限叠加；同时造成该伤害 30% 的灼燃损伤。',
+    rarity: 'prismatic',
+    effect: { infernalConduit: { dps: 100, seconds: 5, elemPct: 30 } },
+  },
+  {
+    id: 'hex_artifactkit',
+    name: '神器整备',
+    // 业主 2026-10-24：「协议神器整备修改成获得1阶协议源石的装备2阶协议源石的装备3阶协议源石的装备」。
+    // 「协议源石的装备」= 那一阶源石**自己发**的装备（data/items.json 里 chess_item_9_9x 的「凭证」一族），不是
+    // 后勤整备那种商店装备的 GOLDEN（进阶）形态 —— 本卡第一版按后者实现，业主这次点名改成前者；追问里业主选的
+    // 是「A 只发凭证装备」＋「时机不变」。三档各自的来源（test/content/hextech.test.js 的测试会反查这张表）：
+    //   1阶 silver      【加护】9_93    ← 协议源石【加护】
+    //   2阶 gold        【残光】9_92    ← 协议源石【残光】（【锻炉】同档，但它的【百变】9_97 是两件装备的融合
+    //                                     产物、自身没有任何效果，所以不进这个池）
+    //   3阶 prismatic   【幽魂】9_90 / 【恶魔之契】9_91 / 【万物归虚】9_94 / 【尸山】9_95 / 【心之钢】9_96 随机一件
+    desc: '获得时立即得到装备【加护】（1 阶协议源石的装备）；下一回合开始时得到装备【残光】（2 阶协议源石的装备）；3 回合后得到 1 件随机 3 阶协议源石的装备（幽魂 / 恶魔之契 / 万物归虚 / 尸山 / 心之钢）。',
+    rarity: 'prismatic',
+    effect: {
+      onPick: { artifactKit: { ids: ['chess_item_9_93_e_a'] } },
+      onRoundStart: {
+        artifactStage: {
+          rungs: [
+            { delta: 1, ids: ['chess_item_9_92_e_a'] },
+            {
+              delta: 3,
+              ids: [
+                'chess_item_9_90_e_a', 'chess_item_9_91_e_a', 'chess_item_9_94_e_a', 'chess_item_9_95_e_a', 'chess_item_9_96_e_a',
+              ],
+            },
+          ],
+        },
+      },
+    },
+  },
+  // ---- 第十七批（业主 2026-10-24）：核心盟约**专属**协议 · 维多利亚 · 锻炉 --------------------------------
+  // `requiresBond` is a NEW field on a card record (not an effect key): the draft pool is filtered per player by
+  // `server/match/hextech.js hexAvailableTo`, so a card carrying it is only ever OFFERED to a player whose that bond is
+  // currently active (拿到之后即使盟约掉了也照常有效 —— 「只在激活对应盟约时才能刷新出」说的是**抽卡**)。
+  // Its prep half (server/match/hextech.js applyForgeFusion) fuses an operator's two equipped items into 【百变】.
+  {
+    id: 'hex_forge',
+    name: '锻炉',
+    desc: '仅【维多利亚】盟约激活时才会出现。你的干员装备第 2 件装备时，两件装备融合为装备【百变】：百变同时拥有这两件装备的全部效果，不会再被融合，仍可被【变形同构体】识别。',
+    rarity: 'gold',
+    requiresBond: 'victoriaShip',
+    effect: { forge: { itemId: 'chess_item_9_97_e_a' } },
   },
 ];
 

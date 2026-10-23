@@ -16,6 +16,9 @@
 //   7–12  危险区：加防御/法抗、漏怪、每波数量、收入；
 //   13–18 深潜区：首领池、额外敌方协议源石（第 1 / 3 / 5 回合分散发，见 PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS）。
 //
+// 另外，**局内还有一条回合爬升**（业主 2026-10-24「削弱敌方前期加强后期」→「k = 1 落在第 6 回合」）：同一级的乘区
+// 在 R1–R5 打折、R6 起满额、R11 起加码（PROTOCOL_LEVEL_ROUND_RAMP）。18 行表值本身不为它改动。
+//
 // 读点（都从这里取，别在引擎里写第二份）：
 //   server/match/gamedata.js   income / bossPoolHp
 //   server/match/hextech.js    matchEnemyMods（敌方 mods 折入，预览=实战同一份）
@@ -115,6 +118,73 @@ export function protocolLevelExtraBossAt(level, round, difficulty = 'ABYSS', see
   return PROTOCOL_LEVEL_EXTRA_BOSSES[idx] || null;
 }
 
+// =====================================================================================================================
+// 回合爬升（业主 2026-10-24：「调整 n1-18，计划是削弱敌方前期加强后期」，随后定「k = 1 落在第 6 回合」）
+// =====================================================================================================================
+//
+// 为什么要有这一层：18 行表给的是一条**全程恒定**的乘区（N18 生命 2.45 / 攻击 1.88，从 R1 压到 R15），而玩家的成长
+// 是斜的。实测（docs/BALANCE.md §8，`tools/balance.mjs --level 18`）：R3 击杀率只有 48 %、R5 漏怪均值 11.75 —— 前期
+// 是一堵墙；R11 击杀率 114 %、首领轮四人 @150 s 只啃掉 14 % 池子 —— 后期是一张纸。所以这里不动 18 行表值，只在
+// **折入时**按回合缩放「高于 1 的那一段」：
+//
+//     有效乘区 = 1 + (表值 - 1) × k(回合)
+//
+// * **k = 1 落在第 6 回合**（业主指定）：R1–R5 是削弱窗口，R6 起与今天的对局逐回合相同，R11 起反过来加码，R14 / R15
+//   （首领轮 / 隐秘核心）最重。
+// * 按**增量**缩放而不是把乘区压回 1，等级之间的差别在任何回合都保得住：同一回合上 N1 < N2 < … < N18。
+// * 只作用于 `hpMul / atkMul / defMul / resMul`。`countAdd` 走另一条阶梯（protocolLevelCountAddAt）；`bossPoolMul`
+//   只在首领回合生效、本身就是后期杠杆，所以直接写在表里，**不吃 k**（否则与这次抬的那 0.15 重复计算）。
+// * 回合非法（0 / 非整数）= 不在对局回合里 ⇒ k = 1，旧的平曲线（`matchEnemyMods` 在开局前就是这么被读的）。
+export const PROTOCOL_LEVEL_ROUND_RAMP = Object.freeze([
+  Object.freeze({ from: 1, k: 0.45 }),
+  Object.freeze({ from: 3, k: 0.6 }),
+  Object.freeze({ from: 5, k: 0.8 }),
+  Object.freeze({ from: 6, k: 1 }),
+  Object.freeze({ from: 11, k: 1.2 }),
+  Object.freeze({ from: 14, k: 1.35 }),
+]);
+
+/** k 第一次等于 1 的回合 —— 削弱窗口是 `1 .. FULL_ROUND - 1`，从这一回合起与今天的对局完全相同。 */
+export const PROTOCOL_LEVEL_FULL_ROUND = 6;
+
+/** 从这一回合起反过来加码（k > 1）。 */
+export const PROTOCOL_LEVEL_LATE_ROUND = 11;
+
+/** 吃 k 的四个乘区（`countAdd` 与 `bossPoolMul` 不在此列，各有各的处理）。 */
+export const PROTOCOL_LEVEL_RAMPED_KEYS = Object.freeze(['hpMul', 'atkMul', 'defMul', 'resMul']);
+
+/**
+ * 这一回合的爬升系数 k（R1–R2 = 0.45 … R6–R10 = 1 … R14+ = 1.35）。
+ *
+ * 纯函数、不改状态；`round` 缺失或非法（0 / 负数 / 非整数）⇒ **1**（不在对局回合里，按旧口径读整级强度）。
+ * @param {number} round
+ * @returns {number}
+ */
+export function protocolLevelRoundK(round) {
+  if (!Number.isInteger(round) || round <= 0) return 1;
+  let k = PROTOCOL_LEVEL_ROUND_RAMP[0].k;
+  for (const step of PROTOCOL_LEVEL_ROUND_RAMP) if (round >= step.from) k = step.k;
+  return k;
+}
+
+/**
+ * 这一回合的「每波额外敌人」—— 表里的 `countAdd` 是**第 6 回合起**的值（业主同一条口径）：
+ *
+ *   R1–R5 ⇒ 0（前期不加怪）；R6–R10 ⇒ 表值；R11 起 ⇒ 表值 + 1。
+ *
+ * 只对有 `countAdd` 的等级有意义（当前只有 18 级），其余等级一律 0。
+ * @param {number} level @param {number} round
+ * @returns {number}
+ */
+export function protocolLevelCountAddAt(level, round) {
+  const row = protocolLevelRow(level);
+  const base = row && row.enemy && Number.isFinite(row.enemy.countAdd) ? Math.trunc(row.enemy.countAdd) : 0;
+  if (!(base > 0)) return 0;
+  if (!Number.isInteger(round) || round <= 0) return base;
+  if (round < PROTOCOL_LEVEL_FULL_ROUND) return 0;
+  return round >= PROTOCOL_LEVEL_LATE_ROUND ? base + 1 : base;
+}
+
 /** 每一级的数值。`hpMul/atkMul/defMul/resMul` 是**乘数**，`countAdd` 是每波额外敌人数（加法），其余是绝对增减。 */
 export const PROTOCOL_LEVELS = Object.freeze([
   { level: 1, tier: 'steady', label: 'I', enemy: { hpMul: 1.05, atkMul: 1.03 } },
@@ -129,12 +199,12 @@ export const PROTOCOL_LEVELS = Object.freeze([
   { level: 10, tier: 'danger', label: 'X', incomeDelta: -1, enemy: { hpMul: 1.65, atkMul: 1.40, defMul: 1.12, resMul: 1.09 } },
   { level: 11, tier: 'danger', label: 'XI', enemy: { hpMul: 1.74, atkMul: 1.45, defMul: 1.14, resMul: 1.11 } },
   { level: 12, tier: 'danger', label: 'XII', milestone: true, incomeDelta: -1, enemy: { hpMul: 1.83, atkMul: 1.50, defMul: 1.16, resMul: 1.13 } },
-  { level: 13, tier: 'deep', label: 'XIII', incomeDelta: -1, bossPoolMul: 1.10, extraEnemyHexes: 1, enemy: { hpMul: 1.92, atkMul: 1.56, defMul: 1.17, resMul: 1.14 } },
-  { level: 14, tier: 'deep', label: 'XIV', incomeDelta: -2, bossPoolMul: 1.10, extraEnemyHexes: 1, enemy: { hpMul: 2.02, atkMul: 1.62, defMul: 1.18, resMul: 1.15 } },
-  { level: 15, tier: 'deep', label: 'XV', incomeDelta: -2, bossPoolMul: 1.20, extraEnemyHexes: 1, enemy: { hpMul: 2.12, atkMul: 1.68, defMul: 1.19, resMul: 1.16 } },
-  { level: 16, tier: 'deep', label: 'XVI', incomeDelta: -2, bossPoolMul: 1.20, extraEnemyHexes: 2, enemy: { hpMul: 2.23, atkMul: 1.74, defMul: 1.20, resMul: 1.17 } },
-  { level: 17, tier: 'deep', label: 'XVII', incomeDelta: -3, bossPoolMul: 1.30, extraEnemyHexes: 2, enemy: { hpMul: 2.34, atkMul: 1.80, defMul: 1.21, resMul: 1.18 } },
-  { level: 18, tier: 'deep', label: 'XVIII', milestone: true, incomeDelta: -3, bossPoolMul: 1.50, extraEnemyHexes: 3, leakLp: 2, enemy: { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 1 } },
+  { level: 13, tier: 'deep', label: 'XIII', incomeDelta: -1, bossPoolMul: 1.25, extraEnemyHexes: 1, enemy: { hpMul: 1.92, atkMul: 1.56, defMul: 1.17, resMul: 1.14 } },
+  { level: 14, tier: 'deep', label: 'XIV', incomeDelta: -2, bossPoolMul: 1.25, extraEnemyHexes: 1, enemy: { hpMul: 2.02, atkMul: 1.62, defMul: 1.18, resMul: 1.15 } },
+  { level: 15, tier: 'deep', label: 'XV', incomeDelta: -2, bossPoolMul: 1.40, extraEnemyHexes: 1, enemy: { hpMul: 2.12, atkMul: 1.68, defMul: 1.19, resMul: 1.16 } },
+  { level: 16, tier: 'deep', label: 'XVI', incomeDelta: -2, bossPoolMul: 1.40, extraEnemyHexes: 2, enemy: { hpMul: 2.23, atkMul: 1.74, defMul: 1.20, resMul: 1.17 } },
+  { level: 17, tier: 'deep', label: 'XVII', incomeDelta: -3, bossPoolMul: 1.55, extraEnemyHexes: 2, enemy: { hpMul: 2.34, atkMul: 1.80, defMul: 1.21, resMul: 1.18 } },
+  { level: 18, tier: 'deep', label: 'XVIII', milestone: true, incomeDelta: -3, bossPoolMul: 1.80, extraEnemyHexes: 3, leakLp: 2, enemy: { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 1 } },
 ]);
 
 /** 等级是否是合法整数（0..18）。 */
@@ -172,10 +242,30 @@ export function protocolLevelMods(level, difficulty = 'ABYSS') {
   };
 }
 
-/** 只取敌方 mods 那半（喂给 shared/hextech.js 的 sumEnemyMods，形如 `{ mods }` 的记录）。 */
-export function protocolLevelEnemyMods(level, difficulty = 'ABYSS') {
+/**
+ * 只取敌方 mods 那半（喂给 shared/hextech.js 的 sumEnemyMods，形如 `{ mods }` 的记录）。
+ *
+ * **按回合折一次爬升**（业主 2026-10-24）：`hpMul/atkMul/defMul/resMul` 走 `1 + (表值 - 1) × k(round)`；
+ * `countAdd` 换成 `protocolLevelCountAddAt(level, round)`（R1–R5 = 0、R6–R10 = 表值、R11 起 +1）。
+ * `round` 不传 / 不合法 ⇒ k = 1、countAdd = 表值，与 2026-10-24 之前的输出逐字节相同。
+ *
+ * 返回值里**只带本回合真正要用的键**（`countAdd: 0` 会保留，让折入端知道「前期不加怪」而不是回落到卡牌的加成）——
+ * 注意 `sumEnemyMods` 是乘法：N18 前 5 回合的 0 也会把【虫群】那张卡的 `countAdd` 一起压成 0，这是刻意的
+ * 「前期不靠怪量堆难度」。
+ * @param {number} level @param {string} [difficulty] @param {number} [round]
+ */
+export function protocolLevelEnemyMods(level, difficulty = 'ABYSS', round = 0) {
   const mods = protocolLevelMods(level, difficulty);
-  return mods ? { mods: { ...mods.enemy } } : null;
+  if (!mods) return null;
+  const k = protocolLevelRoundK(round);
+  const enemy = {};
+  for (const [key, v] of Object.entries(mods.enemy)) {
+    if (!Number.isFinite(v)) continue;
+    if (k !== 1 && PROTOCOL_LEVEL_RAMPED_KEYS.includes(key)) enemy[key] = Math.round((1 + (v - 1) * k) * 10000) / 10000;
+    else enemy[key] = v;
+  }
+  if (Number.isFinite(enemy.countAdd) && enemy.countAdd > 0) enemy.countAdd = protocolLevelCountAddAt(level, round);
+  return { mods: enemy };
 }
 
 // =====================================================================================================================
@@ -212,6 +302,14 @@ export function protocolLevelEffects(level) {
   const pct = (v) => `${Math.round(((v - 1) * 100) * 10) / 10}%`;
   const times = (v) => `×${v.toFixed(2)}`;
 
+  // ---- 回合爬升（业主 2026-10-24：「削弱敌方前期加强后期」，k = 1 落在第 6 回合） ----
+  // 这一条排在最前面：下面那些乘区**不是全程生效的**，先让玩家知道「第 6 回合起才是这个数」。
+  out.push({
+    id: 'ramp',
+    msgid: '第 1–{end} 回合敌方数值低于本级标称值，第 {from} 回合起满额，第 {late} 回合起再加强',
+    params: { end: PROTOCOL_LEVEL_FULL_ROUND - 1, from: PROTOCOL_LEVEL_FULL_ROUND, late: PROTOCOL_LEVEL_LATE_ROUND },
+  });
+
   // ---- 数值（敌方全局乘区） ----
   if (Number.isFinite(enemy.hpMul) && enemy.hpMul > 1) {
     out.push({ id: 'hp', msgid: '敌方生命值 {v}', params: { v: times(enemy.hpMul) } });
@@ -226,7 +324,16 @@ export function protocolLevelEffects(level) {
     out.push({ id: 'res', msgid: '敌方法术抗性 {v}', params: { v: times(enemy.resMul) } });
   }
   if (Number.isFinite(enemy.countAdd) && enemy.countAdd > 0) {
-    out.push({ id: 'count', msgid: '每波敌人数量 +{n}', params: { n: Math.trunc(enemy.countAdd) } });
+    out.push({
+      id: 'count',
+      msgid: '第 {from} 回合起每波敌人数量 +{n}，第 {late} 回合起 +{n2}',
+      params: {
+        from: PROTOCOL_LEVEL_FULL_ROUND,
+        n: Math.trunc(enemy.countAdd),
+        late: PROTOCOL_LEVEL_LATE_ROUND,
+        n2: Math.trunc(enemy.countAdd) + 1,
+      },
+    });
   }
 
   // ---- 规则（漏怪 / 收入 / 首领池 / 额外源石） ----
@@ -287,11 +394,12 @@ export const PROTOCOL_LEVEL_EFFECT_TEXT = Object.freeze([
   '稳定区：只有敌方生命与攻击',
   '危险区：追加防御、法抗、漏怪与收入',
   '深潜区：追加首领池、额外敌方协议源石',
+  '第 1–{end} 回合敌方数值低于本级标称值，第 {from} 回合起满额，第 {late} 回合起再加强',
   '敌方生命值 {v}',
   '敌方攻击力 {v}',
   '敌方防御力 {v}',
   '敌方法术抗性 {v}',
-  '每波敌人数量 +{n}',
+  '第 {from} 回合起每波敌人数量 +{n}，第 {late} 回合起 +{n2}',
   '每漏掉 1 个敌人，额外扣 {n} 点目标生命值',
   '第 {from} 回合起，每回合收入 −{n}',
   '首领（最终攻势 / 隐秘核心）血量 {v}',

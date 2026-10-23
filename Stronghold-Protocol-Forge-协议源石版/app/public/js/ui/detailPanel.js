@@ -13,6 +13,8 @@
 // effect; 变形同构体 (`canGiveBond`) also its 天赋栏 list (MorphPairings, gameLogic morphPairings: per bond the items that
 // make the wearer its member, 本局禁用 marked; on a wearer's card the pairing it wears highlighted, 生效中 — GitHub issue
 // #1, DESIGN §21.26) and a bond item (`giveBondId`) the line "与变形同构体一同装备时，携带者视为【X】成员" (MorphGrantLine);
+// a fused 百变 (锻炉) names the two items it swallowed under its effect text (FusedFrom: the piece's `merged`
+// [idA, idB] — one shared record cannot name them, so the components' own texts are read from where they are);
 // tokens — the owner's variant (a golden owner's summon: its `_b` stats / skill), how a placed summon takes
 // the field (shared/constants.js SKILL_SUMMON_START_DEPLOY), its token skill and talents; a band map character (外勤医疗's
 // Touch / 预备干员-医疗, tokens.json kind 'mapChar') — an operator of the mode: 干员, its class, 特性, skill and talents
@@ -237,9 +239,30 @@ export function MorphGrantLine({ item, off = null, carried = null }) {
   </p>`;
 }
 
+/**
+ * 百变 (锻炉, 业主 2026-10-24): 「我希望百变的描述里有由哪两个装备融合」. The fused item's own record is a MARKER, so its
+ * `desc` cannot name its components — one record is shared by every 百变. The two ids ride the PIECE
+ * (`merged: [idA, idB]`, server/match/hextech.js applyForgeFusion → player/views.js pieceView), so the card names them
+ * here, with each component's own effect text (that IS 「百变的效果是两件装备的效果」, said where it is read).
+ * @param {{ merged?: string[]|null }} props the fused item piece's `merged`
+ */
+export function FusedFrom({ merged = null }) {
+  const ids = Array.isArray(merged) ? merged.filter((id) => typeof id === 'string' && id) : [];
+  if (ids.length < 2) return null;
+  const recs = ids.map((id) => data.lookup('items', id) || { id, name: id });
+  return html`<div class="dfuse" data-fused=${ids.join('|')}>
+    <p class="dfuse__lead">${t('【锻炉】融合的两件装备：')}</p>
+    <ul class="dfuse__list">${recs.map((r) => html`<li key=${r.id} class="dfuse__row" data-item=${r.id}>
+      <b class="dfuse__name">${r.name || r.id}</b>
+      <${RichText} text=${r.descRaw || r.desc || ''} class="dfuse__desc" />
+    </li>`)}</ul>
+  </div>`;
+}
+
 /** An equipped item of the card: icon, name, effect — and for 变形同构体 / a bond item its pairing (`carried`: the wearer's items).
- * 第 7 段：`plus` 档下变形同构体**不占装备位**，所以它的行上多一个「不占装备格」标签（缺省档不画 ⇒ 界面逐字不变）。 */
-function ItemRow({ itemId, uid = null, carried = null, off = null, onUnequip = null }) {
+ * 第 7 段：`plus` 档下变形同构体**不占装备位**，所以它的行上多一个「不占装备格」标签（缺省档不画 ⇒ 界面逐字不变）。
+ * `merged`（一件融合成的 百变 的 `merged`）⇒ 行内列出它融合掉的那两件装备（FusedFrom）。 */
+function ItemRow({ itemId, uid = null, carried = null, off = null, onUnequip = null, merged = null }) {
   const it = data.lookup('items', itemId);
   // 装备拆卸（行为开关 `unequip: "allow"`，DESIGN §28.43.1）：`onUnequip` 只在**可编辑的自己人**身上传进来，而
   // `unequipAllowed()` 是这一页从 `welcome.mods` 派生的有效档位 ⇒ **缺省档一个按钮都不画**（缺省界面逐字节不变）。
@@ -248,6 +271,7 @@ function ItemRow({ itemId, uid = null, carried = null, off = null, onUnequip = n
   return html`<div class="ditem">
     <${UnitThumb} kind="item" id=${itemId} size="sm" />
     <div class="ditem__text"><b>${it?.name || itemId}</b>${slotless ? html`<span class="dtag dtag-slotless">${t('不占装备格')}</span>` : null}<${RichText} text=${it?.descRaw || it?.desc || ''} class="ditem__desc" />
+      <${FusedFrom} merged=${merged} />
       ${it?.canGiveBond ? html`<${MorphPairings} off=${off} carried=${carried || []} />` : it?.giveBondId ? html`<${MorphGrantLine} item=${it} off=${off} carried=${carried} />` : null}</div>
     ${canDetach ? html`<${Button} variant="ghost" size="sm" class="ditem__detach" title=${t('卸下')} aria-label=${t('卸下')} onClick=${() => onUnequip(uid)}>${t('卸下')}<//>` : null}
   </div>`;
@@ -552,7 +576,7 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   // used to read EQUIP n/2 and claim 「最多 2 件」 while the server already accepted the third item.
   const equipCapShown = slot.slotCap(equipCap);
   blocks.equip = piece?.kind === 'chess' ? html`<${Section} key="equip" title=${t('装备')} micro=${`EQUIP ${equipUsed}/${equipCapShown}`} class="dsec--equip">
-      ${items.length ? items.map((it) => html`<${ItemRow} key=${it.uid} itemId=${it.id} uid=${it.uid} carried=${items} off=${offBonds} onUnequip=${editable ? onUnequip : null} />`) : html`<p class="t-dim dempty">${t('拖拽装备至该干员以配发（最多 {n} 件）', { n: equipCapShown })}</p>`}
+      ${items.length ? items.map((it) => html`<${ItemRow} key=${it.uid} itemId=${it.id} uid=${it.uid} carried=${items} merged=${it.merged || null} off=${offBonds} onUnequip=${editable ? onUnequip : null} />`) : html`<p class="t-dim dempty">${t('拖拽装备至该干员以配发（最多 {n} 件）', { n: equipCapShown })}</p>`}
     <//>`
     // no own piece (a teammate's unit, a bond popup's 变形同构体 row): what it carries, read-only
     : !piece && carried.length ? html`<${Section} key="equip" title=${t('装备')} micro=${`EQUIP ${carriedUsed}/${equipCapShown}`} class="dsec--equip">
@@ -607,7 +631,7 @@ export function ItemDetail({ item, piece, editable, onDestroy, offBonds = null, 
         ${item.flavor ? html`<span class="dhead__flavor">${item.flavor}</span>` : null}
       </div>
     </div>
-    <${Section} title=${t('效果')} micro="EFFECT"><${RichText} as="p" text=${item.descRaw || item.desc} class="dtext" /><//>
+    <${Section} title=${t('效果')} micro="EFFECT"><${RichText} as="p" text=${item.descRaw || item.desc} class="dtext" /><${FusedFrom} merged=${piece && piece.merged} /><//>
     ${item.canGiveBond ? html`<${Section} title=${t('天赋')} micro="TALENT" class="dsec--morph"><${MorphPairings} off=${offBonds} /><//>` : null}
     ${!item.canGiveBond && item.giveBondId ? html`<${MorphGrantLine} item=${item} off=${offBonds} />` : null}
     ${item.note ? html`<p class="dhint dhint--rule"><${Icon} name="info" />${item.note}</p>` : null}

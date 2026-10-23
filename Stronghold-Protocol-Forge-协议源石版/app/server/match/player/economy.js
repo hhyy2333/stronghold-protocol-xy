@@ -79,7 +79,9 @@ export class PlayerEconomy {
     if (!this.gd.bond(bondId) || !Number.isFinite(n) || n <= 0) return 0;
     if (requireActive && !(this.bonds[bondId] && this.bonds[bondId].active)) return 0;
     const before = this.layers[bondId] || 0;
-    return layerGainRoom(before, Math.floor(n) * layerGainMulOf(this, bondId));
+    // 背水一战 (业主 2026-10-24) made the multiplier fractional (×1.5): floors the PRODUCT so a bond's layers stay whole
+    // numbers (5 × 1.5 ⇒ +7, not +7.5). 盟约裂变's ×3 is unaffected.
+    return layerGainRoom(before, Math.floor(Math.floor(n) * layerGainMulOf(this, bondId)));
   }
 
   /**

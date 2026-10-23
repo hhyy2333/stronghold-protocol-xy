@@ -209,6 +209,7 @@ export function TitleScreen() {
         <img src=${ridges} alt="" hidden onLoad=${() => setRidgesLoadedUrl(ridges)} onError=${() => setRidgesFailedUrl(ridges)} />
       </div>` : null}
       <div class="title-bg__haze"></div>
+      <div class="title-bg__grid"></div>
       <span class="cross" style="left:7%;top:22%"></span>
       <span class="cross" style="left:93%;top:30%"></span>
       <span class="cross" style="left:14%;top:70%"></span>
@@ -232,38 +233,49 @@ export function TitleScreen() {
     </div>
 
     <main class="title-main">
-      <${Emblem} />
-      ${alphabetic ? null : html`<div class="title-en">
-        <span class="title-en__a">STRONGHOLD PROTOCOL</span>
-        <span class="title-en__b">ALLIANCE</span>
-      </div>`}
-      <h1 class=${`title-cn${alphabetic ? ' title-cn--latin' : ''}`}>${t('卫戍协议')}<span class="title-cn__colon">${alphabetic ? ': ' : '：'}</span><em>${t('盟约')}</em></h1>
-      <p class="title-tag">${t('调配资金与干员，与同伴协同布防，抵御多波次进攻，直至击败敌方领袖。')}</p>
+      <div class="title-brand">
+        <${Emblem} />
+        ${alphabetic ? null : html`<div class="title-en">
+          <span class="title-en__a">STRONGHOLD PROTOCOL</span>
+          <span class="title-en__b">ALLIANCE</span>
+        </div>`}
+        <h1 class=${`title-cn${alphabetic ? ' title-cn--latin' : ''}`}>${t('卫戍协议')}<span class="title-cn__colon">${alphabetic ? ': ' : '：'}</span><em>${t('盟约')}</em></h1>
+        <p class="title-tag">${t('调配资金与干员，与同伴协同布防，抵御多波次进攻，直至击败敌方领袖。')}</p>
+      </div>
 
       <div class="title-login">
-        ${pendingJoin ? html`<div class="title-invite">
-          <${Icon} name="key" />
-          <span>${t('收到同盟邀请')}</span><b class="num">${pendingJoin}</b><span class="t-lo">${t('· 输入代号后将自动加入')}</span>
-        </div>` : null}
-        <${TextField} label=${t('博士代号')} micro="CALLSIGN" size="lg" icon="user" value=${name} maxLength=${NAME_MAX_LEN}
-          placeholder=${t('输入你的代号（最多 {NAME_MAX_LEN} 字）', { NAME_MAX_LEN })} autoFocus=${!touchUi}
-          onInput=${setName} onEnter=${start} />
-        <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" disabled=${!valid} onClick=${start}>${t('开始')}<//>
+        <div class="title-login__id">
+          ${pendingJoin ? html`<div class="title-invite">
+            <${Icon} name="key" />
+            <span>${t('收到同盟邀请')}</span><b class="num">${pendingJoin}</b><span class="t-lo">${t('· 输入代号后将自动加入')}</span>
+          </div>` : null}
+          <${TextField} label=${t('博士代号')} micro="CALLSIGN" size="lg" icon="user" value=${name} maxLength=${NAME_MAX_LEN}
+            placeholder=${t('输入你的代号（最多 {NAME_MAX_LEN} 字）', { NAME_MAX_LEN })} autoFocus=${!touchUi}
+            onInput=${setName} onEnter=${start} />
+        </div>
+        <div class="title-login__act">
+          <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" disabled=${!valid} onClick=${start}>${t('开始')}<//>
+        </div>
         <div class="title-assets">
           <${AssetDownloadButton} />
           <${AssetImportButton} />
         </div>
         <div class="title-conn">
-          <span class=${`status-dot ${dotClass}`}></span>
-          <span>${conn.status === 'reconnecting' && conn.full
-            ? t('服务器已满（{n}/{max}），请稍后再试', { n: conn.full.connections, max: conn.full.maxConnections })
-            : STATUS_TEXT[conn.status] ? t(STATUS_TEXT[conn.status]) : conn.status}</span>
-          ${conn.status === 'online' ? html`<${PingPill} ms=${conn.ping} />` : null}
-          <${GuideButton} class="title-guide" label=${t('玩法说明')} />
-          <button type="button" class="title-settings fsbtn tapx" aria-label=${t('设置')} title=${t('设置')}
-            onClick=${() => setSettingsOpen(true)}><${GIcon} name="gear" /></button>
-          <${FullscreenButton} class="title-fs" />
+          <span class="title-conn__state">
+            <span class=${`status-dot ${dotClass}`}></span>
+            <span>${conn.status === 'reconnecting' && conn.full
+              ? t('服务器已满（{n}/{max}），请稍后再试', { n: conn.full.connections, max: conn.full.maxConnections })
+              : STATUS_TEXT[conn.status] ? t(STATUS_TEXT[conn.status]) : conn.status}</span>
+            ${conn.status === 'online' ? html`<${PingPill} ms=${conn.ping} />` : null}
+          </span>
+          <span class="title-conn__tools">
+            <${GuideButton} class="title-guide" label=${t('玩法说明')} />
+            <button type="button" class="title-settings fsbtn tapx" aria-label=${t('设置')} title=${t('设置')}
+              onClick=${() => setSettingsOpen(true)}><${GIcon} name="gear" /></button>
+            <${FullscreenButton} class="title-fs" />
+          </span>
         </div>
+        <i class="title-login__holo" aria-hidden="true"></i>
       </div>
     </main>
 
@@ -271,9 +283,11 @@ export function TitleScreen() {
     <${NoticesModal} open=${noticesOpen} onClose=${() => setNoticesOpen(false)} />
 
     <footer class="title-foot">
-      <${ResumeMatchButton} />
-      <${PwaInstallButton} />
-      <span>${t('非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有')}</span>
+      <div class="title-foot__left">
+        <${ResumeMatchButton} />
+        <${PwaInstallButton} />
+      </div>
+      <span class="title-foot__legal">${t('非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有')}</span>
       <span class="title-foot__meta">
         <a class="title-repo" href="https://github.com/sganggs/Stronghold-Protocol" target="_blank" rel="noopener noreferrer">${t('项目仓库')}</a>
         <${MicroLabel}>v${APP_VERSION} · WEB SIMULATION<//>

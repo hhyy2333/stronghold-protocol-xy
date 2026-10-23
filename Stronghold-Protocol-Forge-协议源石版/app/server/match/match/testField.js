@@ -40,7 +40,7 @@
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE, ERR } from '../../../shared/constants.js';
-import { applyHex, hexIdsOf } from '../hextech.js';
+import { hexIdsOf } from '../hextech.js';
 import { OK, fail } from './common.js';
 
 /** The test panel refuses a single grant larger than this (shared/protocol.js bounds the wire at 1e6 too). */
@@ -87,8 +87,9 @@ export class MatchTestField {
     // the player roster only: an enemy card's `mods` / `verb` is not a thing a player may own
     const playerPool = this.gd.hexPlayerPool();
     if (!hex || !playerPool.some((h) => h && h.id === hex.id)) return fail(ERR.BAD_TARGET, 'not a player hex');
-    try { applyHex(this, ps, hex); } catch (e) { this.reportError(`testHex ${hex.id}`, e); return fail(ERR.INTERNAL); }
-    ps.recompute();
+    // ONE grant implementation for both this panel and the workshop packs (DESIGN §28.58); null here means the
+    // production path threw (a bad id was already refused above)
+    if (!this.grantHex(ps, hex.id)) return fail(ERR.INTERNAL);
     return OK;
   }
 

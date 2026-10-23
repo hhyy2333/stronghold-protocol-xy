@@ -8,7 +8,7 @@
 
 import { boardOrder, pieceDir, tileKey } from '../board.js';
 import { computeBonds, bondSnapshot, activatedLayers, bondsWithGains, pieceBonds } from '../bondsMeta.js';
-import { ownsHex, applyThiefIncomeCut } from '../hextech.js';
+import { ownsHex, applyThiefIncomeCut, applyForgeFusion } from '../hextech.js';
 
 export class PlayerRound {
   startRound(r) {
@@ -38,6 +38,9 @@ export class PlayerRound {
     this.shop.frozen = false;
     for (const s of this.shop.slots) if (s) s.frozen = false;
     this.recompute();
+    // 锻炉 (业主 2026-10-24): a safety sweep — two items that somehow reached one operator without the equip path (a grant,
+    // a transform, an old save) still fuse here, once per round.
+    if (ownsHex(this, 'hex_forge')) applyForgeFusion(this);
   }
 
   /**
@@ -145,7 +148,16 @@ export class PlayerRound {
     const resonance = ownsHex(this, 'hex_bondresonance');
     for (const { r, c, piece } of boardOrder(this.board)) {
       if (piece.kind === 'chess') {
-        const u = { uid: piece.uid, kind: 'chess', chessId: piece.id, row: r, col: c, dir: pieceDir(piece), items: (piece.items || []).map((i) => i.id) };
+        // 锻炉 (业主 2026-10-24): a fused 百变 is ONE item piece carrying `merged: [a, b]`; the battle gets the TWO
+        // component ids, so both items' stats / procs / 变形同构体 pairing resolve exactly as if they were worn apart
+        // (「百变的效果是两件被融合装备的效果」+「可正常被同构体识别」). The 百变 record itself has no behaviour.
+        const items = [];
+        for (const it of piece.items || []) {
+          if (!it) continue;
+          if (Array.isArray(it.merged) && it.merged.length) items.push(...it.merged.filter((x) => typeof x === 'string' && x));
+          else if (typeof it.id === 'string' && it.id) items.push(it.id);
+        }
+        const u = { uid: piece.uid, kind: 'chess', chessId: piece.id, row: r, col: c, dir: pieceDir(piece), items };
         if (resonance) {
           const own = new Set(pieceBonds(this.gd, piece));
           const lent = [];
@@ -243,6 +255,25 @@ export class PlayerRound {
       row.heal += heal;
       row.kills += Math.max(0, Math.trunc(Number(u.kills) || 0));
       n++;
+    }
+    // 灵魂炸弹 (业主 2026-10-24): 「累计统计本局游戏内医疗干员造成的治疗量」 — the card's record is the WHOLE MATCH's medical
+    // healing, so it is banked here (the one place a battle's per-unit numbers reach the player) instead of being reset
+    // with every battle. Read by the card's `onBattleStart.soulBombArm` (server/sim/content/hextech.js applySpec) and by
+    // the battle's own pulse (hexcards/batch16.js). Keyed as a player counter, the 群蛇形态 accumulator precedent.
+    if (ownsHex(this, 'hex_soulbomb')) {
+      let medicHeal = 0;
+      for (const u of list) {
+        if (!u || typeof u.defId !== 'string') continue;
+        const rec = this.gd.chess(u.defId);
+        if (!rec || rec.profession !== 'MEDIC') continue;
+        const v = Number(u.heal) || 0;
+        if (v > 0) medicHeal += v;
+      }
+      if (medicHeal > 0) {
+        const key = 'hex:hex_soulbomb:heal';
+        this.counters[key] = (Number.isFinite(this.counters[key]) ? this.counters[key] : 0) + medicHeal;
+        this.dirty();
+      }
     }
     // m.private.cumStats changed: mark the player so the panel's 修整期 view refreshes (a no-op when nothing folded)
     if (n > 0) this.dirty();

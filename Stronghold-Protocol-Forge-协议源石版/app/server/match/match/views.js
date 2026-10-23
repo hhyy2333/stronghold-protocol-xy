@@ -5,6 +5,7 @@
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE, GEO } from '../../../shared/constants.js';
+import { itemIds } from '../../../shared/morph.js';
 import { boardOrder, pieceDir } from '../board.js';
 import { bondList, offBondCounts } from '../bondsMeta.js';
 import { cardView } from '../choices.js';
@@ -347,7 +348,9 @@ export class MatchViews {
         skillIndex: lo && Number.isInteger(lo.skillIndex) ? lo.skillIndex : undefined,
         moduleId: lo && typeof lo.moduleId === 'string' ? lo.moduleId : undefined,
         // the equipped items (like the sim's UnitInfo): a 变形同构体 wearer shows as a member of the bond it grants
-        items: piece.kind === 'chess' && Array.isArray(piece.items) && piece.items.length ? piece.items.map((it) => it.id) : undefined,
+        // 锻炉: `itemIds` expands a fused 百变 into its two components — this list carries no `merged` slot, so publishing
+        // the wrapper id alone would leave a teammate's / scout's card unable to resolve the pairing.
+        items: piece.kind === 'chess' && Array.isArray(piece.items) && piece.items.length ? itemIds(piece.items) : undefined,
         standInFor: rec && rec.standInFor ? rec.standInFor : undefined,
         diy: this._diyInfo(ps, piece),
         ...cultivationInfo(lo),
@@ -411,7 +414,7 @@ export class MatchViews {
         x: i, y, maxHp: body && body.stats && Number.isFinite(body.stats.maxHp) ? body.stats.maxHp : 1,
         skillIndex: lo && Number.isInteger(lo.skillIndex) ? lo.skillIndex : undefined,
         moduleId: lo && typeof lo.moduleId === 'string' ? lo.moduleId : undefined,
-        items: piece.kind === 'chess' && Array.isArray(piece.items) && piece.items.length ? piece.items.map((it) => it.id) : undefined,
+        items: piece.kind === 'chess' && Array.isArray(piece.items) && piece.items.length ? itemIds(piece.items) : undefined,
         standInFor: standIn && standIn.standInFor ? standIn.standInFor : undefined,
         diy: this._diyInfo(ps, piece),
         ...cultivationInfo(lo),

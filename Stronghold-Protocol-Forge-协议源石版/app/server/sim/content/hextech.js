@@ -21,6 +21,9 @@
 import { gameData, directMods, passiveBuff, unitBonds, bondActive, bondLayers, isMember, isOp, fxOn } from './support/index.js';
 import { fissionBondIds as sharedFissionBondIds, fissionCap } from '../../../shared/hextech.js';
 import { elem, hurt, areaAlliesInTiles, spawnChildren, isHitCount, abOf } from './enemies/helpers.js';
+// 战地医院 (业主 2026-10-24): the damage-kind predicates its `damaged` gate shares with 身负重担 (流失 / 反伤 / 链式伤害 are
+// not 「造成伤害」). Imported here because the install() reader lives in this file, not in a hexcards module.
+import { isHpLoss, isRetaliation, isChained } from '../damage.js';
 import { hexHooks } from './hexcards/hooks.js';
 
 /**
@@ -89,6 +92,11 @@ import {
 // battle half acts on (the `carries` rule 恶魔之契 already uses).
 import { installCanlight, installGlassCannon, installHeavyLoad, installUmbrellaBreak } from './hexcards/batch15a.js';
 import { installWarding, installVoidReturn, installCorpseHill, installOldPower } from './hexcards/batch15b.js';
+// sixteenth batch (业主 2026-10-24): 自适应成长 / 亮剑 / 高压锅 / 神射法师 / 灵魂炸弹 / 惊惧 / 炼狱导管 + 回响形态's SP cut.
+import {
+  installAdaptiveGrowth, installDrawBlade, installPressureCooker, installSpellArcher,
+  installSoulBomb, installDread, installInfernalConduit, installEchoForm,
+} from './hexcards/batch16.js';
 import { reviveNow, carries } from './items/battle.js';
 
 /** Player effect-ref key prefix (parallel to `choice:`). */
@@ -234,6 +242,10 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // fifteenth batch (业主 2026-10-21): 心之钢's equipment script (hexcards/heartsteel.js). Ownership-only, so it MUST be
   // declared here or addHexRef marks the ref prep-only and the battle never sees the card.
   'heartsteel',
+  // sixteenth batch (业主 2026-10-24): the seven new battle scripts of hexcards/batch16.js + 回响形态's SP cut. Every one
+  // is ownership-only (no `effect.battle` passive), so each key MUST be listed here or addHexRef marks the ref prep-only
+  // and the battle never sees the card.
+  'adaptiveGrowth', 'drawBlade', 'pressureCooker', 'spellArcher', 'soulBomb', 'dread', 'infernalConduit', 'echoForm',
 ]);
 
 /**
@@ -723,23 +735,22 @@ function applySpec(ctx, spec, hex = null, hook = '') {
       did = true;
     }
   }
-  // 背水一战 (the prep half): while the own LP is BELOW the card's threshold, the first refresh of the round is free.
-  // The ×layerMul half lives in `layerGainMulOf` (prep) and the battle's `layerGain` hook — both read the SAME spec.
+  // 背水一战 (业主 2026-10-24 REWORK): the old 「LP < 5 ⇒ free refresh」 half is gone — the card now sets the LP to 1 on
+  // the pick and LOCKS LP loss for two rounds (`onPick.lpSet` + the settlement's lock), so it is always "in the window".
+  // `lastDitchRefresh` is kept only for a saved card from before the rework.
   if (spec.lastDitchRefresh) {
     const ld = (hex && hex.effect && hex.effect.lastDitch) || {};
     const lpBelow = isPos(ld.lpBelow) ? ld.lpBelow : 5;
     const lp = typeof ctx.lp === 'function' ? ctx.lp() : Infinity;
     if (ld.freeRefresh !== false && Number.isFinite(lp) && lp < lpBelow) { ctx.grantFreeRefresh(1); did = true; }
   }
-  // … and the arm the SIM reads: the match stamps whether the window is open at this battle's start (the sim has no LP),
-  // on the ref AND on the battle input's own copy (built before this dispatch — the 群蛇形态 convention).
+  // … and the arm the SIM reads: the battle half is ×layerMul on every layer gain and `atkPct` as a passive — always on
+  // since the rework, so `active` is stamped true. The match writes it on the ref AND on the battle input's own copy
+  // (built before this dispatch — the 群蛇形态 convention).
   if (spec.lastDitchArm) {
     const ld = (hex && hex.effect && hex.effect.lastDitch) || {};
-    const lpBelow = isPos(ld.lpBelow) ? ld.lpBelow : 5;
-    const lp = typeof ctx.lp === 'function' ? ctx.lp() : Infinity;
-    const active = Number.isFinite(lp) && lp < lpBelow;
     const ref = ctx.effect(`hex:${id}`);
-    const stamped = { ...(ref && ref.params ? ref.params : {}), lastDitch: { ...ld, active } };
+    const stamped = { ...(ref && ref.params ? ref.params : {}), lastDitch: { ...ld, active: true } };
     if (ref) ctx.addEffect({ id: `hex:${id}`, params: stamped });
     const ev = ctx.event();
     const list = ev && ev.input && Array.isArray(ev.input.playerEffects) ? ev.input.playerEffects : null;
@@ -867,8 +878,93 @@ function applySpec(ctx, spec, hex = null, hook = '') {
     // the roster's `buys` (3) is the authored statement of what the window covers; the window itself IS the refreshes
     if (refreshes > 0 && typeof ctx.openFreeBuyWindow === 'function') { ctx.openFreeBuyWindow(refreshes); did = true; }
   }
+  // ---- sixteenth batch (业主 2026-10-24): the prep halves --------------------------------------------------
+  // 玩偶批发商: one random item out of the card's own `ids` each round start. It cannot use the plain `item` spec —
+  // that one grants EVERY id in `ids` (武器大师) or one fixed record; here the roll is the point. `ctx.rng` is the
+  // match's own meta stream, so the draw stays reproducible (no Math.random).
+  if (spec.randomItem && Array.isArray(spec.randomItem.ids) && spec.randomItem.ids.length) {
+    const id2 = rollOneOf(ctx, spec.randomItem.ids);
+    if (id2 && typeof ctx.grantItem === 'function' && ctx.grantItem(id2, { source: 'hex' })) did = true;
+  }
+  // 神器整备 (the pick, 业主 2026-10-24「获得1阶协议源石的装备…」): one piece of the equipment that a 1阶 (silver)
+  // 协议源石 itself hands out — the card's OWN `ids`, not a shop-stock roll (these 凭证 records are never sold). The
+  // pick ROUND is recorded here because the ladder below is measured from it, not from a per-round counter, so
+  // 「下一回合」/「3回合后」 mean what they say.
+  if (spec.artifactKit) {
+    const gid = rollOneOf(ctx, spec.artifactKit.ids);
+    if (gid) ctx.grantItem(gid, { source: 'hex' });
+    ctx.setCounter(`${HEX_KEY}${id}:pickRound`, roundOf(ctx));
+    ctx.setCounter(`${HEX_KEY}${id}:stage`, 1);
+    did = true;
+  }
+  // 神器整备 (the ladder, the same ruling): `rungs` is an ORDERED list of { delta, ids } — the first rung hands out
+  // one piece of a 2阶 (gold) stone's equipment `delta` (=1) round after the pick, the second one piece of the 3阶
+  // (prismatic) tier's at delta 3. `stage` counts the rungs already PAID (the pick itself is stage 1), so the next
+  // unpaid rung is `rungs[stage - 1]`; a rung whose list is empty/garbled is NOT marked paid, and the next round
+  // start retries it instead of skipping ahead (the convention 后勤整备's 进阶 ladder uses).
+  if (spec.artifactStage) {
+    const rungs = Array.isArray(spec.artifactStage.rungs) ? spec.artifactStage.rungs : [];
+    const pick = Number(ctx.counter(`${HEX_KEY}${id}:pickRound`));
+    if (rungs.length && Number.isFinite(pick) && pick > 0) {
+      const delta = roundOf(ctx) - pick;
+      let stage = Math.max(0, Math.trunc(Number(ctx.counter(`${HEX_KEY}${id}:stage`)) || 0));
+      while (stage - 1 < rungs.length) {
+        const rung = rungs[stage - 1] || {};
+        const need = Number.isFinite(Number(rung.delta)) ? Math.trunc(Number(rung.delta)) : stage;
+        if (delta < need) break;
+        const gid = rollOneOf(ctx, rung.ids);
+        if (!gid || !ctx.grantItem(gid, { source: 'hex' })) break;
+        stage += 1;
+        ctx.setCounter(`${HEX_KEY}${id}:stage`, stage);
+        did = true;
+        // adjacent rungs: once one lands and the delta already covers the next, pay both in this same round start
+      }
+    }
+  }
+  // 灵魂炸弹 (the battle half's seed): the match's banked 「本局医疗干员治疗量」 rides the ref into the battle.
+  // Written BOTH on the live ref and on the battle input's own copy — the input was built before onBattleStart ran, so a
+  // client-side simulation would otherwise start from 0 (the 群蛇形态 `serpentArm` convention).
+  if (spec.soulBombArm) {
+    const total = Math.max(0, Math.trunc(Number(ctx.counter(`${HEX_KEY}${id}:heal`)) || 0));
+    const ref = typeof ctx.effect === 'function' ? ctx.effect(`hex:${id}`) : null;
+    const cfg = (ref && ref.params && ref.params.soulBomb) || {};
+    if (ref) ctx.addEffect({ id: `hex:${id}`, params: { ...(ref.params || {}), soulBomb: { ...cfg, heal: total } } });
+    const ev = ctx.event();
+    const list = ev && ev.input && Array.isArray(ev.input.playerEffects) ? ev.input.playerEffects : null;
+    const inRef = list ? list.find((r) => r && (r.key === `hex:${id}` || (r.data && r.data.hexId === id))) : null;
+    if (inRef && inRef !== ref) {
+      inRef.params = { ...(inRef.params || {}), soulBomb: { ...((inRef.params || {}).soulBomb || {}), heal: total } };
+    }
+    did = true;
+  }
+  // 装备转化 (the new half): a purchased EQUIPMENT lands as its 进阶 (golden) form, once per round — 「然后在本回合失效」.
+  // The marker holds the round number, so the card re-arms at the next round start without any cleanup.
+  if (spec.equipGolden && hook === 'onBuy') {
+    const ev = ctx.event();
+    if (ev && ev.kind === 'item' && ev.piece && typeof ctx.upgradeItem === 'function') {
+      const mark = `${HEX_KEY}${id}:equipGoldRound`;
+      const r = roundOf(ctx);
+      if (Number(ctx.counter(mark)) !== r) {
+        if (ctx.upgradeItem(ev.piece.uid)) { ctx.setCounter(mark, r); did = true; }
+      }
+    }
+  }
   void hook;
   return did;
+}
+
+/**
+ * One id out of a card's OWN `ids` list, drawn with the match's meta stream (玩偶批发商 / 神器整备). It is not
+ * `ctx.rollItem` / `ctx.rollGoldenItem`: those draw from the SHARED SHOP STOCK, and these two cards name fixed records
+ * the shop never sells (the 协议源石 凭证 equipment). A missing / empty list yields null so the caller leaves its rung
+ * unpaid instead of paying it with nothing.
+ */
+function rollOneOf(ctx, ids) {
+  const list = Array.isArray(ids) ? ids.filter((x) => typeof x === 'string' && x) : [];
+  if (!list.length) return null;
+  const r = Number(typeof ctx.rng === 'function' ? ctx.rng() : 0);
+  const i = Math.min(list.length - 1, Math.max(0, Math.floor((Number.isFinite(r) ? r : 0) * list.length)));
+  return list[i] || null;
 }
 
 /**
@@ -1279,7 +1375,8 @@ export function install(battle) {
   for (const pid of ownersOf('hex_lastditch')) {
     const spec = specOf(pid, 'hex_lastditch', 'lastDitch');
     if (spec.active !== true) continue;
-    const mul = Number(spec.layerMul) > 1 ? Math.trunc(Number(spec.layerMul)) : 2;
+    // 业主 2026-10-24: the multiplier is now 1.5 (「叠层+50%」), so it must NOT be truncated to an integer.
+    const mul = Number(spec.layerMul) > 1 ? Number(spec.layerMul) : 1.5;
     battle.on('layerGain', (ctx) => {
       if (!ctx || ctx.playerId !== pid || !(ctx.n > 0)) return;
       ctx.n = Math.floor(ctx.n * mul);
@@ -1416,23 +1513,35 @@ export function install(battle) {
     });
   }
 
-  // 战地医院: every knock-out heals the lowest-HP-ratio own operator by `healPct`% of its max HP (already-mitigated
-  // amount: `battle.heal` applies the target's healing multipliers). Deliberately useless on a leader fight (few kills).
+  // 战地医院 (业主 2026-10-24 REWORK:「改成造成伤害时恢复攻击范围内的干员50%攻击力的生命」): every damage instance an own
+  // operator deals heals the own operators standing in THAT operator's current attack range by `atkPct`% of its ATK.
+  //   * The range is read live (`u.rangeKeys`, the aggregated range every buff already moved), and the healed set is
+  //     `battle.unitsInGrid(u)` filtered to the same owner — a friendly device / summon is not a 干员.
+  //   * `damaged` (not `hit`) is the "造成伤害" moment: the amount is final, and a blow fully eaten by a shield is not
+  //     damage dealt — the same gate 物法皆修 uses.
+  //   * The heal goes through `battle.heal`, so 治疗加成 / 禁疗 / 治疗上限 keep working; the source is the operator that
+  //     dealt the damage (the healing totals credit it), and it may heal itself.
+  //   * `isChained` / 反伤 / 流失 / 元素损伤 are not "造成伤害" for this card (the 身负重担 rule).
   for (const pid of ownersOf('hex_fieldhospital')) {
     const s = specOf(pid, 'hex_fieldhospital', 'fieldHospital');
-    const healPct = Number(s.healPct) > 0 ? Number(s.healPct) : 10;
-    battle.on('kill', ({ killer, victim }) => {
-      if (!victim || victim.side !== 'enemy') return;
-      if (!killer || killer.side !== 'ally' || killer.ownerId !== pid) return;
-      let best = null;
-      for (const u of opsOf(pid)) {
-        if (!u.alive || !(u.s.maxHp > 0)) continue;
-        const ratio = u.hp / u.s.maxHp;
-        if (!best || ratio < best.ratio) best = { u, ratio };
+    const atkPct = Number(s.atkPct) > 0 ? Number(s.atkPct) : 50;
+    battle.on('damaged', (c) => {
+      if (!c || !c.dmg) return;
+      const dmg = c.dmg;
+      if (isHpLoss(dmg) || isRetaliation(dmg) || isChained(dmg) || dmg.type === 'element') return;
+      const src = c.source;
+      if (!src || src.kind !== 'op' || src.side !== 'ally' || src.ownerId !== pid) return;
+      if (!src.alive || !src.deployed) return;
+      if (!c.target || c.target.side !== 'enemy') return;
+      if (!(c.amount > 0)) return;
+      const amount = src.s.atk * (atkPct / 100);
+      if (!(amount > 0)) return;
+      for (const u of battle.alliesInGrid(src)) {
+        if (!u || u.kind !== 'op' || u.side !== 'ally' || u.ownerId !== pid) continue;
+        if (!u.alive || !u.deployed || u.hidden) continue;
+        if (!(u.hp < u.s.maxHp)) continue;
+        battle.heal(src, u, amount, { silent: true });
       }
-      if (!best || best.ratio >= 1) return;
-      const amount = best.u.s.maxHp * (healPct / 100);
-      if (amount > 0) battle.heal(null, best.u, amount, { silent: false });
     });
   }
 
@@ -1524,6 +1633,10 @@ export const HEX_SCRIPT_KEYS = Object.freeze({
     hex_corpsehill: 'corpsehill', hex_oldpower: 'oldpower',
     // fifteenth batch (业主 2026-10-21)
     hex_heartsteel: 'heartsteel',
+    // sixteenth batch (业主 2026-10-24)
+    hex_adaptivegrowth: 'adaptiveGrowth', hex_drawblade: 'drawBlade', hex_pressurecooker: 'pressureCooker',
+    hex_spellarcher: 'spellArcher', hex_soulbomb: 'soulBomb', hex_dread: 'dread',
+    hex_infernalconduit: 'infernalConduit', hex_echoform: 'echoForm',
 });
 
 function installHexCards(battle) {
@@ -1593,6 +1706,15 @@ function installHexCards(battle) {
   installOldPower(gated);
   // fifteenth batch (业主 2026-10-21)
   installHeartsteel(gated);
+  // sixteenth batch (业主 2026-10-24) — same bundle, same gate
+  installAdaptiveGrowth(gated);
+  installDrawBlade(gated);
+  installPressureCooker(gated);
+  installSpellArcher(gated);
+  installSoulBomb(gated);
+  installDread(gated);
+  installInfernalConduit(gated);
+  installEchoForm(gated);
 }
 
 /**

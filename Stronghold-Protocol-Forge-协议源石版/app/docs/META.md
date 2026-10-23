@@ -938,6 +938,9 @@ Any `choice:` handler whose EffectRef reuses its own key must guard like this (o
   card without an own piece (a teammate's unit, the card a 同构 row opens) lists those items read-only under 装备. The
   item's card lists the 14 pairings of its 天赋栏 from the same `giveBondId` (`gameLogic.morphPairings`, 本局禁用 marked),
   the wearer's card highlights the pairing it wears, and a bond item's card names the bond it gives (DESIGN §21.26).
+  A **fused 百变** (锻炉) wears its two components: every reader above goes through `shared/morph.js` `itemRecs` /
+  `itemIds`, which expand a piece's `merged: [idA, idB]`, so a 百变 of 变形同构体 + 维式重锤 is a 维多利亚 member exactly
+  as the two items worn apart are — and still occupies ONE equipment slot (the slot policy never reads `merged`).
   Not covered [ASSUMED]: operator talents that test "【拉特兰】/【卡西米尔】/… 干员" in the kits read the record's bonds.
   **Layer cap** (research 11 §1; the client's `MAX_GARRISON_STACK` / `AddBondCount` = min(L + n, 999)): each bond's
   layers stop at `BOND_LAYER_CAP` = 999 (shared/constants.js; 0 / Infinity = off). Every writer clamps with

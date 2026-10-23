@@ -18,10 +18,104 @@ import { hasBattlePart, DEBT_EFFECT_KEY } from '../sim/content/hextech.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
 import { bossPoolHp } from './finalAssault.js';
 
+/**
+ * 盟约寄生 (业主 2026-10-24): the key of the DISPLAY-ONLY watcher ref pushed onto the 被寄生者. It is deliberately not a
+ * registered handler — the real work runs on the PICKER's card at each round start (`parasiteShare`); this ref exists so
+ * the host's effects column can name the pairing too (「让寄生者和被寄生者都知道寄生对象」).
+ */
+export const PARASITE_HOST_KEY = 'effect:hexparasite';
+
+/**
+ * 核心盟约专属协议（业主 2026-10-24）：a card record may carry `requiresBond: '<bondId>'`, meaning it is only OFFERED to
+ * a player whose that bond is ACTIVE right now — 「只在激活对应盟约时才能刷新出」.
+ *
+ * This is a DRAFT-POOL rule, not an ownership rule: once the card has been gained it keeps working even if the bond
+ * lapses later (a 盟约 can lose members mid-match). Every place that draws a random card out of the player pool must ask
+ * this predicate, or a 专属 card leaks into a board it was never meant for — hence the single `hexPoolFor` below.
+ * @param {{ bonds?: Record<string, any> } | null} ps
+ * @param {any} rec a data/hextech.json player-hex record
+ * @returns {boolean}
+ */
+export function hexAvailableTo(ps, rec) {
+  if (!rec || typeof rec !== 'object') return false;
+  const need = rec.requiresBond;
+  if (typeof need !== 'string' || !need) return true;
+  const b = ps && ps.bonds ? ps.bonds[need] : null;
+  return !!(b && b.active);
+}
+
+/**
+ * The player-hex pool ONE player may be offered right now: the whole roster minus that player's own 协议源石禁用 (≤3),
+ * minus every 专属 card whose bond is not active for them.
+ * @param {import('./PlayerState.js').PlayerState} ps
+ * @param {{ hexPlayerPool: () => any[] }} gd
+ * @returns {any[]}
+ */
+export function hexPoolFor(ps, gd) {
+  const all = gd && typeof gd.hexPlayerPool === 'function' ? gd.hexPlayerPool() : [];
+  const bans = ps && Array.isArray(ps.hexBans) ? ps.hexBans : [];
+  return all.filter((h) => h && !bans.includes(h.id) && hexAvailableTo(ps, h));
+}
+
+/** 锻炉's fused item (data/items.json CUSTOM_ITEMS `chess_item_9_97_e_a`, 百变). */
+export const FORGE_ITEM_ID = 'chess_item_9_97_e_a';
+
+/**
+ * 锻炉 (业主 2026-10-24): 「干员装备两件装备时融合成装备**百变**，百变的效果是两件被融合装备的效果。百变不会被融合，
+ * 可正常被同构体识别。」
+ *
+ * HOW the double effect works, and why nothing in the battle had to change: the fused piece is ONE item piece
+ * (`{ id: 百变, merged: [idA, idB] }`) sitting in the operator's normal equipment row, so it occupies one slot and the
+ * client draws one item. `server/match/player/round.js battleInput` expands `merged` into the two original ids, so the
+ * sim installs BOTH real items (stats, procs, 变形同构体 pairing) exactly as if they were still worn separately — that is
+ * 「百变的效果是两件装备的效果」 and 「可正常被同构体识别」 in one stroke.
+ *
+ * 「百变不会被融合」: the scan only ever pairs items WITHOUT a `merged` list, so a 百变 is never an input again (and its
+ * record is `mergeable: false`, so the ordinary 3-copy merge cannot touch it either).
+ *
+ * @param {{ effects?: any[], m?: any, find?: Function, recompute?: Function }} ps
+ * @param {any} [piece] fuse only this chess piece (an equip just landed on it); omit to scan the whole board / hand / temp
+ * @returns {number} how many fusions were made
+ */
+export function applyForgeFusion(ps, piece = null) {
+  if (!ps || typeof ps !== 'object' || !ownsHex(ps, 'hex_forge')) return 0;
+  const ref = (ps.effects || []).find((e) => e && e.data && e.data.hexId === 'hex_forge');
+  const spec = ref && ref.params && ref.params.forge ? ref.params.forge : null;
+  const itemId = spec && typeof spec.itemId === 'string' && spec.itemId ? spec.itemId : FORGE_ITEM_ID;
+  const list = piece ? [piece] : [
+    ...(ps.board ? ps.board.values() : []), ...(ps.hand || []), ...(ps.temp || []),
+  ];
+  let made = 0;
+  for (const c of list) {
+    if (!c || c.kind !== 'chess' || !Array.isArray(c.items) || c.items.length < 2) continue;
+    // one 百变 per operator: an operator that already carries a fused piece keeps it, and a third/fourth item (整装待发's
+    // 3 slots) never forges a SECOND one — 「融合成装备百变」 is one item, not a growing pile.
+    if (c.items.some((it) => it && Array.isArray(it.merged))) continue;
+    // only UNFUSED equipment may pair up — 百变 is never an input again
+    const plain = c.items.filter((it) => it && it.kind === 'item' && !Array.isArray(it.merged));
+    if (plain.length < 2) continue;
+    const [a, b] = plain;
+    const at = Math.min(c.items.indexOf(a), c.items.indexOf(b));
+    c.items = c.items.filter((it) => it !== a && it !== b);
+    const fused = { uid: ps.m && typeof ps.m.nextUid === 'function' ? ps.m.nextUid() : b.uid, kind: 'item', id: itemId, merged: [a.id, b.id] };
+    c.items.splice(Math.max(0, Math.min(at, c.items.length)), 0, fused);
+    made++;
+  }
+  if (made) {
+    try { if (typeof ps.recompute === 'function') ps.recompute(); } catch { /* the fusion is already written; a recompute fault is the caller's */ }
+    if (typeof ps.dirty === 'function') ps.dirty();
+  }
+  return made;
+}
+
+
+
 /** The client's view of one offered hex. No art field: the card face is the rarity's tier (client-side, from the local
  * manifest) — the third-party rune names this used to carry were removed on 2026-10-12. */
 export function hexView(hex, idx = null) {
   const v = { id: hex.id, name: hex.name, desc: hex.desc, rarity: hex.rarity };
+  // 核心盟约专属协议 (业主 2026-10-24): the gate rides the view so the client COULD label the card 「仅【X】激活时」.
+  if (typeof hex.requiresBond === 'string' && hex.requiresBond) v.requiresBond = hex.requiresBond;
   if (idx != null) v.idx = idx;
   return v;
 }
@@ -112,21 +206,93 @@ export function applyHex(m, ps, hex, opts = {}) {
     m.dispatch(p, 'onHexPick', ev, { skipKey: `hex:${hex.id}` });
     p.recompute();
   }
+  // 策略「管理员」(业主 2026-10-26): 「当你获得协议源石时，复制一个。限一次。」 — per GAIN, so it runs for every target
+  // a team hex reaches, each through its own band (the strategy belongs to the player, not to the picker).
+  for (const p of targets) applyBandHexCopy(m, p, hex, opts);
   // 万物归虚 (业主 2026-10-19): 「装备时 将移除备战区所有干员」 —— the prep half of the card. The battle half
   // (server/sim/content/hexcards/batch15b.js installVoidReturn) reads the count it writes into the ref, so the two halves
   // stay in one place each. Runs AFTER the refs exist (addHexRef above), so it can write onto them.
   applyVoidReturnLayers(m, ps, hex);
   applyHexExtras(m, ps, hex, opts);
+  // 锻炉 (业主 2026-10-24): gaining the card fuses what is ALREADY worn — an operator standing there with two items turns
+  // them into 百变 the moment the card lands (equips made later go through PlayerState.equip's own call).
+  if (hex && hex.id === 'hex_forge') applyForgeFusion(ps);
   // 镜像协议 (owner report 2026-10-12): an armed copy is retried on EVERY gain, so the moment a teammate owns something
   // copyable the card pays out — including the gain that just happened inside this very call.
   resolveMirrorCopies(m);
 }
 
+/** The data key of 策略「管理员」's buff (data/bands.json → effect `aceffect_band_admin`, tools/build-data.mjs custom
+ *  tables) and the `ps.counters` entry that spends it. */
+const BAND_HEX_COPY_KEY = 'band_hex_copy_once';
+const BAND_HEX_COPY_USED = 'band_hex_copy:used';
+
+/**
+ * 策略「管理员」(业主 2026-10-26): 「当你获得协议源石时，复制一个。限一次。」
+ *
+ * How many copies the player's strategy asks for (`band_hex_copy_once { count }`, 0 without it). Read off the band
+ * record, not off a code table, so the number stays data (the same way bands/meta.js reads its blackboards).
+ * @param {import('./Match.js').Match} m
+ * @param {import('./PlayerState.js').PlayerState} ps
+ * @returns {number}
+ */
+export function bandHexCopyCount(m, ps) {
+  const bandId = ps && typeof ps.bandId === 'string' ? ps.bandId : null;
+  const band = bandId && m && m.gd && typeof m.gd.band === 'function' ? m.gd.band(bandId) : null;
+  for (const b of (band && Array.isArray(band.buffs) ? band.buffs : [])) {
+    if (!b || b.key !== BAND_HEX_COPY_KEY) continue;
+    const n = Number(b.bb && b.bb.count);
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 1;
+  }
+  return 0;
+}
+
+/**
+ * Pay 策略「管理员」for ONE gain (called from `applyHex`, once per player the hex actually reached).
+ *
+ * The payout has to live in this module rather than in the strategy's own meta handler
+ * (server/sim/content/bands/meta.js): a copy is another GAIN, and `applyHex` is the only door to one. An `onHexPick`
+ * handler could not do it either — it would re-enter the pipeline while the pick that fired it is still dispatching.
+ *
+ * 「复制一个」 = the card just gained, gained a second time; the owner picked 「刚拿到的那枚再来一次」 over 「额外随机一枚」
+ * (2026-10-26). The copy is the SAME record, so `addHexRef` keeps one EffectRef (a card is owned once — the duplicate
+ * adds nothing to its passive half) while its 获得时 half settles again through the ordinary handler: 战备津贴 pays a
+ * second time, 后勤整备 hands out a second item, 二次抽取 rolls two more cards. A purely passive card (坚壁 /
+ * 精锐训练) gains nothing from the duplicate [ASSUMED: that is the literal reading of 「复制一个」 the owner chose].
+ *
+ * 「限一次」 = once per player per match: the flag is a free-form `ps.counters` entry (PlayerState counters — never
+ * reset at a round start), written BEFORE the copy is granted so the copy can never re-arm it.
+ *
+ * @returns {number} how many copies were granted (0 when the strategy is not held, or already spent)
+ */
+export function applyBandHexCopy(m, ps, hex, { depth = 0 } = {}) {
+  if (!m || !ps || !hex || depth >= 2) return 0;
+  const count = bandHexCopyCount(m, ps);
+  if (count <= 0) return 0;
+  if (!ps.counters || typeof ps.counters !== 'object') ps.counters = {};
+  if (ps.counters[BAND_HEX_COPY_USED]) return 0;
+  ps.counters[BAND_HEX_COPY_USED] = 1;
+  let n = 0;
+  for (let i = 0; i < count; i++) {
+    try { applyHex(m, ps, hex, { depth: depth + 1 }); n++; } catch (e) { m.reportError(`hex ${hex.id} (管理员)`, e); }
+  }
+  ps.dirty?.();
+  return n;
+}
+
 /** `effect.onPick.lp` (the ctx has no LP mutator and LP is match state, not sim state). */
 function applyHexLp(m, ps, hex) {
-  const lp = hex.effect && hex.effect.onPick ? hex.effect.onPick.lp : 0;
+  const spec = hex.effect && hex.effect.onPick;
+  const lp = spec ? spec.lp : 0;
   if (typeof lp === 'number' && Number.isFinite(lp) && lp !== 0) {
     ps.lp = Math.max(0, ps.lp + Math.trunc(lp));
+    ps.dirty();
+  }
+  // 背水一战 (业主 2026-10-24): 「目标生命自动变为1」 — a SET, not a delta (`lpSet`). Applied after the delta branch so a
+  // card carrying both would end on the set value.
+  const set = spec ? Number(spec.lpSet) : NaN;
+  if (Number.isFinite(set) && set >= 0) {
+    ps.lp = Math.trunc(set);
     ps.dirty();
   }
   void m;
@@ -224,7 +390,7 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
   if (!spec || depth >= 2) return;
   if (spec.copyAllyHex) armMirrorCopy(m, ps, hex);
   if (Number.isInteger(spec.randomHexes) && spec.randomHexes > 0 && depth < 2) {
-    const pool = m.gd.hexPlayerPool().filter((h) => !(ps.hexBans || []).includes(h && h.id));
+    const pool = hexPoolFor(ps, m.gd);
     const offer = rollOffers(m.rngHex, {
       pool, owned: hexIdsOf(ps), weights: m.gd.hexWeights(), count: spec.randomHexes,
     });
@@ -249,8 +415,61 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
           if (rec && !rec.noStack) baseline += Number(total) || 0;
         }
       }
-      ref.params = { ...(ref.params || {}), parasite: { partnerId: partner ? partner.playerId : null, baseline } };
+      const partnerName = partner ? String(partner.name || partner.playerId) : null;
+      ref.params = { ...(ref.params || {}), parasite: { partnerId: partner ? partner.playerId : null, partnerName, baseline } };
+      // 业主 2026-10-24:「可以让寄生者和被寄生者都知道寄生对象」 — the PICKER's side: the card's own line names the partner,
+      // so the effects column says who is being drained instead of an anonymous pairing.
+      if (partnerName) ref.desc = `${String(ref.desc || hex.desc)}（寄生对象：${partnerName}）`;
       ps.dirty();
+    }
+    // … and the HOST's side: a display-only watcher ref on the teammate, naming the picker. Its key is not in the
+    // dispatcher's registry (`effect:hexparasite`), so it is never dispatched — it exists to be READ (the effects column).
+    if (partner) {
+      const wid = `effect:hexparasite:${ps.playerId}`;
+      if (!(partner.effects || []).some((e) => e && e.id === wid)) {
+        partner.effects.push({
+          id: wid,
+          key: PARASITE_HOST_KEY,
+          name: '盟约寄生（被寄生）',
+          desc: `队友 ${String(ps.name || ps.playerId)} 的【盟约寄生】以你为寄生对象：你每回合新增的盟约层数会被其分走一部分。`,
+          iconKind: 'hex',
+          counter: null,
+          battle: false,
+          params: { ownerId: ps.playerId, hexId: hex.id },
+          data: { hexId: hex.id, rarity: hex.rarity, parasiteHost: true },
+        });
+        partner.dirty();
+      }
+    }
+  }
+  // 背水一战 (业主 2026-10-24): 「锁血两回合」 — the LP-loss window opens at the PICK and counts it as the first round.
+  // Stamped here (match state knows the round) so the settlement only has to compare numbers.
+  {
+    const ld = hex.effect && hex.effect.lastDitch;
+    const lockRounds = ld && Number(ld.lockRounds);
+    if (Number.isFinite(lockRounds) && lockRounds > 0) {
+      const ref = (ps.effects || []).find((e) => e && (e.id === `hex:${hex.id}` || e.key === `hex:${hex.id}`));
+      if (ref) {
+        const window = Math.max(1, Math.trunc(Number(m.round) || 1)) + Math.max(1, Math.trunc(lockRounds)) - 1;
+        ref.params = { ...(ref.params || {}), lastDitch: { ...((ref.params || {}).lastDitch || {}), ...ld, window } };
+        ps.dirty();
+      }
+    }
+  }
+  // 无私奉献 (业主 2026-10-24): 「除自己外，队友额外随机获得一枚源石协议」 — every OTHER alive teammate gains N random
+  // hexes. `team: true` cannot express it (that one reaches the picker too) and 二次抽取 is picker-only, so it is its
+  // own spec. Same weighted roll as 二次抽取, never one the teammate already owns.
+  if (Number.isInteger(spec.otherRandomHexes) && spec.otherRandomHexes > 0 && depth < 2) {
+    for (const mate of m.alivePlayers()) {
+      if (mate === ps) continue;
+      const pool = hexPoolFor(mate, m.gd);
+      const offer = rollOffers(m.rngHex, {
+        pool, owned: hexIdsOf(mate), weights: m.gd.hexWeights(), count: spec.otherRandomHexes,
+      });
+      for (const id of offer) {
+        const rec = m.gd.hex(id);
+        if (rec) applyHex(m, mate, rec, { depth: depth + 1 });
+      }
     }
   }
   // 债务 (sixth batch, the owner's list of 2026-10-11): 「获得时选取一名队友，队友金钱+3，3回合内队友购买干员时你获得
@@ -405,31 +624,66 @@ export function layerGainMulOf(ps, bondId) {
       mul *= fissionMul(spec);
     }
   }
-  // 背水一战 (§29.34): while the own LP is below the card's threshold EVERY bond gain is ×layerMul. Read live, because
-  // the LP can move inside a round (a leak, a 远见透支 purchase) and the card turns on and off with it.
+  // 背水一战 (业主 2026-10-24 REWORK): the card no longer waits for a low LP — it SETS the LP to 1 on the pick and then
+  // locks LP loss, so the ×layerMul half is simply always on. `freeRefresh` is a leftover of the old shape and is kept
+  // only for a saved match from before the rework.
   const ld = lastDitchOf(ps);
-  if (ld && Number.isFinite(ps.lp) && ps.lp < ld.lpBelow) mul *= ld.layerMul;
+  if (ld) mul *= ld.layerMul;
   return mul;
 }
 
 /**
- * 背水一战's spec ({ lpBelow, layerMul }) of a player, or null. The card's own onRoundStart half (the free refresh per
- * round) reads the same reader, so the two halves can never disagree about what "低于" means.
+ * 背水一战's spec of a player, or null.
+ *
+ * 业主 2026-10-24: the shape is now `{ lpSet, lockRounds, atkPct, layerMul }` — the LP is set to 1 when the card is
+ * picked, LP LOSS is ignored for `lockRounds` rounds (`lpLockOf` below, read by the settlement), every own operator gets
+ * `atkPct` in battle (`effect.battle`) and every bond gain is ×`layerMul`. The old `lpBelow` / `freeRefresh` fields are
+ * still read so a saved card keeps a meaning.
  * @param {{ effects?: any[], lp?: number }} ps
  */
 export function lastDitchOf(ps) {
   for (const e of (ps && ps.effects) || []) {
     const spec = e && e.params && e.params.lastDitch;
     if (!spec || typeof spec !== 'object') continue;
-    const lpBelow = Number(spec.lpBelow);
     const layerMul = Number(spec.layerMul);
+    const lockRounds = Number(spec.lockRounds);
+    const lpSet = Number(spec.lpSet);
     return {
-      lpBelow: Number.isFinite(lpBelow) && lpBelow > 0 ? lpBelow : 5,
-      layerMul: Number.isFinite(layerMul) && layerMul > 1 ? layerMul : 2,
+      lpBelow: Number(spec.lpBelow) > 0 ? Number(spec.lpBelow) : 5,
+      lpSet: Number.isFinite(lpSet) ? Math.max(0, Math.trunc(lpSet)) : 0,
+      lockRounds: Number.isFinite(lockRounds) && lockRounds > 0 ? Math.trunc(lockRounds) : 0,
+      layerMul: Number.isFinite(layerMul) && layerMul > 1 ? layerMul : 1.5,
       freeRefresh: spec.freeRefresh === true,
     };
   }
   return null;
+}
+
+/**
+ * 背水一战's 「锁血」 window: the last round whose LP LOSS is ignored, or 0 when no window is open.
+ *
+ * The window opens at the PICK and counts it as the first of `lockRounds` (`window` = pickRound + lockRounds - 1, the
+ * 孤注一掷 / 债务 convention). It is stored on the ref when the card is picked (`applyHexExtras`), so the settlement can
+ * read it with no extra player state; an older card (no `window`) locks nothing.
+ * @param {{ effects?: any[] }} ps
+ * @param {number} [round] the round being settled (defaults to the stamp, so a caller can just ask "is it open?")
+ * @returns {number} the last locked round (0 = no lock)
+ */
+export function lpLockUntilOf(ps) {
+  for (const e of (ps && ps.effects) || []) {
+    const spec = e && e.params && e.params.lastDitch;
+    if (!spec || typeof spec !== 'object') continue;
+    const until = Number(spec.window);
+    if (Number.isFinite(until) && until > 0) return Math.trunc(until);
+  }
+  return 0;
+}
+
+/** Is this player's LP loss ignored in round `round` (背水一战's 锁血)? */
+export function lpLockedIn(ps, round) {
+  const until = lpLockUntilOf(ps);
+  const r = Number(round);
+  return until > 0 && Number.isFinite(r) && r <= until;
 }
 
 /**
@@ -577,11 +831,15 @@ export function enemyHexMods(m) {
 /**
  * 这一局**全部**敌方 mods：敌方协议源石 + 协议等级（owner's call 2026-10-18）。战斗（combat.js）与预览（views.js）
  * 必须折同一份 —— 这就是「预览的敌人数量 = 实战出怪数量」那条纪律的延续。等级关闭时它与 enemyHexMods 逐字节相同。
+ *
+ * 协议等级的乘区**按回合爬升**（业主 2026-10-24「削弱敌方前期加强后期」，k = 1 在第 6 回合）：所以这里必须把
+ * `m.round` 传下去。三个调用点（combat / views / bossRounds）拿到的都是同一次 `this`，`this.round` 就是这一场
+ * 战斗的回合 —— 预览不会因为回合不同而与实战分叉。
  * @param {any} m
  */
 export function matchEnemyMods(m) {
   const list = (Array.isArray(m.enemyHexes) ? m.enemyHexes : []).map((e) => m.gd.hex(e && e.id ? e.id : e)).filter(Boolean);
-  const level = protocolLevelEnemyMods(m.protocolLevel, m.difficulty);
+  const level = protocolLevelEnemyMods(m.protocolLevel, m.difficulty, m.round);
   if (level) list.push(level);
   return sumEnemyMods(list);
 }
@@ -794,6 +1052,30 @@ export function applyThiefIncomeCut(ps, ev) {
 
 export function enemyVerbIds(m) {
   return ownedEnemyHexes(m).filter((h) => typeof h.verb === 'string' && h.verb).map((h) => h.id);
+}
+
+/**
+ * 自适应成长 (业主 2026-10-24: 「根据敌人源石协议的总阶数获得攻击力防御力生命值的对应加成，一阶对应8%」): the enemy side's
+ * TOTAL tier, i.e. the sum of `gd.hexTier(rarity)` over EVERY enemy hex it owns — the `mods` 数值卡 included.
+ *
+ * `flags.enemyHexIds` (enemyVerbIds above) deliberately carries only the `verb` cards, so the battle cannot work the sum
+ * out for itself; and the enemy's ownership is match state. Hence this stamp: the match computes the number and hangs it
+ * on the battle's flags (`withEnemyHexes`, the ONE place all three battle-building paths share).
+ *
+ * Only computed when a player actually owns the card — every other battle then gets no extra flag at all, so an install
+ * without the card produces the byte-for-byte options object it produced before this feature landed (KEY DISCIPLINE).
+ * @param {import('./Match.js').Match} m
+ * @returns {number} 0 when nobody owns the card / the enemy has no card
+ */
+export function adaptiveTierTotalOf(m) {
+  const owner = typeof m.alivePlayers === 'function' ? m.alivePlayers().some((ps) => ownsHex(ps, 'hex_adaptivegrowth')) : false;
+  if (!owner) return 0;
+  let total = 0;
+  for (const rec of ownedEnemyHexes(m)) {
+    const tier = typeof m.gd.hexTier === 'function' ? m.gd.hexTier(rec.rarity) : null;
+    if (Number.isInteger(tier) && tier > 0) total += tier;
+  }
+  return total;
 }
 
 /**

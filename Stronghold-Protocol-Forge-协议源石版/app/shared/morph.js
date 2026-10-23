@@ -298,6 +298,59 @@ const resolveRec = (it, getItem) => {
 };
 
 /**
+ * **一行装备 → 它真正「穿着」的 items 记录** —— 融合件（锻炉的**百变**）展开成它吞掉的那两件。
+ *
+ * 为什么必须在这一层展开：百变是**一件**装备片（`{ id: 百变, merged: [idA, idB] }`，只占一个装备位），但它的效果
+ * 就是那两件的效果（业主 2026-10-24「百变的效果是两件被融合装备的效果……可正常被同构体识别」）。成员资格的三处读取点
+ * 如果只看 `it.id`，就会读到 `百变` 这条**空记录**（`canGiveBond: false`、`giveBondId: null`、`grantsBonds: []`）⇒
+ * 「变形同构体 + 维式重锤」融成百变之后，卡上从「生效中【维多利亚】」掉成「暂未生效」，备战侧的盟约人数也跟着少一个 ——
+ * 而战斗里一直是对的（`PlayerState.battleInput` 早就把 `merged` 展开成两个 id 了）。展开收在这一处，于是
+ * `bondsMeta.pieceBonds` / `support/index.js unitBonds` / 客户端 `grantedBonds` 三处**不可能**再分叉。
+ *
+ * 兼容三种入参（三处读取点各自拿到的东西形状不同，与 `resolveRec` 同一条契约）：
+ *   * 一个装备**棋子**（`{ id, merged? }`：服务端 `piece.items`、客户端 `m.private` 的 `piece.items`）；
+ *   * 一个**裸 id 字符串**（战斗输入的 `unit.items` —— 战斗那边已经展开过了，这里原样透传）；
+ *   * 一条 items **记录**（`canHold` 的入参）。
+ * `merged` 不是数组 / 为空 / 项不是非空字符串 ⇒ 退回 `it.id`（一帧坏数据不该让卡片或计数炸掉）。
+ * 没有 `getItem` ⇒ 按「传进来的已经是记录」读（与 `resolveRec` 同一条），裸 id 退化成 `{ id }`。
+ * @param {Iterable<any>|null|undefined} items 装备棋子 / 裸 id / items 记录
+ * @param {((id: string) => any)|null|undefined} [getItem] items.json 查询
+ * @returns {any[]} 记录（**保持装备行顺序**；融合件的位置上是它的两件，先后按 `merged` 自己的顺序）
+ */
+export function itemRecs(items, getItem = null) {
+  const out = [];
+  for (const it of items || []) {
+    const merged = it && typeof it === 'object' && Array.isArray(it.merged) ? it.merged.filter((x) => typeof x === 'string' && x) : null;
+    const ids = merged && merged.length ? merged : [typeof it === 'string' ? it : it && it.id];
+    for (const id of ids) {
+      if (typeof id !== 'string' || !id) continue;
+      if (typeof getItem === 'function') { const rec = getItem(id); if (rec) out.push(rec); continue; }
+      // 没有解析器：一件装备棋子本身就是（足够像）一条记录；融合件没有「自己」的记录可交，只能按它吞掉的那几件算
+      out.push(merged && merged.length ? { id } : it);
+    }
+  }
+  return out;
+}
+
+/**
+ * 与 `itemRecs` **同一条展开**，只回 id：一行装备真正「穿着」的那几个 id（融合件 → 它吞掉的两件）。
+ * 给「我身上有没有这一件」这类比较用（`bondMembers` 的成员行、`morphPairings` 的「生效中」高亮），
+ * 于是融合之后 `身上有维式重锤吗` 的答案与 `他算维多利亚成员吗` 的答案是同一条。
+ * @param {Iterable<any>|null|undefined} items 装备棋子 / 裸 id / items 记录
+ * @returns {string[]}
+ */
+export function itemIds(items) {
+  const out = [];
+  for (const it of items || []) {
+    const merged = it && typeof it === 'object' && Array.isArray(it.merged) ? it.merged.filter((x) => typeof x === 'string' && x) : null;
+    if (merged && merged.length) { for (const id of merged) if (!out.includes(id)) out.push(id); continue; }
+    const id = typeof it === 'string' ? it : it && it.id;
+    if (typeof id === 'string' && id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/**
  * 变形同构体**占几个装备位** —— 与档位无关的那半条事实：官方档下它占一个（`canGiveBond` 的装备就是普通装备），
  * `plus` 档下它占零个。写成模块层的**纯**函数（`shared/modSurface.js` 的 `behaviour` 那一格可锚的导出名）：
  * 调用方要「不传策略也算一行占位」时用它。

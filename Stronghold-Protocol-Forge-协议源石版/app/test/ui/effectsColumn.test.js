@@ -98,11 +98,14 @@ describe('effects column: a 协议源石 shows its 阶位 art', () => {
 
 // ---------------------------------------------------------------------------------------------------
 // the combat DP counter: the effects column must never run into it (owner's reports of 2026-10-13,
-// 「战斗时费用显示位置遮挡己方buff」 + 「计数器左移一些」). The counter sits on the official right-edge middle, and the
+// 「战斗时费用显示位置遮挡己方buff」 + 「计数器左移一些」). The counter used to sit on the right-edge middle, and the
 // column grows down the same right edge from 2.4rem, so from the fifth tile on the counter's opaque plate hid the
 // player's own 协议源石 / 策略 tiles. The fix is a HORIZONTAL split: the counter is inset far enough left that its whole
 // box lies left of a tile, whatever the window height. The offsets below are parsed out of the CSS and checked against
 // each other, so sliding either element back into the other fails here without a browser.
+//
+// 业主 2026-10-23「费用显示横过来挂到条的下面」：计数器改成横排、挂在顶栏下面（右边缘仍止于 right 1.1rem），于是
+// 它与效果列连「纵向相遇」都不可能 —— 第二条用例钉的就是这个新位置（顶栏下方、效果列上方）。
 // ---------------------------------------------------------------------------------------------------
 
 describe('the combat DP counter never covers the effects column', () => {
@@ -126,11 +129,26 @@ describe('the combat DP counter never covers the effects column', () => {
     assert.ok(counterRight <= 1.6, `the counter stays on the right edge (right ${counterRight}rem), not out in the field`);
   });
 
-  test('and it keeps the official right-edge middle (research 06 §4.5 / §D3), vertically centred', () => {
+  test('the counter hands under the top bar, horizontal and above the effects column (owner 2026-10-23)', () => {
     const css = read('public/css/screens/game.css');
-    const top = grab(css, /^\.dpbox \{[^}]*\btop: ([\d.]+)%/m, '.dpbox top');
-    assert.equal(top, 50, 'the counter is centred on the right edge');
-    assert.match(css, /^\.dpbox \{[^}]*transform: translateY\(-50%\)/m, 'and translated by half its own height');
+    // 「横过来」: icon + number + COST in one row, not a vertical stack
+    assert.match(css, /^\.dpbox \{[^}]*\bflex-direction: row/m, 'the DP chip is horizontal');
+    assert.doesNotMatch(css, /^\.dpbox \{[^}]*\btranslateY/m, 'no vertical-centring transform any more');
+    // 「挂到条的下面」: below the top bar capsule (.2rem padding + .78rem tall ⇒ its bottom edge is at 1.0rem) ...
+    const top = grab(css, /^\.dpbox \{[^}]*\btop: ([\d.]+)rem/m, '.dpbox top');
+    assert.ok(top >= 1.0, `the chip starts below the top bar (top ${top}rem)`);
+    assert.ok(top <= 1.4, `and stays tucked under it (top ${top}rem)`);
+    // ... and above the effects column, so the two can never meet vertically either
+    const colTop = grab(css, /^\.gm__effects \{[^}]*\btop: ([\d.]+)rem/m, '.gm__effects top');
+    assert.ok(top + 0.46 < colTop, `the chip (top ${top}rem, .46rem tall) ends above the column (top ${colTop}rem)`);
+  });
+
+  test('状态栏 (the effects column) scrolls instead of running off the screen', () => {
+    const css = read('public/css/screens/game.css');
+    assert.match(css, /^\.gm__effects \{[^}]*\bmax-height:/m, 'the column caps its height');
+    assert.match(css, /^\.gm__effects \{[^}]*\boverflow-y: auto/m, 'and scrolls past the cap');
+    assert.match(css, /scrollbar-width: thin/, 'a thin native scrollbar is requested');
+    assert.match(css, /\.gm__effects::-webkit-scrollbar-thumb \{/m, 'and styled for WebKit browsers');
   });
 
   test('the counter is combat-only, so the prep shop bar (the same right edge, at the bottom) never coexists', () => {

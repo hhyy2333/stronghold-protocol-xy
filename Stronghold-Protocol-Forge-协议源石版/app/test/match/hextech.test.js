@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA, withoutHextech, give, giveItem, chessOfTier, legalTileFor } from './harness.js';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
-import { enemyHexMods, applyHex, applyVoidReturnLayers, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
+import { enemyHexMods, applyHex, applyVoidReturnLayers, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
 import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
 import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
@@ -898,7 +898,8 @@ test('幽魂形态: the pick grants the remake’s own 幽魂 equipment through 
   const { h, m, ps } = solo1(113);
   applyHex(m, ps, m.gd.hex('hex_ghostform'));
   const held = [...(ps.hand || []), ...(ps.temp || [])].filter((p) => p && p.kind === 'item' && p.id === 'chess_item_9_90_e_a');
-  assert.equal(held.length, 1, 'exactly one 幽魂 arrives (the hand, or the overflow temp)');
+  // 业主 2026-10-24:「发两件」 → two copies arrive on the pick.
+  assert.equal(held.length, 2, 'exactly two 幽魂 arrive (the hand, or the overflow temp)');
   const rec = m.gd.item('chess_item_9_90_e_a');
   assert.equal(rec.name, '幽魂');
   assert.equal(rec.shopExcluded, true, 'the shop never offers it');
@@ -919,10 +920,10 @@ test('a later pick never re-runs an owned card’s immediate part (owner report 
   const { h, m, ps } = solo1(127);
   const ghosts = () => [...(ps.hand || []), ...(ps.temp || [])].filter((p) => p && p.kind === 'item' && p.id === 'chess_item_9_90_e_a').length;
   applyHex(m, ps, m.gd.hex('hex_ghostform'));
-  assert.equal(ghosts(), 1, 'the pick itself grants one 幽魂');
+  assert.equal(ghosts(), 2, 'the pick itself grants two 幽魂 (业主 2026-10-24)');
   const funds = ps.funds;
   applyHex(m, ps, m.gd.hex('hex_stipend'));
-  assert.equal(ghosts(), 1, 'gaining another card does not hand out a second 幽魂');
+  assert.equal(ghosts(), 2, 'gaining another card does not hand out another pair of 幽魂');
   applyHex(m, ps, m.gd.hex('hex_bulwark'));
   assert.equal(ps.funds, funds + 3, 'and 战备津贴 paid at its own pick only — never once per later pick');
   h.invariants();
@@ -1529,6 +1530,98 @@ test('盟约获得: the dispatcher measures the trait’s own layer gain and giv
   // stackable bonds only (谢拉格). 不屈 stays inactive and gets only the trait's own +3.
   assert.equal(ps.layers.kjeragShip || 0, 4, '谢拉格: trait 3 + card 1');
   assert.equal(ps.layers.indomShip || 0, 3, '不屈: trait 3 only (inactive ⇒ no share)');
+  h.invariants();
+  m.dispose();
+});
+
+// =====================================================================================================================
+// §29.40 — the sixteenth batch (业主 2026-10-24): the match-level halves.
+// =====================================================================================================================
+
+test('无私奉献: every OTHER teammate gains a random hex — the picker does not', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, bots: 0, seed: 77, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const a = h.ps('p_0');
+  const b = h.ps('p_1');
+  const hexesOf = (ps) => ps.effects.filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:')).length;
+  const bBefore = hexesOf(b);
+  const aBefore = hexesOf(a);
+  applyHex(m, a, m.gd.hex('hex_selfless'));
+  assert.equal(hexesOf(b), bBefore + 1, 'the teammate gained exactly one extra card');
+  assert.equal(hexesOf(a), aBefore + 1, 'the picker gained only the card itself (its earlier draft pick stays)');
+  assert.equal(ownsHex(a, 'hex_selfless'), true);
+  m.dispose();
+});
+
+test('背水一战: the pick SETS the LP to 1 and opens a two-round 锁血 window', () => {
+  const { h, m, ps } = solo1(131);
+  ps.lp = 12;
+  applyHex(m, ps, m.gd.hex('hex_lastditch'));
+  assert.equal(ps.lp, 1, '「目标生命自动变为1」');
+  assert.equal(lpLockUntilOf(ps), m.round + 1, 'the pick counts as the first of the two locked rounds');
+  assert.equal(lpLockedIn(ps, m.round), true);
+  assert.equal(lpLockedIn(ps, m.round + 1), true);
+  assert.equal(lpLockedIn(ps, m.round + 2), false, 'and it lapses after two');
+  h.invariants();
+  m.dispose();
+});
+
+// =====================================================================================================================
+// §29.41 — 第十七批：核心盟约专属协议 · 维多利亚 · 锻炉（业主 2026-10-24）
+// =====================================================================================================================
+
+test('锻炉: 专属卡只在【维多利亚】激活时进卡池，掉线后也不会被再抽到', () => {
+  const { h, m, ps } = solo1(151);
+  const rec = m.gd.hex('hex_forge');
+  assert.equal(rec.requiresBond, 'victoriaShip');
+  assert.equal(hexAvailableTo(ps, rec), false, 'no 维多利亚 ⇒ not available');
+  assert.ok(!hexPoolFor(ps, m.gd).some((x) => x.id === 'hex_forge'), 'the offer pool leaves it out');
+  // the bond becomes active (a member joined) ⇒ the card enters the pool
+  ps.bonds = { ...ps.bonds, victoriaShip: { count: 3, active: true, tier: 1, layers: 0 } };
+  assert.equal(hexAvailableTo(ps, rec), true);
+  assert.ok(hexPoolFor(ps, m.gd).some((x) => x.id === 'hex_forge'), 'and now it is offered');
+  // an inactive record (members but below the threshold) is out again
+  ps.bonds = { ...ps.bonds, victoriaShip: { count: 1, active: false, tier: 0, layers: 0 } };
+  assert.equal(hexAvailableTo(ps, rec), false);
+  // the same rule narrows the REAL draft of round 1 (this player has no 维多利亚 member at all)
+  ps.bonds = { ...ps.bonds, victoriaShip: undefined };
+  // the patches above are test-local: recompute before the invariant check so `ps.bonds` is the computed one again
+  ps.recompute();
+  assert.equal(hexAvailableTo(ps, rec), false);
+  h.invariants();
+  m.dispose();
+});
+
+test('锻炉: two worn items fuse into 百变 — one item, both effects, never fused again', () => {
+  const { h, m, ps } = solo1(153);
+  applyHex(m, ps, m.gd.hex('hex_forge'));
+  const chessId = chessOfTier(1)[0];
+  const tile = legalTileFor(m, ps, chessId);
+  assert.ok(tile, 'a legal tile (premise)');
+  const piece = give(m, ps, chessId, 'board', tile);
+  const a = giveItem(m, ps, 'chess_item_1_01_e_a');   // 维式重锤
+  const b = giveItem(m, ps, 'chess_item_1_02_e_a');   // 坚守盾牌
+  assert.deepEqual(ps.equip(a.uid, piece.uid), { ok: true }, 'the first item lands normally');
+  assert.equal(piece.items.length, 1, 'one item so far');
+  assert.deepEqual(ps.equip(b.uid, piece.uid), { ok: true }, 'the second one lands');
+  assert.equal(piece.items.length, 1, 'and the two fure into ONE item');
+  assert.equal(piece.items[0].id, FORGE_ITEM_ID, '百变');
+  assert.deepEqual(piece.items[0].merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'it remembers both components');
+  // 「百变的效果是两件被融合装备的效果」: the BATTLE input carries both original ids, so the sim installs both items
+  const input = ps.battleInput();
+  const u = input.units.find((x) => x.uid === piece.uid);
+  assert.deepEqual([...u.items].sort(), ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'both records reach the battle');
+  // 「百变不会被融合」: a scan finds no second unfused pair on that operator
+  assert.equal(applyForgeFusion(ps, piece), 0, 'no re-fusion');
+  assert.equal(piece.items.length, 1);
+  // … and the fused piece can still be unequipped (it moves as ONE item), fusion does not come back
+  const before = piece.items[0].uid;
+  ps.equip(giveItem(m, ps, 'chess_item_3_01_e_a').uid, piece.uid);
+  assert.ok(piece.items.length <= 2, 'the carrier never exceeds its slots');
+  assert.ok(piece.items.some((it) => it.merged), 'the 百变 survived a later equip');
+  void before;
   h.invariants();
   m.dispose();
 });

@@ -134,7 +134,8 @@ try {
     "set `"PORT=$Port`"",
     "set `"HOST=$BindHost`"",
     "set `"SP_COMBAT=$Combat`"",
-    "set `"SP_VERIFY=$Verify`""
+    "set `"SP_VERIFY=$Verify`"",
+    "set `"SP_BOSS_HIT_LIMIT=off`""
   ) | Set-Content -Path $EnvFile -Encoding Oem -ErrorAction Stop
 
   if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {

@@ -74,6 +74,8 @@ import { createRequestHandler } from './http/routes.js';
 import { createTrafficCounter } from './http/traffic.js';
 import { createAssetIndex } from './http/assetIndex.js';
 import { createManifestViews } from './http/assetViews.js';
+// 素材兜底跳转（server/http/assetJump.js，可选）：本机缺的 /assets|fonts 文件 302 到镜像；没配镜像时是 null。
+import { createAssetJump } from './http/assetJump.js';
 import { AccountStore } from './accounts.js';
 import { MatchRecords } from './matchRecords.js';
 import { resolveAccountConfig } from './accountConfig.js';
@@ -148,8 +150,11 @@ export {
  *   wsLanes?: readonly import('./http/wsLanes.js').WsLane[],
  *   httpLanes?: readonly import('./http/httpLanes.js').HttpLane[],
  *   assetIndex?: boolean | { cacheFile?: string | null, delayMs?: number },
+ *   assetJump?: false | (ReturnType<typeof createAssetJump>),
  * }} [opts]
  *   assetIndex: the content-hash index (default on; false or SP_ASSET_INDEX=0: off — config.js assetIndexOptionsFrom)
+ *   assetJump: the optional missing-asset 302 layer (server/http/assetJump.js). Default: built from SP_ASSET_CDN /
+ *   SP_ASSET_SOURCES / deploy/asset-sources.json, and `null` when none of them is configured (a plain install).
  * @returns {Promise<{ port: number, host: string, url: string, server: http.Server, wss: import('ws').WebSocketServer,
  *                     lobby: import('./lobby.js').Lobby, network: import('./net.js').Network,
  *                     registry: import('./net.js').SessionRegistry, packs: ReturnType<typeof createPackRegistry>,
@@ -158,6 +163,7 @@ export {
  *                     traffic: ReturnType<typeof createTrafficCounter>,
  *                     assetIndex: ReturnType<typeof createAssetIndex> | null,
  *                     views: ReturnType<typeof createManifestViews> | null,
+ *                     assetJump: ReturnType<typeof createAssetJump> | null,
  *                     close: () => Promise<void> }>}
  */
 export async function startServer(opts = {}) {
@@ -328,6 +334,9 @@ export async function startServer(opts = {}) {
     ...(Array.isArray(p.variants) && p.variants.length ? { variants: p.variants } : {}),
     ...(Array.isArray(p.behaviour) && p.behaviour.length ? { behaviour: p.behaviour } : {}),
   }));
+  // 工坊包声明进自选池的干员（pack.json.operators）：自选界面与房间校验都要看见它们。没有这一步，一个没有
+  // 引擎内置 kit 的工坊干员（结城理）会被 welcome.diyKitted / PlayerState.setDiy 过滤掉，玩家永远选不到。
+  const workshopDiyKitted = [...new Set((workshopLoaded.packs || []).flatMap((p) => Object.keys(p.operators || {})))];
   const workshopKitFiles = workshopKitFilesFor(workshopKits.modules, workshopDir);
   // 行为层相对 import 的服务面（§28.18）：包 id → 它的 `kits/` 目录。`/workshop-kits/` 靠它才服务得了一个 kit
   // 用 `./lib/util.js` import 的兄弟文件 —— URL 里没有 `kits/` 这一段，所以路由要把这一段加回去（server/http/static.js
@@ -436,6 +445,30 @@ export async function startServer(opts = {}) {
         if (declaredChannels.length && typeof next.prototype?.handlePackMsg !== 'function') {
           log.warn(`[workshop] ${w.pack}/${w.id}: declares server channels (${declaredChannels.join(', ')}) but its MatchClass layer has no handlePackMsg method — those messages will only be relayed (DESIGN §28.23)`);
         }
+        /**
+         * 多个包各套一层 MatchClass 时，**同名方法只有最外层能拿到调用**。handlePackMsg 是唯一由引擎按「包」去取的
+         * 入口，所以里层包（先装的）的接收方法会被外层包覆盖 —— 表现为「面板能收到主动帧、一按按钮就永远没有回执」。
+         *
+         * 这里在装配期把每层**自己声明**的 handlePackMsg 串起来：本层说「不是我的包」（返回 false / undefined）时
+         * 交给里层；说「已消费」（true / {consumed:true}）时保持原语义。继承来的方法不重复包。
+         */
+        const ownHandlePackMsg = Object.prototype.hasOwnProperty.call(next.prototype || {}, 'handlePackMsg')
+          ? next.prototype.handlePackMsg : null;
+        if (typeof ownHandlePackMsg === 'function') {
+          const innerHandlePackMsg = base && base.prototype ? base.prototype.handlePackMsg : null;
+          next.prototype.handlePackMsg = function handlePackMsgChain(playerId, msg) {
+            let result;
+            try {
+              result = ownHandlePackMsg.call(this, playerId, msg);
+            } catch (e) {
+              // 本层抛了：让 callMatch 记这一层，但仍把消息交给里层 —— 一个包的 bug 不该吞掉另一个包的通道。
+              try { if (typeof innerHandlePackMsg === 'function') innerHandlePackMsg.call(this, playerId, msg); } catch { /* 里层自己的错误由它自己记 */ }
+              throw e;
+            }
+            if (result === true || (result && typeof result === 'object' && result.consumed === true)) return result;
+            return typeof innerHandlePackMsg === 'function' ? innerHandlePackMsg.call(this, playerId, msg) : result;
+          };
+        }
         base = next;
       } catch (e) {
         log.warn(`[workshop] ${w.pack}/${w.id}: matchClass(...) threw (${e && e.message ? e.message : e}) — that layer is skipped`);
@@ -502,7 +535,7 @@ export async function startServer(opts = {}) {
       accounts,
       records,
       ...(matchWrappers.length ? { MatchClass } : {}),
-      workshop: { kits: workshopKits.kits, tokenKits: workshopKits.tokenKits, modules: workshopKits.modules, kitOwners: workshopKits.owners, tokenKitOwners: workshopKits.tokenOwners, kitBudgets: workshopKits.budgets, mods: workshopMods, hooks: workshopHooks.hooks, panels: workshopPanels.panels, assets: workshopModAssets, theme: workshopTheme.theme, meta: metaModules, roomAssets, battle: battleModules, battleInstallers, roomHooks: roomInstallers, transport: transport.transport, serverChannels: serverChannelMap },
+      workshop: { kits: workshopKits.kits, tokenKits: workshopKits.tokenKits, modules: workshopKits.modules, kitOwners: workshopKits.owners, tokenKitOwners: workshopKits.tokenOwners, kitBudgets: workshopKits.budgets, mods: workshopMods, diyKitted: workshopDiyKitted, hooks: workshopHooks.hooks, panels: workshopPanels.panels, assets: workshopModAssets, theme: workshopTheme.theme, meta: metaModules, roomAssets, battle: battleModules, battleInstallers, roomHooks: roomInstallers, transport: transport.transport, serverChannels: serverChannelMap },
     },
     { data, log, content, plugins: roomSets, hosts },
   );
@@ -599,7 +632,10 @@ export async function startServer(opts = {}) {
   const indexOptions = assetIndexOptionsFrom(opts, publicDir);
   const assetIndex = indexOptions ? createAssetIndex({ publicDir, log, ...indexOptions }) : null;
   const views = assetIndex ? createManifestViews({ dataDir, index: assetIndex, log }) : null;
-  const serveStatic = createStaticHandler({ publicDir, dataDir, sharedDir, simDir, packsDir, pluginsDir, packs, content, log, workshopJson, workshopKitFiles, workshopKitDirs, workshopPanelFiles, workshopAssets, workshopRoutes, workshopResourceFiles, resourcePolicy, workshopI18n, modsJson, roomData: roomDataFace, workshopBattleFiles, modRoutes, voiceCdn: voiceCdn.overrides, assetIndex, views, visual, contents });
+  // 素材兜底跳转（server/http/assetJump.js，可选）：源表来自 SP_ASSET_CDN / SP_ASSET_SOURCES / deploy/asset-sources.json，
+  // 一个都没有就是 null（普通安装与开发机的常态），static.js 那条 404 分支因此整块跳过。
+  const assetJump = opts.assetJump === false ? null : (opts.assetJump || createAssetJump({ log }));
+  const serveStatic = createStaticHandler({ publicDir, dataDir, sharedDir, simDir, packsDir, pluginsDir, packs, content, log, workshopJson, workshopKitFiles, workshopKitDirs, workshopPanelFiles, workshopAssets, workshopRoutes, workshopResourceFiles, resourcePolicy, workshopI18n, modsJson, roomData: roomDataFace, workshopBattleFiles, modRoutes, voiceCdn: voiceCdn.overrides, assetIndex, views, assetJump, visual, contents });
   // 插件工坊（DESIGN §34.9）：它自己的页面与 API，只对本机与本地网开放（路由层另一道门）。它只在被用到之后才
   // 盯 plugins/（热重载），而「房主是作者或独自一人」的房间自己跟随插件的改动。`studio: false` 关掉它。
   const studio = opts.studio === false ? null : createStudio({ publicDir, pluginsDir, dataDir, registry: packs, lobby, sessions: registry, log, fetch: opts.fetch });
@@ -611,7 +647,7 @@ export async function startServer(opts = {}) {
   resetBuildTag();
   buildTag();
 
-  const server = http.createServer(createRequestHandler({ serveStatic, csp: process.env.SP_CSP === 'off' ? null : siteCsp(publicDir), health: { startedAt, network, registry, lobby, modHealth: () => modMount.healthz(), content, traffic, assetIndex, views, trusted: trustedRuntime?.health }, log,
+  const server = http.createServer(createRequestHandler({ serveStatic, csp: process.env.SP_CSP === 'off' ? null : siteCsp(publicDir), health: { startedAt, network, registry, lobby, modHealth: () => modMount.healthz(), content, traffic, assetIndex, views, assetJump, trusted: trustedRuntime?.health }, log,
     records, accounts,
     // 管理后台 + 玩家反馈 + 更新公告 (协议源石版 port). `admin.enabled` is false without ADMIN_SECRET, in which case
     // routes.js answers 404 for the whole /api/admin/* surface; `feedback` / `notes` null out the two public routes.
@@ -695,6 +731,7 @@ export async function startServer(opts = {}) {
       try { hosts.close(); } catch (e) { log.error('[shutdown] match hosts', e); }
       network.close();
       assetIndex?.close();
+      assetJump?.stop?.();
       studio?.close();
       await trustedRuntime?.close();
       await new Promise((resolve) => {
@@ -709,7 +746,7 @@ export async function startServer(opts = {}) {
 
   // `accounts` / `records` 也交出来（两份都是 `null` 时表示没开 `SP_ACCOUNTS`）：运维与测试要能确认
   // 「这个进程到底有没有账号」，而不是靠猜 `hello` 的回复。
-  return { port: actualPort, host: boundHost, url, server, wss, lobby, network, registry, packs, content, visual, contents, hosts, accounts, records, traffic, assetIndex, views, studio,
+  return { port: actualPort, host: boundHost, url, server, wss, lobby, network, registry, packs, content, visual, contents, hosts, accounts, records, traffic, assetIndex, views, assetJump, studio,
     // The operator console's objects, handed back so tests and tools can assert on them instead of guessing.
     admin, feedback, bans, banStore, limits, limitsStore, announceStore, notesStore, close };
 }

@@ -1,11 +1,12 @@
-// The 40 strategies (bands): prep side (server/sim/content/bands/meta.js through the real registry + dispatcher) and
-// battle side (bands/battle.js with synthetic operators / enemies for exact numbers). Numbers are the band blackboards
-// (data/bands.json, research 01 §11); every band is covered (last test).
+// The 40 official strategies (bands) plus the hand-authored 管理员: prep side (server/sim/content/bands/meta.js through
+// the real registry + dispatcher) and battle side (bands/battle.js with synthetic operators / enemies for exact
+// numbers). Numbers are the band blackboards (data/bands.json, research 01 §11); every band is covered (last test).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBattle, chessRec, enemyRec, checkInvariants } from '../helpers/battleHarness.js';
 import { makeMatch, give, giveItem, DATA } from '../match/harness.js';
 import { createRegistry } from '../../server/match/effectsMeta.js';
+import { applyHex, bandHexCopyCount } from '../../server/match/hextech.js';
 import { hasBattlePart, amedicCharsFor, PRIO_BAND_REVIVE } from '../../server/sim/content/bands/battle.js';
 import { bandMetaHandler, duckReplace } from '../../server/sim/content/bands/meta.js';
 import { PRIO_RESPAWN } from '../../server/sim/content/items/battle.js';
@@ -70,14 +71,16 @@ test('bands.js wires both parts: 28 bands with a prep handler, 10 with a battle 
   assert.equal(typeof bands.install, 'function');
   assert.equal(typeof bands.registerMeta, 'function');
   const ids = Object.keys(DATA.bands);
-  assert.equal(ids.length, 40);
+  assert.equal(ids.length, 41);
   const meta = ids.filter((id) => REG.has(`band:${id}`));
   const battle = ids.filter(hasBattlePart);
   assert.equal(meta.length, 28);
   assert.deepEqual(battle.sort(), ['band_amedic', 'band_amiya', 'band_chen', 'band_clementia', 'band_dusk', 'band_emperor', 'band_ermengard', 'band_humus', 'band_ioleta', 'band_mberry', 'band_qalaisa'].sort());
   assert.ok(REG.has('global:bands_ducklord'));
+  // no prep handler and no battle part: 歌利亚 is starting LP only, 鸭爵 is the global above, 管理员's one mechanic runs
+  // match-side (server/match/hextech.js applyBandHexCopy — a copy is another GAIN, only applyHex can grant one)
   const none = ids.filter((id) => !meta.includes(id) && !battle.includes(id));
-  assert.deepEqual(none.sort(), ['band_ducklord', 'band_sarkazb']);
+  assert.deepEqual(none.sort(), ['band_admin', 'band_ducklord', 'band_sarkazb']);
   for (const id of ids) if (!meta.includes(id)) assert.equal(bandMetaHandler(id), null, id);
 });
 
@@ -709,6 +712,32 @@ test('Touch 外勤医疗: every player of a match with the band gets 预备干�
   assert.deepEqual(run(['t_n'], { band: null, matchBands: ['band_bldsk', 'band_amedic'] }), [['char_605_cmedic', 10, 2]], 'a teammate holds it');
   assert.deepEqual(run(['t_n'], { band: null }), [], 'nobody holds it');
   cover('band_amedic');
+});
+
+test('管理员 协议源石复制: the first 协议源石 gained settles twice, once per match (业主 2026-10-26)', () => {
+  const { m, ps } = setup({ band: 'band_admin' });
+  const refs = (id) => ps.effects.filter((e) => e && e.data && e.data.hexId === id).length;
+  assert.equal(bandHexCopyCount(m, ps), 1, 'the buff is read off the strategy record');
+  assert.equal(bandHexCopyCount(m, { bandId: null }), 0, 'no strategy, no copy');
+
+  // 战备津贴's 获得时 half is +3 funds: the copy is the same card, gained again ⇒ +6 in total
+  const funds0 = ps.funds;
+  applyHex(m, ps, m.gd.hex('hex_stipend'));
+  assert.equal(ps.funds - funds0, 6, 'the pick and its duplicate both pay');
+  assert.equal(refs('hex_stipend'), 1, 'a duplicated card is still owned once (one EffectRef)');
+  assert.equal(ps.counters['band_hex_copy:used'], 1, '限一次 is spent by the first gain');
+
+  // 限一次: the NEXT gain is not duplicated — 二次抽取 would roll four extra cards instead of two
+  const before = ps.effects.length;
+  applyHex(m, ps, m.gd.hex('hex_double'));
+  assert.equal(ps.effects.length - before, 3, '二次抽取: the pick + its two cards, no duplicate');
+
+  // and a player without the strategy is untouched
+  ps.bandId = null;
+  const funds1 = ps.funds;
+  applyHex(m, ps, m.gd.hex('hex_stipend'));
+  assert.equal(ps.funds - funds1, 3, 'one settlement without 管理员');
+  cover('band_admin');
 });
 
 test('coverage: every band is exercised by a test above', () => {

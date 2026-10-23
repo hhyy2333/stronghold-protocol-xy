@@ -1,0 +1,33 @@
+{
+  "id": "field-store",
+  "name": "战地商店",
+  "version": "1.0.0",
+  "author": "hhyy2333",
+  "license": "CC0-1.0",
+  "description": "在每一局的休整期开一家战地商店：全部装备（协议源石专属的那几件除外）按原价 3 倍出售，另有 12 块一次的协议源石抽取（随机一张、按 1/2/3 阶权重、尊重已拥有与局外禁用）。纯工坊包 + 引擎一格 Match.grantHex。",
+  "api": "1.x",
+  "combat": true,
+  "server": {
+    "modules": [
+      {
+        "id": "store",
+        "entry": "server/store.mjs",
+        "uses": ["matchClass"],
+        "channels": ["store"]
+      }
+    ]
+  },
+  "client": {
+    "panels": [
+      {
+        "id": "store",
+        "slot": "screen.game.shopTools",
+        "module": "ui/store.js",
+        "styles": ["ui/store.css"],
+        "messages": ["store"],
+        "data": ["items", "assets", "bonds"],
+        "order": 20
+      }
+    ]
+  }
+}

@@ -3,76 +3,67 @@
  * 两条规矩：
  *  1. **所有选择器都在 `.oex` 下**：包的样式表是页面级的（引擎把它注入 <head> 末尾，docs/WORKSHOP.md §1.9.5），
  *     裸标签选择器会改到引擎自己的界面。这里除了 `.oex` 及其后代，不写任何全局规则。
- *  2. 宿主是 `screen.game.aside` 那个固定浮层（引擎自己的 CSS：position: fixed / inset: 0 右侧 / z-index 62 /
- *     pointer-events: none）。所以位置由这份样式自己给，点击只在自己的节点上打开。
+ *  2. 宿主是**商店栏的按钮行**（`screen.game.shopTools`，DESIGN §28.8；冻结的左边，与「商店」并排）。
+ *     所以收起态是行里的一格横排按钮，展开态是它的 fixed 子元素（抽屉贴右上角）。
  *
  * 配色跟游戏本体一致：暗底 + 薄荷绿状态色 + 交易所自己的金色。涨红跌绿（国内习惯）。
  */
 
 .oex {
-  position: fixed;
-  top: 88px;
-  right: 10px;
-  z-index: 62;
+  /* 行里的一格：不再自己定位。抽屉（`.oex__panel`）是 fixed，位置在下面给。 */
+  position: static;
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 6px;
-  width: 340px;
-  max-width: calc(100vw - 16px);
+  align-items: center;
+  pointer-events: none;
   font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
   font-size: 12px;
   line-height: 1.35;
   color: #e6edf0;
-  pointer-events: none;
 }
 
 .oex[hidden] { display: none !important; }
 
 .oex > * { pointer-events: auto; }
 
-/* ---- 收起状态：贴右边缘的小标签 ---------------------------------------------------------------- */
+/* ---- 收起状态：按钮行里的一颗「交易所」（与 商店 / 冻结 / 刷新 同高）---------------------------- */
 
-/* 业主 2026-10-22「手机上交易所会挡住状态栏」：屏幕右边缘是 HUD 自己的一列 —— `.gm__effects`（协议源石 / 效果磁贴）是
-   `right: .3rem`、每块 `.5rem`，所以那一列的左边缘在 `right: .8rem`。原来这个标签贴在 `right: 0`、宽度按 px 算，于是
-   正好压在那列磁贴上；手机横屏是 844px 宽、`≤640px` 那条媒体查询根本不生效，桌面窗口窄一点时同样会压住。
-   所以改成**任何宽度都停在那一列的左边**（横向固定间隙是唯一可靠的：列高取决于玩家有几个磁贴）。
-   离开屏幕边缘之后，右边框与四角圆角也要还原成完整的一颗。 */
 .oex__tab {
-  position: fixed;
-  top: 30%;
-  right: calc(.8rem + 6px);
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 10px 7px;
+  gap: .08rem;
+  height: .48rem;
+  padding: 0 .14rem 0 .1rem;
   appearance: none;
-  border: 1px solid rgba(240, 198, 116, 0.45);
-  border-radius: 10px;
-  background: linear-gradient(160deg, rgba(22, 18, 10, 0.96), rgba(12, 14, 12, 0.96));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  border: 2px solid rgba(240, 198, 116, 0.85);
+  background: rgba(8, 11, 10, 0.9);
+  box-shadow: 0 .04rem .14rem rgba(0, 0, 0, 0.45);
   color: #f0c674;
   font: inherit;
+  font-size: .19rem;
+  font-weight: 700;
+  letter-spacing: .08em;
   cursor: pointer;
-  writing-mode: horizontal-tb;
+  transition: background var(--t-fast, .12s), box-shadow var(--t-fast, .12s), transform var(--t-fast, .12s);
 }
-.oex__tab:hover { border-color: rgba(240, 198, 116, 0.85); }
-.oex__tab-glyph { font-size: 14px; font-weight: 700; line-height: 1; }
-.oex__tab-text {
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  writing-mode: vertical-rl;
-}
+.oex__tab:hover { background: rgba(240, 198, 116, 0.16); box-shadow: 0 0 .18rem rgba(240, 198, 116, 0.4); color: #ffe6a8; }
+.oex__tab:active { transform: translateY(1px); }
+.oex__tab.is-on { background: rgba(240, 198, 116, 0.22); color: #fff1cf; }
+.oex__tab-glyph { font-size: .2rem; font-weight: 700; line-height: 1; }
+.oex__tab-text { writing-mode: horizontal-tb; font-size: .19rem; letter-spacing: .08em; line-height: 1; }
 .oex__tab[hidden] { display: none !important; }
 
-/* ---- 抽屉本体 ---------------------------------------------------------------------------------- */
+/* ---- 抽屉本体（贴右上角；按钮住在商店栏，抽屉不跟着按钮）--------------------------------------- */
 
 .oex__panel {
-  position: relative;
+  position: fixed;
+  top: 88px;
+  right: 10px;
+  z-index: 62;
   display: flex;
   flex-direction: column;
-  width: 100%;
+  width: 340px;
+  max-width: calc(100vw - 16px);
   max-height: calc(100vh - 120px);
   overflow: hidden;
   border: 1px solid rgba(240, 198, 116, 0.32);
@@ -449,7 +440,7 @@
 /* ---- 窄屏 / 手机 ------------------------------------------------------------------------------- */
 
 @media (max-width: 900px) {
-  .oex { width: 300px; top: 76px; }
+  .oex__panel { width: 300px; top: 76px; }
 }
 
 /* 矮屏（手机横屏 390~430 高）：业主 2026-10-22 玩家反馈「投不进钱」。实测 844×390 上面板只有 270px 高，而头部
@@ -457,8 +448,7 @@
    六行 349px 的内容挤在一个 21px 的滚动窗口里，买 / 卖按钮根本按不到，脚本量出来的每一个按钮中心都被脚注接住。
    所以按**高度**（不是宽度）另开一档：面板贴底、给到差不多整屏高，并给列表一个最小高度，让它至少露出三行。 */
 @media (max-height: 520px) {
-  .oex { top: auto; bottom: 8px; right: 8px; width: min(340px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
-  .oex__panel { max-height: calc(100vh - 16px); }
+  .oex__panel { top: auto; bottom: 8px; right: 8px; width: min(340px, calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
   .oex__head { padding-top: 6px; padding-bottom: 4px; }
   .oex__tape { padding-top: 2px; padding-bottom: 2px; }
   .oex__sum { padding-top: 4px; padding-bottom: 4px; }
@@ -470,7 +460,7 @@
 }
 
 @media (max-width: 640px) {
-  .oex {
+  .oex__panel {
     width: calc(100vw - 20px);
     max-width: calc(100vw - 20px);
     top: auto;
@@ -480,6 +470,5 @@
   /* 面板贴底，所以能给多高就给多高：62vh 在手机横屏（高度 390）只剩 242px，六支股票的列表被压到两行，
      最后一行的买 / 卖按钮落在滚动区外面 —— 按下去命中的是下面的脚注（玩家反馈的「投不进钱」有一半是它）。 */
   .oex__panel { max-height: calc(100vh - 20px); }
-  .oex__tab { top: auto; bottom: 26%; padding: 9px 6px; }   /* right / 圆角已在基础规则里（避开 HUD 那列） */
   .oex__title { font-size: 14px; }
 }

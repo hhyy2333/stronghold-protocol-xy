@@ -193,14 +193,19 @@ test('items: 122 item chess with valid effects, bonds and golden links', () => {
   }
 });
 
-test('bands: 40 strategies with effects and starting LP', () => {
-  assert.equal(Object.keys(bands).length, 40);
+test('bands: 41 strategies (40 official + 管理员) with effects and starting LP', () => {
+  assert.equal(Object.keys(bands).length, 41);
   for (const b of Object.values(bands)) {
     assert.ok(effects[b.effectId], `${b.bandId}: effect`);
     assert.ok(isInt(b.totalHp) && b.totalHp >= 20 && b.totalHp <= 45, `${b.bandId}: totalHp`);
     assert.ok(b.name && b.iconId);
   }
   assert.equal(bands.band_bldsk.totalHp, 28);
+  // 业主 2026-10-26: the hand-authored strategy (tools/build-data.mjs CUSTOM_BANDS) is built like an official one
+  assert.equal(bands.band_admin.name, '管理员');
+  assert.equal(bands.band_admin.effectId, 'aceffect_band_admin');
+  assert.deepEqual(bands.band_admin.buffs, [{ key: 'band_hex_copy_once', bb: { count: 1 }, bbStr: {} }]);
+  assert.deepEqual(bands.band_admin.modeTypeList, ['LOCAL', 'SINGLE', 'MULTI']);
 });
 
 test('effects: every buff has a key and finite numeric blackboard', () => {

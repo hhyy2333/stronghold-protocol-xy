@@ -17,7 +17,7 @@
 // (`moduleTypes`), the 20 pool tokens, every enemy that can appear in an
 // act2autochess match (07 enemy list ∪ act1autochess wave/boss levels used by
 // act2 modes ∪ bosses ∪ their summons ∪ enemy units spawned by operator kits),
-// the 23 bonds, 59 shop items, 40 bands,
+// the 23 bonds, 59 shop items, 40 bands (+ the hand-authored ones, HAND_BAND_ICONS),
 // default-skill icons, profession icons, autochess UI sprites (the 36 battle
 // emotes and the 19 玩法说明 pages included: UI_EXTRAS), BGM and SFX.
 
@@ -74,6 +74,13 @@ export const ENEMY_SPINE_ALIAS = Object.freeze({
 const LOADING_USED = new Set(['loading_ac_core', 'loading_ac_prototype', 'loading_ac_hard', 'loading_ac_abyss']);
 
 const PROFESSIONS = ['caster', 'medic', 'pioneer', 'sniper', 'special', 'support', 'tank', 'warrior'];
+
+/**
+ * Bands whose portrait is NOT an official asset (the hand-authored strategies of tools/build-data.mjs `CUSTOM_BANDS`,
+ * 业主 2026-10-26 管理员): the file ships at `public/assets/band/<bandId>.png` and the plan leaf has no URL. Keep this in
+ * step with CUSTOM_BANDS — a name here without a file on disk is reported by the fetch as a dropped leaf.
+ */
+export const HAND_BAND_ICONS = Object.freeze(['band_admin']);
 
 /**
  * The 19 official 玩法说明 (tutorial) pages, in the reading order of public/js/ui/guide.js GUIDE_CHAPTERS (a test keeps
@@ -580,6 +587,12 @@ export function buildPlan({ assets07, ops03, enemies05, maps05, audio, modelsDat
   for (const [trapId, it] of Object.entries(assets07?.items || {})) items[trapId] = leaf(alt(`item/${trapId}.png`, it.icon?.url, it.icon?.bytes));
   const bands = {};
   for (const [bandId, b] of Object.entries(assets07?.bands || {})) bands[bandId] = leaf(alt(`band/${bandId}.png`, b.icon?.url, b.icon?.bytes));
+  // 业主 2026-10-26: 手写策略「管理员」(tools/build-data.mjs CUSTOM_BANDS) does not exist in the official asset index, so its
+  // portrait cannot be downloaded — the file ships in the tree (`public/assets/band/band_admin.png`, the same square shape
+  // as the 40 official ones) and the leaf carries NO url: resolveTemplate publishes a leaf whose file is on disk, so a
+  // `node tools/fetch-assets.mjs` rebuild keeps the entry instead of dropping it as a miss (and `--prune` never sees the
+  // file as an orphan, because the resolved manifest references it).
+  for (const bandId of HAND_BAND_ICONS) bands[bandId] = { alts: [alt(`band/${bandId}.png`)] };
 
   // --- professions ----------------------------------------------------------
   const prof = { icon: {}, large: {}, battlecard: {}, sub: {} };

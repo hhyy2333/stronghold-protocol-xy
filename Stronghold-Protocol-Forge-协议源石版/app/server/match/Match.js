@@ -298,6 +298,12 @@ export class Match {
     this.broadcastFn = opts.broadcast;
     this.onEndFn = opts.onEnd;
     this.data = opts.data && typeof opts.data === 'object' ? opts.data : {};
+    /**
+     * 自选池可上阵名单（`welcome.diyKitted` 的同一份口径，Lobby 传进来）：null = 引擎默认的 KITTED_CHARS。
+     * 工坊包 `pack.json.operators` 声明的自选干员要靠它才不会在开局时被 `PlayerState.setDiy` 过滤掉。
+     * @type {string[]|null}
+     */
+    this.kitted = Array.isArray(opts.kitted) ? opts.kitted : null;
     /** the room's content hash (opts.cs, DESIGN **§34**，上游原文 `§32`): every BattleSpec carries it */
     this.cs = isContentHash(opts.cs) ? opts.cs : null;
     /** the room's visual set (opts.vs, DESIGN **§34.6**，上游原文 `§32.6`): every BattleSpec names it */

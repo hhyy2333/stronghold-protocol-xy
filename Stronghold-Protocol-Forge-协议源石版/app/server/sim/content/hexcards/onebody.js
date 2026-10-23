@@ -60,10 +60,14 @@ export function installOneBody(hooks) {
 
   /** ownerId → the damage factor its groups' attacks reach (1.5 by default). */
   const factor = new Map();
+  /** ownerId → the ATK % each EXTRA copy of an operator gives (业主 2026-10-24: 「每一个增加50%攻击力」). */
+  const atkPerCopy = new Map();
   for (const pid of owners) {
     const spec = typeof specOf === 'function' ? specOf(pid, 'hex_onebody', 'oneBody') : null;
     const pct = typeof optNumber === 'function' ? optNumber(spec, 'dmgPct', DEFAULT_DMG_PCT) : DEFAULT_DMG_PCT;
     factor.set(pid, pct / 100);
+    const perCopy = Number(spec && spec.atkPerCopyPct);
+    atkPerCopy.set(pid, Number.isFinite(perCopy) && perCopy > 0 ? perCopy / 100 : 0);
   }
 
   /**
@@ -135,6 +139,14 @@ export function installOneBody(hooks) {
         groups.push(g);
         for (const u of members) groupOf.set(u, g);
         sync(g, total); // everyone opens at the summed bar
+        // 业主 2026-10-24:「每一个增加50%攻击力」 — every copy BEYOND the first gives each member +`atkPerCopyPct`%
+        // (two copies = +50 % each, three = +100 % each). A lone operator is not a group and gets nothing, which keeps
+        // this a card about duplicates. Additive `atkPct`, the same bucket 玻璃大炮 / 亮剑 use.
+        const per = atkPerCopy.get(pid) || 0;
+        if (per > 0 && members.length > 1) {
+          const bonus = per * (members.length - 1);
+          for (const u of members) passiveBuff(battle, u, `hex:onebody:atk:${pid}:${base}`, { atkPct: bonus });
+        }
       }
     }
   }, { priority: -10 }); // the house slot: after every bond / garrison / other card passive

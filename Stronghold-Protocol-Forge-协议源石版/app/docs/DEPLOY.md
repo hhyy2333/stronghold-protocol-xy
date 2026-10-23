@@ -541,3 +541,88 @@ Node 22 的 `--permission` **不限制网络**（TCP/UDP/DNS/监听均可能可�
 扩大可读范围：不要在安装根中放此类链接，包括外链 node_modules、npm link 和配置/存储链接。建议使用容器或
 网络命名空间限制出站与内网访问，并设置 OS 内存/CPU 限额。父进程已对日志、启动错误、发送帧、RPC 回复等 IPC
 做形态和长度复核（DESIGN §34.11），但 Node 在复核前已解码 IPC，不能据此声称免疫内存炸弹或消息洪泛。
+
+## 11. 素材兜底跳转（可选）：本机没有的文件交给镜像
+
+**为什么值得做。** 发布包不带 `public/assets`（`tools/package.mjs` 的拒绝名单），蓝绿发布又只换代码；于是每次
+**新增**美术（新干员、新 boss、新场景）都必须有人记得把那几个文件传进**每一个槽**，漏一个就是「怪看不见 /
+立绘空白 / 模型没有」而服务器日志里一条错都没有（2026-10-21 的「看不见怪」就是这个：`boss_11` 的 spine 和
+图标 404）。这一层把这件事变成兜底：**本机没有的文件，302 到你在 CDN 上放好的镜像**，槽里不必再人工补齐。
+
+**它不是「把素材全搬去 CDN」。** 只在本机确实没有这个文件（404）时才问一句「该 302 到哪」——本机有的文件
+仍然由本机发，清单（`data/assets.json` 等）**一个字节都不改**。所以：
+
+- 不配置任何镜像（普通安装、开发机、没有 CDN 的服）时，这一层根本不启动，行为与从前**逐字节相同**；
+- 也不会碰 `05-部署/_stage-cdn/` 那套「清单改写」方案的历史包袱（2026-10-13 Spine URL 形状事故）；
+  改的是**路由**，不是 URL。
+
+**怎么开。**
+
+```bash
+# 最小用法：和 CSP 用同一个变量（服务器已有 /etc/stronghold.env 时通常什么都不用加）
+SP_ASSET_CDN=https://cdn-a.example,https://cdn-b.example   # 逗号分隔，按序回退
+```
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `SP_ASSET_CDN` | 空 = **关闭** | 镜像基址，逗号分隔，按序回退；`id=https://…` 可给源起名（`?sp_source=<id>` 用）。CSP 的 `img-src`/`font-src`/`media-src` 也读它（§9），所以两件事一次配置 |
+| `SP_ASSET_SOURCES` | 无 | 源表 JSON 的路径（形状见下），优先于 `SP_ASSET_CDN`；要例外表 / 前缀规避时用它 |
+| `deploy/asset-sources.json` | 不存在 | 同上，缺省位置的源表文件；不存在就跳过（普通安装的常态） |
+| `SP_ASSET_JUMP=0` | 开（有源时） | 关掉跳转，但保留 CSP 的 CDN 放行。**线上 `/etc/stronghold.env` 里已经可能有 `SP_ASSET_CDN`**（0.19.4 起 CSP 就读它），部署这一版后兜底会立即生效 —— 不想开就加这一行重启 |
+| `SP_ASSET_JUMP_CACHE_SEC` | 60 | 302 的 `Cache-Control: max-age`（客户端多久后重新问一次本机） |
+| `SP_ASSET_HEALTH=0` / `_INTERVAL_MS` / `_TTL_MS` / `_STRIKES` | 开 / 60s / 180s / 1 | 源健康：固定路径 HEAD；HTTP 应答（含 403/404）就算通，只有 5xx/429/超时/网络错才顺延。`_STRIKES` 是连续几次才判 down（防抖） |
+| `SP_PROBE=0` / `_INTERVAL_MS` / `_TIMEOUT_MS` | 开 / 300s / 20s | 容器视角测速：每轮抽不同的素材，同一文件在所有镜像上各测一次；小文件测 TTFB、大文件测吞吐 |
+| `SP_PROBE_LEADS=1` | 关 | 让容器实测序**掌舵**（默认只报告：容器在北京，玩家在全国，容器快不代表玩家快） |
+| `SP_EDGE_SNAPSHOT` | 不写 | 把状态快照（down / dead / miss）每 5 秒写到一个文件，给边缘侧车或监控读 |
+
+源表 JSON（可选，与下游那份 `sources.json` 兼容）：
+
+```json
+{
+  "order": ["a", "b"],
+  "sources": [{ "id": "a", "base": "https://cdn-a.example" }, { "id": "b", "base": "https://cdn-b.example/cdn" }],
+  "exceptions": { "/assets/skins/char_340_shwaz_snow_1/illustration.png": "b" },
+  "prefixRules": [{ "prefix": "/assets/voice/", "skip": ["a"] }]
+}
+```
+
+**分流范围（刻意收窄）。** 只分流 `/assets/**` 与 `/fonts/**`，且只分流静态扩展名（png/jpg/webp/svg/atlas/skel/
+obj/mtl/bin/mp3/ogg/wav/ttf/woff2…）。清单与代码留在本机：`/assets/**` 下的 `.js` / `.css` / `.json`（除
+`/assets/local/**` 的清单）与 `/fonts/fonts.css` 之外的一切照样 404 —— 它们可能与本机构建产物版本不同。
+路径逐段校验（`..` / `.` / 空段 / 尾点 / 控制字符全拒），源表只来自配置，`?sp_source=` 只能点名**已配置**的
+id：这一层不能变成开放重定向。
+
+**验收（在服务器上）：**
+
+```bash
+curl -sI http://127.0.0.1:3000/healthz?traffic=1          # 有镜像时才有 assetJump 字段：order / sources / jumps / health / probe / missing
+curl -sI http://127.0.0.1:3000/assets/char/avatar/char_003_kalts.png   # 本机有的：200（不跳）
+curl -sI http://127.0.0.1:3000/assets/definitely-missing.png           # 本机没有的：302 + Location: https://<镜像>/assets/…
+curl -sI http://127.0.0.1:3000/assets/not-here.js                      # 代码仍在：404
+curl -s  http://127.0.0.1:3000/healthz?traffic=1 | grep -o '"missing":\[[^]]*\]'   # 缺件表：哪些路径在哪些镜像上没有
+```
+
+`/healthz` 的 `assetJump` 只在设了镜像时出现（`?traffic=1` 且本机/内网客户端，与流量计数同一道门）：
+
+- `order`：现在生效的顺序（`SP_PROBE_LEADS=1` 时是实测序，否则就是配置顺序）；
+- `health.sources`：每个源的最近一次健康判定（`ok` / `unknown` / `down`，含状态码、耗时、连续失败数）；
+- `exists`：存在性缓存（`known` = 已知「这个源没有这个文件」的条数，后续 302 会避开）；
+- `probe`：容器实测证据 —— 逐源 TTFB / 吞吐（EWMA）、实测序、最近的抽样、`missing` 缺失表；
+- `jumps` / `misses`：本进程跳了几次、几次没得跳（都是「本机没有」的次数）。
+
+**回滚。** 去掉 `SP_ASSET_CDN`（或加 `SP_ASSET_JUMP=0`）重启即可：盘上、清单、URL 形状都没有变过，一分钟内
+回到「本机发全部、缺了就是 404」。
+
+**已知边界与代价。**
+
+- 镜像必须**真的有那棵 `/assets` 树**（同一批官方素材）。镜像没有的自制素材仍然 404 —— 302 只把「本机缺」
+  变成「去镜像取」，不会凭空造出文件；缺件表就是「该往哪儿补传」的清单。
+- 每个「本机缺」的请求多一次 302 往返（60 秒缓存），本机有的文件一次都不多。
+- Spine 模型安全：302 不改 URL 形状，`validSpine` 的判据不受影响（这正是与清单改写方案的区别）。
+- 需要镜像回 CORS：客户端用 `img.crossOrigin` 取图，WebGL 贴图要求 `Access-Control-Allow-Origin`。
+- 本层是**兜底**，不是备份：镜像全挂时缺的文件仍然是 404（已有文件不受影响）。
+
+> 实现来源：`server/http/assetJump.js` 与 `server/mirrorProbe.js` 从下游 fork 的
+> `server/http/asset-jump.js` / `server/mirrorProbe.js` 移植（同一项目，GPL-3.0-or-later）。**没有**带过来的
+> 是绑定在对方基建上的部分：`rank.json` 排名端点、ModelScope 私有数据集的签名直链、openp2p 平台注册、
+> 边缘 sidecar 的进程模型 —— 它们要么是对方账号里的资产，要么需要有对应的边缘层才有意义。

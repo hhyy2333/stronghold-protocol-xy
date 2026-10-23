@@ -10,7 +10,7 @@ import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 import { onSettle, resetRoundCounters } from '../botEmotes.js';
 import { creditedKillsOf } from '../../sim/spec.js';
-import { bankThiefPenalty, enemyHexPayoutFor, bountyMultiplier } from '../hextech.js';
+import { bankThiefPenalty, enemyHexPayoutFor, bountyMultiplier, lpLockedIn } from '../hextech.js';
 
 export class MatchSettle {
   settle(plan, uniteResult) {
@@ -41,7 +41,10 @@ export class MatchSettle {
       const counted = (r.leaked || []).filter((l) => l && l.counted !== false).length;
       const levelLeak = this.gd.protocolLevelMods ? this.gd.protocolLevelMods.leakLp : 0;
       const rawLoss = uniteRan && plan.leakers.includes(ps) ? (survivors.get(ps.playerId) || 0) : counted;
-      const loss = Math.min(cap, rawLoss + (rawLoss > 0 ? levelLeak : 0));
+      // 背水一战 (业主 2026-10-24): 「锁血两回合」 — while the card's window is open the target life does NOT drop, however
+      // many enemies leaked. The stats count what was actually charged (0), so the panel never reports a fake loss.
+      const locked = lpLockedIn(ps, this.round);
+      const loss = locked ? 0 : Math.min(cap, rawLoss + (rawLoss > 0 ? levelLeak : 0));
       if (this.uniteResultView) this.uniteResultView.losses[ps.playerId] = loss;
       ps.lp -= loss;
       ps.stats.lpLost += loss;
