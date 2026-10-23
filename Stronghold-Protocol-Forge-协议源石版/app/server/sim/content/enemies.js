@@ -306,6 +306,29 @@ export const STATS_ONLY = Object.freeze({
   enemy_2002_bearmi: 'plain', enemy_2002_bearmi_2: 'plain',
   enemy_9012_acloon: '炎佑 is a bond summon (bonds.js)', enemy_10040_cnvbln: '狂欢时刻 absent', enemy_10043_sailor: 'bridges/cannons absent',
   enemy_10073_mpcar: 'plain', enemy_10124_uashld_2: 'taunt is data; 矿工游击队 absent',
+  // fork wave enemies (docs/research/16-extra-enemies.json): zero skills and zero talents in the data, so the plain
+  // engine (attack the blocker with the data stats) is the honest implementation — no kit.
+  enemy_1137_plasm: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1011_wizard: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1003_ncbow_2: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_5504_arcslmi: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_4048_mubarn: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1000_gopro_3: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1391_dhbow: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1428_lrsoul: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1190_krgbow: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1147_dshond_2: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1018_aoemag: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1036_amraoe: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1033_handax: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1034_laxe: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1111_ucommd_2: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1054_norshd: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1033_handax_2: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1135_redman_2: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1054_norshd_2: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_1301_ymcnon: 'fork wave enemy: zero skills/talents (data), plain AI',
+  enemy_2046_smwar: 'fork wave enemy: zero skills/talents (data), plain AI',
 });
 
 // 圣杯 damage sharing: ground enemies near a living chalice pass `share` of the damage they take to it.

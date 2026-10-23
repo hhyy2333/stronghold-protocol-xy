@@ -135,6 +135,19 @@ JOBS = [
 # when the group lists every file of data/assets.json enemies[id].spineLocal (whose metadata
 # tools/assets/local-enemy-spines.json keeps: `node tools/fetch-assets.mjs --local-spines` after a game update).
 ENEMY_SPINES = ['enemy_1305_mhslim', 'enemy_1305_mhslim_2']
+
+# The fork's own wave enemies (docs/research/16-extra-enemies.json): official enemies this repository did not carry, whose
+# models no web dump has — added 2026-10-23 at the owner's request ("更多小怪和精英怪"). Same export path as ENEMY_SPINES;
+# `node tools/fetch-assets.mjs --local-spines` then indexes them into data/assets.json `enemies[id].spineLocal`, and
+# `node tools/build-data.mjs` picks the attack clip up on its next run (two-pass build, docs/DATA.md).
+ENEMY_SPINES += [
+    'enemy_1000_gopro_3', 'enemy_1003_ncbow_2', 'enemy_1011_wizard', 'enemy_1018_aoemag',
+    'enemy_1033_handax', 'enemy_1033_handax_2', 'enemy_1034_laxe', 'enemy_1036_amraoe',
+    'enemy_1054_norshd', 'enemy_1054_norshd_2', 'enemy_1111_ucommd_2', 'enemy_1135_redman_2',
+    'enemy_1137_plasm', 'enemy_1147_dshond_2', 'enemy_1190_krgbow', 'enemy_1301_ymcnon',
+    'enemy_1391_dhbow', 'enemy_1428_lrsoul', 'enemy_2046_smwar', 'enemy_4048_mubarn',
+    'enemy_5504_arcslmi',
+]
 ENEMY_ART = 'refs/arts/enm_art_*.ab'
 ENEMY_SPINE_SUB = 'spine/enemy'
 

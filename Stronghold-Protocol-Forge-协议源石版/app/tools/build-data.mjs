@@ -388,6 +388,7 @@ async function loadContext() {
     maps: await loadResearch('05-maps.json'),
     assets: await loadResearch('07-assets.json'),
     extra: await loadResearch('15-extra-bosses.json'),
+    waveEnemies: await loadResearch('16-extra-enemies.json'),
   };
 
   return {
@@ -1839,9 +1840,9 @@ function buildEffects(ctx) {
   for (const id of Object.keys(ctx.act.effectBuffInfoDataDict)) {
     if (!out[id]) warn(`effectBuffInfoDataDict has ${id} without effectInfoDataDict entry`);
   }
-  for (const [id, c] of Object.entries(CUSTOM_EFFECTS)) {
+  for (const [id, c] of Object.entries({ ...CUSTOM_EFFECTS, ...CUSTOM_BAND_EFFECTS })) {
     out[id] = {
-      effectId: id, effectType: 'EQUIP', name: c.name || null,
+      effectId: id, effectType: c.effectType || 'EQUIP', name: c.name || null,
       desc: c.desc || null, descRaw: c.descRaw || null,
       counterType: 'NONE', continuedRound: -1, decoIconId: null, enemyPrice: 0,
       buffs: c.buffs || [], params: {},
@@ -1849,6 +1850,21 @@ function buildEffects(ctx) {
   }
   return out;
 }
+
+/**
+ * 业主 2026-10-26: the effect behind the hand-authored 策略「管理员」 (CUSTOM_BANDS). Same shape as an official band
+ * effect (`BAND_INITIAL`, one buff with its blackboard) so buildBands / the strategy draft / the bot read it like any
+ * of the 40; the mechanic itself is match code (server/match/hextech.js `applyBandHexCopy`, keyed by the buff `key`).
+ */
+const CUSTOM_BAND_EFFECTS = Object.freeze({
+  aceffect_band_admin: {
+    name: '管理员',
+    effectType: 'BAND_INITIAL',
+    desc: '【管理员】当你获得协议源石时，复制一个。限一次。',
+    descRaw: '【管理员】当你获得协议源石时，<@ba.vup>复制一个</>。限一次。',
+    buffs: [{ key: 'band_hex_copy_once', countType: 'NONE', bb: { count: 1 }, bbStr: {} }],
+  },
+});
 
 /**
  * The effect records CUSTOM_ITEMS point at (the integrity pass requires every item's `effectId` to resolve). The
@@ -1895,6 +1911,15 @@ const CUSTOM_EFFECTS = Object.freeze({
     name: '心之钢',
     desc: '携带者视为【坚守】盟约成员；坚守盟约干员每隔 3 秒的攻击附带自身最大生命值 100% 的法术伤害，并增加自身最大生命值 150 点、【坚守】层数 2 层',
     descRaw: '携带者视为<@ba.vup>【坚守】盟约成员</>；坚守盟约干员每隔 3 秒的攻击附带自身最大生命值<@ba.vup>100%</> 的法术伤害，并增加自身最大生命值<@ba.vup>150</> 点、<@ba.vup>【坚守】层数 2 层</>',
+    buffs: [],
+  },
+  // 百变 (业主 2026-10-24): a marker whose real content is the two fused items' own records. The card's prep half
+  // (server/match/hextech.js applyForgeFusion) writes their ids onto the piece, and `battleInput` expands them, so this
+  // effect record carries no numbers of its own — the equipment system does the work.
+  eff_item_versatile: {
+    name: '百变',
+    desc: '由【锻炉】融合两件装备而成：同时拥有那两件装备的全部效果；不会再被融合，仍可被【变形同构体】识别',
+    descRaw: '由【锻炉】融合两件装备而成：同时拥有那两件装备的<@ba.vup>全部效果</>；<@ba.vup>不会再被融合</>，仍可被【变形同构体】识别',
     buffs: [],
   },
 });
@@ -2170,13 +2195,16 @@ const CUSTOM_ITEMS = Object.freeze({
     shopSortId: 990,
     identifier: 9001,
     iconId: 'item_ghost',
-    desc: '阻挡数变为 0，每次受到的伤害不超过 100',
-    descRaw: '阻挡数变为<@ba.vup>0</>，每次受到的伤害不超过<@ba.vup>100</>',
+    // 业主 2026-10-24:「幽魂形态，加个转职球效果然后发两件」 — the item is ALSO a 变形同构体 carrier (`canGiveBond: true`),
+    // the same treatment 恶魔之契 got on 2026-10-21: worn together with a faction item it counts as that item's bond.
+    desc: '阻挡数变为 0，每次受到的伤害不超过 100；该装备同时视为【变形同构体】',
+    descRaw: '阻挡数变为<@ba.vup>0</>，每次受到的伤害不超过<@ba.vup>100</>；该装备同时视为<@ba.vup>【变形同构体】</>',
     effectId: 'eff_item_ghost',
     effectName: '幽魂',
     buffs: [],
     params: { dmgCap: 100 },
-    note: '本作自制装备：只由协议源石【幽魂形态】发放，商店不出售、不可合并',
+    canGiveBond: true,
+    note: '本作自制装备：只由协议源石【幽魂形态】发放（两件），商店不出售、不可合并',
   },
   // 恶魔之契: granted only by 恶魔形态, whose battle half used to buff a RANDOM own operator. The equipment now decides
   // who it affects (like 幽魂), so the card hands one out on pick. The item is a pure MARKER — no `BY_ITEM` entry: the
@@ -2291,13 +2319,36 @@ const CUSTOM_ITEMS = Object.freeze({
     grantsBonds: ['steadShip'],
     note: '本作自制装备：只由协议源石【心之钢】发放，商店不出售、不可合并',
   },
+  // 百变 (业主 2026-10-24): 协议源石【锻炉】把一件干员身上的两件装备融合成它。
+  // 它自己是 **纯 MARKER**：真正的两件装备的 id 存在**装备片**的 `merged` 里（server/match/hextech.js
+  // applyForgeFusion），战斗输入把 `merged` 展开成那两个 id（server/match/player/round.js battleInput），
+  // 所以「两件装备的效果」由引擎原本的装备系统照常结算，属性 / 触发 / 变形同构体配对一样不落。
+  // `mergeable: false` + `upgradeNum: 100` = 官方「永不合并」标记（突变细胞同款）⇒ 不进三合一；
+  // 合成规则本身也只看**未融合**的两件，所以百变永远不会被再次融合。
+  chess_item_9_97_e_a: {
+    name: '百变',
+    tier: 1,
+    price: 0,
+    shopSortId: 997,
+    identifier: 9008,
+    // 复用【变形同构体】的官方图标：本作没有为「百变」画过图，这个 iconId 至少一定画得出来（缺图会退成空板）。
+    iconId: 'trap_1073_acarm073',
+    desc: '由【锻炉】融合两件装备而成：同时拥有那两件装备的全部效果；不会再被融合，仍可被【变形同构体】识别',
+    descRaw: '由【锻炉】融合两件装备而成：同时拥有那两件装备的<@ba.vup>全部效果</>；<@ba.vup>不会再被融合</>，仍可被【变形同构体】识别',
+    effectId: 'eff_item_versatile',
+    effectName: '百变',
+    buffs: [],
+    params: {},
+    note: '本作自制装备：只由协议源石【锻炉】合成，商店不出售、不可合并、不可再融合',
+  },
 });
 
 // ===== bands (策略) ===============================================================================
 
 /**
- * Build data/bands.json: the 40 season strategies. `bondIds` (the bonds a strategy is built around: shared/bandBonds.js
- * over its text and blackboards, needing bonds.json and choices.json pools) is added in main() once those are built.
+ * Build data/bands.json: the 40 season strategies plus the hand-authored ones (CUSTOM_BANDS). `bondIds` (the bonds a
+ * strategy is built around: shared/bandBonds.js over its text and blackboards, needing bonds.json and choices.json
+ * pools) is added in main() once those are built.
  */
 function buildBands(ctx, effects) {
   const { act, ac } = ctx;
@@ -2320,8 +2371,43 @@ function buildBands(ctx, effects) {
       unlockDesc: meta.unlockDesc || null,
     };
   }
+  // Hand-authored strategies (业主 2026-10-26: 「增加策略，名字「管理员」」). Everything textual comes from the band's
+  // own effect record (CUSTOM_BAND_EFFECTS) so the two tables can never drift, and the record is built through the same
+  // shape as an official band: mode types, LP, victor count and the buff list are data, the mechanic is code.
+  for (const [bandId, c] of Object.entries(CUSTOM_BANDS)) {
+    const eff = effects[c.effectId];
+    if (!eff) warn(`band ${bandId}: effect ${c.effectId} missing`);
+    out[bandId] = {
+      bandId, sortId: c.sortId, name: c.name, iconId: c.iconId || `icon_${bandId.replace(/^band_/, '')}`,
+      modeTypeList: c.modeTypeList, totalHp: c.totalHp,
+      effectId: c.effectId, effectName: eff?.name || c.name, desc: eff?.desc || null, descRaw: eff?.descRaw || null,
+      buffs: (eff?.buffs || []).map((x) => ({ key: x.key, bb: x.bb, bbStr: x.bbStr })),
+      params: eff?.params || {},
+      victorCount: c.victorCount, rewardModulus: c.rewardModulus,
+      unlockDesc: null,
+    };
+  }
   return out;
 }
+
+/**
+ * The strategies the official tables do not have (no bandDataListDict row, no band art). A `modeTypeList` of all three
+ * puts the strategy in every draft (LOCAL 入门协议 / SINGLE / MULTI), which is what 「增加策略」 means; `iconId` has no
+ * asset behind it — ui/gameComponents.js BandIcon falls back to the name's first character (the hextech cards do the
+ * same without their tier art). `totalHp` sits in the middle of the official spread (20–31, one 45).
+ */
+const CUSTOM_BANDS = Object.freeze({
+  band_admin: {
+    sortId: 41,
+    name: '管理员',
+    iconId: 'icon_admin',
+    modeTypeList: ['LOCAL', 'SINGLE', 'MULTI'],
+    totalHp: 26,
+    effectId: 'aceffect_band_admin',
+    victorCount: 3,
+    rewardModulus: 1,
+  },
+});
 
 // ===== enemies ==================================================================================
 
@@ -2423,12 +2509,35 @@ function enemyOverrideRecord(over, label) {
 }
 
 /**
+ * Enemies this fork adds to the WAVE generator (docs/research/16-extra-enemies.json): official enemies the repository
+ * did not carry before, which the owner asked for ("更多小怪和精英怪", 2026-10-22). They are ordinary enemies — no kit,
+ * no leader row — that get an `enemies.json` row like any other and are attached to the special-entry pools below, so
+ * the wave generator can spawn them. The models come from the local client extraction (tools/local-extract/extract.py
+ * WAVE_ENEMIES); an enemy whose model is missing is refused here with a warning instead of shipping a unit that draws
+ * nothing.
+ * @returns {Array<{key:string, rank:string, name?:string}>}
+ */
+function customWaveEnemies(ctx) {
+  const list = ctx.research.waveEnemies?.batches;
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const b of list) {
+    for (const e of (b && b.enemies) || []) {
+      if (!e || typeof e.key !== 'string' || !/^enemy_/.test(e.key)) continue;
+      if (!ctx.enemyDb.has(e.key)) { warn(`wave enemy ${e.key}: missing from enemy_database`); continue; }
+      out.push(e);
+    }
+  }
+  return out;
+}
+
+/**
  * Hand-added leaders (docs/research/15-extra-bosses.json): the official autochess tables carry no enemy row, wave or
  * boss row for them, so this fork declares them here and the builders below merge them in. Each entry names the enemy
  * (`enemyId`), the leader record (`bossId`, weight, bloodPoint), the official boss wave it clones (`waveBase`:
  * the field, its routes and its escorts stay the official ones; only the leader's spawn key is retargeted) and an
  * optional escort swap (`escorts`: base enemy key → this leader's own escort key, e.g. Mephisto's 宿主 unit; the base
- * wave's timing / route / slot / count are kept, which is what makes his +100 % HP-recovery talent matter at all).
+ * wave's timing / route / slot / count are kept, which is what makes his +100% HP-recovery talent matter at all).
  * @returns {Array<{bossId:string, enemyId:string, handbookId?:string, name?:string, sortId?:number, weight:number,
  *   hidden?:boolean, bloodPoint:Record<string,number>, waveBase?:{multi?:string, solo?:string},
  *   escorts?:Record<string,string>}>}
@@ -2452,6 +2561,10 @@ function collectEnemyKeys(ctx) {
     // a hand-added leader may bring its own escort set (research `escorts`): those rows are spawnable too
     if (b.escorts && typeof b.escorts === 'object') for (const k of Object.values(b.escorts)) add(k);
   }
+  // fork-added wave enemies (docs/research/16-extra-enemies.json): ordinary enemies a wave spawns directly, so they
+  // must land in `direct` too — reached only through `keys` they would be `tokenOnly` and 联防 would route them as
+  // summons (server/match/waves.js buildUniteWave).
+  for (const e of customWaveEnemies(ctx)) add(e.key);
   for (const id of ctx.templateIds) {
     const lv = ctx.levels[id];
     for (const w of lv.waves || []) for (const f of w.fragments || []) for (const a of f.actions || []) if (a.actionType === 'SPAWN') add(a.key);
@@ -2639,7 +2752,11 @@ const MIRRORED_PREFABS = new Set(['enemy_1196_msfyin']);
  * never reads client files; an enemy whose model the manifest lacks gets none (the sim falls back to ATTACK_PAUSE).
  */
 function enemyAttackAnim(manifest, spineId) {
-  const sp = manifest?.enemies?.[spineId]?.spine;
+  // The model the client actually draws first: a `spineLocal` (the official model extracted from a local client,
+  // tools/local-extract) beats the web/aliased `spine`, so an enemy whose own model is only local gets ITS clip length
+  // and strike frame instead of the alias's (docs/ASSETS.md "Enemy aliases").
+  const entry = manifest?.enemies?.[spineId];
+  const sp = entry?.spineLocal?.anims ? entry.spineLocal : entry?.spine;
   const a = sp?.anims?.attack;
   if (!a || typeof a.loop !== 'string' || a.via === 'idle') return null;
   const dur = sp.animations?.[a.loop];
@@ -3268,6 +3385,7 @@ function buildFactions(ctx, enemies) {
     };
     for (const k of all) if (!enemies[k]) warn(`faction entry ${key}: enemy ${k} missing`);
   }
+  attachWaveEnemies(ctx, entries, enemies);
   const types = {};
   for (const [type, t] of Object.entries(ac.enemyTypeDatas || {})) {
     const r = act.specialEnemyRandomTypeDict?.[type] || {};
@@ -3311,10 +3429,140 @@ function buildFactions(ctx, enemies) {
         'Per SPAWN action whose key is a placeholder: skipped when isFly(new key) != placeholder fly flag (not spawned, not previewed); else the count follows countFormula and the units keep the action window (timingFormula). Literal keys and T/TF tokens are kept.',
         'Leader / hidden rounds use slot 14 / 15 (solo 标准: 9) with the same rule, so only the E or the EF escorts spawn.',
         'enemy_9012_acloon (炎佑) is never an enemy.',
+        'Fork wave enemies (docs/research/16-extra-enemies.json) are appended after the official key of an entry pool '
+          + `(never at index 0), same movement class and rank, attrPower within [${FORK_POWER_BAND[0]}, ${FORK_POWER_BAND[1]}] of the pool anchor, `
+          + `at most ${FORK_EXTRA_PER_POOL} per pool; pickRoundEntry then draws a random attached key, so they share the pool with the official one.`,
       ],
     },
   };
 }
+
+/**
+ * Attach the fork's wave enemies (docs/research/16-extra-enemies.json) to the special entries' N / E pools
+ * (server/match/waves.js pickRoundEntry picks a RANDOM attached key, so a longer list is the only lever — the official
+ * keys stay at index 0 and the crosscheck / fixture tests read `[0]`).
+ *
+ * Rules (each one exists for a reason):
+ *   - same movement class as the entry (`fly`) — data.test.js asserts isFlyEnemy === entry.fly, and a wrong class makes
+ *     every placeholder of the other class be dropped (waves.js templateSpawns);
+ *   - same rank as the pool's anchor (`N[0]` / `E[0]`), and `attrPower` within FORK_POWER_BAND of that anchor: the
+ *     count formula divides by the power ratio and clamps to 1..5, so a much stronger enemy would turn a wave of five
+ *     into a wave of one;
+ *   - at most FORK_EXTRA_PER_POOL added keys per pool, so the official enemies keep most of their share;
+ *   - deterministic: candidates by natural key order, so the regenerated data/factions.json is stable.
+ */
+const FORK_POWER_BAND = Object.freeze([0.85, 1.25]);
+/**
+ * A second, wider pass for a batch enemy the tight band cannot place anywhere (畸变赘生物 P 1750 is weaker than every
+ * NORMAL pool anchor, 高阶术师 P 8710 weaker than the ELITE ones). Walling it out would silently drop an enemy the
+ * research file claims, so it is attached at this wider band instead and the drift is measured: waves-official's
+ * "distribution ≈ official" tolerance (±12 % per round) is the guard.
+ */
+const FORK_POWER_BAND_WIDE = Object.freeze([0.7, 1.5]);
+const FORK_EXTRA_PER_POOL = 1;
+
+function attachWaveEnemies(ctx, entries, enemies) {
+  const extra = customWaveEnemies(ctx);
+  if (!extra.length) return;
+  const usable = extra.filter((e) => {
+    const r = enemies[e.key];
+    if (!r) return false;
+    if (r.notCountInTotal || r.tokenOnly || r.applyWay === 'NONE' || r.staticBody) { warn(`wave enemy ${e.key}: not a plain spawnable enemy`); return false; }
+    // `attackAnim` comes from data/assets.json (written by fetch-assets from the extracted model), so a fresh batch is
+    // built in two passes: this one writes the enemy rows, fetch-assets then indexes their models, and the next build
+    // picks the clip up. Until then the sim falls back to ATTACK_PAUSE — worth a warning, not a refusal.
+    if (!r.attackAnim) warn(`wave enemy ${e.key}: no attackAnim yet (run fetch-assets, then rebuild) — the enemy stands ATTACK_PAUSE instead of its clip`);
+    if ((r.inactiveIn || []).length) warn(`wave enemy ${e.key}: banned in ${r.inactiveIn.join(',')} — still attached (official rule: attached keys are never filtered)`);
+    return true;
+  });
+  if (!usable.length) return;
+  const anchorOf = (list) => (Array.isArray(list) && list.length ? enemies[list[0].key] : null);
+  // A rotating cursor over each pool's eligible candidates: nearest power to the anchor first, then key order, and the
+  // cursor advances with every attachment so the whole batch is spread over the 67 entries instead of the same few keys
+  // winning every pool. `used` counts attachments per key, which keeps the distribution even across a batch.
+  const used = new Map(usable.map((e) => [e.key, 0]));
+  const wideUsed = new Set();
+  let added = 0;
+  /** Attach to one pool: tight band first; a second pass at the wide band only for a key the tight band could not place
+   *  anywhere yet (research-file coverage over strict uniformity — see FORK_POWER_BAND_WIDE). */
+  const attach = (entry, cls) => {
+    const have = entry[cls] || [];
+    const anchor = anchorOf(have);
+    if (!anchor || !(anchor.attrPower > 0)) return 0;
+    if (have.length >= 1 + FORK_EXTRA_PER_POOL) return 0;
+    const room = Math.min(1 + FORK_EXTRA_PER_POOL - have.length, FORK_EXTRA_PER_POOL);
+    let band = FORK_POWER_BAND;
+    const pool = () => usable.filter((e) => {
+      const r = enemies[e.key];
+      if (r.isFlyEnemy !== entry.fly || r.rank !== anchor.rank) return false;
+      if (have.some((x) => x.key === e.key)) return false;
+      const ratio = r.attrPower / anchor.attrPower;
+      return ratio >= band[0] && ratio <= band[1];
+    });
+    const byNeed = (a, b) => {
+      const ua = used.get(a.key) || 0, ub = used.get(b.key) || 0;
+      if (ua !== ub) return ua - ub;                                  // least-used first: spreads the batch
+      const da = Math.abs(Math.log(enemies[a.key].attrPower / anchor.attrPower));
+      const db = Math.abs(Math.log(enemies[b.key].attrPower / anchor.attrPower));
+      return da - db || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0); // then nearest power, then key order
+    };
+    let picks = pool().sort(byNeed).slice(0, room);
+    if (!picks.length) {
+      // Wide fallback at most ONCE per (class, rank, movement class): it exists so a batch key the tight band cannot
+      // place is not silently missing from the waves, not to spread strong enemies over many pools (the per-round count
+      // drift stays a rounding error this way).
+      const slot = `${cls}|${anchor.rank}|${entry.fly}`;
+      if (!wideUsed.has(slot)) {
+        band = FORK_POWER_BAND_WIDE;
+        picks = pool().sort(byNeed).slice(0, 1);
+        if (picks.length) wideUsed.add(slot);
+      }
+    }
+    for (const e of picks) { have.push({ key: e.key, fork: true }); used.set(e.key, (used.get(e.key) || 0) + 1); added++; }
+    return picks.length;
+  };
+  // Two rounds over the entries: round 1 gives every pool one fork key, round 2 fills the second slot. Doing it in
+  // passes is what keeps the batch spread evenly (a single pass would hand the low keys all the slots before the high
+  // ones are considered) while still allowing FORK_EXTRA_PER_POOL per pool.
+  const ordered = Object.values(entries).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  for (let pass = 0; pass < FORK_EXTRA_PER_POOL; pass++) {
+    for (const entry of ordered) for (const cls of ['N', 'E']) attach(entry, cls);
+  }
+  // An entry whose pool gained nothing keeps the official list untouched (no empty `fork` markers).
+  for (const entry of Object.values(entries)) for (const cls of ['N', 'E']) if (!(entry[cls] || []).length) delete entry[cls];
+  // Second chance for a batch key still unattached: place it in the closest pool of its own class/rank that has a free
+  // slot, even at the wide band. Total attachments stay bounded (FORK_EXTRA_PER_POOL), so this only rescues the odd
+  // enemy the tight band could not fit anywhere.
+  let rescued = 0;
+  for (const e of usable) {
+    if (used.get(e.key)) continue;
+    const r = enemies[e.key];
+    let best = null;
+    for (const entry of Object.values(entries)) {
+      if (entry.fly !== r.isFlyEnemy) continue;
+      for (const cls of ['N', 'E']) {
+        const have = entry[cls] || [];
+        if (!have.length || have.length >= 1 + FORK_EXTRA_PER_POOL) continue;
+        const anchor = enemies[have[0].key];
+        if (!anchor || anchor.rank !== r.rank || !(anchor.attrPower > 0)) continue;
+        const ratio = r.attrPower / anchor.attrPower;
+        if (ratio < FORK_POWER_BAND_WIDE[0] || ratio > FORK_POWER_BAND_WIDE[1]) continue;
+        const d = Math.abs(Math.log(ratio));
+        if (!best || d < best.d) best = { entry, cls, d, have };
+      }
+    }
+    if (!best) continue;
+    best.have.push({ key: e.key, fork: true });
+    used.set(e.key, 1); added++; rescued++;
+  }
+  const unused = usable.filter((e) => !used.get(e.key)).map((e) => e.key);
+  log(`wave enemies: ${usable.length} usable, ${added} attached across the ${Object.keys(entries).length} entries`
+    + (rescued ? ` (${rescued} rescued at the wide band)` : '')
+    + (unused.length ? `; never attached (no pool fits): ${unused.join(' ')}` : '; every enemy attached at least once'));
+}
+
+/** Identity helper that keeps the slice above readable (the picks ARE the candidates already trimmed to `room`). */
+const picksOf = (cands) => cands;
 
 // ===== bosses ===================================================================================
 
@@ -4192,7 +4440,7 @@ function validateAll(f) {
   const { chess, bonds, bands, items, tokens, backups, stages } = f;
   const visible = Object.values(chess).filter((c) => !c.isGolden && c.visible);
   if (Object.keys(bonds).length !== 23) err(`expected 23 bonds, got ${Object.keys(bonds).length}`);
-  if (Object.keys(bands).length !== 40) err(`expected 40 bands, got ${Object.keys(bands).length}`);
+  if (Object.keys(bands).length !== 40 + Object.keys(CUSTOM_BANDS).length) err(`expected ${40 + Object.keys(CUSTOM_BANDS).length} bands (40 official + the hand-authored ones), got ${Object.keys(bands).length}`);
   if (visible.length !== 112) err(`expected 112 visible non-DIY chess, got ${visible.length}`);
   // the deliberate trigger deviations (DESIGN §21.29, §22.10) still override an official TAKE_DAMAGE row, on the normal
   // chess and its elite alike (a DEFAULT one may resolve to the owner's ACTIVE_RANGE on top: 深巡 S2)

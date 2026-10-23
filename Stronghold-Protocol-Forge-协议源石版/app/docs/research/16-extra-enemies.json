@@ -1,0 +1,279 @@
+{
+  "_meta": {
+    "about": "这个仓库原本没有收录、由 fork 额外引入的普通/精英敌人（业主 2026-10-22「做d」）。tools/build-data.mjs 把这些 key 加进 data/enemies.json 与 data/factions.json 的挂载池，让它们真的能在波次里刷出来；模型来自本机《明日方舟》客户端的本地抽取（tools/local-extract/extract.py 的 WAVE_ENEMIES）。",
+    "sources": [
+      "enemy_database.json (zh_CN)：属性 / 技能 / 天赋（level 0）",
+      "enemy_handbook_table.json：name / enemyIndex / 能力文本",
+      "本机客户端 Arknights_Data/StreamingAssets/AB/Windows/refs/arts/enm_art_*.ab：Spine 模型（refs/arts/enm_art_base_0.ab 与 enm_art_N.ab）"
+    ],
+    "notes": [
+      "选人的硬条件：未收录、NORMAL/ELITE、applyWay ≠ NONE、非 notCountInTotal、地面（motion ≠ FLY）、**零技能零天赋**（通用 AI 就能正确表达，不需要写 kit）、无同族已收录（才是真正的「新面孔」）。",
+      "强度带按占位符的 attrPower 定：NORMAL 占位敌 enemy_1422_lrsldr P=6620、ELITE 占位 enemy_1427_lrnazg P=21150；计数公式 n' = n·P(占位)/P(新) 会夹在 1–5，所以本批取 NORMAL P 1700–6000、ELITE P 8700–26000。",
+      "第一批 24 个候选里有 3 个的模型在客户端里不存在（enemy_1037_lunsbr 的骨架实际叫 enemy_1037_lunsabr、enemy_19007_akplbt 与 enemy_5069_izsdkn 整个没有），所以第一批实际落地 21 个。",
+      "模型没有走社区的 web dump：社区 dump 只有 245 个敌人模型，除 3 个外全都已收录，未收录的 1322 个里只有 49 个能借到同族模型 —— 真正的新面孔只能从本地客户端抽取。",
+      "挂载规则（tools/build-data.mjs attachWaveEnemies）：官方 key 恒在 N/E 的 [0]，fork key 追加在后面；同类（isFlyEnemy）、同档（rank）、强度带 [0.85, 1.25] 相对该池锚点，每池最多 1 个 fork key（官方仍占约 63% 的槽位）。",
+      "例外：enemy_1018_aoemag（高阶术师，ELITE，attrPower 8710）对每一个 ELITE 池锚点都低于 0.85，按规则挂不上，所以它只进图鉴、不进波次。要让它上场就把带宽放到 [0.7, 1.5]，代价是每回合人数相对官方的偏差从 8.2 % 升到约 14 %。",
+      "实测（20 局 × 13 回合）：21 个里 20 个会真的刷出来；每回合人数相对官方分布的偏差 8.2 %，FLY 回合占比 9.9 %（官方约 10 %）。"
+    ]
+  },
+  "batches": [
+    {
+      "id": "b1",
+      "note": "第一批 21 个：10 小怪 + 11 精英，零技能零天赋，模型已从本机客户端抽出。",
+      "enemies": [
+        {
+          "key": "enemy_1137_plasm",
+          "rank": "NORMAL",
+          "name": "畸变赘生物",
+          "handbookIndex": "R14",
+          "hp": 1000,
+          "atk": 150,
+          "def": 0,
+          "res": 0,
+          "attrPower": 1750,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1011_wizard",
+          "rank": "NORMAL",
+          "name": "术师",
+          "handbookIndex": "A3",
+          "hp": 1600,
+          "atk": 200,
+          "def": 50,
+          "res": 50,
+          "attrPower": 2900,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1003_ncbow_2",
+          "rank": "NORMAL",
+          "name": "弩手组长",
+          "handbookIndex": "A2",
+          "hp": 1900,
+          "atk": 310,
+          "def": 150,
+          "res": 0,
+          "attrPower": 3900,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_5504_arcslmi",
+          "rank": "NORMAL",
+          "name": "果冻丁",
+          "handbookIndex": "PM09",
+          "hp": 2500,
+          "atk": 290,
+          "def": 100,
+          "res": 20,
+          "attrPower": 4310,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_4048_mubarn",
+          "rank": "NORMAL",
+          "name": "盐水健身客",
+          "handbookIndex": "IB64",
+          "hp": 2100,
+          "atk": 260,
+          "def": 380,
+          "res": 0,
+          "attrPower": 4540,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1000_gopro_3",
+          "rank": "NORMAL",
+          "name": "狂暴的猎狗pro",
+          "handbookIndex": "O3",
+          "hp": 3000,
+          "atk": 370,
+          "def": 0,
+          "res": 20,
+          "attrPower": 4910,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1391_dhbow",
+          "rank": "NORMAL",
+          "name": "蚀",
+          "handbookIndex": "HSL3",
+          "hp": 3500,
+          "atk": 300,
+          "def": 100,
+          "res": 10,
+          "attrPower": 5330,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1428_lrsoul",
+          "rank": "NORMAL",
+          "name": "魂灵涡流",
+          "handbookIndex": "ABS3",
+          "hp": 3500,
+          "atk": 300,
+          "def": 100,
+          "res": 50,
+          "attrPower": 5450,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1190_krgbow",
+          "rank": "NORMAL",
+          "name": "冰原猎人",
+          "handbookIndex": "IL7",
+          "hp": 3500,
+          "atk": 350,
+          "def": 100,
+          "res": 20,
+          "attrPower": 5610,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1147_dshond_2",
+          "rank": "NORMAL",
+          "name": "富营养的狂奔者",
+          "handbookIndex": "SM2",
+          "hp": 4000,
+          "atk": 340,
+          "def": 0,
+          "res": 20,
+          "attrPower": 5760,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1018_aoemag",
+          "rank": "ELITE",
+          "name": "高阶术师",
+          "handbookIndex": "A5",
+          "hp": 7000,
+          "atk": 240,
+          "def": 120,
+          "res": 50,
+          "attrPower": 8710,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1036_amraoe",
+          "rank": "ELITE",
+          "name": "护盾高阶术师",
+          "handbookIndex": "A11",
+          "hp": 8500,
+          "atk": 380,
+          "def": 400,
+          "res": 20,
+          "attrPower": 11660,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1033_handax",
+          "rank": "ELITE",
+          "name": "伐木机",
+          "handbookIndex": "27",
+          "hp": 8000,
+          "atk": 750,
+          "def": 80,
+          "res": 30,
+          "attrPower": 12080,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1034_laxe",
+          "rank": "ELITE",
+          "name": "屠夫",
+          "handbookIndex": "29",
+          "hp": 9000,
+          "atk": 850,
+          "def": 230,
+          "res": 30,
+          "attrPower": 14030,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1111_ucommd_2",
+          "rank": "ELITE",
+          "name": "乌萨斯突击者队长",
+          "handbookIndex": "U10",
+          "hp": 10000,
+          "atk": 700,
+          "def": 500,
+          "res": 50,
+          "attrPower": 15150,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1054_norshd",
+          "rank": "ELITE",
+          "name": "重装防御者-N型",
+          "handbookIndex": "P09",
+          "hp": 10000,
+          "atk": 700,
+          "def": 800,
+          "res": 0,
+          "attrPower": 15900,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1033_handax_2",
+          "rank": "ELITE",
+          "name": "伐木老手",
+          "handbookIndex": "28",
+          "hp": 12000,
+          "atk": 850,
+          "def": 100,
+          "res": 30,
+          "attrPower": 16640,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1135_redman_2",
+          "rank": "ELITE",
+          "name": "“红标”精英根除者",
+          "handbookIndex": "R11",
+          "hp": 7000,
+          "atk": 2000,
+          "def": 300,
+          "res": 30,
+          "attrPower": 17990,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1054_norshd_2",
+          "rank": "ELITE",
+          "name": "重装防御者-S型",
+          "handbookIndex": "P010",
+          "hp": 14000,
+          "atk": 700,
+          "def": 1000,
+          "res": 0,
+          "attrPower": 20500,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_1301_ymcnon",
+          "rank": "ELITE",
+          "name": "“破坚”",
+          "handbookIndex": "SH13",
+          "hp": 15000,
+          "atk": 1000,
+          "def": 1200,
+          "res": 10,
+          "attrPower": 23630,
+          "why": "零技能零天赋，纯数值怪"
+        },
+        {
+          "key": "enemy_2046_smwar",
+          "rank": "ELITE",
+          "name": "木裂战士",
+          "handbookIndex": "EJ4",
+          "hp": 20000,
+          "atk": 700,
+          "def": 800,
+          "res": 20,
+          "attrPower": 25960,
+          "why": "零技能零天赋，纯数值怪"
+        }
+      ]
+    }
+  ]
+}

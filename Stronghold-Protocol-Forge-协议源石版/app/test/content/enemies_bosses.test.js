@@ -3277,8 +3277,9 @@ test('boss_11 数据：敌人、编队波次（多/单人）、模式权重都�
   const B = JSON.parse(fs.readFileSync(new URL('../../data/bosses.json', import.meta.url), 'utf8'));
   const C = JSON.parse(fs.readFileSync(new URL('../../data/config.json', import.meta.url), 'utf8'));
   assert.equal(E[SNAKE].rank, 'BOSS');
-  // 属性拉到现有领袖档位（业主 2026-10-21）：240000 / 1000 / 1000 / 50
-  assert.deepEqual([E[SNAKE].stats.maxHp, E[SNAKE].stats.atk, E[SNAKE].stats.def, E[SNAKE].stats.res], [240000, 1000, 1000, 50]);
+  // 属性拉到现有领袖档位（业主 2026-10-21）：240000 / 1000 / 1000 / 50；攻击力在 0.19.16 按业主
+  // 2026-10-22「先削弱黑蛇攻击力至0.6倍」降到 600（0.19.15 之前它的普通攻击其实从来没打出去过）
+  assert.deepEqual([E[SNAKE].stats.maxHp, E[SNAKE].stats.atk, E[SNAKE].stats.def, E[SNAKE].stats.res], [240000, 600, 1000, 50]);
   const boss = B.boss_11;
   assert.ok(boss, 'boss_11 exists');
   assert.equal(boss.enemyKey, SNAKE);
