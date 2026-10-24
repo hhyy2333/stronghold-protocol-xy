@@ -183,8 +183,20 @@
 }
 .lp--sm .lp__note { font-size: .6em; }
 @keyframes lp-pend { 0% { opacity: 0; transform: scale(1.9); } 45% { opacity: 1; transform: scale(.92); } 100% { transform: scale(1); } }
-@media (prefers-reduced-motion: reduce) { .lp__pend { animation: none; } }
+/* 敌方协议源石结算（记录部抑制）：扣血那一下让数字脉冲一次并转红 —— `html.sp-hex-hit` 由 ui/hexHit.js 挂约 1.1 s，
+   与 toast、屏幕红晕同一次触发。玩家看到的是「生命值为什么少了」这句话被回答了，而不是一个沉默的数字变化。 */
+.sp-hex-hit .lp { animation: lp-hit .9s var(--ease-out); }
+@keyframes lp-hit {
+  0%, 100% { transform: none; }
+  20% { transform: scale(1.16); color: var(--red-premium); }
+  55% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp__pend { animation: none; }
+  .sp-hex-hit .lp { animation: none; }
+}
 .sp-reduced-motion .lp__pend { animation: none; }
+.sp-reduced-motion .sp-hex-hit .lp { animation: none; }
 
 /* enemy preview button: amber [🔍▶▶] → the pen (research 09 §2); grey [🔍] in the pen view and outside 休整期 */
 .enemybtn {

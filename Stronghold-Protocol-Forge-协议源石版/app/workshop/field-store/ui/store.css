@@ -1,4 +1,4 @@
-﻿/* ui/store.css —— 「战地商店」面板的样式（pack.json.client.panels[].styles）。
+/* ui/store.css —— 「战地商店」面板的样式（pack.json.client.panels[].styles）。
  *
  * 全部选择器收在 `.fst` 下：这块 CSS 会跟引擎与其它包的样式表同住一个 <head>，前缀是唯一的边界。
  * 位置：面板挂在 `screen.game.shopTools`（DESIGN §28.8）—— **商店栏按钮行里、冻结的左边**。所以
@@ -285,22 +285,56 @@
 .fst__toast.is-ok { border: 1px solid rgba(126, 227, 192, .45); background: rgba(126, 227, 192, .1); color: #b9f5de; }
 .fst__toast.is-bad { border: 1px solid rgba(255, 107, 94, .45); background: rgba(255, 107, 94, .1); color: #ffb9b3; }
 
-/* ---- 窄屏：底部抽屉 ------------------------------------------------------------------------------------ */
+/* ---- 窄屏 / 矮屏：抽屉铺满上下（盖住商店栏），别只露一行 ------------------------------------------------ */
+/* 业主 2026-10-24 手机截图：「商店装备只显示一点点」。​横屏手机（1280×576 这类）上商店栏本身就占掉约 3/4 屏高，
+   而抽屉固定「挂在商店栏上方」⇒ 只剩一百多像素给列表，51 件装备只看得见一行。​
+   这里按**高度**另开一档（手机横屏很宽、但不该按宽度判）：抽屉从顶栏下面一直铺到屏幕底部、盖住商店栏，
+   关掉抽屉（头部 ▾）就回到商店栏。​ */
 
-@media (max-width: 640px) {
-  /* 窄屏：抽屉铺满宽度，仍然从商店栏上方往上弹（按钮那一行照旧在商店栏里）。 */
+@media (min-width: 768px) and (max-height: 620px) {
+  /* 横屏手机 / 矮窗口：右侧一整条，宽度收在 520px 以内（1280 宽的手机上不至于每行横跨半个屏幕）。​ */
+  .fst__panel {
+    left: auto;
+    right: 8px;
+    width: min(520px, calc(100vw - 16px));
+    max-width: none;
+    top: max(1.06rem, 68px);
+    bottom: 8px;
+    max-height: none;
+  }
+}
+
+@media (max-width: 767px) {
+  /* 竖屏手机：铺满宽度，同样从顶栏下面到底。​ */
   .fst__panel {
     left: 8px;
     right: 8px;
     width: auto;
     max-width: none;
-    bottom: 3.75rem;
-    max-height: calc(100vh - 4.1rem);
+    top: max(1.06rem, 68px);
+    bottom: 8px;
+    max-height: none;
   }
 }
 
-/* ---- 矮屏 ---------------------------------------------------------------------------------------------- */
-
-@media (max-height: 560px) {
-  .fst__panel { max-height: calc(100vh - 4.1rem); }
+@media (max-width: 767px), (max-height: 620px) {
+  /* 头部与过滤条压缩一档，把高度让给列表（手机上每一行都算钱）。​ */
+  .fst__head { padding: 8px 10px 6px; }
+  .fst__kicker { display: none; }
+  .fst__title { font-size: 14px; }
+  .fst__round { font-size: 9px; }
+  .fst__cash { padding: 2px 7px; }
+  .fst__cash-value { font-size: 14px; }
+  .fst__tabs { padding: 6px 10px 0; }
+  .fst__tab-btn { padding: 4px 0; font-size: 12px; }
+  .fst__filters { padding: 6px 10px; gap: 4px; }
+  /* 阶级过滤条改成横向一条（可滑），不再折成两三行占掉一格列表的高度。​ */
+  .fst__chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .fst__chips::-webkit-scrollbar { display: none; }
+  .fst__chip { flex: 0 0 auto; }
+  .fst__list { padding: 0 6px 6px; }
+  .fst__row { padding: 5px 6px; gap: 6px; }
+  .fst__desc { display: none; }   /* 一行描述在手机上挤不出可读的字，留给详情 tooltip */
+  .fst__icon { width: 26px; height: 26px; }
+  .fst__toast { margin: 0 10px 8px; }
 }

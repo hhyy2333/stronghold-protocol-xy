@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+  记录部抑制 (敌方协议源石 ehex_records) 触发提示预览 — /dev/hex-hit.html
+
+  业主 2026-10-24「记录部抑制触发时给个明显提示」。这一页用**真实的 CSS**复现那一下，方便直接看效果、
+  不用真开一局：css/components.css 的 .toast--hex 与 .hex-hit、css/screens/game.css 的 .sp-hex-hit .lp。
+
+  点「模拟一次部署」会同时发生三件事（与对局里同一次触发完全一致）：
+    1. 屏幕四周红晕闪一次（.hex-hit，1.05 s 自己淡掉，pointer-events: none）；
+    2. 目标生命值数字脉冲一次并转红（html.sp-hex-hit，约 1.1 s）；
+    3. 顶部弹出一条 kind=hex 的 toast —— 停留 4.2 s，比 warn/error 都久，图标是协议源石的六边形。
+
+  「部署三次」连按可以看它连着响的样子。纯前端，不接服务端。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>记录部抑制 · 触发提示预览</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="../css/theme.css" />
+  <link rel="stylesheet" href="../css/components.css" />
+  <link rel="stylesheet" href="../css/screens/game.css" />
+  <style>
+    html { font-size: clamp(40px, min(calc(100vw / 19.2), calc(100vh / 10.8)), 240px); }
+    body { overflow: auto; height: auto; min-height: 100%; }
+    .kit-bg { position: fixed; inset: 0; z-index: 0; }
+    .kit { position: relative; z-index: 1; max-width: 14rem; margin: 0 auto; padding: .4rem .4rem .8rem; }
+    .kit h1 { font-size: .34rem; font-weight: 900; letter-spacing: .04em; }
+    .kit h1 em { font-style: normal; color: var(--mint-500); }
+    .kit p { font-size: .15rem; line-height: 1.7; color: var(--text-lo); }
+    .kit p b { color: var(--text-hi); }
+    .hud {
+      display: flex; align-items: center; gap: .3rem; margin: .3rem 0;
+      padding: .16rem .24rem; background: rgba(6, 10, 9, .72); border: 1px solid var(--line-2);
+    }
+    .hud__label { font-size: .14rem; letter-spacing: .14em; color: var(--text-dim); text-transform: uppercase; }
+    .field {
+      height: 2.6rem; margin: .24rem 0 .3rem; display: grid; place-items: center;
+      background: repeating-linear-gradient(45deg, rgba(80, 200, 170, .05) 0 12px, transparent 12px 24px), #0d1211;
+      border: 1px solid var(--line-2); color: var(--text-dim); font-size: .16rem;
+    }
+    .btns { display: flex; flex-wrap: wrap; gap: .16rem; }
+    button {
+      padding: .1rem .22rem; font-size: .16rem; font-weight: 700; color: #04120e; background: var(--mint-400);
+      border: 0; cursor: pointer;
+    }
+    button.ghost { color: var(--text-hi); background: transparent; border: 1px solid var(--line-2); }
+  </style>
+</head>
+<body>
+  <div class="app-root"><div class="app-bg kit-bg"></div></div>
+  <div class="kit">
+    <h1>记录部抑制 · <em>触发提示</em></h1>
+    <p>
+      敌方协议源石<b>「记录部抑制」</b>：每 4 回合，修整期部署干员时减少 1 点策略生命。
+      以前这一下是<b>静音</b>的 —— 生命值数字自己变小，界面上没有任何一行字。现在扣血那一下会同时做三件事。
+    </p>
+
+    <div class="hud">
+      <span class="hud__label">目标生命值</span>
+      <span class="lp lp--lg">
+        <svg class="lp__icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.7-7.5-10A4.5 4.5 0 0 1 12 7.6 4.5 4.5 0 0 1 19.5 11c0 5.3-7.5 10-7.5 10Z" /></svg>
+        <b class="num lp__val" id="lpVal">28</b>
+      </span>
+      <span class="hud__label">第 1 回合 · 休整期</span>
+    </div>
+
+    <div class="field">修整期场地（示意）</div>
+
+    <div class="btns">
+      <button id="once">模拟一次部署</button>
+      <button class="ghost" id="thrice">连续部署三次</button>
+      <button class="ghost" id="reset">复位</button>
+    </div>
+
+    <p style="margin-top:.3rem">
+      toast 文案（服务端下发，四种语言都有）：
+      <b>记录部抑制：部署干员消耗 1 点策略生命（剩余 27）</b>
+    </p>
+  </div>
+  <div class="toast-host" id="host" role="status" aria-live="polite"></div>
+  <script type="module" src="./hex-hit.js"></script>
+</body>
+</html>

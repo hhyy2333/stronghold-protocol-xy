@@ -963,6 +963,38 @@
 .toast--success { --tc: var(--mint-400); }
 .toast--warn { --tc: var(--amber); }
 .toast--error { --tc: var(--red-premium); }
+/* 敌方协议源石结算（记录部抑制，业主 2026-10-24「触发时给个明显提示」）：最响的一档 —— 红、字更大、停留更久
+   （ui/toasts.js DEFAULT_MS.hex），图标是协议源石的六边形；main.js 收到这个 kind 还会同时闪一次屏幕（.hex-hit）。 */
+.toast--hex {
+  --tc: #ff6b6b;
+  font-size: calc(.19 * var(--t));
+  font-weight: 700;
+  border-color: rgba(255, 107, 107, .55);   /* the fallback a browser without color-mix() keeps */
+  border-color: color-mix(in srgb, var(--tc) 55%, var(--line-2));
+  animation: toast-in var(--t-med) var(--ease-out), hex-toast-glow 1.05s var(--ease-out) 2;
+}
+.toast--hex .toast__icon { width: .24rem; height: .24rem; }
+/* only the glow breathes here — a transform would fight toast-in's slide (the host's centring is on .toast-host) */
+@keyframes hex-toast-glow {
+  0%, 100% { box-shadow: 0 .08rem .24rem rgba(0, 0, 0, .55), -.04rem 0 .16rem rgba(255, 90, 90, .25); }
+  30% { box-shadow: 0 .08rem .24rem rgba(0, 0, 0, .6), 0 0 .26rem rgba(255, 90, 90, .45), -.04rem 0 .2rem rgba(255, 90, 90, .6); }
+}
+/* the screen-wide flash that rides along with it (ui/hexHit.js): the edges only, so the board stays readable */
+.hex-hit {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-announce);
+  pointer-events: none;
+  background: radial-gradient(125% 95% at 50% 50%, transparent 42%, rgba(255, 46, 46, .3) 78%, rgba(255, 30, 30, .46) 100%);
+  animation: hex-hit-flash 1.05s var(--ease-out) forwards;
+}
+@keyframes hex-hit-flash { 0% { opacity: 0; } 14% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .toast--hex { animation: none; }
+  .hex-hit { animation: none; }
+}
+.sp-reduced-motion .toast--hex { animation: none; }
+.sp-reduced-motion .hex-hit { animation: none; }
 .toast.is-leaving { animation: toast-out var(--t-med) var(--ease-in-out) forwards; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-.12rem); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(-.08rem); } }

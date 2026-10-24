@@ -1989,6 +1989,7 @@
   "给画面加一层马赛克滤镜。": "Adds a mosaic filter over the screen.",
   "记录部抑制": "Records Suppression",
   "每 4 回合，修整期部署干员时减少 1 点策略生命。": "Every 4 rounds, deploying an operator during prep costs 1 Strategy Life.",
+  "记录部抑制：部署干员消耗 {n} 点策略生命（剩余 {rest}）": "Records Suppression: deploying an operator costs {n} Strategy Life ({rest} left).",
   "莱茵护甲": "Rhine Armor",
   "敌人获得一层次数盾（可抵挡 3 次攻击）。": "Enemies gain a hit shield (blocks 3 attacks).",
   "势不可挡": "Unstoppable",

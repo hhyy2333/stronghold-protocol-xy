@@ -88,6 +88,9 @@ import { initLang, useLang, tickerText } from './ui/lang.js';
 import { UpdateNotesHost } from './ui/updateNotes.js';
 // 情报部抑制 (enemy hex ehex_mosaic) — 协议源石版 port: a full-screen mosaic layer, on while the enemy side owns it.
 import { MosaicOverlay } from './ui/mosaic.js';
+// 记录部抑制 (enemy hex ehex_records, 业主 2026-10-24「触发时给个明显提示」): the one-shot screen flash + LP pulse an
+// enemy 协议源石 charge plays. Mounted next to the mosaic layer; `flashHexHit` is called from the m.toast handler below.
+import { HexHitFlash, flashHexHit } from './ui/hexHit.js';
 import { maybeOpenUpdateNotes, loadUpdateNotes } from './ui/updateNotesModel.js';
 import { t, N_, translateWire } from '../../shared/i18n.js';
 // W7（DESIGN §28.53）：深链自动入座撞上「本房间声明了模组」时，弹窗的标题就是这条错的文案本身
@@ -459,9 +462,12 @@ function wireNet() {
     recordResult(res, { myId: store.get().me.playerId, roomMode: store.get().room?.mode ?? null, vs: store.get().room?.content?.vs ?? null, content: store.get().room?.content ?? null, now: Date.now() });
   });
   net.on('m.toast', (msg) => {
-    const kind = ['info', 'success', 'warn', 'error'].includes(msg.kind) ? msg.kind : 'info';
+    const kind = ['info', 'success', 'warn', 'error', 'hex'].includes(msg.kind) ? msg.kind : 'info';
     // msgid + params (server ≥ 0.2.0) or the text itself as a msgid, in the current language
     toast(translateWire(msg), kind);
+    // 敌方协议源石刚结算了一次（记录部抑制）—— 除了那条 toast，屏幕四周红晕 + 目标生命值数字脉冲一次
+    // （ui/hexHit.js）。老服务端永远不会发这个 kind，所以这里对旧版本是死代码。
+    if (kind === 'hex') flashHexHit();
   });
   net.on('m.ticker', (msg) => {
     if (typeof msg.text !== 'string') return;
@@ -528,6 +534,7 @@ function App() {
     <${ConnectionBanner} />
     <${AnnounceBanner} />
     <${MosaicOverlay} />
+    <${HexHitFlash} />
     <${UpdateNotesHost} />
     <${ToastHost} />
     <${UiHosts} />

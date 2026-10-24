@@ -18,9 +18,12 @@ function hFresh(type, props, ...children) {
 }
 const html = htm.bind(hFresh);
 
-export const TOAST_KINDS = ['info', 'success', 'warn', 'error'];
+// `hex` (0.19.21, 业主 2026-10-24「记录部抑制触发时给个明显提示」) is an ENEMY 协议源石 that just charged the player:
+// the loudest kind — held longer, red, and it flashes the screen too (main.js → ui/hexHit.js). An older server never
+// sends it; an older client that receives one falls back to `info` (main.js m.toast) and still reads the text.
+export const TOAST_KINDS = ['info', 'success', 'warn', 'error', 'hex'];
 const MAX_TOASTS = 4;
-const DEFAULT_MS = { info: 2600, success: 2400, warn: 3200, error: 3600 };
+const DEFAULT_MS = { info: 2600, success: 2400, warn: 3200, error: 3600, hex: 4200 };
 const MERGE_WINDOW_MS = 2500;
 
 let seq = 0;
@@ -118,6 +121,9 @@ const ICONS = {
   success: 'M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L20.1 8.4 18.7 7z',
   warn: 'M1 21h22L12 2 1 21Zm12-3h-2v-2h2v2Zm0-4h-2v-4h2v4Z',
   error: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm5 13.6L15.6 17 12 13.4 8.4 17 7 15.6 10.6 12 7 8.4 8.4 7 12 10.6 15.6 7 17 8.4 13.4 12 17 15.6Z',
+  // 协议源石 itself (the hexagon the card icons use), with the 「−」 of an LP charge cut out of it: the outer hexagon
+  // winds clockwise, the notch counter-clockwise, so the default nonzero fill rule leaves it hollow.
+  hex: 'M12 1.8 21 7v10l-9 5.2L3 17V7l9-5.2Zm-4.4 9.6v2h8.8v-2H7.6Z',
 };
 
 /** Renders the toast stack. Mount once. */

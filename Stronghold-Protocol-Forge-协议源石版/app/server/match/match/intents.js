@@ -12,6 +12,9 @@ import { onHumanEmote } from '../botEmotes.js';
 // 记录部抑制 (the owner's list of 2026-10-15): the prep-phase LP cost of a deploy. A pure reader — the mutation lives
 // in `_moveWithDeployCost` below, which is also where the LP floor and the "did a deploy happen" question live.
 import { enemyPrepLpCost } from '../hextech.js';
+// 记录部抑制 triggers a toast, so its text goes out as a msgid + params (docs/I18N.md) like every other server text.
+// Aliased: the intent methods below take an argument named `msg` (the wire frame), which would shadow the import.
+import { msg as wireMsg } from '../../../shared/i18n.js';
 
 export class MatchIntents {
   _handle(ps, msg) {
@@ -141,6 +144,12 @@ export class MatchIntents {
     if (cost > 0 && ps.lp > 1) {
       ps.lp = Math.max(1, ps.lp - cost);
       ps.dirty();
+      // 业主 2026-10-24「记录部抑制触发时给个明显提示」: the charge used to be invisible — the seat's LP just went down
+      // between two m.private frames, with no line anywhere on screen. It now gets a toast of the `hex` kind
+      // (ui/toasts.js: the loud one, held longer) which also flashes the screen and the LP tower (ui/hexHit.js),
+      // and `hex: 'ehex_records'` names the card so a future client can show its own icon. An old client that does not
+      // know `kind: 'hex'` falls back to `info` and still reads the text.
+      this.toast(ps, 'hex', wireMsg('记录部抑制：部署干员消耗 {n} 点策略生命（剩余 {rest}）', { n: cost, rest: ps.lp }), { hex: 'ehex_records' });
       this.log?.info?.(`[match ${this.roomCode}] 记录部抑制: ${ps.playerId} 部署扣 ${cost} LP (剩 ${ps.lp})`);
     }
     return r;

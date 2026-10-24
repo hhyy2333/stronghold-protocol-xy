@@ -23,10 +23,15 @@ export class MatchMessaging {
     try { this.broadcastFn(msg); } catch (e) { this.reportError('broadcast', e); }
   }
 
-  /** @param {string|{ msgid: string, params?: object }} text a string or msg() (shared/i18n.js) */
-  toast(ps, kind, text) {
+  /**
+   * @param {string|{ msgid: string, params?: object }} text a string or msg() (shared/i18n.js)
+   * @param {object|null} [opts] extra frame fields, merged BEFORE the wire message (记录部抑制 sends `{ hex }`: the
+   *   client turns that kind into the loud 敌方协议源石 alert — ui/toasts.js / ui/hexHit.js; an older client that has
+   *   never heard of it still reads `text` and shows an ordinary toast).
+   */
+  toast(ps, kind, text, opts = null) {
     if (!ps || ps.isBot || ps.left || !ps.connected) return;
-    this.sendTo(ps.playerId, { t: 'm.toast', kind, ...wireMessage(text) });
+    this.sendTo(ps.playerId, { t: 'm.toast', kind, ...(opts && typeof opts === 'object' ? opts : null), ...wireMessage(text) });
   }
 
   /** Broadcast ticker from config.broadcasts by type; `param` picks the variant (SHOP_LEVEL level, BOSS_HIT share…). */

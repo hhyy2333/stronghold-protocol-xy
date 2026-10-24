@@ -443,12 +443,21 @@
   .oex__panel { width: 300px; top: 76px; }
 }
 
-/* 矮屏（手机横屏 390~430 高）：业主 2026-10-22 玩家反馈「投不进钱」。实测 844×390 上面板只有 270px 高，而头部
-   （标题 / 总资产 / 每单手数 / 杠杆 / 脚注）是固定高度、又都不缩，于是 `flex: 1 1 auto` 的股票列表被压到 **21px** ——
-   六行 349px 的内容挤在一个 21px 的滚动窗口里，买 / 卖按钮根本按不到，脚本量出来的每一个按钮中心都被脚注接住。
-   所以按**高度**（不是宽度）另开一档：面板贴底、给到差不多整屏高，并给列表一个最小高度，让它至少露出三行。 */
-@media (max-height: 520px) {
-  .oex__panel { top: auto; bottom: 8px; right: 8px; width: min(340px, calc(100vw - 16px)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+/* 矮屏（手机横屏 390~430 高 / 1280×576 这类窗口）：业主 2026-10-22 玩家反馈「投不进钱」。实测 844×390 上面板
+   只有 270px 高，而头部（标题 / 总资产 / 每单手数 / 杠杆 / 脚注）是固定高度、又都不缩，于是 `flex: 1 1 auto` 的
+   股票列表被压到 **21px** —— 六行 349px 的内容挤在一个 21px 的滚动窗口里，买 / 卖按钮根本按不到。​
+   所以按**高度**另开一档：面板从顶栏下面铺到屏幕底部、给到差不多整屏高，并给列表一个最小高度，至少露出三行。​
+   业主 2026-10-24「手机的商店装备只显示一点点」：同一个病根（抽屉挂在商店栏上方 ⇒ 只剩一条），
+   这一档从 520px 抬到 **620px**，覆盖常见的手机横屏高度（576 / 600）。​ */
+@media (max-height: 620px) {
+  .oex__panel {
+    top: max(1.06rem, 68px);
+    bottom: 8px;
+    right: 8px;
+    width: min(520px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    max-height: none;
+  }
   .oex__head { padding-top: 6px; padding-bottom: 4px; }
   .oex__tape { padding-top: 2px; padding-bottom: 2px; }
   .oex__sum { padding-top: 4px; padding-bottom: 4px; }
@@ -463,12 +472,11 @@
   .oex__panel {
     width: calc(100vw - 20px);
     max-width: calc(100vw - 20px);
-    top: auto;
-    bottom: 10px;
+    left: 10px;
     right: 10px;
+    top: max(1.06rem, 68px);
+    bottom: 10px;
+    max-height: none;
   }
-  /* 面板贴底，所以能给多高就给多高：62vh 在手机横屏（高度 390）只剩 242px，六支股票的列表被压到两行，
-     最后一行的买 / 卖按钮落在滚动区外面 —— 按下去命中的是下面的脚注（玩家反馈的「投不进钱」有一半是它）。 */
-  .oex__panel { max-height: calc(100vh - 20px); }
   .oex__title { font-size: 14px; }
 }
