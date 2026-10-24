@@ -1772,3 +1772,23 @@ test('addEffect merges nested params, so a partial write cannot erase another ow
   h.invariants();
   h.m.dispose();
 });
+
+// 业主 2026-10-24「为什么二次抽取只生效了一个」：管理员的复制只重放了卡自己的 onHexPick，而「额外随机两枚」那半边在
+// `applyHexExtras` 里 —— 于是复制出来的那份只拿到一个空 ref，随机两枚只发了一次。现在副本也走 extras。
+test('管理员 + 二次抽取: the copy rolls its own 额外随机两枚 too (four random cards, not two)', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 71, fake: true }).start();
+  h.toPrep(1);
+  const ps = h.ps('p_0');
+  ps.bandId = 'band_admin';
+  applyHex(h.m, ps, h.m.gd.hex('hex_double'));
+  const refs = ps.effects.filter((e) => typeof e.key === 'string' && e.key.startsWith('hex:'));
+  assert.equal(refs.filter((e) => e.key === 'hex:hex_double').length, 2, '二次抽取 itself is a double');
+  // the match's own starting card is neither of them; ignore it
+  const before = 1;
+  const randoms = refs.filter((e) => e.key !== 'hex:hex_double' && e.key !== 'hex:hex_weaponmaster');
+  assert.equal(randoms.length, 4, `each copy rolls two, so four random hexes (got ${randoms.length}: ${randoms.map((e) => e.key).join(',')})`);
+  // they are four DISTINCT cards at most (the pool never offers one you already own)
+  assert.equal(new Set(randoms.map((e) => e.data.hexId)).size, randoms.length, 'no duplicated random card');
+  h.invariants();
+  h.m.dispose();
+});

@@ -285,6 +285,11 @@ export function applyBandHexCopy(m, ps, hex, { depth = 0 } = {}) {
       const ev = { hex: { ...hex }, picker: ps.playerId, forTeammate: false, copySeq };
       m.dispatcher.runKey(ps, ref.key, 'onHexPick', { kind: 'hex', hex, ref, copySeq }, ev);
       applyHexLp(m, ps, hex);
+      // …and the 获得时 EXTRAS of a second copy: 二次抽取 rolls its 「额外随机两枚」 in `applyHexExtras`, not in the
+      // card handler, so without this line a copied 二次抽取 granted two random cards instead of four — the owner's
+      // 「为什么二次抽取只生效了一个」 (2026-10-24). `depth: 1` is the same slot the picker's own gain uses; the
+      // helper's `depth >= 2` guard still stops a card that re-enters itself.
+      applyHexExtras(m, ps, hex, { depth: 1 });
       m.dispatch(ps, 'onHexPick', ev, { skipKey: ref.key });
       ps.recompute();
       n++;
