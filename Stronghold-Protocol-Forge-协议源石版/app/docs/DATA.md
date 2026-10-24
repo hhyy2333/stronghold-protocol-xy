@@ -436,9 +436,10 @@ The fork adds enemies this repository did not carry before, declared in
   (`waves-crosscheck` and the 429 official fixtures read `[0]`); a fork key is `{key, fork: true}` and must share the
   entry's movement class and rank, and sit within `attrPower` ×[0.85, 1.25] of the pool anchor — the count formula
   divides by that ratio and clamps to 1..5, so a much stronger enemy would turn a wave of five into a wave of one.
-  At most `FORK_EXTRA_PER_POOL` (1) fork key per pool, so the official enemies keep ~63 % of the slots. A batch key the
-  tight band cannot place anywhere gets one wide-band (0.7–1.5) rescue; measured counts stay within 8.2 % of the
-  official distribution.
+  At most `FORK_EXTRA_PER_POOL` (1) fork key per pool of a batch **without** a kit and `FORK_EXTRA_PER_POOL_KIT` (3) of one
+  **with** a kit (batches 2–3, owner 2026-10-25「我想要加入更多有技能的怪」 — the plain batch already fills every pool's one slot,
+  so a kit batch needed its own room). A pool may hold at most **one** wide-band (0.7–1.5) key, how 畸变赘生物 and the kit
+  batches were meant to fit; measured counts stay within 8.2 % of the official distribution.
 - Models: the community dump has no spine for these (245 enemy models, all but 3 already shipped), so they come from
   `tools/local-extract/extract.py` `ENEMY_SPINES` run against a local client. **Two-pass build**: this tool writes the
   enemy rows first, `fetch-assets.mjs --local-spines` then indexes `spineLocal`, and the next `build-data` run picks
@@ -460,6 +461,29 @@ The fork adds enemies this repository did not carry before, declared in
 Their research rows carry `kit: 'server/sim/content/enemies/forkwave.js'` and `band: 'wide'`: they are all weaker than
 the pool anchors that fit them, so they attach at the wider [0.7, 1.5] power band and stay out of `STATS_ONLY`
 (`test/content/extra-enemies.test.js` asserts a key is in `KITS` **or** `STATS_ONLY`, never both).
+
+**Batch 3 (0.19.24, owner 2026-10-25「我想要加入更多有技能的怪」) — fifteen more with a mechanic**, same file:
+
+| key | mechanic | primitive |
+|---|---|---|
+| `enemy_1076_bsthmr` 爆破攻坚手 | the attack blasts the target's 3×3 for ATK × `aoe.attack@bsthmr_range.atk_scale` (0.5) | `splashAttack({ tiles: 1, splashScale, aim })` |
+| `enemy_1076_bsthmr_2` 爆破攻坚手组长 | same, at P 39000 — stronger than every ELITE anchor, so its row is `band: 'wide'` | `splashAttack` |
+| `enemy_1058_traink` 欺凌者 | blocked only by a blocker with ≥ 3 free slots | `blockWeight(3)` |
+| `enemy_1058_traink_2` 倾轧者 | the same line, weight 3 | `blockWeight(3)` |
+| `enemy_1111_ucommd` 乌萨斯突击者 | blocked only by a blocker with ≥ 2 free slots (its 平民 / 斗士塔露拉 ranged line has no target here) | `blockWeight(2)` |
+| `enemy_1135_redman` “红标”根除者 | 隐匿; 「只远程攻击暴露在<沙尘暴>中的我方单位」 cannot be written (no 沙尘暴) | `stealth` |
+| `enemy_10007_trspsb(_2)` “酩酊” / 陶醉的“酩酊” | aura on the other ground enemies near it: ASPD +50, move ×1.5, damage taken ×0.6 | `enemyAura` |
+| `enemy_10089_hlsprt(_2)` 圣堂保育员 / 资深圣堂保育员 | every 3 s: ATK × `heal_scale` (3) to up to `max_target` enemies around it (「补充弹药」 has no 弩手 holder here) | `skill({ cd: 3 })` + `b.heal` |
+| `enemy_10004_trdiam(_2)` 浆果磐蟹 / 硕果磐蟹 | below half HP it eats its 闪亮果实 once: +50 % max HP [ASSUMED: the data names no ratio] (SILENCE) | `taken` → `b.heal` |
+| `enemy_1184_cadkgt(_3)` 散华骑士团学徒 / 烛骑士薇薇安娜 | 【微光之触】: on its cooldown (25 / 20 s) an arts blast of ATK × `atk_scale` (2.5 / 3) around the target | `skill` + `dealDamage` |
+| `enemy_10038_cnvpiz` “方便快餐” | permanent damage resistance (no 狂欢时刻 here): taken ×(1 − `act38side_scale.damage_resistance` 0.9) | `addBuff(dmgTakenMul)` |
+| `enemy_1163_hvymot` 水手重艇 | ≥ 3 block slots; on death it leaves the 水手 it carried (`DeathRattle.enemy_key`) | `blockWeight(3)` + `spawnChildren` |
+| `enemy_10109_mjcgst` 沃尔夫之影 | no 月光 here, so it keeps its no-moonlight state: 隐匿, unblockable, never attacks | `stealth` + `unblockable` |
+
+Every skill blackboard a batch-3 kit reads lives under `ab.sk[<prefabKey>].bb` (data/enemies.json `skills[i].bb`), not
+under the talents — 周期性治疗 and 【微光之触】 are SKILLS of their enemy, so `T(ab, …)` (which reads `ab.t`) finds nothing.
+An enemy whose handbook line names a system this mode does not have (结晶, 装备, 狂欢时刻, 摄影区域, 月光, 沙尘暴, 闪亮果实,
+战术机库) ships without that line rather than half-working; the comment on each kit names the line and why.
 
 ## 11. `waves.json` — `{ [templateId]: Wave }` (42 templates)
 
