@@ -50,6 +50,22 @@ export function hexHooks(battle) {
 
   /** The players on this field owning `hexId`, in seat order. */
   const ownersOf = (hexId) => [...owners.entries()].filter(([, s]) => s.has(hexId)).map(([pid]) => pid);
+  /**
+   * How many refs of `hexId` one player brought into this battle: 1 normally, 2 when 策略「管理员」copied it
+   * (server/match/hextech.js addHexRef `copySeq` writes a second ref with the same key). A card whose battle half is a
+   * plain `passiveBuff` has to install ONCE PER COPY under a distinct buff key, or the second copy overwrites the first
+   * and the pair is worth a single card (业主 2026-10-24「两个自适应成长好像也只加了一个」).
+   */
+  const copiesOf = (pid, hexId) => {
+    const ps = battle.getPlayer ? battle.getPlayer(pid) : null;
+    let n = 0;
+    for (const ref of (ps && ps.playerEffects) || []) {
+      if (!ref || typeof ref.key !== 'string') continue;
+      const id = ref.data && typeof ref.data.hexId === 'string' ? ref.data.hexId : ref.key.slice(HEX_KEY.length);
+      if (id === hexId) n++;
+    }
+    return n;
+  };
   /** The operators of ONE player currently in the battle (the card's own carriers). */
   const opsOf = (pid) => battle.allyUnits.filter((u) => u && u.kind === 'op' && u.side === 'ally' && u.ownerId === pid);
   /** EVERY operator on this field, any owner — the 联防 field holds several players' boards. */
@@ -69,5 +85,5 @@ export function hexHooks(battle) {
     return Number.isFinite(v) && v > 0 ? v : fallback;
   };
 
-  return { battle, ownersOf, opsOf, fieldOps, specOf, optNumber, onField, passiveBuff, isRetaliation, isHpLoss };
+  return { battle, ownersOf, copiesOf, opsOf, fieldOps, specOf, optNumber, onField, passiveBuff, isRetaliation, isHpLoss };
 }

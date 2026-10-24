@@ -85,17 +85,23 @@ export function enemyHexTierSum(battle) {
 export function installAdaptiveGrowth(hooks) {
   const owners = ownersOfCard(hooks, 'hex_adaptivegrowth');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, copiesOf } = hooks;
   const owned = new Set(owners);
-  const spec = specOf(owners[0], 'hex_adaptivegrowth', 'adaptiveGrowth');
-  const per = pos(spec.pctPerTier, 8) / 100;
+  const per = pos(specOf(owners[0], 'hex_adaptivegrowth', 'adaptiveGrowth').pctPerTier, 8) / 100;
   const tiers = enemyHexTierSum(battle);
-  const value = per * tiers;
-  if (!(value > 0)) return 0;
+  const one = per * tiers;
+  if (!(one > 0)) return 0;
+  // ONE PASSIVE PER COPY (策略「管理员」: a copied card is a second ref of the same card). `passiveBuff` replaces by key,
+  // so a shared key would make the pair worth a single card — 业主 2026-10-24「两个自适应成长好像也只加了一个」.
+  // The copy's buff uses its own key, so the two add up (加算 mods stack).
   let n = 0;
   const apply = (u) => {
     if (!isOwnOpOf(u, owned)) return;
-    passiveBuff(battle, u, 'hex:adaptivegrowth', { atkPct: value, defPct: value, hpPct: value }, { tags: ['hex'] });
+    let copies = 1;
+    for (const pid of owned) copies = Math.max(copies, typeof copiesOf === 'function' ? copiesOf(pid, 'hex_adaptivegrowth') : 1);
+    for (let i = 0; i < copies; i++) {
+      passiveBuff(battle, u, i ? `hex:adaptivegrowth:${i + 1}` : 'hex:adaptivegrowth', { atkPct: one, defPct: one, hpPct: one }, { tags: ['hex'] });
+    }
     n++;
   };
   for (const u of battle.allyUnits) apply(u);
