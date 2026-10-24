@@ -153,3 +153,17 @@ test('batch 2 mechanics in a real battle: self-destruct, split, and the on-hit d
   // 畸变体傀儡: killed → two of itself (the split is silence-flagged in the handbook, so it carries sil: true)
   assert.equal(run('enemy_1130_infstr').leftovers, 2, '畸变体傀儡 splits into two');
 });
+
+// 业主 2026-10-24「新的怪刷新了还是看不见」：模型文件在、data/assets.json 的 spineLocal 也在，但
+// data/local-assets.json 里少了对应的 `spine/enemy/<id>` group —— 客户端拼不出本地 spine 的 URL，只能回落到
+// 不存在的 web spine，于是敌人刷出来是空的。data/local-assets.json 是本机状态（git-ignored），所以这里只在她
+// 存在时守卫：每个 spineLocal 的 group 都必须列在清单里（没有再跑一次
+// `node tools/local-extract/rebuild-enemy-groups.mjs` 重建）。
+test('每个 spineLocal 的 group 都在 data/local-assets.json 里（本机有该清单时）', async () => {
+  const url = new URL('../../data/local-assets.json', import.meta.url);
+  if (!fs.existsSync(url)) return; // 没有本机素材的机器/CI：这条无从检查
+  const manifest = JSON.parse(fs.readFileSync(url, 'utf8'));
+  const { enemyGroupGaps } = await import('../../tools/local-extract/rebuild-enemy-groups.mjs');
+  const gaps = enemyGroupGaps(manifest);
+  assert.deepEqual(gaps, [], `local-assets groups missing: ${gaps.join('; ')}`);
+});

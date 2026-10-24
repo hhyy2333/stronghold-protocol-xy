@@ -592,6 +592,16 @@ Other renderer rules from research 07 §5.4–5.5:
       otherwise hand them an unrelated skeleton). `build-data` reads `attackAnim` off `spineLocal` for them
       (`enemyAttackAnim`), which is why a fresh batch needs the two-pass build: build → extract → `--local-spines` →
       build again.
+    - **Every `spineLocal` needs its `data/local-assets.json` group** (`spine/enemy/{enemyId}`): the client builds the
+      model's URLs by looking the file names up in that manifest (`assets.js localSpineEntry` → `localAssetUrl`), and a
+      missing group silently falls back to the web `spine` — which these enemies do not have — so the enemy is **drawn as
+      nothing** while it spawns, fights and dies normally. `data/local-assets.json` is machine state (git-ignored) and
+      `extract.py --only`-style runs rewrite the groups a run touched, so a one-off extraction script that writes the
+      whole file can drop the groups of earlier batches (2026-10-24: batch 1's 21 groups were replaced by batch 2's 6 →
+      业主「新的怪刷新了还是看不见」). Repair and guard:
+      `node tools/local-extract/rebuild-enemy-groups.mjs` (rebuild from the models on disk, other groups untouched) and
+      `--check` (exit 1 on a gap; also pinned by `test/content/extra-enemies.test.js` when the manifest exists). Run the
+      `--check` before packaging a release — the models travel in the bundle, the manifest does not.
     - The client (`assets.js spineEntry`, with `assets.local()`, which `createFieldView` awaits with the manifest) draws
       the official model when the local manifest lists every file of it; otherwise, or when it fails to load
       (`UnitView`: the entry's `fallback`), the web alias, tinted toward the slug's own lava colours
