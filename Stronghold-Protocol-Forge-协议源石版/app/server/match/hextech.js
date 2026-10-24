@@ -206,9 +206,15 @@ export function applyHex(m, ps, hex, opts = {}) {
     m.dispatch(p, 'onHexPick', ev, { skipKey: `hex:${hex.id}` });
     p.recompute();
   }
-  // 策略「管理员」(业主 2026-10-26): 「当你获得协议源石时，复制一个。限一次。」 — per GAIN, so it runs for every target
-  // a team hex reaches, each through its own band (the strategy belongs to the player, not to the picker).
-  for (const p of targets) applyBandHexCopy(m, p, hex, opts);
+  // 策略「管理员」(业主 2026-10-26): 「当你获得协议源石时，复制一个。限一次。」 — ONCE PER MATCH, so WHICH gain it is
+  // spent on decides what the card is worth.
+  //
+  // 业主 2026-10-24「管理员会优先获得队友选的全队增益，应该改一下优先获得自己选的」: only the PICKER's own copy. A
+  // 全队 hex (战争机器 / 团结之力 …: `effect.team`) reaches every teammate, and the old loop below copied it for each of
+  // them — so a teammate picking a team card burned the copy of a player who had not picked yet, and that player's own
+  // choice then got nothing. A card somebody else chose for you is not 「你获得的」 in the sense the card means; the
+  // once-per-match copy now waits for a gain this player picked themselves.
+  applyBandHexCopy(m, ps, hex, opts);
   // 万物归虚 (业主 2026-10-19): 「装备时 将移除备战区所有干员」 —— the prep half of the card. The battle half
   // (server/sim/content/hexcards/batch15b.js installVoidReturn) reads the count it writes into the ref, so the two halves
   // stay in one place each. Runs AFTER the refs exist (addHexRef above), so it can write onto them.
@@ -265,8 +271,11 @@ export function bandHexCopyCount(m, ps) {
  *
  * @returns {number} how many copies were granted (0 when the strategy is not held, or already spent)
  */
-export function applyBandHexCopy(m, ps, hex, { depth = 0 } = {}) {
+export function applyBandHexCopy(m, ps, hex, { depth = 0, gift = false } = {}) {
   if (!m || !ps || !hex || depth >= 2) return 0;
+  // 业主 2026-10-24「应该改一下优先获得自己选的」: a card this player did not pick — a teammate's 全队 hex reaching them,
+  // 无私奉献's roll, 镜像协议's copy — must not spend the once-per-match copy. Those callers pass `gift: true`.
+  if (gift) return 0;
   const count = bandHexCopyCount(m, ps);
   if (count <= 0) return 0;
   if (!ps.counters || typeof ps.counters !== 'object') ps.counters = {};
@@ -366,7 +375,9 @@ export function resolveMirrorCopies(m) {
       const copy = mirrorCandidate(m, picker, pend);
       if (!copy) continue;          // nobody owns anything copyable yet: stay armed for a later gain
       list.splice(i, 1);
-      try { applyHex(m, picker, copy, { depth: 1 }); } catch (e) { m.reportError(`hex ${copy.id} (mirror)`, e); }
+      // `gift: true` — 镜像协议's copy is a card ANOTHER player chose; 策略「管理员」must not spend its once-per-match
+      // copy on it (业主 2026-10-24「应该改一下优先获得自己选的」).
+      try { applyHex(m, picker, copy, { depth: 1, gift: true }); } catch (e) { m.reportError(`hex ${copy.id} (mirror)`, e); }
     }
   } finally {
     if (m) m._resolvingMirror = false;
@@ -487,7 +498,9 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
       });
       for (const id of offer) {
         const rec = m.gd.hex(id);
-        if (rec) applyHex(m, mate, rec, { depth: depth + 1 });
+        // `gift: true` — 无私奉献 hands a teammate a card the PICKER's card rolled; 策略「管理员」waits for a gain of its
+        // own (业主 2026-10-24「应该改一下优先获得自己选的」).
+        if (rec) applyHex(m, mate, rec, { depth: depth + 1, gift: true });
       }
     }
   }
