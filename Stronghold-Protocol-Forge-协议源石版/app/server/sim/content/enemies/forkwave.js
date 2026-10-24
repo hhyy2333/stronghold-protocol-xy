@@ -21,6 +21,9 @@ const onHitDebuff = (key, mods, dur) => ({
   },
 });
 
+/** The tag a split child carries so it does not split again (see 畸变体傀儡 below). */
+const SPLIT_TAG = 'forkSplit';
+
 export const FORK_WAVE_KITS = Object.freeze({
   // 辐能源石虫 · death: arts blast (Boom.atk_scale × ATK) around itself, "无视迷彩，不可对空". The data's blackboard key
   // is `Boom.atk_scale` with a capital B (得意's is lowercase `boom.atk_scale` — the two enemies really do differ).
@@ -34,12 +37,17 @@ export const FORK_WAVE_KITS = Object.freeze({
 
   // 畸变体傀儡 · "死亡时分裂两个" (deathrattle.cnt 2 of the same key, offset_bounded). The handbook flags the line
   // SILENCE, so the split is disabled while silenced (enemies.js dispatch skips a `sil` ability on a silenced unit).
+  //
+  // 业主 2026-10-26「畸变体绝对有bug会无限分裂」: the children are the SAME key, so they carry this same kit — every child
+  // that died split into two more, forever (an unbounded enemy count; the wave could never be cleared). One generation
+  // only: a child carries SPLIT_TAG and its own death hook returns at once.
   enemy_1130_infstr: (ab, e) => [{
     sil: true,
     death(c, b) {
+      if (e.tag === SPLIT_TAG) return;
       const key = e.defId;
       const n = T(ab, 'deathrattle.cnt') ?? 2;
-      if (c.reason === 'killed' && n > 0) spawnChildren(b, e, key, n, { countInTotal: false });
+      if (c.reason === 'killed' && n > 0) spawnChildren(b, e, key, n, { countInTotal: false, tag: SPLIT_TAG });
     },
   }],
 

@@ -167,3 +167,30 @@ test('每个 spineLocal 的 group 都在 data/local-assets.json 里（本机有�
   const gaps = enemyGroupGaps(manifest);
   assert.deepEqual(gaps, [], `local-assets groups missing: ${gaps.join('; ')}`);
 });
+
+// 业主 2026-10-26「畸变体绝对有bug会无限分裂」：分裂出来的子怪是同一个 key，于是带着同一份 kit —— 每个子怪再死又
+// 分裂两个，链式下去敌人数量无界增长（那波永远清不完）。分裂只做一代：子怪带 `forkSplit` tag，自己的 death 钩子直接返回。
+test('畸变体傀儡: the split is ONE generation — the children never split again', async () => {
+  const { makeBattle, chessRec } = await import('../helpers/battleHarness.js');
+  const enemiesMod = await import('../../server/sim/content/enemies.js');
+  const bossesMod = await import('../../server/sim/content/bosses.js');
+  const WALL = (id) => chessRec({ id, profession: 'TANK', stats: { atk: 0, maxHp: 3e4, def: 0, res: 0, blockCnt: 3 }, rangeGrid: [[0, 0]], skill: null });
+  const h = makeBattle({
+    content: 'generic', extraContent: [enemiesMod, bossesMod], seed: 5, autoFinish: false, timeLimit: 200,
+    defs: { chess: { t_wall: WALL('t_wall') } }, kits: { t_wall: () => ({ trait: { noAttack: true } }) },
+    units: [{ chessId: 't_wall', row: 10, col: 5 }],
+  });
+  h.step();
+  const parent = h.spawn('enemy_1130_infstr', { pos: [10, 5], routeIndex: 0 });
+  h.run(0.2);
+  h.b.dealDamage(null, parent, { amount: 1e9, type: 'true', canDodge: false });
+  h.run(0.4);
+  const gen1 = h.enemies().filter((e) => e.alive);
+  assert.equal(gen1.length, 2, `the parent split into two (got ${gen1.length})`);
+  // kill both children: with the bug each of them spawned two more, and so on forever
+  for (const c of gen1) h.b.dealDamage(null, c, { amount: 1e9, type: 'true', canDodge: false });
+  h.run(0.4);
+  assert.equal(h.enemies().filter((e) => e.alive).length, 0, 'the children do NOT split again');
+  for (let i = 0; i < 6; i++) h.run(0.5);
+  assert.equal(h.enemies().filter((e) => e.alive).length, 0, 'and nothing keeps spawning afterwards');
+});
