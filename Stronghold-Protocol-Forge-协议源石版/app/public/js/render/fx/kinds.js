@@ -23,7 +23,10 @@ export const FX_KINDS = Object.freeze({
   quadShot: { a: 'volley', c: 0xfff2d0 }, featherArrow: { a: 'counter', c: 0xfff2d0 },
   burst: { a: 'element', c: 0xd0a0ff },
   // areas
-  zone: { a: 'zone', c: 0xffb35c, dur: 3 }, healField: { a: 'zone', c: 0x62f08a, dur: 4 }, firewall: { a: 'wall', c: 0xff6a2a, dur: 4 },
+  zone: { a: 'zone', c: 0xffb35c, dur: 3 },
+  // 一片**判定格**的地面高亮（不是圆）：kit 用 `battle.fx('field', { x, y, tiles, dur })` 把技能范围铺在地上，
+  // 逐格点亮 + 慢脉动，持续 dur 秒（`tiles` 为空时退回 r 的圆/方范围）。深水区的盟约/技能范围用它。
+  field: { a: 'field', c: 0x9fe6ff, dur: 2 }, healField: { a: 'zone', c: 0x62f08a, dur: 4 }, firewall: { a: 'wall', c: 0xff6a2a, dur: 4 },
   firewallBlock: { a: 'counter', c: 0xff6a2a }, tide: { a: 'zone', c: 0x5fe0ff, dur: 3, r: 2 }, storm: { a: 'zone', c: 0xd8c8a0, dur: 3 },
   tornado: { a: 'zone', c: 0xd8e8ff, dur: 3 }, snow: { a: 'zone', c: 0xe8f6ff, dur: 3 }, telegraph: { a: 'telegraph', c: 0xff3b30, dur: 1.2 },
   coldWind: { a: 'chill', c: 0x9fd4ff },

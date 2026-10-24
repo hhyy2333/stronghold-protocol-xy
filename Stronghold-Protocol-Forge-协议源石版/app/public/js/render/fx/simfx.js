@@ -46,7 +46,7 @@ export class FxSim {
 
   /**
    * b.ev 'fx': every kind the sim / content emits has a visual (FX_KINDS archetypes: blast, shell, zone, telegraph,
-   * heal, sp, shield, shatter, summon, vanish, blink, move, wave, mark, reticle, buff, lift, sleep, crit, dodge,
+   * heal, sp, shield, shatter, summon, vanish, blink, move, wave, mark, reticle, buff, lift, sleep, crit, dodge, field,
    * counter, dp, coin, crate, down, beam, bolt, strike, volley, pillar, lp, chill, element, flame, qi), except kinds whose
    * archetype is 'none' (hitCap: a leader hit cancelled by 限伤 draws nothing); unknown kinds get a generic sparkle. `extra` keys used: id (anchor unit — or the shooter of a `pt` kind), r | radius, dur | duration,
    * t (shell flight, game s), src / from / to / target / targets (unit ids), fx, fy / fromX, fromY / tx, ty (positions),
@@ -94,6 +94,8 @@ export class FxSim {
         this.zone(at.x, at.y, at.z, 0.6, col, Math.max(0.6, dur || 1.5), spec.tex);
         break;
       }
+      // 技能范围的地面高亮：tiles 是判定格清单（tilesAround 直接透传 [[r,c]]），dur 是真实的持续秒数
+      case 'field': this.tileField(tilesAround(at.x, at.y, r, ex.tiles), col, Math.max(0.6, dur || 1.5)); break;
       case 'telegraph': {
         const d = Math.max(0.4, dur || 1);
         if (r >= 12) { this.flashScreen(col, 0.45, d); break; }

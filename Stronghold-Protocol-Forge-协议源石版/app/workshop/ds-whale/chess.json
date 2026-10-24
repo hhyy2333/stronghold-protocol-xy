@@ -1,0 +1,888 @@
+{
+  "chess_ws_ds_whale_a": {
+    "tier": 5,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "NORMAL",
+    "directToHand": false,
+    "name": "大肥鱼",
+    "appellation": "Big Fat Fish",
+    "charId": null,
+    "profession": "SUPPORT",
+    "subProfessionId": "bard",
+    "subProfessionName": "吟游者",
+    "position": "RANGED",
+    "nationId": null,
+    "bonds": [
+      "precivShip"
+    ],
+    "garrisonIds": [
+      "garrison_09_a",
+      "garrison_03_a"
+    ],
+    "price": 4,
+    "sellPrice": 1,
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "x-1",
+    "rangeGrid": [
+      [
+        2,
+        0
+      ],
+      [
+        1,
+        -1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        0,
+        -2
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        -1,
+        -1
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        1
+      ],
+      [
+        -2,
+        0
+      ]
+    ],
+    "dmgType": "heal",
+    "attackKind": "none",
+    "projectile": "none",
+    "canHitFly": false,
+    "targetPriority": null,
+    "trait": {
+      "desc": "不攻击，持续恢复范围内所有友军生命（每秒相当于自身攻击力10%的生命）",
+      "descRaw": "不攻击，持续恢复范围内所有友军生命（每秒相当于自身攻击力10%的生命）",
+      "bb": {
+        "attack@atk_to_hp_recovery_ratio": 0.1
+      },
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "tokens": [],
+    "assets": {
+      "avatar": "char_ws_ds_whale",
+      "portrait": "char_ws_ds_whale",
+      "spine": "char_ws_ds_whale",
+      "skillIcon": null,
+      "subProfIcon": null
+    },
+    "workshop": {
+      "schema": 1,
+      "id": "ds_whale"
+    },
+    "chessId": "chess_ws_ds_whale_a",
+    "baseId": "chess_ws_ds_whale_a",
+    "goldenId": "chess_ws_ds_whale_b",
+    "isGolden": false,
+    "rarity": 6,
+    "upgradeNum": 3,
+    "upgradeChessId": "chess_ws_ds_whale_b",
+    "status": {
+      "phase": 2,
+      "level": 1,
+      "skillLevel": 4,
+      "equipLevel": 0
+    },
+    "stats": {
+      "maxHp": 1480,
+      "atk": 420,
+      "def": 150,
+      "res": 15,
+      "cost": 11,
+      "blockCnt": 1,
+      "bat": 1.4,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "skill": {
+      "skillId": "skchr_ws_ds_whale_1",
+      "iconId": null,
+      "name": "数据流溢出",
+      "level": 4,
+      "desc": "获得5层「数据样本」，攻击力+35%；攻击范围内的友方单位攻击速度+25，持续20秒",
+      "descRaw": "获得5层「数据样本」，攻击力+35%；攻击范围内的友方单位攻击速度+25，持续20秒",
+      "skillType": "AUTO",
+      "durationType": "NONE",
+      "duration": 20,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 20,
+      "initSp": 10,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk": 0.35,
+        "attack_speed": 25
+      },
+      "bbStr": {},
+      "rangeId": null,
+      "rangeGrid": null,
+      "prefabId": null,
+      "overrideTokenKey": null,
+      "trigger": {
+        "rule": "SP_FULL",
+        "rawRule": "SP_FULL",
+        "customRangeGrid": null
+      },
+      "index": 0,
+      "isDefault": true
+    },
+    "skills": [
+      {
+        "skillId": "skchr_ws_ds_whale_1",
+        "iconId": null,
+        "name": "数据流溢出",
+        "level": 4,
+        "desc": "获得5层「数据样本」，攻击力+35%；攻击范围内的友方单位攻击速度+25，持续20秒",
+        "descRaw": "获得5层「数据样本」，攻击力+35%；攻击范围内的友方单位攻击速度+25，持续20秒",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 20,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 20,
+        "initSp": 10,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.35,
+          "attack_speed": 25
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": null,
+        "overrideTokenKey": null,
+        "trigger": {
+          "rule": "SP_FULL",
+          "rawRule": "SP_FULL",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "isDefault": true
+      },
+      {
+        "skillId": "skchr_ws_ds_whale_2",
+        "iconId": null,
+        "name": "代码重构",
+        "level": 4,
+        "desc": "获得1层「数据样本」，并立刻消耗全部「数据样本」：每消耗1层，本场战斗攻击力+20%，并对攻击范围内生命比例最低的友方单位进行一次150%攻击力的治疗、回复其1点技力",
+        "descRaw": "获得1层「数据样本」，并立刻消耗全部「数据样本」：每消耗1层，本场战斗攻击力+20%，并对攻击范围内生命比例最低的友方单位进行一次150%攻击力的治疗、回复其1点技力",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 6,
+        "initSp": 5,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_per_stack": 0.2,
+          "heal_scale": 1.5
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": null,
+        "overrideTokenKey": null,
+        "trigger": {
+          "rule": "SP_FULL",
+          "rawRule": "SP_FULL",
+          "customRangeGrid": null
+        },
+        "index": 1,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_ws_ds_whale_3",
+        "iconId": null,
+        "name": "深度求索·涌现",
+        "level": 4,
+        "desc": "「数据样本」+20；展开半径2格的「深水区」且攻击范围扩大，持续25秒。技能期间自身不会受到伤害；区内友方每秒恢复大肥鱼50%最大生命的生命，并获得+40%攻击力/防御力；区内敌人移速-40%、脆弱+40%，每秒受到大肥鱼120%最大生命的法术伤害",
+        "descRaw": "「数据样本」+20；展开半径2格的「深水区」且攻击范围扩大，持续25秒。技能期间自身不会受到伤害；区内友方每秒恢复大肥鱼50%最大生命的生命，并获得+40%攻击力/防御力；区内敌人移速-40%、脆弱+40%，每秒受到大肥鱼120%最大生命的法术伤害",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 25,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 45,
+        "initSp": 20,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "stacks": 20,
+          "radius": 2,
+          "heal_maxhp_ratio": 0.5,
+          "ally_amp": 0.4,
+          "enemy_dmg_maxhp_ratio": 1.2,
+          "slow": 0.4,
+          "fragile": 0.4
+        },
+        "bbStr": {},
+        "rangeId": "x-3",
+        "rangeGrid": [
+          [
+            3,
+            0
+          ],
+          [
+            2,
+            -1
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            1,
+            -2
+          ],
+          [
+            1,
+            -1
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            0,
+            -3
+          ],
+          [
+            0,
+            -2
+          ],
+          [
+            0,
+            -1
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            -1,
+            -2
+          ],
+          [
+            -1,
+            -1
+          ],
+          [
+            -1,
+            0
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            2
+          ],
+          [
+            -2,
+            -1
+          ],
+          [
+            -2,
+            0
+          ],
+          [
+            -2,
+            1
+          ],
+          [
+            -3,
+            0
+          ]
+        ],
+        "prefabId": null,
+        "overrideTokenKey": null,
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 2,
+        "isDefault": false
+      }
+    ],
+    "talents": [
+      {
+        "index": 0,
+        "name": "大模型算力",
+        "desc": "攻击范围内的友方单位技力自然回复速度+0.15/秒；范围内友方单位释放技能时，自身获得1层「数据样本」（最多20层），每层使自身治疗量提升2%",
+        "descRaw": "攻击范围内的友方单位技力自然回复速度+0.15/秒；范围内友方单位释放技能时，自身获得1层「数据样本」（最多20层），每层使自身治疗量提升2%",
+        "bb": {
+          "sp_per_sec": 0.15,
+          "stack_max": 20,
+          "heal_per_stack": 0.02
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "吃白饭",
+        "desc": "在场时每秒消耗1点部署费用；攻击范围内的友方单位获得8%+数据样本层数的庇护与抵抗（每层+1%，上限25%）",
+        "descRaw": "在场时每秒消耗1点部署费用；攻击范围内的友方单位获得8%+数据样本层数的庇护与抵抗（每层+1%，上限25%）",
+        "bb": {
+          "dp_per_sec": 1,
+          "protect_base": 0.08,
+          "protect_per_stack": 0.01,
+          "protect_cap": 0.25
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      }
+    ],
+    "module": {
+      "id": null,
+      "name": null,
+      "type": null,
+      "level": 1,
+      "active": false
+    }
+  },
+  "chess_ws_ds_whale_b": {
+    "tier": 5,
+    "isHidden": false,
+    "isDiy": false,
+    "visible": true,
+    "chessType": "NORMAL",
+    "directToHand": false,
+    "name": "大肥鱼",
+    "appellation": "Big Fat Fish",
+    "charId": null,
+    "profession": "SUPPORT",
+    "subProfessionId": "bard",
+    "subProfessionName": "吟游者",
+    "position": "RANGED",
+    "nationId": null,
+    "bonds": [
+      "precivShip"
+    ],
+    "garrisonIds": [
+      "garrison_09_b",
+      "garrison_03_b"
+    ],
+    "price": 4,
+    "sellPrice": 1,
+    "immunities": {
+      "stun": false,
+      "silence": false,
+      "sleep": false,
+      "frozen": false,
+      "levitate": false
+    },
+    "rangeId": "x-1",
+    "rangeGrid": [
+      [
+        2,
+        0
+      ],
+      [
+        1,
+        -1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        0,
+        -2
+      ],
+      [
+        0,
+        -1
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        -1,
+        -1
+      ],
+      [
+        -1,
+        0
+      ],
+      [
+        -1,
+        1
+      ],
+      [
+        -2,
+        0
+      ]
+    ],
+    "dmgType": "heal",
+    "attackKind": "none",
+    "projectile": "none",
+    "canHitFly": false,
+    "targetPriority": null,
+    "trait": {
+      "desc": "不攻击，持续恢复范围内所有友军生命（每秒相当于自身攻击力10%的生命）",
+      "descRaw": "不攻击，持续恢复范围内所有友军生命（每秒相当于自身攻击力10%的生命）",
+      "bb": {
+        "attack@atk_to_hp_recovery_ratio": 0.1
+      },
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "tokens": [],
+    "assets": {
+      "avatar": "char_ws_ds_whale",
+      "portrait": "char_ws_ds_whale",
+      "spine": "char_ws_ds_whale",
+      "skillIcon": null,
+      "subProfIcon": null
+    },
+    "workshop": {
+      "schema": 1,
+      "id": "ds_whale"
+    },
+    "chessId": "chess_ws_ds_whale_b",
+    "baseId": "chess_ws_ds_whale_a",
+    "goldenId": "chess_ws_ds_whale_b",
+    "isGolden": true,
+    "rarity": 6,
+    "upgradeNum": 0,
+    "upgradeChessId": null,
+    "status": {
+      "phase": 2,
+      "level": 60,
+      "skillLevel": 7,
+      "equipLevel": 0
+    },
+    "statsBase": {
+      "maxHp": 1900,
+      "atk": 520,
+      "def": 185,
+      "res": 15,
+      "cost": 11,
+      "blockCnt": 1,
+      "bat": 1.4,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "traitBase": {
+      "desc": "攻击为友方单位恢复生命",
+      "descRaw": "攻击为友方单位恢复生命",
+      "bb": {},
+      "bbStr": {},
+      "rangeGrid": null
+    },
+    "talentsBase": [
+      {
+        "index": 0,
+        "name": "开源共享",
+        "desc": "攻击速度+15，攻击力+10%",
+        "descRaw": "攻击速度+15，攻击力+10%",
+        "bb": {
+          "attack_speed": 15,
+          "atk": 0.1
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      }
+    ],
+    "stats": {
+      "maxHp": 1900,
+      "atk": 520,
+      "def": 185,
+      "res": 15,
+      "cost": 11,
+      "blockCnt": 1,
+      "bat": 1.4,
+      "aspd": 100,
+      "respawnTime": 70,
+      "spRecovery": 1,
+      "hpRecoveryPerSec": 0,
+      "moveSpeed": 1,
+      "tauntLevel": 0,
+      "massLevel": 0,
+      "deployLimit": 1,
+      "deckStack": 0
+    },
+    "talents": [
+      {
+        "index": 0,
+        "name": "大模型算力",
+        "desc": "攻击范围内的友方单位技力自然回复速度+0.2/秒；范围内友方单位释放技能时，自身获得1层「数据样本」（最多20层），每层使自身治疗量提升3%",
+        "descRaw": "攻击范围内的友方单位技力自然回复速度+0.2/秒；范围内友方单位释放技能时，自身获得1层「数据样本」（最多20层），每层使自身治疗量提升3%",
+        "bb": {
+          "sp_per_sec": 0.2,
+          "stack_max": 20,
+          "heal_per_stack": 0.03
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      },
+      {
+        "index": 1,
+        "name": "吃白饭",
+        "desc": "在场时每秒消耗1点部署费用；攻击范围内的友方单位获得10%+数据样本层数的庇护与抵抗（每层+1%，上限30%）",
+        "descRaw": "在场时每秒消耗1点部署费用；攻击范围内的友方单位获得10%+数据样本层数的庇护与抵抗（每层+1%，上限30%）",
+        "bb": {
+          "dp_per_sec": 1,
+          "protect_base": 0.1,
+          "protect_per_stack": 0.01,
+          "protect_cap": 0.3
+        },
+        "bbStr": {},
+        "rangeGrid": null,
+        "tokenKey": null,
+        "hidden": false,
+        "fromModule": false
+      }
+    ],
+    "module": {
+      "id": null,
+      "name": null,
+      "type": null,
+      "level": 1,
+      "active": false
+    },
+    "skill": {
+      "skillId": "skchr_ws_ds_whale_1",
+      "iconId": null,
+      "name": "数据流溢出",
+      "level": 4,
+      "desc": "获得5层「数据样本」，攻击力+45%；攻击范围内的友方单位攻击速度+35，持续20秒",
+      "descRaw": "获得5层「数据样本」，攻击力+45%；攻击范围内的友方单位攻击速度+35，持续20秒",
+      "skillType": "AUTO",
+      "durationType": "NONE",
+      "duration": 20,
+      "spType": "INCREASE_WITH_TIME",
+      "spCost": 20,
+      "initSp": 10,
+      "maxChargeTime": 1,
+      "increment": 1,
+      "bb": {
+        "atk": 0.45,
+        "attack_speed": 35
+      },
+      "bbStr": {},
+      "rangeId": null,
+      "rangeGrid": null,
+      "prefabId": null,
+      "overrideTokenKey": null,
+      "trigger": {
+        "rule": "SP_FULL",
+        "rawRule": "SP_FULL",
+        "customRangeGrid": null
+      },
+      "index": 0,
+      "isDefault": true
+    },
+    "skills": [
+      {
+        "skillId": "skchr_ws_ds_whale_1",
+        "iconId": null,
+        "name": "数据流溢出",
+        "level": 4,
+        "desc": "获得5层「数据样本」，攻击力+45%；攻击范围内的友方单位攻击速度+35，持续20秒",
+        "descRaw": "获得5层「数据样本」，攻击力+45%；攻击范围内的友方单位攻击速度+35，持续20秒",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 20,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 20,
+        "initSp": 10,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk": 0.45,
+          "attack_speed": 35
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": null,
+        "overrideTokenKey": null,
+        "trigger": {
+          "rule": "SP_FULL",
+          "rawRule": "SP_FULL",
+          "customRangeGrid": null
+        },
+        "index": 0,
+        "isDefault": true
+      },
+      {
+        "skillId": "skchr_ws_ds_whale_2",
+        "iconId": null,
+        "name": "代码重构",
+        "level": 4,
+        "desc": "获得1层「数据样本」，并立刻消耗全部「数据样本」：每消耗1层，本场战斗攻击力+30%，并对攻击范围内生命比例最低的友方单位进行一次180%攻击力的治疗、回复其1点技力",
+        "descRaw": "获得1层「数据样本」，并立刻消耗全部「数据样本」：每消耗1层，本场战斗攻击力+30%，并对攻击范围内生命比例最低的友方单位进行一次180%攻击力的治疗、回复其1点技力",
+        "skillType": "AUTO",
+        "durationType": "NONE",
+        "duration": 0,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 6,
+        "initSp": 5,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "atk_per_stack": 0.3,
+          "heal_scale": 1.8
+        },
+        "bbStr": {},
+        "rangeId": null,
+        "rangeGrid": null,
+        "prefabId": null,
+        "overrideTokenKey": null,
+        "trigger": {
+          "rule": "SP_FULL",
+          "rawRule": "SP_FULL",
+          "customRangeGrid": null
+        },
+        "index": 1,
+        "isDefault": false
+      },
+      {
+        "skillId": "skchr_ws_ds_whale_3",
+        "iconId": null,
+        "name": "深度求索·涌现",
+        "level": 4,
+        "desc": "「数据样本」+20；展开半径2.5格的「深水区」且攻击范围扩大，持续25秒。技能期间自身不会受到伤害；区内友方每秒恢复大肥鱼50%最大生命的生命，并获得+50%攻击力/防御力；区内敌人移速-50%、脆弱+50%，每秒受到大肥鱼150%最大生命的法术伤害",
+        "descRaw": "「数据样本」+20；展开半径2.5格的「深水区」且攻击范围扩大，持续25秒。技能期间自身不会受到伤害；区内友方每秒恢复大肥鱼50%最大生命的生命，并获得+50%攻击力/防御力；区内敌人移速-50%、脆弱+50%，每秒受到大肥鱼150%最大生命的法术伤害",
+        "skillType": "MANUAL",
+        "durationType": "NONE",
+        "duration": 25,
+        "spType": "INCREASE_WITH_TIME",
+        "spCost": 45,
+        "initSp": 20,
+        "maxChargeTime": 1,
+        "increment": 1,
+        "bb": {
+          "stacks": 20,
+          "radius": 2.5,
+          "heal_maxhp_ratio": 0.5,
+          "ally_amp": 0.5,
+          "enemy_dmg_maxhp_ratio": 1.5,
+          "slow": 0.5,
+          "fragile": 0.5
+        },
+        "bbStr": {},
+        "rangeId": "x-3",
+        "rangeGrid": [
+          [
+            3,
+            0
+          ],
+          [
+            2,
+            -1
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            1,
+            -2
+          ],
+          [
+            1,
+            -1
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            0,
+            -3
+          ],
+          [
+            0,
+            -2
+          ],
+          [
+            0,
+            -1
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            -1,
+            -2
+          ],
+          [
+            -1,
+            -1
+          ],
+          [
+            -1,
+            0
+          ],
+          [
+            -1,
+            1
+          ],
+          [
+            -1,
+            2
+          ],
+          [
+            -2,
+            -1
+          ],
+          [
+            -2,
+            0
+          ],
+          [
+            -2,
+            1
+          ],
+          [
+            -3,
+            0
+          ]
+        ],
+        "prefabId": null,
+        "overrideTokenKey": null,
+        "trigger": {
+          "rule": "DEFAULT",
+          "rawRule": "DEFAULT",
+          "customRangeGrid": null
+        },
+        "index": 2,
+        "isDefault": false
+      }
+    ]
+  }
+}

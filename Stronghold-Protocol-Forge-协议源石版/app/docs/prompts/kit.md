@@ -275,6 +275,7 @@ node tools/workshop-validate.mjs my-pack --json
 | `statBuff` / `toggleBuff` / `installAura`（`…/shared/tier1.js:155`、`:162`、`:178`） | 都是 `battle.addBuff` / `battle.every` 的 3–8 行封装，见 §8.2 |
 | `enemiesInGrid` / `alliesInGridOf`（`…/shared/tier1.js:127`、`:137`） | 自己按 `unit.dir` 旋转范围格、拼绝对 tile key，再调 `battle.enemiesInKeys`（见 §8.9） |
 | `makeZone(...)`（`…/shared/tier1.js:214`） | `battle.fx('zone', …)` + `battle.every(interval, fn, { immediate: true })` |
+| 范围高亮（技能范围铺在地上） | `battle.fx('field', { x, y, id: unit.id, dur, tiles: [[r, c], …] })`（≤80 格）；格子键用 `@sim/constants.js` 的 `COLS` 拆成 `[⌊k/COLS⌋, k%COLS]`，范围用 `@sim/targeting.js` 的 `absoluteRangeKeys(grid, unit.tileR, unit.tileC, unit.dir, 0)` 自己算 |
 | `summonTileFree` / `freeTileAround`（`…/shared/tier1.js:229`、`:234`） | `battle.grid.inRect(r, c) && !battle.isReservedTile(r, c)`（`server/sim/battle/tiles.js:66`）+ 自己旋转 |
 | `releaseSkillSummon(...)`（`server/sim/content/tokens.js:388`） | **引擎不提供给工坊**：用 `battle.spawnToken` 自己放（§8.6） |
 | `summonDeck(...)` 召唤师牌堆（`server/sim/content/kits/shared/summoner.js:99`） | **引擎不提供给工坊**：`unit.mem` 记持有数 + `battle.every` + `battle.redeploy` 自己复刻（§8.6） |

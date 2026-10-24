@@ -141,6 +141,17 @@ export class FxZones {
     }
   }
 
+  /**
+   * A **persistent** tile highlight (a skill's range painted on the ground): `tiles` = [[r, c]] stays lit for `dur` real
+   * seconds with a slow pulse. Same graphics object as `tileFlash` (one ground pass per frame, fields first), so the two
+   * never fight over `tileGfx`. 80 tiles is the cap — a range is a range, not a whole field.
+   */
+  tileField(tiles, tint, dur) {
+    if (!Array.isArray(tiles) || !tiles.length) return;
+    this.tileFields.push({ tiles: tiles.slice(0, 80), tint, dur: Math.max(0.2, dur), t: 0 });
+    if (this.tileFields.length > 8) this.tileFields.shift();
+  }
+
   /** Flash a set of tiles ([[r,c]]) on the ground (telegraphed boxes, blast tiles). */
   tileFlash(tiles, tint, dur, warn = false) {
     if (!Array.isArray(tiles) || !tiles.length) return;
@@ -148,9 +159,36 @@ export class FxZones {
     if (this.tileFlashes.length > 12) this.tileFlashes.shift();
   }
 
+  /**
+   * One ground pass for both tile layers: the persistent range fields (慢脉动、不闪) first, then the one-shot flashes.
+   * They share `tileGfx` and a single `clear()` — two passes would erase each other.
+   */
   _updateTileFlashes(dt) {
     const g = this.tileGfx;
     g.clear();
+    if (this.tileFields.length) {
+      const cam = this.ctx.cam();
+      const p = this._p;
+      let nf = 0;
+      for (const f of this.tileFields) {
+        f.t += dt;
+        if (f.t >= f.dur) continue;
+        this.tileFields[nf++] = f;
+        const k = f.t / f.dur;
+        const fade = k > 0.9 ? (1 - k) / 0.1 : 1;
+        const a = (0.16 + 0.08 * Math.sin(f.t * 2.4)) * fade;
+        for (const [r, c] of f.tiles) {
+          const z = (this.ctx.heightAt ? this.ctx.heightAt(r, c) : 0) + 0.012;
+          const pts = [];
+          for (const [dx, dy] of [[-0.46, 0.46], [0.46, 0.46], [0.46, -0.46], [-0.46, -0.46]]) { cam.project(c + dx, r + dy, z, p); pts.push(p.x, p.y); }
+          g.lineStyle(Math.max(1, p.s * 0.022), f.tint, Math.min(1, a * 2.2));
+          g.beginFill(f.tint, a);
+          g.drawPolygon(pts);
+          g.endFill();
+        }
+      }
+      this.tileFields.length = nf;
+    }
     if (!this.tileFlashes.length) return;
     const cam = this.ctx.cam();
     const p = this._p;

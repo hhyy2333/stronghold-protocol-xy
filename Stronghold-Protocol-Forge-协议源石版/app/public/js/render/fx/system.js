@@ -58,6 +58,7 @@ export class FxSystem {
     this.zones = [];          // persistent ground areas (zone / telegraph fx)
     this.labels = [];         // floating '!' / '+n' labels
     this.tileFlashes = [];    // flashing tile sets (telegraphed boxes)
+    this.tileFields = [];     // persistent tile highlights (a skill's range, fx 'field')
     this.tileGfx = new P.Graphics();
     this.tileGfx.blendMode = P.BLEND_MODES.ADD;
     ctx.layers.groundFx.addChild(this.tileGfx);
@@ -104,6 +105,7 @@ export class FxSystem {
     for (const l of this.labels) l.t.destroy();
     this.labels.length = 0;
     this.tileFlashes.length = 0;
+    this.tileFields.length = 0;
     this.tileGfx.clear();
     this.tintT = 0; this.tintSprite.alpha = 0;
   }
@@ -159,7 +161,7 @@ export class FxSystem {
 }
 
 const FX_PARTS = [FxParticles, FxProjectiles, FxBeams, FxLocks, FxNumbers, FxRings, FxArrivals, FxSim, FxZones];
-const FX_METHOD_ORDER = ["quality","load","maxParticles","rich","_room","_ts","_groundZ","particle","_o","_freeParticle","_updateParticles","_proj","_onGround","_chest","_bodyPt","burst","attack","_takeProj","_dressProj","_releaseProj","_updateProjs","_shotPoint","_stepShot","_stepBoomerang","_stepMortar","_mote","_puff","_muzzle","_impact","_catch","mortar","_landed","_beam","_updateBeams","_flame","_freeFlame","_updateFlames","_lock","_touchLocks","_nearestLock","_releaseLock","_freeLock","_updateLocks","damage","_slash","heal","officialNumber","number","_growFits","_numSlotPx","_layoutNums","_layoutNumsOnce","_sizeNum","_fadeNum","_takeNum","_releaseNum","_updateNums","ring","_updateRings","skill","_aura","_updateAuras","deploy","promote","death","crateBreak","_viewOf","_where","_point","simFx","explosion","smoke","streak","strike","numberAt","_updateLabels","zone","_freeZone","_updateZones","tileFlash","_updateTileFlashes","flashScreen","snowfall","leak","pop","_updatePops"];
+const FX_METHOD_ORDER = ["quality","load","maxParticles","rich","_room","_ts","_groundZ","particle","_o","_freeParticle","_updateParticles","_proj","_onGround","_chest","_bodyPt","burst","attack","_takeProj","_dressProj","_releaseProj","_updateProjs","_shotPoint","_stepShot","_stepBoomerang","_stepMortar","_mote","_puff","_muzzle","_impact","_catch","mortar","_landed","_beam","_updateBeams","_flame","_freeFlame","_updateFlames","_lock","_touchLocks","_nearestLock","_releaseLock","_freeLock","_updateLocks","damage","_slash","heal","officialNumber","number","_growFits","_numSlotPx","_layoutNums","_layoutNumsOnce","_sizeNum","_fadeNum","_takeNum","_releaseNum","_updateNums","ring","_updateRings","skill","_aura","_updateAuras","deploy","promote","death","crateBreak","_viewOf","_where","_point","simFx","explosion","smoke","streak","strike","numberAt","_updateLabels","zone","_freeZone","_updateZones","tileFlash","tileField","_updateTileFlashes","flashScreen","snowfall","leak","pop","_updatePops"];
 
 for (const key of FX_METHOD_ORDER) {
   let found = null;

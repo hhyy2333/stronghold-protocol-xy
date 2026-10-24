@@ -1,0 +1,97 @@
+{
+  "precivShip": {
+    "bondId": "precivShip",
+    "name": "前文明",
+    "identifier": 60,
+    "isCore": false,
+    "bondType": "REGULAR",
+    "bondOrder": 60,
+    "iconId": "icon_precivShip",
+    "activeCount": 1,
+    "thresholds": [
+      1
+    ],
+    "maxCount": null,
+    "thresholdTemplate": "count_threshold_upward",
+    "countMode": "BOARD",
+    "countsHand": false,
+    "countsGoldenOnly": false,
+    "activeType": "ALL",
+    "isActiveInDeck": false,
+    "noStack": false,
+    "weight": 0,
+    "maxInactiveBondCount": -1,
+    "layerMilestones": [],
+    "desc": "【前文明】层数随消耗的部署费用增长（层数整局保留，盟约激活时才生效）\n每消耗20点部署费用，本盟约层数+1\n每叠加10层，使已激活的所有盟约层数+2\n首次到达50层时，大肥鱼的攻击范围+1\n首次到达150层时，获得20层【远见】层数",
+    "descRaw": "【前文明】层数随消耗的部署费用增长（层数整局保留，盟约激活时才生效）\n每消耗20点部署费用，本盟约层数+1\n每叠加10层，使已激活的所有盟约层数+2\n首次到达50层时，大肥鱼的攻击范围+1\n首次到达150层时，获得20层【远见】层数",
+    "effectId": null,
+    "effectName": "前文明",
+    "effectDesc": "【前文明】层数随消耗的部署费用增长（层数整局保留，盟约激活时才生效）\n每消耗{0}点部署费用，本盟约层数+1\n每叠加{1}层，使已激活的所有盟约层数+{2}\n首次到达{3}层时，大肥鱼的攻击范围+1\n首次到达{4}层时，获得{5}层【远见】层数",
+    "effectDescRaw": "【前文明】层数随消耗的部署费用增长（层数整局保留，盟约激活时才生效）\n每消耗{0}点部署费用，本盟约层数+1\n每叠加{1}层，使已激活的所有盟约层数+{2}\n首次到达{3}层时，大肥鱼的攻击范围+1\n首次到达{4}层时，获得{5}层【远见】层数",
+    "effectDescParams": [
+      {
+        "index": 0,
+        "format": "0",
+        "base": "layer_per_dp"
+      },
+      {
+        "index": 1,
+        "format": "0",
+        "base": "cascade_every"
+      },
+      {
+        "index": 2,
+        "format": "0",
+        "base": "cascade_add"
+      },
+      {
+        "index": 3,
+        "format": "0",
+        "base": "range_at"
+      },
+      {
+        "index": 4,
+        "format": "0",
+        "base": "foresight_at"
+      },
+      {
+        "index": 5,
+        "format": "0",
+        "base": "foresight_add"
+      }
+    ],
+    "bb": {
+      "layer_per_dp": 20,
+      "cascade_every": 10,
+      "cascade_add": 2,
+      "range_at": 50,
+      "range_extend": 1,
+      "foresight_at": 150,
+      "foresight_add": 20
+    },
+    "bbStr": {},
+    "buffs": [
+      {
+        "key": "env_gbuff_new",
+        "bb": {
+          "layer_per_dp": 20,
+          "cascade_every": 10,
+          "cascade_add": 2,
+          "range_at": 50,
+          "range_extend": 1,
+          "foresight_at": 150,
+          "foresight_add": 20
+        },
+        "bbStr": {}
+      }
+    ],
+    "baseParams": [],
+    "perStackParams": [],
+    "members": [
+      "chess_ws_ds_whale_a"
+    ],
+    "visibleMembers": [
+      "chess_ws_ds_whale_a"
+    ]
+  }
+}
