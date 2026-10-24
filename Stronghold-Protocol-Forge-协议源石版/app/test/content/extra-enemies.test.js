@@ -237,13 +237,12 @@ test('batch 3 mechanics in a real battle: block weight, splash, aura, heals, dea
     assert.equal(left[0].defId, 'enemy_1160_hvyslr', 'the leftover is the 水手 the data names');
   }
 
-  // 沃尔夫之影 · no 月光 here: it stays 隐匿 + unblockable and never attacks
+  // 沃尔夫之影 (enemy_10109_mjcgst) is OUT of the batch (owner 2026-10-25「去掉沃尔夫之影」): without 月光 it would have been
+  // 隐匿 + unblockable + never attacking — a unit nobody can stop and nobody can answer. It has no kit and no pool, so it
+  // never spawns; nothing else changed with it.
   {
-    const h = arena(3);
-    const e = put(h, 'enemy_10109_mjcgst');
-    h.run(6);
-    assert.equal(e.stats.attacks, 0, '沃尔夫之影 never attacks');
-    assert.equal(h.allies()[0].blocking.length, 0, '沃尔夫之影 is unblockable');
+    const mod = await import('../../server/sim/content/enemies.js');
+    assert.ok(!mod.KITS.enemy_10109_mjcgst, '沃尔夫之影 has no kit');
   }
 
   // “方便快餐” · "受到的物理和法术伤害大幅降低" (act38side_scale.damage_resistance 0.9 ⇒ taken ×0.1)

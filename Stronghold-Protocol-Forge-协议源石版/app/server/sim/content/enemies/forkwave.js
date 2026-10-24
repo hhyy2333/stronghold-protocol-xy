@@ -212,9 +212,7 @@ export const FORK_WAVE_KITS = Object.freeze({
     },
   }],
 
-  // 沃尔夫之影 · "攻击附带<神经损伤>" + "未处于月光下时<隐匿>。<隐匿>时停止攻击且无法阻挡". There is no 月光 in this mode, so it is
-  // permanently in its no-moonlight state: 隐匿 and unblockable, and it does not attack — it walks the lane and cannot be
-  // stopped [ASSUMED: the state the official game keeps it in on a stage without moonlight]. The neural on-hit only lands
-  // once a block reveals it, which cannot happen while it is unblockable, so that line is not modelled either.
-  enemy_10109_mjcgst: () => [stealth(), unblockable(), { spawn(b, e) { e.profile.noAttack = true; } }],
+  // 沃尔夫之影 (enemy_10109_mjcgst) was in the batch and is OUT again (owner 2026-10-25「去掉沃尔夫之影」): without 月光 it would
+  // have been 隐匿 + unblockable + never attacking — a unit that walks the lane and cannot be stopped or answered, which is
+  // no fun to meet and not what the official stage does with it either.
 });

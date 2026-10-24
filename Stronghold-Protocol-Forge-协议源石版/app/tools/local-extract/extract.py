@@ -152,7 +152,9 @@ ENEMY_SPINES += [
     'enemy_1004_mslime', 'enemy_1130_infstr', 'enemy_1028_mocock',
     # batch 3 (2026-10-25, owner「我想要加入更多有技能的怪」): every one has a mechanic kit in forkwave.js
     'enemy_1076_bsthmr', 'enemy_1076_bsthmr_2', 'enemy_1058_traink', 'enemy_1058_traink_2', 'enemy_1111_ucommd', 'enemy_1135_redman', 'enemy_10007_trspsb_2', 'enemy_10089_hlsprt_2',
-    'enemy_10004_trdiam_2', 'enemy_1184_cadkgt', 'enemy_1184_cadkgt_3', 'enemy_10038_cnvpiz', 'enemy_1163_hvymot', 'enemy_10109_mjcgst', 'enemy_10007_trspsb', 'enemy_10089_hlsprt',
+    'enemy_10004_trdiam_2', 'enemy_1184_cadkgt', 'enemy_1184_cadkgt_3', 'enemy_10038_cnvpiz', 'enemy_1163_hvymot',
+    # 沃尔夫之影 (enemy_10109_mjcgst) was in the batch and is OUT again (owner 2026-10-25「去掉沃尔夫之影」)
+    'enemy_10007_trspsb', 'enemy_10089_hlsprt',
     'enemy_10004_trdiam',
 ]
 ENEMY_ART = 'refs/arts/enm_art_*.ab'

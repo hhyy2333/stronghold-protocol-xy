@@ -462,7 +462,7 @@ Their research rows carry `kit: 'server/sim/content/enemies/forkwave.js'` and `b
 the pool anchors that fit them, so they attach at the wider [0.7, 1.5] power band and stay out of `STATS_ONLY`
 (`test/content/extra-enemies.test.js` asserts a key is in `KITS` **or** `STATS_ONLY`, never both).
 
-**Batch 3 (0.19.24, owner 2026-10-25「我想要加入更多有技能的怪」) — fifteen more with a mechanic**, same file:
+**Batch 3 (0.19.24, owner 2026-10-25「我想要加入更多有技能的怪」) — fourteen more with a mechanic**, same file:
 
 | key | mechanic | primitive |
 |---|---|---|
@@ -478,7 +478,7 @@ the pool anchors that fit them, so they attach at the wider [0.7, 1.5] power ban
 | `enemy_1184_cadkgt(_3)` 散华骑士团学徒 / 烛骑士薇薇安娜 | 【微光之触】: on its cooldown (25 / 20 s) an arts blast of ATK × `atk_scale` (2.5 / 3) around the target | `skill` + `dealDamage` |
 | `enemy_10038_cnvpiz` “方便快餐” | permanent damage resistance (no 狂欢时刻 here): taken ×(1 − `act38side_scale.damage_resistance` 0.9) | `addBuff(dmgTakenMul)` |
 | `enemy_1163_hvymot` 水手重艇 | ≥ 3 block slots; on death it leaves the 水手 it carried (`DeathRattle.enemy_key`) | `blockWeight(3)` + `spawnChildren` |
-| `enemy_10109_mjcgst` 沃尔夫之影 | no 月光 here, so it keeps its no-moonlight state: 隐匿, unblockable, never attacks | `stealth` + `unblockable` |
+| ~~`enemy_10109_mjcgst` 沃尔夫之影~~ | **back out** (owner 2026-10-25「去掉沃尔夫之影」): without 月光 it would have been 隐匿 + unblockable + never attacking — a unit nobody can stop and nobody can answer | — |
 
 Every skill blackboard a batch-3 kit reads lives under `ab.sk[<prefabKey>].bb` (data/enemies.json `skills[i].bb`), not
 under the talents — 周期性治疗 and 【微光之触】 are SKILLS of their enemy, so `T(ab, …)` (which reads `ab.t`) finds nothing.

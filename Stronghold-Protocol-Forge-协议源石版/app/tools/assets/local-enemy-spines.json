@@ -554,58 +554,6 @@
       },
       "bounds": null
     },
-    "enemy_10109_mjcgst": {
-      "skel": "enemy_10109_mjcgst.skel",
-      "atlas": "enemy_10109_mjcgst.atlas",
-      "textures": [
-        "enemy_10109_mjcgst.png"
-      ],
-      "pma": true,
-      "anims": {
-        "idle": "Idle",
-        "deploy": "Start",
-        "attack": {
-          "begin": null,
-          "loop": "Attack",
-          "end": null
-        },
-        "attackDown": null,
-        "skill": {
-          "begin": null,
-          "loop": "Attack",
-          "end": null,
-          "via": "attack",
-          "index": 0,
-          "idle": null
-        },
-        "die": "Die",
-        "move": {
-          "begin": null,
-          "loop": "Move",
-          "end": null
-        },
-        "stun": null
-      },
-      "animations": {
-        "Attack": 1,
-        "Default": 0,
-        "Die": 1,
-        "Idle": 2,
-        "Idle_2": 2,
-        "Move": 1.333,
-        "Move_2": 1.333,
-        "Start": 1
-      },
-      "events": [
-        "OnAttack"
-      ],
-      "hits": {
-        "Attack": [
-          0.4
-        ]
-      },
-      "bounds": null
-    },
     "enemy_1011_wizard": {
       "skel": "enemy_1011_wizard.skel",
       "atlas": "enemy_1011_wizard.atlas",
