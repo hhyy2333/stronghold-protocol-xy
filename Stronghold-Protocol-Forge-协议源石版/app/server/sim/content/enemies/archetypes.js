@@ -76,19 +76,33 @@ const onHitStatus = (key, dur, value) => ({ dealt(c, b, e) { if (dur > 0) b.appl
  * its 8 neighbours (格子判定), else `radius` around the target (中点判定). `noAir`: "不可对空" (a flying ally — the 炎佑
  * dragon — is skipped; without it "可溅射飞行单位"). `dodge`: the splash hits may be dodged (烹泉 / 沏虹, whose PRTS 天赋 calls
  * them 法术普通伤害 — a normal attack's damage); a 溅射伤害 splash cannot. `onEach(b, e, u)` runs on every unit hit (the target
- * after its damage).
+ * after its damage). `splashScale`: the splash hits take that share of ATK instead of `scale` (爆破攻坚手's 0.5). `aim`: the
+ * splash lands where the attack was aimed, not on the target's current tile — for an enemy whose data gives it reach while
+ * its row says nothing (爆破攻坚手's own range occupies no tile column).
  */
-function splashAttack({ scale = 1, meleeScale = 1, unblocked = true, tiles = 0, radius = 0, noAir = false, dodge = false, fxKind = 'splash', onEach = null } = {}) {
+function splashAttack({ scale = 1, meleeScale = 1, unblocked = true, tiles = 0, radius = 0, noAir = false, dodge = false, fxKind = 'splash', onEach = null, splashScale = null, aim = false } = {}) {
   return {
-    before(c, b, e, a) { a.splash = !unblocked || !e.blockedBy; e.profile.atkScale = a.splash ? scale : meleeScale; },
+    before(c, b, e, a) {
+      a.splash = !unblocked || !e.blockedBy;
+      e.profile.atkScale = a.splash ? scale : meleeScale;
+      // `aim` (爆破攻坚手): the splash lands where the attack was aimed, not only where the target stands now, and it is
+      // always on (a.splash) — that enemy's data gives it reach while its row says nothing
+      if (aim) {
+        const t = c.targets && c.targets[0];
+        a.aim = t ? { x: t.x, y: t.y, tileR: t.tileR, tileC: t.tileC } : null;
+        if (a.aim) a.splash = true;
+      }
+    },
     hitOut(c, b, e, a) {
       const t = c.target;
-      if (!a.splash || !c.dmg.isAttack || !t) return;
-      b.fx('explode', { x: t.x, y: t.y, r: tiles > 0 ? tiles + 0.5 : radius, kind: fxKind, ...(tiles > 0 ? { tiles: 'box' } : {}) });
-      const area = tiles > 0 ? areaAlliesInTiles(b, e, t.tileR, t.tileC, 'box', tiles) : areaAllies(b, e, t.x, t.y, radius);
+      if (!a.splash || !c.dmg.isAttack) return;
+      const at = aim ? a.aim : t;
+      if (!at) return;
+      b.fx('explode', { x: at.x, y: at.y, r: tiles > 0 ? tiles + 0.5 : radius, kind: fxKind, ...(tiles > 0 ? { tiles: 'box' } : {}) });
+      const area = tiles > 0 ? areaAlliesInTiles(b, e, at.tileR, at.tileC, 'box', tiles) : areaAllies(b, e, at.x, at.y, radius);
       for (const u of area) {
-        if (u === t || (noAir && u.isFlying)) continue;
-        hurt(b, e, u, e.s.atk * scale, c.dmg.type, { tags: ['splash'], canDodge: dodge });
+        if ((t && u === t) || (noAir && u.isFlying)) continue;
+        hurt(b, e, u, e.s.atk * (splashScale ?? scale), c.dmg.type, { tags: ['splash'], canDodge: dodge });
         if (onEach && u.alive) onEach(b, e, u);
       }
     },

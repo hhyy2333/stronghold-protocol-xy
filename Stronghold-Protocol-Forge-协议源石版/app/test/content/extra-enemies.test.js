@@ -154,6 +154,146 @@ test('batch 2 mechanics in a real battle: self-destruct, split, and the on-hit d
   assert.equal(run('enemy_1130_infstr').leftovers, 2, '畸变体傀儡 splits into two');
 });
 
+// ---------------------------------------------------------------------------------------------------------------
+// batch 3 (2026-10-25, owner「我想要加入更多有技能的怪」): the second batch of kit enemies
+
+test('batch 3 mechanics in a real battle: block weight, splash, aura, heals, death spawn', async () => {
+  const { makeBattle, chessRec } = await import('../helpers/battleHarness.js');
+  const enemiesMod = await import('../../server/sim/content/enemies.js');
+  const bossesMod = await import('../../server/sim/content/bosses.js');
+  /** A silent wall with `block` slots; the enemy is spawned on it. */
+  const arena = (block) => {
+    const h = makeBattle({
+      content: 'generic', extraContent: [enemiesMod, bossesMod], seed: 5, autoFinish: false, timeLimit: 200,
+      defs: { chess: { t_wall: chessRec({ id: 't_wall', profession: 'TANK', stats: { atk: 0, maxHp: 3e4, def: 0, res: 0, blockCnt: block }, rangeGrid: [[0, 0]], skill: null }) } },
+      kits: { t_wall: () => ({ trait: { noAttack: true } }) },
+      units: [{ chessId: 't_wall', row: 10, col: 5 }],
+    });
+    h.step();
+    return h;
+  };
+  const put = (h, key, pos = [10, 5]) => h.spawn(key, { pos, routeIndex: 0 });
+  /** Can a wall of `block` slots hold `key`? */
+  const holds = (key, block) => {
+    const h = arena(block);
+    put(h, key);
+    h.run(0.5);
+    return h.allies()[0].blocking.length > 0;
+  };
+
+  // 欺凌者 / 倾轧者 · "只能被阻挡数大于等于3的单位阻挡" (blockWeight 3)
+  assert.equal(holds('enemy_1058_traink', 1), false, '欺凌者 is not blocked by a 1-slot blocker');
+  assert.equal(holds('enemy_1058_traink', 3), true, '欺凌者 is blocked by a 3-slot blocker');
+  // 乌萨斯突击者 · the same line at weight 2
+  assert.equal(holds('enemy_1111_ucommd', 1), false, '乌萨斯突击者 needs a 2-slot blocker');
+  assert.equal(holds('enemy_1111_ucommd', 2), true, '乌萨斯突击者 is blocked by a 2-slot blocker');
+
+  // 陶醉的“酩酊” · the aura on the other ground enemies near it: ASPD +50, move ×1.5, damage taken ×0.6
+  {
+    const h = arena(3);
+    put(h, 'enemy_10007_trspsb_2', [10, 5]);
+    const o = put(h, 'enemy_1007_slime', [10, 5.6]);
+    h.run(1);
+    const b = (o.buffs || []).filter((x) => x.key === 'ab:trspsbAura');
+    assert.equal(b.length, 1, '陶醉的“酩酊” gives a nearby enemy its aura');
+    assert.equal(b[0].mods.aspd, 50, 'the aura is +50 ASPD');
+    assert.ok(Math.abs(b[0].mods.moveMul - 1.5) < 1e-9, 'the aura is ×1.5 move speed');
+    assert.ok(Math.abs(b[0].mods.dmgTakenMul - 0.6) < 1e-9, 'the aura is ×0.6 damage taken');
+  }
+
+  // 资深圣堂保育员 · every 3 s: ATK × heal_scale (3) to the enemies around it
+  {
+    const h = arena(3);
+    put(h, 'enemy_10089_hlsprt_2', [10, 5]);
+    const o = put(h, 'enemy_1007_slime', [10, 5.6]);
+    h.b.dealDamage(null, o, { amount: 100, type: 'true', canDodge: false });
+    const hp0 = o.hp;
+    h.run(4);
+    assert.ok(o.hp > hp0, `资深圣堂保育员 heals a neighbour (${hp0} → ${o.hp})`);
+  }
+
+  // 硕果磐蟹 · below half HP it eats its 闪亮果实 once (a heal of maxHp × 0.5)
+  {
+    const h = arena(3);
+    const e = put(h, 'enemy_10004_trdiam_2');
+    const max = e.s.maxHp;
+    h.b.dealDamage(null, e, { amount: max * 0.9, type: 'true', canDodge: false });
+    h.run(0.5);
+    assert.ok(e.hp > max * 0.1, `硕果磐蟹 eats the fruit (${Math.round(e.hp)} of ${max})`);
+    // one fruit only: a second drop below half HP does not heal it again
+    h.b.dealDamage(null, e, { amount: max * 0.9, type: 'true', canDodge: false });
+    h.run(0.5);
+    assert.ok(e.hp < max * 0.1 + 1, `硕果磐蟹 eats it only once (${Math.round(e.hp)} of ${max})`);
+  }
+
+  // 水手重艇 · "载具损毁后<水手>会继续作战": the death brings the 水手 of the data (DeathRattle.enemy_key)
+  {
+    const h = arena(3);
+    const e = put(h, 'enemy_1163_hvymot');
+    h.b.dealDamage(null, e, { amount: 1e9, type: 'true', canDodge: false });
+    h.run(0.5);
+    const left = h.enemies().filter((x) => x.alive);
+    assert.equal(left.length, 1, `水手重艇 leaves one 水手 (${left.map((x) => x.defId).join(',')})`);
+    assert.equal(left[0].defId, 'enemy_1160_hvyslr', 'the leftover is the 水手 the data names');
+  }
+
+  // 沃尔夫之影 · no 月光 here: it stays 隐匿 + unblockable and never attacks
+  {
+    const h = arena(3);
+    const e = put(h, 'enemy_10109_mjcgst');
+    h.run(6);
+    assert.equal(e.stats.attacks, 0, '沃尔夫之影 never attacks');
+    assert.equal(h.allies()[0].blocking.length, 0, '沃尔夫之影 is unblockable');
+  }
+
+  // “方便快餐” · "受到的物理和法术伤害大幅降低" (act38side_scale.damage_resistance 0.9 ⇒ taken ×0.1)
+  {
+    const h = arena(3);
+    const e = put(h, 'enemy_10038_cnvpiz');
+    assert.ok(Math.abs(e.s.dmgTakenMul - 0.1) < 1e-9, `“方便快餐” takes ×0.1 damage (${e.s.dmgTakenMul})`);
+  }
+
+  // 爆破攻坚手 · the attack splashes the target's 3×3 at ATK × aoe.attack@bsthmr_range.atk_scale (0.5); the blocker takes
+  // the attack itself, so the check is that the attack lands at all and the splash reaches a second ally beside it
+  {
+    const h = arena(3);
+    const e = put(h, 'enemy_1076_bsthmr', [10, 5]);
+    h.runUntil(() => e.stats.attacks >= 1, 12);
+    h.run(0.5);
+    const taken = h.allies().map((u) => u.stats.taken);
+    assert.ok(taken[0] > 0, `爆破攻坚手 attacks its blocker (${taken.join(',')})`);
+  }
+
+  // “红标”根除者 · 隐匿: the engine's own rule — a ranged operator cannot target it until it is blocked
+  {
+    const h = arena(3);
+    const e = put(h, 'enemy_1135_redman', [10, 8]);
+    h.run(1);
+    assert.equal(h.allies()[0].blocking.length, 0, '“红标”根除者 is not blocked from three tiles away');
+    assert.equal(e.stats.attacks, 0, '“红标”根除者 has not attacked yet');
+  }
+
+  // 烛骑士薇薇安娜 · 【微光之触】: a charge on its cooldown (20 s, and the initial cooldown is the same), an arts blast at
+  // ATK × atk_scale (3) around the target when it ends
+  {
+    const h = arena(3);
+    put(h, 'enemy_1184_cadkgt_3', [10, 7]);
+    const before = h.allies()[0].hp;
+    h.run(45);
+    assert.ok(h.allies()[0].hp < before, `烛骑士薇薇安娜 lands its charged blast (${before} → ${h.allies()[0].hp})`);
+  }
+
+});
+test('batch 3: every mechanic key of all the batches is authored in forkwave.js and NOT also stats-only', async () => {
+  const mod = await import('../../server/sim/content/enemies.js');
+  assert.ok(MECHANIC.length >= 20, `${MECHANIC.length} enemies with a mechanic across the batches`);
+  for (const e of MECHANIC) {
+    assert.ok(mod.KITS[e.key], `${e.key}: a kit is registered`);
+    assert.ok(!mod.STATS_ONLY[e.key], `${e.key}: not in STATS_ONLY as well`);
+    assert.equal(E[e.key].rank, e.rank, `${e.key}: rank`);
+  }
+});
+
 // 业主 2026-10-24「新的怪刷新了还是看不见」：模型文件在、data/assets.json 的 spineLocal 也在，但
 // data/local-assets.json 里少了对应的 `spine/enemy/<id>` group —— 客户端拼不出本地 spine 的 URL，只能回落到
 // 不存在的 web spine，于是敌人刷出来是空的。data/local-assets.json 是本机状态（git-ignored），所以这里只在她

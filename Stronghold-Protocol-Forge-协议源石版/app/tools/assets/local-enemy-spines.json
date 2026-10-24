@@ -1,6 +1,228 @@
 {
   "about": "Spine metadata of the enemy models only the local client has (tools/local-extract/extract.py ENEMY_SPINES); data/assets.json enemies[id].spineLocal. Written by node tools/fetch-assets.mjs --local-spines (docs/ASSETS.md \"Enemy aliases\").",
   "models": {
+    "enemy_10004_trdiam": {
+      "skel": "enemy_10004_trdiam.skel",
+      "atlas": "enemy_10004_trdiam.atlas",
+      "textures": [
+        "enemy_10004_trdiam.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle_A",
+        "deploy": "Idle_A",
+        "attack": {
+          "begin": null,
+          "loop": "Attack_A",
+          "end": null,
+          "via": "attackAny"
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack_A",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die_A",
+        "move": {
+          "begin": null,
+          "loop": "Move_A",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack_A": 1.767,
+        "Attack_B": 1.767,
+        "Default": 0,
+        "Die_A": 1,
+        "Die_B": 1,
+        "Idle_A": 1.333,
+        "Idle_B": 1.333,
+        "Move_A": 1.333,
+        "Move_B": 1.333,
+        "Skill_A": 4,
+        "Skill_B": 3.233
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack_A": [
+          0.567
+        ],
+        "Attack_B": [
+          0.567
+        ]
+      },
+      "bounds": null
+    },
+    "enemy_10004_trdiam_2": {
+      "skel": "enemy_10004_trdiam_2.skel",
+      "atlas": "enemy_10004_trdiam_2.atlas",
+      "textures": [
+        "enemy_10004_trdiam_2.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle_A",
+        "deploy": "Idle_A",
+        "attack": {
+          "begin": null,
+          "loop": "Attack_A",
+          "end": null,
+          "via": "attackAny"
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack_A",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die_A",
+        "move": {
+          "begin": null,
+          "loop": "Move_A",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack_A": 1.767,
+        "Attack_B": 1.767,
+        "Default": 0,
+        "Die_A": 1,
+        "Die_B": 1,
+        "Idle_A": 1.333,
+        "Idle_B": 1.333,
+        "Move_A": 1.333,
+        "Move_B": 1.333,
+        "Skill_A": 4,
+        "Skill_B": 3.233
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack_A": [
+          0.567
+        ],
+        "Attack_B": [
+          0.567
+        ]
+      },
+      "bounds": null
+    },
+    "enemy_10007_trspsb": {
+      "skel": "enemy_10007_trspsb.skel",
+      "atlas": "enemy_10007_trspsb.atlas",
+      "textures": [
+        "enemy_10007_trspsb.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Skill",
+          "end": null,
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.333,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 2.667,
+        "Move": 1.333,
+        "Skill": 10
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.667
+        ],
+        "Skill": [
+          0.533
+        ]
+      },
+      "bounds": null
+    },
+    "enemy_10007_trspsb_2": {
+      "skel": "enemy_10007_trspsb_2.skel",
+      "atlas": "enemy_10007_trspsb_2.atlas",
+      "textures": [
+        "enemy_10007_trspsb_2.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Skill",
+          "end": null,
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.333,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 2.667,
+        "Move": 1.333,
+        "Skill": 10
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.667
+        ],
+        "Skill": [
+          0.533
+        ]
+      },
+      "bounds": null
+    },
     "enemy_1000_gopro_3": {
       "skel": "enemy_1000_gopro_3.skel",
       "atlas": "enemy_1000_gopro_3.atlas",
@@ -64,6 +286,55 @@
         "width": 330.787,
         "height": 257.006
       }
+    },
+    "enemy_10038_cnvpiz": {
+      "skel": "enemy_10038_cnvpiz.skel",
+      "atlas": "enemy_10038_cnvpiz.atlas",
+      "textures": [
+        "enemy_10038_cnvpiz.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.5,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 0.2,
+        "Move": 2
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.433
+        ]
+      },
+      "bounds": null
     },
     "enemy_1003_ncbow_2": {
       "skel": "enemy_1003_ncbow_2.skel",
@@ -178,6 +449,162 @@
         "width": 341.497,
         "height": 229.503
       }
+    },
+    "enemy_10089_hlsprt": {
+      "skel": "enemy_10089_hlsprt.skel",
+      "atlas": "enemy_10089_hlsprt.atlas",
+      "textures": [
+        "enemy_10089_hlsprt.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Skill",
+          "end": null,
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.833,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 2,
+        "Move": 1.067,
+        "Skill": 1.667
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.667
+        ],
+        "Skill": [
+          0.833
+        ]
+      },
+      "bounds": null
+    },
+    "enemy_10089_hlsprt_2": {
+      "skel": "enemy_10089_hlsprt_2.skel",
+      "atlas": "enemy_10089_hlsprt_2.atlas",
+      "textures": [
+        "enemy_10089_hlsprt_2.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Skill",
+          "end": null,
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.833,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 2,
+        "Move": 1.067,
+        "Skill": 1.667
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.667
+        ],
+        "Skill": [
+          0.833
+        ]
+      },
+      "bounds": null
+    },
+    "enemy_10109_mjcgst": {
+      "skel": "enemy_10109_mjcgst.skel",
+      "atlas": "enemy_10109_mjcgst.atlas",
+      "textures": [
+        "enemy_10109_mjcgst.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Start",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 2,
+        "Idle_2": 2,
+        "Move": 1.333,
+        "Move_2": 1.333,
+        "Start": 1
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.4
+        ]
+      },
+      "bounds": null
     },
     "enemy_1011_wizard": {
       "skel": "enemy_1011_wizard.skel",
@@ -666,6 +1093,284 @@
         "height": 397.037
       }
     },
+    "enemy_1058_traink": {
+      "skel": "enemy_1058_traink.skel",
+      "atlas": "enemy_1058_traink.atlas",
+      "textures": [
+        "enemy_1058_traink.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 1,
+        "Move": 0.8
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.333
+        ]
+      },
+      "bounds": {
+        "x": -173.505,
+        "y": -3.938,
+        "width": 349.415,
+        "height": 367.661
+      }
+    },
+    "enemy_1058_traink_2": {
+      "skel": "enemy_1058_traink_2.skel",
+      "atlas": "enemy_1058_traink_2.atlas",
+      "textures": [
+        "enemy_1058_traink_2.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 1,
+        "Move": 0.8
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.333
+        ]
+      },
+      "bounds": {
+        "x": -173.505,
+        "y": -3.938,
+        "width": 349.415,
+        "height": 367.661
+      }
+    },
+    "enemy_1076_bsthmr": {
+      "skel": "enemy_1076_bsthmr.skel",
+      "atlas": "enemy_1076_bsthmr.atlas",
+      "textures": [
+        "enemy_1076_bsthmr.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": "Move_Begin",
+          "loop": "Move_Loop",
+          "end": "Move_End"
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 2.533,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 2,
+        "Move_Begin": 0.2,
+        "Move_End": 0.2,
+        "Move_Loop": 1.067
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          1.6
+        ]
+      },
+      "bounds": {
+        "x": -181.348,
+        "y": -6.064,
+        "width": 559.504,
+        "height": 439.494
+      }
+    },
+    "enemy_1076_bsthmr_2": {
+      "skel": "enemy_1076_bsthmr_2.skel",
+      "atlas": "enemy_1076_bsthmr_2.atlas",
+      "textures": [
+        "enemy_1076_bsthmr_2.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": "Move_Begin",
+          "loop": "Move_Loop",
+          "end": "Move_End"
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 2.533,
+        "Default": 0,
+        "Die": 1,
+        "Idle": 2,
+        "Move_Begin": 0.2,
+        "Move_End": 0.2,
+        "Move_Loop": 1.067
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          1.6
+        ]
+      },
+      "bounds": {
+        "x": -181.348,
+        "y": -6.064,
+        "width": 559.504,
+        "height": 439.494
+      }
+    },
+    "enemy_1111_ucommd": {
+      "skel": "enemy_1111_ucommd.skel",
+      "atlas": "enemy_1111_ucommd.atlas",
+      "textures": [
+        "enemy_1111_ucommd.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Default",
+        "deploy": "Default",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.167,
+        "Combat": 1.167,
+        "Default": 0,
+        "Die": 0.9,
+        "Idile": 1.333,
+        "Move": 0.833
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.567
+        ],
+        "Combat": [
+          0.6
+        ]
+      },
+      "bounds": {
+        "x": -211.383,
+        "y": -0.909,
+        "width": 667.101,
+        "height": 404.158
+      }
+    },
     "enemy_1111_ucommd_2": {
       "skel": "enemy_1111_ucommd_2.skel",
       "atlas": "enemy_1111_ucommd_2.atlas",
@@ -830,6 +1535,65 @@
         "y": -1.73,
         "width": 214.563,
         "height": 355.99
+      }
+    },
+    "enemy_1135_redman": {
+      "skel": "enemy_1135_redman.skel",
+      "atlas": "enemy_1135_redman.atlas",
+      "textures": [
+        "enemy_1135_redman.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "C_Idle",
+        "deploy": "C_Idle",
+        "attack": {
+          "begin": null,
+          "loop": "C_Attack",
+          "end": null,
+          "via": "attackAny"
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "C_Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "C_Die",
+        "move": {
+          "begin": null,
+          "loop": "C_Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "C_Attack": 2.333,
+        "C_Combat": 2,
+        "C_Default": 0,
+        "C_Die": 0.867,
+        "C_Idle": 4,
+        "C_Move": 1.067
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "C_Attack": [
+          1.433
+        ],
+        "C_Combat": [
+          0.8
+        ]
+      },
+      "bounds": {
+        "x": -134.217,
+        "y": -2.039,
+        "width": 281.901,
+        "height": 335.112
       }
     },
     "enemy_1135_redman_2": {
@@ -1055,6 +1819,173 @@
         "y": -1.088,
         "width": 371.998,
         "height": 255.48
+      }
+    },
+    "enemy_1163_hvymot": {
+      "skel": "enemy_1163_hvymot.skel",
+      "atlas": "enemy_1163_hvymot.atlas",
+      "textures": [
+        "enemy_1163_hvymot.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null,
+          "via": "attack",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1,
+        "Default": 0,
+        "Die": 0.967,
+        "Idle": 1.333,
+        "Move": 1.2
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.5
+        ]
+      },
+      "bounds": null
+    },
+    "enemy_1184_cadkgt": {
+      "skel": "enemy_1184_cadkgt.skel",
+      "atlas": "enemy_1184_cadkgt.atlas",
+      "textures": [
+        "enemy_1184_cadkgt.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": "Skill_Begin",
+          "loop": "Skill_Loop",
+          "end": "Skill_End",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.833,
+        "Default": 0,
+        "Die": 3,
+        "Idle": 6,
+        "Move": 6,
+        "Skill_Begin": 0.667,
+        "Skill_End": 2,
+        "Skill_Loop": 5
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.667
+        ],
+        "Skill_End": [
+          0.667
+        ]
+      },
+      "bounds": {
+        "x": -194.079,
+        "y": -1.267,
+        "width": 551.015,
+        "height": 444.919
+      }
+    },
+    "enemy_1184_cadkgt_3": {
+      "skel": "enemy_1184_cadkgt_3.skel",
+      "atlas": "enemy_1184_cadkgt_3.atlas",
+      "textures": [
+        "enemy_1184_cadkgt_3.png"
+      ],
+      "pma": true,
+      "anims": {
+        "idle": "Idle",
+        "deploy": "Idle",
+        "attack": {
+          "begin": null,
+          "loop": "Attack",
+          "end": null
+        },
+        "attackDown": null,
+        "skill": {
+          "begin": "Skill_Begin",
+          "loop": "Skill_Loop",
+          "end": "Skill_End",
+          "index": 0,
+          "idle": null
+        },
+        "die": "Die",
+        "move": {
+          "begin": null,
+          "loop": "Move",
+          "end": null
+        },
+        "stun": null
+      },
+      "animations": {
+        "Attack": 1.833,
+        "Default": 0,
+        "Die": 3,
+        "Idle": 6,
+        "Move": 6,
+        "Skill_Begin": 0.667,
+        "Skill_End": 2,
+        "Skill_Loop": 5
+      },
+      "events": [
+        "OnAttack"
+      ],
+      "hits": {
+        "Attack": [
+          0.667
+        ],
+        "Skill_End": [
+          0.667
+        ]
+      },
+      "bounds": {
+        "x": -214.075,
+        "y": -1.267,
+        "width": 571.011,
+        "height": 494.039
       }
     },
     "enemy_1190_krgbow": {

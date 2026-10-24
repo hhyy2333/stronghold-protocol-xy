@@ -3448,7 +3448,9 @@ function buildFactions(ctx, enemies) {
  *   - same rank as the pool's anchor (`N[0]` / `E[0]`), and `attrPower` within FORK_POWER_BAND of that anchor: the
  *     count formula divides by the power ratio and clamps to 1..5, so a much stronger enemy would turn a wave of five
  *     into a wave of one;
- *   - at most FORK_EXTRA_PER_POOL added keys per pool, so the official enemies keep most of their share;
+ *   - at most FORK_EXTRA_PER_POOL added keys per pool of the batches WITHOUT a mechanic (docs/research batch 1), and
+ *     FORK_EXTRA_PER_POOL_KIT for the ones that carry a kit (batches 2–3, owner 2026-10-25 「我想要加入更多有技能的怪」):
+ *     a kit enemy is what the owner wants to meet, and the plain batch already fills every pool's one slot;
  *   - deterministic: candidates by natural key order, so the regenerated data/factions.json is stable.
  */
 const FORK_POWER_BAND = Object.freeze([0.85, 1.25]);
@@ -3460,6 +3462,8 @@ const FORK_POWER_BAND = Object.freeze([0.85, 1.25]);
  */
 const FORK_POWER_BAND_WIDE = Object.freeze([0.7, 1.5]);
 const FORK_EXTRA_PER_POOL = 1;
+/** Slots a batch enemy WITH a kit (research `kit`) may fill per pool — see the rules above. */
+const FORK_EXTRA_PER_POOL_KIT = 3;
 
 function attachWaveEnemies(ctx, entries, enemies) {
   const extra = customWaveEnemies(ctx);
@@ -3476,78 +3480,101 @@ function attachWaveEnemies(ctx, entries, enemies) {
     return true;
   });
   if (!usable.length) return;
+  /** The batch keys that carry a kit (research `kit`): they get their own slots per pool (FORK_EXTRA_PER_POOL_KIT). */
+  const kit = new Set(usable.filter((e) => e.kit).map((e) => e.key));
+  /**
+   * The pool's anchor — always its first key, the official one at index 0 (the round pick and the 429 official fixtures are
+   * defined by it). NOT the first ELITE further down: some entries' E pool starts with a NORMAL placeholder (the client draws
+   * both ranks through it), and the fixture that models the official data requires the round to keep the rank the official
+   * client would give it. An earlier take matched ELITE kit enemies against the first ELITE of such a pool and changed the
+   * round-14 boss escorts (waves.test.js: 'boss templates …') — the rank guard below is what keeps that from happening.
+   */
   const anchorOf = (list) => (Array.isArray(list) && list.length ? enemies[list[0].key] : null);
   // A rotating cursor over each pool's eligible candidates: nearest power to the anchor first, then key order, and the
   // cursor advances with every attachment so the whole batch is spread over the 67 entries instead of the same few keys
   // winning every pool. `used` counts attachments per key, which keeps the distribution even across a batch.
   const used = new Map(usable.map((e) => [e.key, 0]));
-  const wideUsed = new Set();
+  /** The slots a batch key may take in one pool: the plain-batch cap, or the kit cap when the research entry names a kit. */
+  const capOf = (key) => (kit.has(key) ? FORK_EXTRA_PER_POOL_KIT : FORK_EXTRA_PER_POOL);
+  /** How many fork keys of one kind (plain / kit) a pool still takes: a kit key never crowds out the plain slot and a plain
+   *  key never takes a kit's slot (otherwise the big plain batch fills every pool and a kit enemy has no room left). */
+  const roomFor = (have, isKit) => {
+    let plain = 0, kits = 0;
+    for (const x of have) if (x.fork) { if (capOf(x.key) > FORK_EXTRA_PER_POOL) kits++; else plain++; }
+    return Math.max(0, (isKit ? FORK_EXTRA_PER_POOL_KIT : FORK_EXTRA_PER_POOL) - (isKit ? kits : plain));
+  };
   let added = 0;
-  /** Attach to one pool: tight band first; a second pass at the wide band only for a key the tight band could not place
-   *  anywhere yet (research-file coverage over strict uniformity — see FORK_POWER_BAND_WIDE). */
+  /**
+   * Attach the batch to one pool (N or E of one entry).
+   *  - the pool's RANKED anchor (rankedAnchorOf) is the yardstick; a candidate must share its rank and the entry's movement
+   *    class — an ELITE kit key is never placed on a NORMAL-anchored pool;
+   *  - the tight band [0.85, 1.25] fills the pool's slots first;
+   *  - ONE wide-band key per pool (a research `band: 'wide'` key), only when the tight band cannot fill those slots — that is
+   *    how 畸变赘生物 and the kit batch were meant to fit, and no more: a pool never fills up with enemies of the wrong
+   *    strength (the per-round enemy count is the guard, waves-official's ±12 %);
+   *  - the least-used key wins (the batch spreads over the 67 entries), ties by nearest power, then key order.
+   */
   const attach = (entry, cls) => {
     const have = entry[cls] || [];
     const anchor = anchorOf(have);
     if (!anchor || !(anchor.attrPower > 0)) return 0;
-    if (have.length >= 1 + FORK_EXTRA_PER_POOL) return 0;
-    const room = Math.min(1 + FORK_EXTRA_PER_POOL - have.length, FORK_EXTRA_PER_POOL);
-    let band = FORK_POWER_BAND;
-    const pool = () => usable.filter((e) => {
+    const openPlain = roomFor(have, false), openKit = roomFor(have, true);
+    if (openPlain <= 0 && openKit <= 0) return 0;
+    const ratioOf = (e) => enemies[e.key].attrPower / anchor.attrPower;
+    const inTight = (q) => q >= FORK_POWER_BAND[0] - 1e-9 && q <= FORK_POWER_BAND[1] + 1e-9;
+    const forkKeys = have.filter((x) => x.fork);
+    const wideHeld = forkKeys.some((x) => !inTight(ratioOf(x)));
+    const roomWide = wideHeld ? 0 : 1;
+    const pool = (isKit, tightOnly) => usable.filter((e) => {
+      if (kit.has(e.key) !== isKit) return false;
       const r = enemies[e.key];
       if (r.isFlyEnemy !== entry.fly || r.rank !== anchor.rank) return false;
       if (have.some((x) => x.key === e.key)) return false;
-      const ratio = r.attrPower / anchor.attrPower;
-      // a batch enemy declared `band: 'wide'` (research file) accepts the wider [0.7, 1.5] here: those batches are small
-      // and every member must reach the waves; the tight band stays the default so a big batch cannot shift counts.
-      const lo = e.band === 'wide' ? FORK_POWER_BAND_WIDE[0] : band[0];
-      const hi = e.band === 'wide' ? FORK_POWER_BAND_WIDE[1] : band[1];
-      return ratio >= lo && ratio <= hi;
+      const q = ratioOf(e);
+      if (inTight(q)) return tightOnly;
+      return !tightOnly && e.band === 'wide' && q >= FORK_POWER_BAND_WIDE[0] && q <= FORK_POWER_BAND_WIDE[1];
     });
     const byNeed = (a, b) => {
       const ua = used.get(a.key) || 0, ub = used.get(b.key) || 0;
       if (ua !== ub) return ua - ub;                                  // least-used first: spreads the batch
-      const da = Math.abs(Math.log(enemies[a.key].attrPower / anchor.attrPower));
-      const db = Math.abs(Math.log(enemies[b.key].attrPower / anchor.attrPower));
+      const da = Math.abs(Math.log(ratioOf(a)));
+      const db = Math.abs(Math.log(ratioOf(b)));
       return da - db || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0); // then nearest power, then key order
     };
-    let picks = pool().sort(byNeed).slice(0, room);
-    if (!picks.length) {
-      // Wide fallback at most ONCE per (class, rank, movement class): it exists so a batch key the tight band cannot
-      // place is not silently missing from the waves, not to spread strong enemies over many pools (the per-round count
-      // drift stays a rounding error this way).
-      const slot = `${cls}|${anchor.rank}|${entry.fly}`;
-      if (!wideUsed.has(slot)) {
-        band = FORK_POWER_BAND_WIDE;
-        picks = pool().sort(byNeed).slice(0, 1);
-        if (picks.length) wideUsed.add(slot);
-      }
+    const picks = [];
+    const tightPlain = openPlain > 0 ? pool(false, true).sort(byNeed).slice(0, openPlain) : [];
+    const tightKit = openKit > 0 ? pool(true, true).sort(byNeed).slice(0, openKit) : [];
+    picks.push(...tightPlain, ...tightKit);
+    const missing = (openPlain + openKit) - picks.length;
+    if (missing > 0 && roomWide > 0) {
+      const wide = [...(openPlain > tightPlain.length ? (pool(false, false).sort(byNeed).slice(0, 1)) : []),
+        ...(openKit > tightKit.length ? (pool(true, false).sort(byNeed).slice(0, 1)) : [])].slice(0, missing);
+      picks.push(...wide);
     }
     for (const e of picks) { have.push({ key: e.key, fork: true }); used.set(e.key, (used.get(e.key) || 0) + 1); added++; }
     return picks.length;
   };
-  // Two rounds over the entries: round 1 gives every pool one fork key, round 2 fills the second slot. Doing it in
-  // passes is what keeps the batch spread evenly (a single pass would hand the low keys all the slots before the high
-  // ones are considered) while still allowing FORK_EXTRA_PER_POOL per pool.
+  // Several rounds over the entries (one round per kit slot): a single pass would hand the low keys all the slots before the
+  // high ones are considered, passes keep the batch spread evenly. The plain keys stop once their plain slots are full.
   const ordered = Object.values(entries).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  for (let pass = 0; pass < FORK_EXTRA_PER_POOL; pass++) {
+  for (let pass = 0; pass < FORK_EXTRA_PER_POOL_KIT; pass++) {
     for (const entry of ordered) for (const cls of ['N', 'E']) attach(entry, cls);
   }
   // An entry whose pool gained nothing keeps the official list untouched (no empty `fork` markers).
   for (const entry of Object.values(entries)) for (const cls of ['N', 'E']) if (!(entry[cls] || []).length) delete entry[cls];
-  // Second chance for a batch key still unattached: place it in the closest pool of its own class/rank that has a free
-  // slot, even at the wide band. Total attachments stay bounded (FORK_EXTRA_PER_POOL), so this only rescues the odd
-  // enemy the tight band could not fit anywhere.
+  // Second chance for a batch key still unattached: the closest pool of its own class and rank with a free slot, at the
+  // wide band. Only the odd enemy the tight band could not fit anywhere ends up here.
   let rescued = 0;
   for (const e of usable) {
-    if (used.get(e.key)) continue;
+    if (used.get(e.key) || (e.kit && !e.poolEligible)) continue;
     const r = enemies[e.key];
     let best = null;
     for (const entry of Object.values(entries)) {
       if (entry.fly !== r.isFlyEnemy) continue;
       for (const cls of ['N', 'E']) {
         const have = entry[cls] || [];
-        if (!have.length || have.length >= 1 + FORK_EXTRA_PER_POOL) continue;
-        const anchor = enemies[have[0].key];
+        if (!have.length || roomFor(have, kit.has(e.key)) <= 0) continue;
+        const anchor = anchorOf(have);
         if (!anchor || anchor.rank !== r.rank || !(anchor.attrPower > 0)) continue;
         const ratio = r.attrPower / anchor.attrPower;
         if (ratio < FORK_POWER_BAND_WIDE[0] || ratio > FORK_POWER_BAND_WIDE[1]) continue;
@@ -3564,9 +3591,6 @@ function attachWaveEnemies(ctx, entries, enemies) {
     + (rescued ? ` (${rescued} rescued at the wide band)` : '')
     + (unused.length ? `; never attached (no pool fits): ${unused.join(' ')}` : '; every enemy attached at least once'));
 }
-
-/** Identity helper that keeps the slice above readable (the picks ARE the candidates already trimmed to `room`). */
-const picksOf = (cands) => cands;
 
 // ===== bosses ===================================================================================
 
