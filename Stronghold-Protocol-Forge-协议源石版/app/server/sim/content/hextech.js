@@ -750,12 +750,20 @@ function applySpec(ctx, spec, hex = null, hook = '') {
   if (spec.lastDitchArm) {
     const ld = (hex && hex.effect && hex.effect.lastDitch) || {};
     const ref = ctx.effect(`hex:${id}`);
-    const stamped = { ...(ref && ref.params ? ref.params : {}), lastDitch: { ...ld, active: true } };
+    // MERGE the spec already on the ref, do not rebuild it from the record: the record's `lastDitch` has no `window`,
+    // and the match stamps `window` at the pick (`server/match/hextech.js applyHexExtras`). Rebuilding from `ld` erased
+    // it on the FIRST battle of the match, so 锁血 held only the pick round and never the second one (业主 2026-10-26
+    // 「背水一战锁血没触发」: `lpLockUntilOf` read 0 from R2 on).
+    const prev = (ref && ref.params && ref.params.lastDitch) || null;
+    const stamped = { ...(ref && ref.params ? ref.params : {}), lastDitch: { ...(prev || {}), ...ld, active: true } };
     if (ref) ctx.addEffect({ id: `hex:${id}`, params: stamped });
     const ev = ctx.event();
     const list = ev && ev.input && Array.isArray(ev.input.playerEffects) ? ev.input.playerEffects : null;
     const inRef = list ? list.find((r) => r && (r.key === `hex:${id}` || (r.data && r.data.hexId === id))) : null;
-    if (inRef && inRef !== ref) inRef.params = { ...stamped };
+    if (inRef && inRef !== ref) {
+      const prevIn = (inRef.params && inRef.params.lastDitch) || null;
+      inRef.params = { ...stamped, lastDitch: { ...(prevIn || {}), ...ld, active: true } };
+    }
     did = true;
   }
   // 盟约寄生 (业主 2026-10-21 rework): the old `parasiteLayers` battle-start shape is gone. The pick chose a random

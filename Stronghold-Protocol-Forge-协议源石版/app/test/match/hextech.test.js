@@ -1732,3 +1732,24 @@ test('管理员: the copy is 限一次 — a second gain in the same match does 
   h.invariants();
   h.m.dispose();
 });
+
+// 业主 2026-10-26「背水一战锁血没触发」：卡在获得时把 LP 设为 1 并开一个 2 回合的锁血窗口
+// （applyHexExtras 把 `window = 获得回合 + lockRounds - 1` 写进 ref）。战斗开始时 sim 的
+// `onBattleStart.lastDitchArm` 会往同一个 ref 上盖 `lastDitch` —— 它原本是**照记录重建**（记录里没有 `window`），
+// 于是第一场战斗一打完窗口就丢了，锁血只护住获得的那一回合，第二回合照样掉血。这条用例专门盯这个覆盖。
+test('背水一战: the 锁血 window survives the battles it arms (2 rounds, not 1)', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 31, fake: true }).start();
+  h.toPrep(1);
+  const ps = h.ps('p_0');
+  applyHex(h.m, ps, h.m.gd.hex('hex_lastditch'));
+  assert.equal(ps.lp, 1, 'the pick sets LP to 1');
+  assert.equal(lpLockUntilOf(ps), 2, 'window = pick round + lockRounds − 1');
+  assert.equal(lpLockedIn(ps, 1), true, 'the pick round is locked');
+  h.toPrep(2);   // one battle (and one lastDitchArm) later
+  assert.equal(lpLockUntilOf(ps), 2, 'the window is still there after the battle armed the card');
+  assert.equal(lpLockedIn(ps, 2), true, 'the SECOND round is locked too (the bug: it was not)');
+  h.toPrep(3);
+  assert.equal(lpLockedIn(ps, 3), false, 'and the window closes after that');
+  h.invariants();
+  h.m.dispose();
+});
