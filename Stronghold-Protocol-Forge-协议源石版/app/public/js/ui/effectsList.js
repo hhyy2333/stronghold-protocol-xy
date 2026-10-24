@@ -63,12 +63,12 @@ export function EffectsList({ effects }) {
       const tierUrl = e.iconKind === 'hex' && e.tier ? hexTierArtUrl(local, e.tier) : null;
       const tierArt = !!tierUrl && src === tierUrl;
       return html`<${Tooltip} key=${e.id ?? i} placement="bottom" text=${html`<div class="efftip">
-        <b>${tName(e.name) || t('效果')}</b><span class="efftip__kind">${t(KIND[e.iconKind] || '')}${e.counterText ? ` · ${bountyCounterText(e)}` : e.counter != null ? ` · ${e.counter}` : ''}</span>
+        <b>${tName(e.name) || t('效果')}</b><span class="efftip__kind">${t(KIND[e.iconKind] || '')}${e.count > 1 ? ` · ×${e.count}` : ''}${e.counterText ? ` · ${bountyCounterText(e)}` : e.counter != null ? ` · ${e.counter}` : ''}</span>
         <${RichText} as="p" text=${effectDesc(e)} />
       </div>`}>
       <span class=${`effect effect--${e.iconKind || 'x'}${tierArt ? ` effect--hextier effect--tier${e.tier}` : ''}`}>
         <${Img} src=${src} fallback=${html`<${GIcon} name="bolt" />`} />
-        ${e.counter != null && e.counter !== '' ? html`<b class="effect__n num">${e.counter}</b>` : null}
+        ${e.count > 1 ? html`<b class="effect__n num">×${e.count}</b>` : e.counter != null && e.counter !== '' ? html`<b class="effect__n num">${e.counter}</b>` : null}
       </span>
     <//>`;
     })}

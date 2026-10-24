@@ -31,10 +31,25 @@ export class PlayerViews {
     const out = [];
     const band = this.bandId ? this.gd.band(this.bandId) : null;
     if (band) out.push({ id: band.effectId || band.bandId, name: band.effectName || band.name, desc: band.desc || '', iconKind: 'band', iconId: band.iconId || band.bandId });
+    // 策略「管理员」的复制是**同一张卡的第二份 ref**（server/match/hextech.js addHexRef copySeq），效果栏如果照 ref
+    // 逐个列出来就是两行一样的图标 —— 业主 2026-10-24「UI 上多个该合并成一行显示『名字 × 几』」。所以按 hexId 归并：
+    // 一份 entry、`count: n`，客户端把 `count > 1` 画成 ×n。别的 kind（机变 / 道具 / 特质）本来就不会重复，不动。
+    const hexCount = new Map();
+    for (const e of this.effects) {
+      if (e.hidden || e.iconKind !== 'hex' || !e.data || !e.data.hexId) continue;
+      hexCount.set(e.data.hexId, (hexCount.get(e.data.hexId) || 0) + 1);
+    }
+    const seenHex = new Set();
     for (const e of this.effects) {
       if (e.hidden) continue;
+      const copyId = e.iconKind === 'hex' && e.data ? e.data.hexId : null;
+      if (copyId) {
+        if (seenHex.has(copyId)) continue;   // a 管理员 copy of a card already listed
+        seenHex.add(copyId);
+      }
       const v = { id: e.id, name: e.name || e.id, desc: e.desc || '', iconKind: e.iconKind || 'choice', iconId: e.iconId || e.id };
       if (e.counter != null) v.counter = e.counter;
+      if (copyId && hexCount.get(copyId) > 1) v.count = hexCount.get(copyId);
       // 协议源石 (DESIGN §29): the effect column shows the card's 阶位 art, so the rarity's tier rides along (the ref's
       // data carries the rarity; the tier itself is data/hextech.json `rarities[].tier`). Without it the client's
       // hexTierArtUrl() has no tier to look up and the tile falls back to the bolt glyph.
