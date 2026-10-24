@@ -970,7 +970,18 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     addEffect: (ref) => {
       if (!ref || typeof ref.id !== 'string') return null;
       const existing = ps.effects.find((e) => e.id === ref.id);
-      if (existing) { Object.assign(existing, ref); ps.dirty(); return existing; }
+      if (existing) {
+        // MERGE the nested `params`, never replace them: one EffectRef is written by several owners (the match stamps a
+        // card at the pick, the sim's round/battle hooks write the same ref later), and a writer that passes a partial
+        // `params` used to DROP every field it did not mention — `onBattleStart.lastDitchArm` erased 背水一战's
+        // `lastDitch.window` on the first battle, so the 锁血 stopped holding in its second round (业主 2026-10-26
+        // 「背水一战锁血没触发」). With this merge a writer only has to pass what it OWNS.
+        const nested = !!(ref.params && typeof ref.params === 'object' && !Array.isArray(ref.params)
+          && existing.params && typeof existing.params === 'object' && !Array.isArray(existing.params));
+        Object.assign(existing, nested ? { ...ref, params: { ...existing.params, ...ref.params } } : ref);
+        ps.dirty();
+        return existing;
+      }
       const e = { iconKind: 'choice', battle: true, ...ref };
       ps.effects.push(e);
       ps.dirty();

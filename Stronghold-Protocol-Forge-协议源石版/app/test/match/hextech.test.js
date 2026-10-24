@@ -1753,3 +1753,22 @@ test('背水一战: the 锁血 window survives the battles it arms (2 rounds, no
   h.invariants();
   h.m.dispose();
 });
+
+// 业主 2026-10-26 追问：`lastDitchArm` 那种「照记录重建 params」是**一类**风险 —— 同一个 EffectRef 有两个写者
+// （match 在获得时写窗口，sim 的战斗/回合钩子后写同一份）。现在在引擎层把它堵死：`ctx.addEffect` 对已存在的 ref
+// **合并** params，而不是整体替换，于是任何只写自己那部分的写者都不会再抹掉别人的字段。
+test('addEffect merges nested params, so a partial write cannot erase another owner\'s field', async () => {
+  const { makeCtx } = await import('../../server/match/effectsMeta.js');
+  const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 41, fake: true }).start();
+  h.toPrep(1);
+  const ps = h.ps('p_0');
+  const ref = { id: 'hex:probe', key: 'hex:probe', params: { window: 2, keep: 'yes' } };
+  ps.effects.push(ref);
+  const ctx = makeCtx(h.m, ps, { kind: 'effect', key: 'hex:probe', ref }, 'onBattleStart', null);
+  ctx.addEffect({ id: 'hex:probe', params: { active: true } });
+  assert.deepEqual(ref.params, { window: 2, keep: 'yes', active: true }, 'the partial write kept the other owner\'s fields');
+  ctx.addEffect({ id: 'hex:probe', params: { window: 9 } });
+  assert.deepEqual(ref.params, { window: 9, keep: 'yes', active: true }, 'and a later write of the same key wins for its own field only');
+  h.invariants();
+  h.m.dispose();
+});
