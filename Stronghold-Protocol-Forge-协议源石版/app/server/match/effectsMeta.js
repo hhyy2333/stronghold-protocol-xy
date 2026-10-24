@@ -620,6 +620,10 @@ function applyPreviewGuard(ctx, ps, m, source, hook) {
  * @param {object|null} [ev] the event being dispatched (onPrice: ctx.modifyPrice / ctx.setPrice edit ev.price)
  */
 export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
+  // Counter namespace of this handler call: '' for an ordinary effect ref, `<ref id>::` for a 策略「管理员」copy
+  // (server/match/hextech.js addHexRef copySeq) — the copy is a second ref of the same card and must keep its own
+  // ladder/total counters (see the counters section below).
+  const COUNTER_PREFIX = source && source.ref && source.ref.data && Number(source.ref.data.copySeq) > 1 ? `${source.ref.id}::` : '';
   // the player's view of the data: its slotted 自选 slots are its operators (0.2.0, player/diy.js) — chessRecord,
   // pieceBonds, a strategy's / 特质's bond and tier reads see the operator; the match's GameData for everyone else
   const gd = ps.gd || m.gd;
@@ -722,9 +726,12 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     shopSlots: () => ps.shop.slots.map((s) => (s ? { kind: s.kind, id: s.id, basePrice: s.basePrice, sold: !!s.sold, frozen: !!s.frozen } : null)),
 
     // ---- counters (player scope, persistent)
-    counter: (k) => (Number.isFinite(ps.counters[k]) ? ps.counters[k] : 0),
-    setCounter: (k, v) => { if (typeof k === 'string' && Number.isFinite(v)) ps.counters[k] = v; return ps.counters[k] ?? 0; },
-    incCounter: (k, n = 1) => { if (typeof k !== 'string' || !Number.isFinite(n)) return 0; ps.counters[k] = (Number.isFinite(ps.counters[k]) ? ps.counters[k] : 0) + n; return ps.counters[k]; },
+    // A 策略「管理员」copy is a second ref of the SAME card (server/match/hextech.js addHexRef copySeq): its counters live
+    // under `<ref id>::` so the two copies keep independent ladders — 神器整备's 段位、后勤整备's 阶级、心之钢's total —
+    // instead of overwriting one another (业主 2026-10-26「复制后只会触发1个」).
+    counter: (k) => (Number.isFinite(ps.counters[COUNTER_PREFIX + k]) ? ps.counters[COUNTER_PREFIX + k] : 0),
+    setCounter: (k, v) => { if (typeof k === 'string' && Number.isFinite(v)) ps.counters[COUNTER_PREFIX + k] = v; return ps.counters[COUNTER_PREFIX + k] ?? 0; },
+    incCounter: (k, n = 1) => { if (typeof k !== 'string' || !Number.isFinite(n)) return 0; const key = COUNTER_PREFIX + k; ps.counters[key] = (Number.isFinite(ps.counters[key]) ? ps.counters[key] : 0) + n; return ps.counters[key]; },
     /** Per-piece counter of the current round (0 in a new round / for a new piece, an elite merged this round included —
      *  PlayerState.pieceRoundCount). */
     pieceCounter: (uid, k) => { const p = counted(uid); return p ? ps.pieceRoundCount(p, k) : 0; },

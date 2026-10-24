@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA, withoutHextech, give, giveItem, chessOfTier, legalTileFor } from './harness.js';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
-import { enemyHexMods, applyHex, applyVoidReturnLayers, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
+import { enemyHexMods, applyHex, applyVoidReturnLayers, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, enemyPrepLpCost, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
 import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
 import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
@@ -1624,4 +1624,111 @@ test('锻炉: two worn items fuse into 百变 — one item, both effects, never 
   void before;
   h.invariants();
   m.dispose();
+});
+
+// ---- 记录部抑制 (enemy hex `ehex_records`): the prep-phase LP charge and the line the player sees ---------------
+
+test('记录部抑制: a prep deploy costs LP and the seat is TOLD (业主 2026-10-24「触发时给个明显提示」)', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 7, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  m.enemyHexes = [{ id: 'ehex_records', round: 1 }];   // the shape the 海克斯 draft and the test field both store
+  assert.equal(enemyPrepLpCost(m, m.round), 1, 'R1 is the first tick of everyRounds: 4');
+  const chessId = chessOfTier(1).find((id) => m.pool.has(id));
+  const piece = give(m, ps, chessId);
+  const [row, col] = legalTileFor(m, ps, chessId);
+  const lpBefore = ps.lp;
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: piece.uid, to: { area: 'board', row, col } }), { ok: true });
+  assert.equal(ps.lp, lpBefore - 1, 'the deploy charged 1 LP');
+  // the line the player sees: a `hex` toast — ui/toasts.js holds it longer, main.js flashes the screen and the LP tower
+  const frame = h.lastTo('p_0', 'm.toast');
+  assert.equal(frame.kind, 'hex');
+  assert.equal(frame.hex, 'ehex_records', 'the frame names the card');
+  assert.equal(frame.msgid, '记录部抑制：部署干员消耗 {n} 点策略生命（剩余 {rest}）');
+  assert.deepEqual(frame.params, { n: 1, rest: ps.lp });
+  assert.equal(frame.text, `记录部抑制：部署干员消耗 1 点策略生命（剩余 ${ps.lp}）`);
+  // a REFUSED deploy (an illegal tile) must not cost LP — the whole reason the charge happens after the move
+  const toastsNow = h.allTo('p_0', 'm.toast').length;
+  const refused = m.handle(ps.playerId, { t: 'g.move', uid: piece.uid, to: { area: 'board', row: -1, col: -1 } });
+  assert.ok(refused && refused.error, `expected a refusal, got ${JSON.stringify(refused)}`);
+  assert.equal(ps.lp, lpBefore - 1, 'the refused deploy charged nothing');
+  assert.equal(h.allTo('p_0', 'm.toast').length, toastsNow, 'and said nothing');
+  h.invariants();
+  m.dispose();
+});
+
+test('记录部抑制: without the card, or on a round that is not its tick, a deploy is free and silent', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 7, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  const chessId = chessOfTier(1).find((id) => m.pool.has(id));
+  const piece = give(m, ps, chessId);
+  const [row, col] = legalTileFor(m, ps, chessId);
+  const lpBefore = ps.lp;
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: piece.uid, to: { area: 'board', row, col } }), { ok: true });
+  assert.equal(ps.lp, lpBefore);
+  assert.equal(h.lastTo('p_0', 'm.toast'), null, 'no enemy card ⇒ no line at all');
+  // owning it still charges only on its ticks (everyRounds: 4 ⇒ R1, R5, R9 …)
+  m.enemyHexes = [{ id: 'ehex_records', round: 1 }];
+  assert.equal(enemyPrepLpCost(m, 2), 0);
+  assert.equal(enemyPrepLpCost(m, 5), 1);
+  h.invariants();
+  m.dispose();
+});
+
+// =====================================================================================================================
+// 策略「管理员」(业主 2026-10-26)：「当你获得协议源石时，复制一个。限一次。」
+// =====================================================================================================================
+
+// 业主 2026-10-26「好多协议源石被'管理员'复制后只会触发1个」：复制必须让这张卡的**每一条腿**都算两份。
+// 旧实现只重放 onPick、且 addHexRef 按 hexId 去重（一人一张）⇒ 盟约回响 / 量产线 / 神器整备这些「每回合」或「阶梯」
+// 的卡复制后毫无变化。现在复制 = 同一张卡的**第二个 ref**（id `hex:<id>#2`、key 不变），派发器逐个 ref 跑，于是
+// 每回合类 ×2；makeCtx 按 ref id 给计数器加命名空间，两套阶梯互不覆盖。
+test('管理员: a copied 神器整备 runs TWO independent ladders (2 refs, per-ref counters)', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 11, fake: true }).start();
+  h.toPrep(1);
+  const ps = h.ps('p_0');
+  ps.bandId = 'band_admin';
+  const items = () => {
+    const out = [];
+    for (const p of ps.hand || []) if (p && p.kind === 'item') out.push(p.id);
+    for (const p of ps.temp || []) if (p && p.kind === 'item') out.push(p.id);
+    return out.sort();
+  };
+  const countOf = (id) => items().filter((x) => x === id).length;
+  applyHex(h.m, ps, h.m.gd.hex('hex_artifactkit'));
+  // two refs of the same card, one of them the copy
+  const refs = ps.effects.filter((e) => e.key === 'hex:hex_artifactkit');
+  assert.deepEqual(refs.map((r) => r.id).sort(), ['hex:hex_artifactkit', 'hex:hex_artifactkit#2'], 'the copy is its own ref');
+  assert.equal(countOf('chess_item_9_93_e_a'), 2, 'R1: two 加护, one per ref');
+  // both ladders have their own counters (no overwrite)
+  assert.equal(ps.counters['hex:hex_artifactkit:stage'], 1, 'the original ladder is at rung 1');
+  assert.equal(ps.counters['hex:hex_artifactkit#2::hex:hex_artifactkit:stage'], 1, 'and the copy keeps its own rung 1');
+  h.toPrep(2);
+  assert.equal(countOf('chess_item_9_92_e_a'), 2, 'R2: two 残光 — each copy walked its own 2阶 rung');
+  h.toPrep(4);
+  assert.equal(countOf('chess_item_9_92_e_a'), 2, 'no extra 2阶 later');
+  const t3 = ['chess_item_9_90_e_a', 'chess_item_9_91_e_a', 'chess_item_9_94_e_a', 'chess_item_9_95_e_a', 'chess_item_9_96_e_a'];
+  assert.equal(t3.reduce((n, id) => n + countOf(id), 0), 2, 'R4: two 3阶 artifacts, one per ladder');
+  h.invariants();
+  h.m.dispose();
+});
+
+test('管理员: the copy is 限一次 — a second gain in the same match does not copy again', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 12, fake: true }).start();
+  h.toPrep(1);
+  const ps = h.ps('p_0');
+  ps.bandId = 'band_admin';
+  applyHex(h.m, ps, h.m.gd.hex('hex_stipend'));   // 获得时 +3 资金，之后再每回合 +2
+  assert.ok(ps.effects.some((e) => e.id === 'hex:hex_stipend#2'), 'the first gain was copied');
+  const refsAfterFirst = ps.effects.filter((e) => e.key.startsWith('hex:hex_')).length;
+  applyHex(h.m, ps, h.m.gd.hex('hex_echo'));      // a second gain: the strategy is spent
+  assert.ok(!ps.effects.some((e) => e.id === 'hex:hex_echo#2'), 'the second gain is NOT copied');
+  assert.equal(ps.effects.filter((e) => e.key.startsWith('hex:hex_')).length, refsAfterFirst + 1, 'only the new card itself joined');
+  h.invariants();
+  h.m.dispose();
 });

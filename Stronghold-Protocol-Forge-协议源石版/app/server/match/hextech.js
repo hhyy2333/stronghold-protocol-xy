@@ -274,7 +274,21 @@ export function applyBandHexCopy(m, ps, hex, { depth = 0 } = {}) {
   ps.counters[BAND_HEX_COPY_USED] = 1;
   let n = 0;
   for (let i = 0; i < count; i++) {
-    try { applyHex(m, ps, hex, { depth: depth + 1 }); n++; } catch (e) { m.reportError(`hex ${hex.id} (管理员)`, e); }
+    const copySeq = i + 2;   // the copy is the 2nd, 3rd … ref of the same card
+    try {
+      // A SECOND REF, not a second `applyHex`: the dispatcher walks refs one at a time (effectsMeta.js step 6), so every
+      // hook the card has — 获得时 here, plus every 每回合 / 每 N 回合 half — settles once per ref. `makeCtx` namespaces
+      // this ref's counters by its id, so a ladder card keeps two independent ladders instead of overwriting one
+      // (业主 2026-10-26「好多协议源石被'管理员'复制后只会触发1个」: the old code re-ran only the 获得时 half and one ref
+      // meant 盟约回响 / 量产线 / 神器整备… never doubled).
+      const ref = addHexRef(m, ps, hex, { copySeq });
+      const ev = { hex: { ...hex }, picker: ps.playerId, forTeammate: false, copySeq };
+      m.dispatcher.runKey(ps, ref.key, 'onHexPick', { kind: 'hex', hex, ref, copySeq }, ev);
+      applyHexLp(m, ps, hex);
+      m.dispatch(ps, 'onHexPick', ev, { skipKey: ref.key });
+      ps.recompute();
+      n++;
+    } catch (e) { m.reportError(`hex ${hex.id} (管理员)`, e); }
   }
   ps.dirty?.();
   return n;
@@ -530,11 +544,17 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
  * alone marked all of those `battle: false`, and `player/round.js battleInput` then dropped them from every battle's
  * `playerEffects` — the cards were owned, drafted and shown, but their battle half never ran.
  */
-function addHexRef(m, ps, hex) {
-  const id = `hex:${hex.id}`;
-  // one ref per hex per player: a team hex reaching a player who already drafted it must not run twice
-  const existing = (ps.effects || []).find((e) => e && (e.id === id || e.key === id));
-  if (existing) return existing;
+function addHexRef(m, ps, hex, { copySeq = 0 } = {}) {
+  const id = copySeq > 0 ? `hex:${hex.id}#${copySeq}` : `hex:${hex.id}`;
+  // one ref per hex per player: a team hex reaching a player who already drafted it must not run twice.
+  // A COPY (策略「管理员」) is the one thing that must: it gets its own ref id (same `key`, so the same handler runs) —
+  // the dispatcher walks `ps.effects` one ref at a time (effectsMeta.js dispatch step 6), so its per-round halves settle
+  // twice, and `makeCtx` namespaces its counters by this ref id so the two copies' ladders (神器整备 / 后勤整备 / 心之钢)
+  // never overwrite each other (业主 2026-10-26「好多协议源石被'管理员'复制后只会触发1个」).
+  if (copySeq <= 0) {
+    const existing = (ps.effects || []).find((e) => e && (e.id === id || e.key === id));
+    if (existing) return existing;
+  }
   const spec = hex.effect || {};
   // 孤注一掷 (0.3.0 playtest #3): `battleForRounds` = a battle passive that lapses after `rounds` rounds. The expiry is
   // read by the sim (content/hextech.js install) against the battle's own round.
@@ -553,16 +573,18 @@ function addHexRef(m, ps, hex) {
     counter: null,
     battle: hasBattlePart(params),
     params,
-    data: { hexId: hex.id, rarity: hex.rarity },
+    data: { hexId: hex.id, rarity: hex.rarity, ...(copySeq > 0 ? { copySeq } : {}) },
   };
   ps.effects.push(ref);
   ps.dirty();
   return ref;
 }
 
-/** The hex ids a player owns (in pick order). */
+/** The hex ids a player owns (in pick order), de-duplicated: a 策略「管理员」copy is a second ref of the SAME card, not
+ * a second card — the draft pool, 潘多拉魔盒 and the battle flags all want the ownership list, not the ref list. */
 export function hexIdsOf(ps) {
-  return (ps.effects || []).filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:')).map((e) => e.data && e.data.hexId).filter(Boolean);
+  const out = (ps.effects || []).filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:')).map((e) => e.data && e.data.hexId).filter(Boolean);
+  return out.filter((id, i) => out.indexOf(id) === i);
 }
 
 /** Whether the player owns a hex (0.3.0 playtest #3: several hexes act through ownership, not through a spec run). */
