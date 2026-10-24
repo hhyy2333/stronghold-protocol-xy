@@ -205,6 +205,12 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS[i]` 回合。业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」——
   此前是开局一次发完，L18 等于 R1 就拿到 3 张）。从敌方名册按这一局的 `rngHex` 抽（跳过已有的卡、确定性；等级
   关闭时返回 0，一个字节都不动）。
+- **互斥的敌方协议源石**：`shared/hextech.js ENEMY_HEX_EXCLUSIONS` 里的组合永远不同时出现 —— 目前只有一条：
+  **隐匿（`ehex_stealth`）× 势不可挡（`ehex_unstoppable`）**（业主 2026-10-24「不要让敌方协议隐匿和势不可挡一起出现」）。
+  理由：隐匿让地面非首领敌人开场不可见，只能靠挡住它来现形；势不可挡又每名敌人多要 1 点阻挡、速度减半 ——
+  两者叠加等于要求玩家去挡一个看不见、且挡不住的单位，整波没有解法。规则在**抽取点**生效
+  （`pickEnemyHex` → `enemyHexConflicts`），两条发牌路径（每回合 1 张、等级额外那几张）共用同一个函数，
+  所以重放仍确定性、老存档不用迁移；测试面板 / 工坊包的**显式发放**不过滤（那是明确给的卡，不是抽的）。
 - **排行榜**：`MatchRecords.board({ difficulty, level, limit })` —— 每 (难度, 等级) 一张榜，每名真人只留「胜 > 通过回合多 >
   更早达成」的最好一局，榜长封顶 50；公开面只有名字与成绩（**不含 playerId**），装载时从 journal 重建。C2S
   `records.board` 取榜，客户端「统计 → 排行榜」按难度 / 等级筛选。

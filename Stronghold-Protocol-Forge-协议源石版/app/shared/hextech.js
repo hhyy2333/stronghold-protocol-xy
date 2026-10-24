@@ -120,7 +120,38 @@ export function pickEnemyRarity(rng, pickedRarities) {
 }
 
 /**
- * The enemy hex for one draw: an entry of `rarity` the enemy does not own, else the adjacent rarity, else null.
+ * Enemy-hex pairs the enemy side may never own together (业主 2026-10-24「不要让敌方协议隐匿和势不可挡一起出现」).
+ *
+ * 隐匿 (ehex_stealth) hides every ground non-boss enemy until it is blocked — the only way to reveal one is to put an
+ * operator in its path. 势不可挡 (ehex_unstoppable) makes every enemy demand one MORE block while halving its speed: the
+ * pair asks for a block the player cannot afford on a unit they cannot see, so a wave can become unwinnable without any
+ * counterplay. The rule is enforced at DRAW time (`pickEnemyHex`) for both paths that hand the enemy side a card — the
+ * per-draft one and the 协议等级 extras — so a replay stays deterministic and no save has to be migrated. A card granted
+ * by a test field / a workshop wrapper is NOT filtered (that is an explicit grant, not a draw).
+ */
+export const ENEMY_HEX_EXCLUSIONS = Object.freeze([
+  Object.freeze(['ehex_stealth', 'ehex_unstoppable']),
+]);
+
+/**
+ * Whether taking `id` would break one of `ENEMY_HEX_EXCLUSIONS` for the cards the enemy side already owns.
+ * @param {string} id the candidate card id
+ * @param {Iterable<string>} owned ids the enemy side already owns
+ * @returns {boolean}
+ */
+export function enemyHexConflicts(id, owned) {
+  if (typeof id !== 'string' || !id) return false;
+  const have = owned instanceof Set ? owned : new Set(owned || []);
+  for (const pair of ENEMY_HEX_EXCLUSIONS) {
+    if (!pair.includes(id)) continue;
+    if (pair.some((other) => other !== id && have.has(other))) return true;
+  }
+  return false;
+}
+
+/**
+ * The enemy hex for one draw: an entry of `rarity` the enemy does not own (and whose pair rules allow), else the adjacent
+ * rarity, else null.
  * @param {() => number} rng
  * @param {{ pool: Array<{id: string, rarity: string}>, owned?: Iterable<string>, rarity: string }} args
  * @returns {string|null}
@@ -128,7 +159,7 @@ export function pickEnemyRarity(rng, pickedRarities) {
 export function pickEnemyHex(rng, { pool, owned = [], rarity }) {
   const taken = new Set(owned);
   for (const r of rarityFallbackOrder(rarity)) {
-    const candidates = pool.filter((h) => h && h.rarity === r && !taken.has(h.id));
+    const candidates = pool.filter((h) => h && h.rarity === r && !taken.has(h.id) && !enemyHexConflicts(h.id, taken));
     const picked = pickOne(rng, candidates);
     if (picked) return picked.id;
   }
