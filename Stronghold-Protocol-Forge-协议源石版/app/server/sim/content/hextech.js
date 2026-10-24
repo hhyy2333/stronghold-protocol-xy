@@ -103,6 +103,34 @@ import { reviveNow, carries } from './items/battle.js';
 export const HEX_KEY = 'hex:';
 
 /**
+ * How many refs of `hexId` a player brought into this battle: 1 normally, 2 when 策略「管理员」copied it
+ * (server/match/hextech.js addHexRef `copySeq`). The hexcards side has the same helper on its hooks object
+ * (`copiesOf`, content/hexcards/hooks.js) — this module's installers do not take that bundle, so it is repeated here.
+ */
+function hexCopiesOf(battle, pid, hexId) {
+  const ps = battle && typeof battle.getPlayer === 'function' ? battle.getPlayer(pid) : null;
+  let n = 0;
+  for (const ref of (ps && ps.playerEffects) || []) {
+    if (!ref || typeof ref.key !== 'string') continue;
+    const id = ref.data && typeof ref.data.hexId === 'string' ? ref.data.hexId : ref.key.slice(HEX_KEY.length);
+    if (id === hexId) n++;
+  }
+  return n;
+}
+
+/**
+ * A card's match-long passive, installed ONCE PER COPY (策略「管理员」copies are a second ref of the same card).
+ * `passiveBuff` replaces by key, so a fixed key would make two copies worth one card; the 2nd..nth copies get a `:n`
+ * suffix so the additive mods add up (业主 2026-10-24「全改掉」).
+ */
+function passivePerCopyHex(battle, u, hexId, key, mods, extra = {}) {
+  if (!u || !key) return 0;
+  const n = Math.max(1, hexCopiesOf(battle, u.ownerId, hexId));
+  for (let i = 0; i < n; i++) passiveBuff(battle, u, i ? `${key}:${i + 1}` : key, mods, extra);
+  return n;
+}
+
+/**
  * 恶魔形态's own equipment 恶魔之契 (`CUSTOM_ITEMS` `chess_item_9_91_e_a` in tools/build-data.mjs, §29.32): the card grants
  * it on pick, and the battle half buffs the operators CARRYING it instead of a random one — the owner's request
  * (「如果像幽魂形态一样给个装备来决定对谁生效就好了」). `itemKeyOf` (content/support) strips the `_a` suffix, which is
@@ -1403,7 +1431,7 @@ export function install(battle) {
       const value = Math.floor(layers / per) * ratio;
       for (const u of opsOf(pid)) {
         const affected = isMember(battle, u, 'preciShip') || (u.def && u.def.position === 'RANGED');
-        if (affected && value > 0) passiveBuff(battle, u, 'hex:precisionpen', { defIgnorePct: value, resIgnorePct: value });
+        if (affected && value > 0) passivePerCopyHex(battle, u, 'hex_precisionpen', 'hex:precisionpen', { defIgnorePct: value, resIgnorePct: value });
       }
     };
     battle.on('battleStart', () => { for (const pid of penSpecs.keys()) applyPen(pid); }, { priority: -10 });
@@ -1490,7 +1518,7 @@ export function install(battle) {
     const position = typeof s.position === 'string' ? s.position : 'RANGED';
     const extend = Number(s.extend) > 0 ? Math.trunc(Number(s.extend)) : 1;
     battle.on('battleStart', () => {
-      for (const u of opsOf(pid)) if (u.def && u.def.position === position) passiveBuff(battle, u, 'hex:firingline', { rangeExtend: extend });
+      for (const u of opsOf(pid)) if (u.def && u.def.position === position) passivePerCopyHex(battle, u, 'hex_firingline', 'hex:firingline', { rangeExtend: extend });
     }, { priority: -10 });
   }
 

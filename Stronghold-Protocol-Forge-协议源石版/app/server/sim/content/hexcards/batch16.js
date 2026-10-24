@@ -132,7 +132,7 @@ export function installAdaptiveGrowth(hooks) {
 export function installDrawBlade(hooks) {
   const owners = ownersOfCard(hooks, 'hex_drawblade');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const spec = specOf(owners[0], 'hex_drawblade', 'drawBlade');
   const atkPct = pos(spec.atkPct, 50) / 100;
@@ -145,7 +145,7 @@ export function installDrawBlade(hooks) {
   let n = 0;
   const apply = (u) => {
     if (!isCarrier(u)) return;
-    passiveBuff(battle, u, 'hex:drawblade', { atkPct, defPct, hpPct }, { tags: ['hex'] });
+    passivePerCopy(u, u.ownerId, 'hex_drawblade', 'hex:drawblade', { atkPct, defPct, hpPct }, { tags: ['hex'] });
     // 借来的盟约：extraBonds 是不可变的，换一个新数组（unitBonds 的缓存键含它，会自然重算）
     const cur = Array.isArray(u.extraBonds) ? u.extraBonds : [];
     if (!cur.includes(bond) && !unitBonds(u).includes(bond)) u.extraBonds = Object.freeze([...cur, bond]);

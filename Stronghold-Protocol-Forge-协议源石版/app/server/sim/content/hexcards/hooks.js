@@ -66,6 +66,23 @@ export function hexHooks(battle) {
     }
     return n;
   };
+  /**
+   * Install a card's match-long passive ONCE PER COPY it was brought in (策略「管理员」: a copied card is a second ref of
+   * the same card). `passiveBuff` replaces by key, so a fixed key makes two copies worth one card —
+   * 业主 2026-10-24「两个自适应成长好像也只加了一个」. The 2nd..nth copies get a `:2` / `:3` suffix on the key, which is
+   * what lets the additive mods of `passiveBuff` actually add up.
+   * @param {any} u the operator
+   * @param {string} pid its owner
+   * @param {string} hexId e.g. 'hex_adaptivegrowth'
+   * @param {string} key the card's base buff key, e.g. 'hex:adaptivegrowth'
+   * @returns {number} how many copies were installed
+   */
+  const passivePerCopy = (u, pid, hexId, key, mods, extra = {}) => {
+    if (!u || !key) return 0;
+    const n = Math.max(1, copiesOf(pid, hexId));
+    for (let i = 0; i < n; i++) passiveBuff(battle, u, i ? `${key}:${i + 1}` : key, mods, extra);
+    return n;
+  };
   /** The operators of ONE player currently in the battle (the card's own carriers). */
   const opsOf = (pid) => battle.allyUnits.filter((u) => u && u.kind === 'op' && u.side === 'ally' && u.ownerId === pid);
   /** EVERY operator on this field, any owner — the 联防 field holds several players' boards. */
@@ -85,5 +102,5 @@ export function hexHooks(battle) {
     return Number.isFinite(v) && v > 0 ? v : fallback;
   };
 
-  return { battle, ownersOf, copiesOf, opsOf, fieldOps, specOf, optNumber, onField, passiveBuff, isRetaliation, isHpLoss };
+  return { battle, ownersOf, copiesOf, passivePerCopy, opsOf, fieldOps, specOf, optNumber, onField, passiveBuff, isRetaliation, isHpLoss };
 }

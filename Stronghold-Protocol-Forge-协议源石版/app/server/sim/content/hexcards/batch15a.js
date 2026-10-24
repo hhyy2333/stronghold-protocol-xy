@@ -62,7 +62,7 @@ function pos(v, fallback) {
 export function installCanlight(hooks) {
   const owners = ownersOfCard(hooks, 'hex_canlight');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const counts = new Map();   // unit → x (this battle's attack count)
   const perHit = () => pos(specOf(owners[0], 'hex_canlight', 'canlight').perHitPct, 30);
@@ -118,7 +118,7 @@ export function installCanlight(hooks) {
 export function installGlassCannon(hooks) {
   const owners = ownersOfCard(hooks, 'hex_glasscannon');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const spec = specOf(owners[0], 'hex_glasscannon', 'glasscannon');
   const dmgPct = pos(spec.dmgPct, 150) / 100;
@@ -126,7 +126,7 @@ export function installGlassCannon(hooks) {
   let n = 0;
   const apply = (u) => {
     if (!u || u.kind !== 'op' || u.side !== 'ally' || !owned.has(u.ownerId)) return;
-    passiveBuff(battle, u, 'hex:glasscannon', { dmgDealtMul: dmgPct, hpMul: hpPct }, { tags: ['hex'] });
+    passivePerCopy(u, u.ownerId, 'hex_glasscannon', 'hex:glasscannon', { dmgDealtMul: dmgPct, hpMul: hpPct }, { tags: ['hex'] });
     n++;
   };
   // 已经在场的干员立刻套上；之后再上场的（部署 / 召唤）也要
@@ -175,7 +175,7 @@ function negativeStatusCount(u) {
 export function installHeavyLoad(hooks) {
   const owners = ownersOfCard(hooks, 'hex_heavyload');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   // 每层 400 点（固定值，不是百分比）
   const flat = pos(specOf(owners[0], 'hex_heavyload', 'heavyload').flatDamage, 400);
@@ -230,7 +230,7 @@ export function installHeavyLoad(hooks) {
 export function installUmbrellaBreak(hooks) {
   const owners = ownersOfCard(hooks, 'hex_umbrellabreak');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const spec = specOf(owners[0], 'hex_umbrellabreak', 'umbrellabreak');
   const chance = Math.max(0, Math.min(100, pos(spec.chance, 30)));

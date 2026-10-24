@@ -58,7 +58,7 @@ function pos(v, fallback) {
 export function installWarding(hooks) {
   const owners = ownersOfCard(hooks, 'hex_warding');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const cut = Math.max(0, Math.min(100, pos(specOf(owners[0], 'hex_warding', 'warding').cutPct, 60))) / 100;
   battle.on('hit', (c) => {
@@ -101,7 +101,7 @@ export function installWarding(hooks) {
 export function installVoidReturn(hooks) {
   const owners = ownersOfCard(hooks, 'hex_voidreturn');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   // 每层 +atk% / −固定伤害（卡面参数；层数在 ref 的 params 里，由备战期那半边写入）
   const atkPer = pos(specOf(owners[0], 'hex_voidreturn', 'voidreturn').atkPctPerLayer, 20);
@@ -119,7 +119,7 @@ export function installVoidReturn(hooks) {
     if (!carries(battle, u, VOIDRETURN_ITEM_KEY)) return;
     const n = layersOf(u.ownerId);
     layers.set(u, n);
-    if (n > 0) passiveBuff(battle, u, 'hex:voidreturn', { atkPct: (atkPer / 100) * n }, { tags: ['hex'] });
+    if (n > 0) passivePerCopy(u, u.ownerId, 'hex_voidreturn', 'hex:voidreturn', { atkPct: (atkPer / 100) * n }, { tags: ['hex'] });
   };
   for (const u of battle.allyUnits) apply(u);
   battle.on('deploy', (c) => { if (c && c.unit) apply(c.unit); });
@@ -174,7 +174,7 @@ export function installVoidReturn(hooks) {
 export function installCorpseHill(hooks) {
   const owners = ownersOfCard(hooks, 'hex_corpsehill');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const spec = specOf(owners[0], 'hex_corpsehill', 'corpsehill');
   // 两项固定加成（不随击杀数放大）
@@ -253,7 +253,7 @@ export function installCorpseHill(hooks) {
 export function installOldPower(hooks) {
   const owners = ownersOfCard(hooks, 'hex_oldpower');
   if (!owners) return 0;
-  const { battle, specOf } = hooks;
+  const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const spec = specOf(owners[0], 'hex_oldpower', 'oldpower');
   const spMul = 1 + pos(spec.spCostPct, 20) / 100;
@@ -261,7 +261,7 @@ export function installOldPower(hooks) {
   let n = 0;
   const apply = (u) => {
     if (!u || u.kind !== 'op' || u.side !== 'ally' || !owned.has(u.ownerId)) return;
-    passiveBuff(battle, u, 'hex:oldpower', { dmgDealtMul: dmgMul }, { tags: ['hex'] });
+    passivePerCopy(u, u.ownerId, 'hex_oldpower', 'hex:oldpower', { dmgDealtMul: dmgMul }, { tags: ['hex'] });
     // 技力消耗是 SkillSpec 上的可变字段（skills.js spCostMul）：只写一次，重复安装不会叠乘
     if (u.skill && !u.skill.hexOldPower) {
       u.skill.hexOldPower = true;

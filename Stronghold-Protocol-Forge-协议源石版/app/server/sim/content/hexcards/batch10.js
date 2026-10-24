@@ -55,7 +55,7 @@ function noteDirective(battle, pid, hexId, kind, pick, amount) {
  * @param {any} hooks the shared bundle
  */
 export function installBlockwall(hooks) {
-  const { battle, ownersOf, opsOf, specOf, optNumber, onField } = hooks;
+  const { battle, ownersOf, opsOf, specOf, optNumber, onField, passivePerCopy } = hooks;
   const owners = ownersOf('hex_blockwall');
   if (!owners.length) return 0;
   let applied = 0;
@@ -69,8 +69,8 @@ export function installBlockwall(hooks) {
       for (const u of opsOf(pid)) {
         if (!onField(u)) continue;
         if (!isMember(battle, u, 'indomShip')) continue;
-        if (extra > 0) { passiveBuff(battle, u, 'hex:blockwall', { blockCnt: extra }); applied++; }
-        else battle.removeBuff(u, 'hex:blockwall');
+        if (extra > 0) { passivePerCopy(u, pid, 'hex_blockwall', 'hex:blockwall', { blockCnt: extra }); applied++; }
+        else { battle.removeBuff(u, 'hex:blockwall'); for (let i = 2; i <= 4; i++) battle.removeBuff(u, `hex:blockwall:${i}`); }
       }
     }
   });
@@ -193,7 +193,7 @@ export function installTerraMourn(hooks) {
  * @param {any} hooks the shared bundle
  */
 export function installDirectiveAtk(hooks) {
-  const { battle, ownersOf, opsOf, specOf, optNumber, onField } = hooks;
+  const { battle, ownersOf, opsOf, specOf, optNumber, onField, passivePerCopy } = hooks;
   const owners = ownersOf('hex_directive');
   if (!owners.length) return 0;
   /** The card's own candidate list (the owner's three named professions). */
@@ -214,7 +214,7 @@ export function installDirectiveAtk(hooks) {
       const pick = PROFS[Math.min(PROFS.length - 1, Math.floor(battle.rng() * PROFS.length))];
       for (const u of ops) {
         if (!u.def || u.def.profession !== pick) continue;
-        passiveBuff(battle, u, 'hex:directive', { atkPct: pctVal / 100 });
+        passivePerCopy(u, pid, 'hex_directive', 'hex:directive', { atkPct: pctVal / 100 });
         applied.push(pick);
       }
       noteDirective(battle, pid, 'hex_directive', 'prof', pick, pctVal);
@@ -334,7 +334,7 @@ export function installRabbitHead(hooks) {
  * @param {any} hooks the shared bundle
  */
 export function installProfResonance(hooks) {
-  const { battle, ownersOf, opsOf, specOf, optNumber, onField } = hooks;
+  const { battle, ownersOf, opsOf, specOf, optNumber, onField, passivePerCopy } = hooks;
   const owners = ownersOf('hex_profresonance');
   if (!owners.length) return 0;
   let applied = 0;
@@ -352,8 +352,8 @@ export function installProfResonance(hooks) {
         const p = u.def && u.def.profession;
         if (!p) continue;
         const fellows = (counts.get(p) || 0) - 1;
-        if (fellows > 0) { passiveBuff(battle, u, 'hex:profresonance', { atkPct: fellows * pctVal, defPct: fellows * pctVal }); applied++; }
-        else battle.removeBuff(u, 'hex:profresonance');
+        if (fellows > 0) { passivePerCopy(u, pid, 'hex_profresonance', 'hex:profresonance', { atkPct: fellows * pctVal, defPct: fellows * pctVal }); applied++; }
+        else { battle.removeBuff(u, 'hex:profresonance'); for (let i = 2; i <= 4; i++) battle.removeBuff(u, `hex:profresonance:${i}`); }
       }
     }
   });
