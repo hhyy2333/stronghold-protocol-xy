@@ -390,3 +390,27 @@ test('人祭: without the card a knock-out summons nothing', () => {
   h.battle.retreat(ops(h)[0], { reason: 'killed' });
   assert.equal(h.battle.allyUnits.filter((y) => y && y.defId === 'enemy_9012_acloon').length, 0);
 });
+
+// 业主 2026-10-26「联防时隔壁没人地雷不应该刷在隔壁」：雷区原来按 `battle.grid.rect` 铺，而联防的 field rect 横跨**两半**
+// 战场，于是地雷会落在队友（或根本没人）的那半边 —— 那里不是这位玩家的棋盘，他永远部署不到，隔壁没人时更是空地。
+// 「可部署地块」必须是**这个人自己的棋盘**：`Battle.onOwnBoard`（突袭落点用的同一条判据）。
+test('雷区: in 联防 the mines land on the OWNER\'s board only, never on the (possibly empty) neighbour half', () => {
+  const players = [
+    { playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_minefield')], units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] },
+  ];
+  const h = makeBattle({
+    defs: { chess: { test_guard: guard() }, enemies: { enemy_dummy: dummy() } },
+    kind: 'unite', stageId: 'act1autochess_escaped_single', players,
+    enemies: [{ key: 'enemy_dummy', time: 0, pos: [9, 7] }],
+    autoFinish: false, timeLimit: 20, seed: 5,
+  });
+  h.run(1);
+  const ps = h.battle.getPlayer('p1');
+  const mines = h.battle.allyUnits.filter((u) => u && u.defId === 'token_10025_doroth_recttp' && u.alive);
+  assert.equal(mines.length, 6, 'still the card’s own count');
+  for (const m of mines) {
+    assert.ok(h.battle.onOwnBoard(ps, m.tileR, m.tileC), `mine on the owner's board (${m.tileR},${m.tileC})`);
+    assert.ok(m.tileC <= 10, `and never on the right (neighbour / nobody) half: (${m.tileR},${m.tileC})`);
+  }
+  h.invariants();
+});

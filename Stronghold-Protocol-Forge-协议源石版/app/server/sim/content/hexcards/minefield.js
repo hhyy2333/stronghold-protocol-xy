@@ -152,9 +152,16 @@ export function installMinefield(hooks) {
     const plan = plans.get(pid);
     if (!plan || !(n > 0)) return 0;
     const R = battle.grid.rect;
+    // 「可部署地块」 is the OWNER's deployable board, not the whole field: in 联防 the field rect spans BOTH halves, so a
+    // plain grid.rect scan drops mines on the neighbour's board — where the owner can never deploy and, when the
+    // neighbour's half is empty, where nobody is fighting at all (业主 2026-10-26「联防时隔壁没人地雷不应该刷在隔壁」).
+    // `onOwnBoard` is the engine's own per-player board predicate (players.js; the 突袭 landing uses it too).
+    const owner = typeof battle.getPlayer === 'function' ? battle.getPlayer(pid) : null;
+    const onOwnBoard = (r, c) => !owner || typeof battle.onOwnBoard !== 'function' || battle.onOwnBoard(owner, r, c);
     const cands = [];
     for (let r = R.r0; r <= R.r1; r++) {
       for (let c = R.c0; c <= R.c1; c++) {
+        if (!onOwnBoard(r, c)) continue;
         if (!battle.grid.canStand(r, c)) continue;
         if (!summonTileFree(battle, r, c)) continue;
         if (allyOnTile(battle, r, c)) continue;
