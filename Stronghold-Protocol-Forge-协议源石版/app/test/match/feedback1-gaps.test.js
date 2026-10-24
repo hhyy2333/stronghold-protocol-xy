@@ -147,7 +147,9 @@ describe('§21.26 3 — strategies tied to a bond the mode switches off', () => 
       c.run(() => c.m.phase !== PHASE.INFO_CHECK && c.m.phase !== PHASE.BAND_DRAFT, { maxSteps: 1e5 });
       assert.equal(c.m.phase, PHASE.BATTLE_CHECK, `seed ${seed}: the draft ended`);
       for (const ps of c.m.order) coop.push(ps.bandId);
-      assert.equal(new Set(c.m.order.map((ps) => ps.bandId)).size, 4, 'no strategy twice');
+      // 多人可选同一个策略 (owner 2026-10-24, data/config.json bandDraft.duplicatesAllowed): two AI seats MAY hold the
+      // same strategy, so the old "no strategy twice" invariant is gone. What still holds, and what this test is
+      // about, is that every pick is a strategy the mode offers — asserted below against the offered set.
       c.m.dispose();
     }
     return { solo, coop };

@@ -388,8 +388,9 @@ describe('GitHub issue #8 item 1: 本局信息 in the strategy draft (real serve
     }
     await shot(ph.page, 'coop-phone-draft-756');
 
-    // the player who already picked keeps its dialog open; the last picker confirms a free strategy (阿米娅 is 队友已选) —
-    // the end of the draft takes the open dialog away with the screen
+    // the player who already picked keeps its dialog open; the last picker confirms a strategy (华法琳 — duplicates are
+    // allowed by default, so a card a teammate holds stays choosable) — the end of the draft takes the open dialog away
+    // with the screen
     await openDialog(done);
     await press(last, '.dband', '华法琳');
     await press(last, '.draft-detail__btns .btn--primary', '确认选择');

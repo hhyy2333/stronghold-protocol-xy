@@ -113,9 +113,12 @@ export class MatchViews {
     if (this.phase === PHASE.BAND_DRAFT && this.draft) {
       const d = this.draft;
       // turnSeconds: the length of a turn (the countdown gauge's total; 0 when untimed) — deadline = turnDeadline
+      // duplicatesAllowed: the server's verdict on data/config.json bandDraft.duplicatesAllowed (true = 多人可选同一个策略),
+      // so the client greys a 队友已选 card / disables 确认选择 exactly when the server would refuse the pick (Match.bandTaken)
       v.draft = {
         order: d.order.slice(), turn: this.draftTurn(), picks: { ...d.picks }, skipsLeft: { ...d.skipsLeft }, turnDeadline: d.turnDeadline || 0,
         turnSeconds: d.untimed ? 0 : this.bandTurnMs() / 1000, untimed: !!d.untimed,
+        duplicatesAllowed: this.gd.bandDraft.duplicatesAllowed,
       };
     }
     if (this.phase === PHASE.SP_DRAFT && this.sp) {

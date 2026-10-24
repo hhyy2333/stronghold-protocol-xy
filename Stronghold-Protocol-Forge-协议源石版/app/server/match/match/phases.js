@@ -1,7 +1,8 @@
 // server/match/match/phases.js — Match methods: the round flow up to the prep — INFO_CHECK, the strategy draft
-// (BAND_DRAFT: one countdown of BAND_TURN_SECONDS per turn, 队友已选, the highlighted strategy on a timeout, skips),
-// BATTLE_CHECK and ROUND_START (the round's enemies — a normal wave or the boss pairing — planned before the players'
-// round start).
+// (BAND_DRAFT: one countdown of BAND_TURN_SECONDS per turn, the highlighted strategy on a timeout, skips, and the
+// duplicate switch — 多人可选同一个策略 unless data/config.json bandDraft.duplicatesAllowed says otherwise; see
+// Match.bandTaken), BATTLE_CHECK and ROUND_START (the round's enemies — a normal wave or the boss pairing — planned
+// before the players' round start).
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE, ERR } from '../../../shared/constants.js';
@@ -160,7 +161,10 @@ export class MatchPhases {
       if (this.phase !== PHASE.BAND_DRAFT || token !== this._turnToken) return;
       const ps = this.players.get(this.draftTurn());
       if (!ps || !ps.botControlled) return;
-      // a strategy a teammate already took is not selectable (队友已选): the bot re-draws, else the first free one
+      // The loop below is DAY-ONE code, kept verbatim (the contract: the switch may not move the old path by a byte).
+      // It reads bandTaken, the draft's one duplicate gate — so with the switch OFF it still re-draws, else takes the
+      // first free strategy (队友已选), while with it ON (the default, bandDraft.duplicatesAllowed) that gate is always
+      // false and the whole thing collapses to exactly one botPickBand call.
       let id = botPickBand(this, ps);
       for (let k = 0; k < 8 && this.bandTaken(id, ps.playerId); k++) id = botPickBand(this, ps);
       if (this.bandTaken(id, ps.playerId)) id = this.gd.bandIds().find((b) => !this.bandTaken(b, ps.playerId)) || id;
@@ -169,11 +173,18 @@ export class MatchPhases {
   }
 
   /**
-   * Whether `bandId` was already picked by another player of this draft. Research 09 §5 / DESIGN §14 corrections:
-   * the strategy draft marks a teammate's pick as 队友已选 and it cannot be chosen again (co-op). The automatic
-   * assignments — a turn that runs out and a departing seat — obey the same rule: see timeoutBand / defaultBand.
+   * Whether `bandId` was already picked by another player of this draft — the draft's ONE duplicate gate.
+   *
+   * 多人可选同一个策略 is the official rule and the data's default (data/config.json bandDraft.duplicatesAllowed, read
+   * through shared/bandDraft.js): with the switch ON this is always false, so two seats may take the same strategy.
+   * With it OFF the old 「队友已选」 rule stands verbatim (research 09 §5): a teammate's pick cannot be chosen again, and
+   * the automatic assignments — a turn that runs out and a departing seat — obey it too (timeoutBand / defaultBand).
+   * @param {string} bandId
+   * @param {string} playerId
+   * @returns {boolean}
    */
   bandTaken(bandId, playerId) {
+    if (this.gd.bandDraft.duplicatesAllowed) return false;
     const picks = this.draft?.picks || {};
     for (const [pid, id] of Object.entries(picks)) if (pid !== playerId && id === bandId) return true;
     return false;
@@ -181,10 +192,13 @@ export class MatchPhases {
 
   /**
    * The strategy an automatic assignment gives `playerId` (a departing seat; a timed-out turn without a usable
-   * highlight, timeoutBand): the official default 「华法琳」 (bandDraft.timeoutBandId) while no teammate holds it, else the
-   * first strategy of the mode (sortId order, gd.bandIds) that nobody else picked — never a duplicate (队友已选; the
-   * client shows the same choice: public/js/screens/bandDraft.js timeoutBand). Solo drafts have no teammates, so it is
-   * always the default.
+   * highlight, timeoutBand) — the DAY-ONE rule, unedited, reading bandTaken.
+   *
+   * With duplicates allowed (the default, bandDraft.duplicatesAllowed) that gate is always false, so this returns the
+   * official default 「华法琳」 (bandDraft.timeoutBandId) outright: a teammate holding it changes nothing and there is no
+   * hunt for a free strategy. With the switch OFF it is the default while no teammate holds it, else the first strategy
+   * of the mode (sortId order, gd.bandIds) that nobody else picked — never a duplicate (队友已选; the client shows the
+   * same choice: public/js/screens/bandDraft.js timeoutBand). Solo drafts have no teammates, so it is the default anyway.
    * @param {string} playerId
    */
   defaultBand(playerId) {
@@ -195,8 +209,9 @@ export class MatchPhases {
 
   /**
    * What a turn that runs out assigns (user playtest #4 item 4): the strategy the player has highlighted in the draft
-   * screen (g.bandFocus — the detail pane's band, the one 确认选择 would take) while it is allowed and no teammate holds
-   * it, else defaultBand.
+   * screen (g.bandFocus — the detail pane's band, the one 确认选择 would take) while it is allowed and — only with the
+   * duplicate switch OFF — no teammate holds it, else defaultBand. With duplicates allowed (the default) bandTaken is
+   * always false, so a highlight stays assignable even when a teammate picked the same strategy.
    * @param {string} playerId
    */
   timeoutBand(playerId) {
@@ -225,11 +240,18 @@ export class MatchPhases {
     if (this.draft.picks[ps.playerId]) return fail(ERR.ALREADY);
     if (this.draftTurn() !== ps.playerId) return fail(ERR.NOT_YOUR_TURN);
     if (typeof bandId !== 'string' || !this.gd.bandAllowed(bandId)) return fail(ERR.BAD_TARGET);
+    // Only with the duplicate switch OFF (bandDraft.duplicatesAllowed false): 队友已选. Allowed (the default) ⇒ bandTaken
+    // is always false, so two seats take the same strategy.
     if (this.bandTaken(bandId, ps.playerId)) return fail(ERR.BAD_TARGET, '队友已选'); // i18n-ignore: developer detail (players see ERR_TEXT)
     this._applyBand(ps, bandId);
     return OK;
   }
 
+  /**
+   * Seat `playerId` on `bandId` (its LP follows the strategy, gd.startLp). `dedupe` is the AI seat's own fallback
+   * (scheduleBandBot): it re-checks the pick against bandTaken and takes the first free strategy instead. That gate is
+   * the duplicate switch's single door, so with duplicates allowed (the default) it never fires.
+   */
   _applyBand(ps, bandId, { dedupe = false } = {}) {
     const d = this.draft;
     if (!d || !ps || d.picks[ps.playerId]) return;
@@ -273,7 +295,8 @@ export class MatchPhases {
     this._turnTimer = null;
     for (const ps of this.order) {
       if (!this.draft.picks[ps.playerId]) {
-        // one after another in seat order, so each default sees the ones assigned before it (no duplicates)
+        // one after another in seat order, so each default sees the ones assigned before it — with the duplicate switch
+        // OFF that is what keeps the leftovers distinct (队友已选); allowed (the default) every leftover takes the default
         const id = this.defaultBand(ps.playerId);
         this.draft.picks[ps.playerId] = id;
         ps.bandId = id;

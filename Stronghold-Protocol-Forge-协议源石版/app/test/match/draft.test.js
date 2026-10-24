@@ -1,5 +1,11 @@
-// INFO_CHECK, band draft (order / skip / one turn clock / timeouts / highlighted band / 队友已选) and 机变 SP drafts (order /
-// timers / auto-assign / effects); a single human (solo or co-op with AI teammates) is never timed outside battles.
+// INFO_CHECK, band draft (order / skip / one turn clock / timeouts / highlighted band / the duplicate switch) and 机变 SP
+// drafts (order / timers / auto-assign / effects); a single human (solo or co-op with AI teammates) is never timed
+// outside battles.
+//
+// 多人可选同一个策略 (owner 2026-10-24) is the rule the data ships — data/config.json bandDraft.duplicatesAllowed true,
+// read through shared/bandDraft.js and gated by Match.bandTaken. Every assertion below is under THAT switch unless it
+// passes `off` (dataOff()): with the switch off the old 「队友已选」 rule must stand verbatim, which is what the paired
+// cases in the first test and the whole test/match/band-duplicates.test.js file pin down.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ERR, PHASE } from '../../shared/constants.js';
@@ -7,6 +13,9 @@ import { DATA, makeMatch, checkInvariants } from './harness.js';
 import { BAND_TURN_SECONDS } from '../../server/match/Match.js';
 
 const TURN_MS = BAND_TURN_SECONDS * 1000;
+
+/** The real data with the duplicate switch OFF (data/config.json bandDraft.duplicatesAllowed: false) — 队友已选. */
+const dataOff = () => ({ ...DATA, config: { ...DATA.config, bandDraft: { ...DATA.config.bandDraft, duplicatesAllowed: false } } });
 
 test('INFO_CHECK: ends when every human confirmed (bots/departed count as ready) or at the 25 s deadline', () => {
   const h = makeMatch({ mode: 'coop', humans: 2, bots: 1, seed: 1 }).start();
@@ -32,7 +41,7 @@ test('INFO_CHECK: ends when every human confirmed (bots/departed count as ready)
   h2.m.dispose();
 });
 
-test('band draft (co-op): random order, one pick per turn, NOT_YOUR_TURN, one skip each (moves to the end), 队友已选 refused', () => {
+test('band draft (co-op): random order, one pick per turn, NOT_YOUR_TURN, one skip each (moves to the end); a teammate\'s strategy MAY be taken again (多人可选同一个策略, the data\'s default)', () => {
   // find a seed where both humans are not first... just use the order the match chose
   const h = makeMatch({ mode: 'coop', humans: 3, seed: 5 }).start();
   const m = h.m;
@@ -52,16 +61,51 @@ test('band draft (co-op): random order, one pick per turn, NOT_YOUR_TURN, one sk
   assert.deepEqual(m.handle(second, { t: 'g.band', bandId: 'band_sarkazb' }), { ok: true });
   assert.equal(h.ps(second).lp, 45, '歌利亚 starts with 45 LP');
   assert.deepEqual(m.handle(second, { t: 'g.band', bandId: 'band_sarkazb' }), { error: ERR.ALREADY });
-  // research 09 §5 / DESIGN §14 corrections: a strategy a teammate already took is 队友已选 (test/ui/bandDraft.test.js)
-  assert.equal(m.handle(third, { t: 'g.band', bandId: 'band_sarkazb' }).error, ERR.BAD_TARGET, '队友已选: no duplicates');
-  assert.equal(m.draftTurn(), third, 'the refused pick keeps the turn');
-  assert.deepEqual(m.handle(third, { t: 'g.band', bandId: 'band_amiya' }), { ok: true });
+  // 多人可选同一个策略 (owner 2026-10-24; data/config.json bandDraft.duplicatesAllowed true): the second seat takes the
+  // very strategy the earlier seat holds — accepted, its LP is that strategy's startLp, and no 队友已选 refusal exists
+  assert.equal(m.bandTaken('band_sarkazb', third), false, 'no duplicate gate while the switch is on');
+  assert.deepEqual(m.handle(third, { t: 'g.band', bandId: 'band_sarkazb' }), { ok: true }, 'a shared strategy is accepted');
+  assert.equal(h.ps(third).lp, 45, 'the shared strategy\'s LP (歌利亚 45)');
+  assert.equal(m.draft.picks[second], m.draft.picks[third], 'both seats hold band_sarkazb');
   assert.equal(m.draftTurn(), first);
   assert.deepEqual(m.handle(first, { t: 'g.bandSkip' }).error, ERR.ALREADY, 'only one skip');
   assert.deepEqual(m.handle(first, { t: 'g.band', bandId: 'band_lisa' }), { ok: true });
   assert.equal(h.ps(first).lp, 20);
   h.sched.advance(1);
   assert.equal(m.phase, PHASE.BATTLE_CHECK);
+  m.dispose();
+});
+
+test('band draft (co-op) with the duplicate switch OFF: 队友已选 is refused verbatim and a timeout hunts a free strategy', () => {
+  // The same draft as above, but data/config.json bandDraft.duplicatesAllowed false — the pre-2026-10-24 rule must be
+  // preserved CHARACTER FOR CHARACTER (the switch only ever adds the allowed branch; it never rewrites the old one).
+  const h = makeMatch({ mode: 'coop', humans: 3, seed: 5, data: dataOff() }).start();
+  const m = h.m;
+  assert.equal(m.gd.bandDraft.duplicatesAllowed, false);
+  for (const id of ['p_0', 'p_1', 'p_2']) m.handle(id, { t: 'g.infoReady' });
+  h.sched.advance(1);
+  assert.equal(m.phase, PHASE.BAND_DRAFT);
+  const [first, second, third] = m.draft.order;
+  assert.deepEqual(m.handle(first, { t: 'g.band', bandId: 'band_bldsk' }), { ok: true });
+  // the one duplicate gate: bandTaken still sees a teammate's pick, and pickBand refuses with the very old error
+  assert.equal(m.bandTaken('band_bldsk', second), true);
+  assert.equal(m.bandTaken('band_bldsk', first), false, 'your own pick is not "taken by a teammate"');
+  assert.deepEqual(m.handle(second, { t: 'g.band', bandId: 'band_bldsk' }), { error: ERR.BAD_TARGET, detail: '队友已选' });
+  assert.equal(m.draftTurn(), second, 'the refused pick keeps the turn');
+  assert.deepEqual(m.handle(second, { t: 'g.band', bandId: 'band_lisa' }), { ok: true });
+  // the automatic assignments obey it too: 华法琳 is held, so defaultBand takes the first free strategy by sortId
+  assert.equal(m.defaultBand(third), 'band_amiya', 'the first free strategy (sortId order) — never 队友已选 华法琳');
+  assert.equal(m.timeoutBand(third), 'band_amiya', 'no highlight: the same default');
+  // a highlight a teammate holds falls back to that default instead of being assigned
+  assert.deepEqual(m.handle(third, { t: 'g.bandFocus', bandId: 'band_lisa' }), { ok: true });
+  assert.equal(m.timeoutBand(third), 'band_amiya', 'highlighted 队友已选 ⇒ the default');
+  h.sched.advance(TURN_MS + 1);
+  assert.equal(m.draft.picks[third], 'band_amiya');
+  assert.equal(h.ps(third).lp, DATA.bands.band_amiya.totalHp);
+  h.sched.advance(1);
+  assert.equal(m.phase, PHASE.BATTLE_CHECK);
+  const ids = [...m.players.values()].map((ps) => ps.bandId);
+  assert.equal(new Set(ids).size, ids.length, `all distinct with the switch off (${ids})`);
   m.dispose();
 });
 
@@ -86,17 +130,17 @@ test('band draft timers (user playtest #4 item 4): one countdown of BAND_TURN_SE
     assert.equal(pub.deadline, pub.draft.turnDeadline, 'one countdown');
     assert.equal(pub.draft.turnSeconds, BAND_TURN_SECONDS);
   }
-  // a timeout gives 华法琳 while no teammate holds it, else the first free strategy by sortId — never 队友已选
-  // (Match.defaultBand): replay the assignments in draft order
-  const taken = new Set();
+  // a timeout gives 华法琳 outright while duplicates are allowed (the default, Match.defaultBand) — a teammate (an AI
+  // seat included) holding it changes nothing: no hunt for a free strategy, no 队友已选
   for (const pid of m.draft.order) {
-    if (pid.startsWith('ai_')) { assert.ok(DATA.bands[h.ps(pid).bandId], 'bot picked a band'); taken.add(h.ps(pid).bandId); continue; }
-    const want = !taken.has('band_bldsk') ? 'band_bldsk' : m.gd.bandIds().find((b) => !taken.has(b));
-    assert.equal(h.ps(pid).bandId, want, `${pid} gets the default strategy nobody else holds`);
-    assert.equal(h.ps(pid).lp, DATA.bands[want].totalHp);
-    taken.add(want);
+    const band = h.ps(pid).bandId;
+    assert.ok(DATA.bands[band], `${pid} sits on a real strategy (${band})`);
+    assert.equal(h.ps(pid).lp, DATA.bands[band].totalHp, `${pid}'s LP is its strategy's startLp`);
+    if (pid.startsWith('ai_')) continue; // the bot draws by botPickBand
+    assert.equal(band, 'band_bldsk', `${pid} gets the official default`);
   }
-  assert.equal(new Set(Object.values(m.draft.picks)).size, 4, 'no duplicate strategies');
+  assert.equal(m.draft.picks.p_0, 'band_bldsk');
+  assert.equal(m.draft.picks.p_1, 'band_bldsk', 'both idle humans share the default — 多人可选同一个策略');
   m.dispose();
   // 4 humans idle: 4 whole turns (the old 50 s step cap would have cut the last ones short)
   const h2 = makeMatch({ mode: 'coop', humans: 4, seed: 9 }).start();
@@ -110,7 +154,8 @@ test('band draft timers (user playtest #4 item 4): one countdown of BAND_TURN_SE
   assert.ok(took2 >= 4 * TURN_MS - 5 && took2 <= 4 * TURN_MS + 50, `four turns (${took2} ms)`);
   assert.equal(h2.ps(first).bandId, 'band_amiya', 'the first timeout takes the highlighted strategy');
   assert.equal(h2.ps(h2.m.draft.order[1]).bandId, 'band_bldsk', 'the next one the official default');
-  assert.equal(new Set([...h2.m.players.values()].map((ps) => ps.bandId)).size, 4, 'the rest get distinct free strategies');
+  assert.deepEqual(h2.m.draft.order.map((pid) => h2.ps(pid).bandId), ['band_amiya', 'band_bldsk', 'band_bldsk', 'band_bldsk'],
+    'every later timeout takes the same default — duplicates allowed');
   h2.m.dispose();
   // data and code say the same: data/config.json timers.bandTurn (tools/build-data.mjs) = Match.BAND_TURN_SECONDS
   assert.equal(BAND_TURN_SECONDS, 50, 'owner official-play report: 50 seconds per multiplayer pick');

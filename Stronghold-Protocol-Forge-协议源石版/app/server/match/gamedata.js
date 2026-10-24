@@ -27,6 +27,8 @@ import {
   normalizeSupportConfig, supportSlotsFor, supportCapacity, supportPicker, isSupportChess, supportTierOf, supportPriceOf,
   checkSupport as checkSupportSelection,
 } from '../../shared/support.js';
+// 策略轮选的重不重复开关（data/config.json bandDraft.duplicatesAllowed）：服务端与客户端读同一个定义。
+import { bandDuplicatesAllowed } from '../../shared/bandDraft.js';
 
 const own = (map, id) => (map && typeof map === 'object' && typeof id === 'string' && Object.hasOwn(map, id) && map[id] && typeof map[id] === 'object' ? map[id] : null);
 const numOr = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -61,7 +63,8 @@ export const DEFAULTS = Object.freeze({
   unite: { maxHelpers: 2, templates: { 1: 'act1autochess_escaped_single', 2: 'act1autochess_escaped_multi' } },
   timers: { infoCheck: 25, bandDraft: 50, bandTurn: 30, battleCheck: 3, spFirst: 30, spTurn: 16 },
   bans: { FUNNY: { core: 0, addon: 1 }, NORMAL: { core: 3, addon: 4 }, HARD: { core: 3, addon: 4 }, ABYSS: { core: 3, addon: 4 } },
-  bandDraft: { skipsPerPlayer: 1, timeoutBandId: 'band_bldsk' },
+  // duplicatesAllowed: 多人可选同一个策略 is the official rule (shared/bandDraft.js BAND_DRAFT_DEFAULTS)
+  bandDraft: { skipsPerPlayer: 1, duplicatesAllowed: true, timeoutBandId: 'band_bldsk' },
   leftoverFundsKeptByBands: ['band_cannot'],
 });
 
@@ -745,10 +748,16 @@ export class GameData {
     if (!b || typeof b !== 'object') return { ...d };
     return { core: Number.isInteger(b.core) && b.core >= 0 ? b.core : d.core, addon: Number.isInteger(b.addon) && b.addon >= 0 ? b.addon : d.addon };
   }
+  /**
+   * The strategy draft's tunables. `duplicatesAllowed` is 多人可选同一个策略 (the official rule, shared/bandDraft.js): true —
+   * the default, and what data/config.json ships — lets two seats take the same strategy; false restores the old
+   * 「队友已选」 rule. Read through `Match.bandTaken`, the draft's single duplicate gate.
+   */
   get bandDraft() {
     const b = this.config.bandDraft && typeof this.config.bandDraft === 'object' ? this.config.bandDraft : {};
     return {
       skipsPerPlayer: Number.isInteger(b.skipsPerPlayer) && b.skipsPerPlayer >= 0 ? b.skipsPerPlayer : DEFAULTS.bandDraft.skipsPerPlayer,
+      duplicatesAllowed: bandDuplicatesAllowed(this.config),
       timeoutBandId: typeof b.timeoutBandId === 'string' && this.band(b.timeoutBandId) ? b.timeoutBandId : this.defaultBandId,
     };
   }

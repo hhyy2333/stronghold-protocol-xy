@@ -1,13 +1,18 @@
 // Band draft — BAND_DRAFT "2/2 选择策略" (research 06 §4.2, D1): left = draft order (avatar, name, state:
 // … waiting / ⌛ 决策中 / chosen band ✓), current picker highlighted; centre = grid of every band allowed
-// for the mode type (icon, name, LP); a band a teammate already picked carries the picker's avatar and is marked
-// 队友已选 — it cannot be chosen again (research 09 §5, guidebook 策略与轮选; the server refuses it too); right =
-// detail pane (icon, 初始生命值, name, effect name + rich description) with 跳过 (co-op, once) and 确认选择.
+// for the mode type (icon, name, LP); a band a teammate already picked carries their avatars (「谁选了这张」) and — ONLY
+// while the draft forbids duplicates — the 队友已选 mark, the is-taken greying and the refusal (server Match.bandTaken).
+// 多人可选同一个策略 is the official rule and the default: data/config.json bandDraft.duplicatesAllowed (generated,
+// shared/bandDraft.js; owner 2026-10-24), published to the client as m.public.draft.duplicatesAllowed. Out of the box
+// two seats take the same strategy, so a taken card stays selectable; with the switch off the old rule returns.
+// Right = detail pane (icon, 初始生命值, name, effect name + rich description) with 跳过 (co-op, once) and 确认选择.
 // One countdown (user playtest #4 item 4): every turn has the same clock (Match BAND_TURN_SECONDS, m.public.draft
 // turnSeconds) and the step header counts it down — m.public.deadline IS the turn's end, the same number as the
 // current picker's row. The highlighted band (the detail pane's) is what a turn that runs out takes: every change of it
-// is reported (g.bandFocus) and the server assigns it while it is free, else 「华法琳」, else the first free strategy
-// (timeoutBand). It starts on that default, so the tip under the order list always names what a timeout gives.
+// is reported (g.bandFocus) and the server assigns it while it is allowed — and, with duplicates off, free — else
+// 「华法琳」 (the timeout default), else the first free strategy (timeoutBand). With duplicates allowed a timeout never
+// hunts for a free band: the highlight, else the default. It starts on that default, so the tip under the order list
+// always names what a timeout gives.
 // Solo, and a co-op match with a single human (the server's soloUntimed: draft.untimed): no clock at all.
 // A strategy built around a bond the mode switches off (bands.json bondIds ∩ the mode's inactive bonds — 标准: 潘格尼尼
 // 拉特兰, 克莱门莎 阿戈尔, 玛恩纳 卡西米尔; the bot never picks one) reads 本局禁用 on its card and in the detail pane
@@ -30,6 +35,8 @@ import { data } from '../data.js';
 import { audio } from '../audio.js';
 import { modeOffBonds, bandOffBonds, bandOffLine } from '../ui/gameLogic.js';
 import { t, tParts, tName } from '../../../shared/i18n.js';
+// the draft's duplicate switch: data/config.json bandDraft.duplicatesAllowed, one definition for the server and the client
+import { BAND_DRAFT_DEFAULTS } from '../../../shared/bandDraft.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -57,26 +64,52 @@ export function allowedBands(bands, modeType) {
 }
 
 /** The official default strategy of an automatic assignment (data/config.json bandDraft.timeoutBandId). */
-export const DEFAULT_TIMEOUT_BAND = 'band_bldsk';
+export const DEFAULT_TIMEOUT_BAND = BAND_DRAFT_DEFAULTS.timeoutBandId;
 
 /**
- * The strategy the server assigns me when my turn times out (server/match/match/phases.js defaultBand): the official default
- * 「华法琳」 while no teammate holds it, else the first free strategy in draft order (sortId) — never one a teammate
- * already picked (队友已选).
+ * Whether the draft lets two seats take the same strategy (data/config.json bandDraft.duplicatesAllowed, default true).
+ * m.public.draft.duplicatesAllowed is the server's verdict on the same switch; a boolean there wins.
+ * @param {{ draft?: { duplicatesAllowed?: unknown } }|null|undefined} pub m.public
+ * @param {{ bandDraft?: { duplicatesAllowed?: unknown } }|null|undefined} [config] gd.config (data/config.json)
+ * @returns {boolean}
+ */
+export function duplicatesAllowedOf(pub, config) {
+  const d = pub && typeof pub === 'object' && pub.draft && typeof pub.draft === 'object' ? pub.draft.duplicatesAllowed : undefined;
+  if (typeof d === 'boolean') return d;
+  const c = config && typeof config === 'object' && config.bandDraft && typeof config.bandDraft === 'object'
+    ? config.bandDraft.duplicatesAllowed : undefined;
+  return typeof c === 'boolean' ? c : BAND_DRAFT_DEFAULTS.duplicatesAllowed;
+}
+
+/** The options every helper below takes: the duplicate switch, default BAND_DRAFT_DEFAULTS.duplicatesAllowed (true). */
+const dupOpt = (o) => {
+  const v = o && typeof o === 'object' ? o.duplicatesAllowed : undefined;
+  return typeof v === 'boolean' ? v : BAND_DRAFT_DEFAULTS.duplicatesAllowed;
+};
+
+/**
+ * The strategy the server assigns me when my turn times out (server/match/match/phases.js defaultBand): with duplicates
+ * allowed (the default) it is the official default 「华法琳」 (bandDraft.timeoutBandId) outright — a teammate holding it
+ * changes nothing. With duplicates forbidden it is that default while no teammate holds it, else the first free strategy
+ * in draft order (sortId) — never one a teammate already picked (队友已选).
  * @param {any[]} bands allowedBands(...) (sortId order)
- * @param {Map<string, any>} taken teammateBands(...)
+ * @param {Map<string, any>} taken teammateBands(...) (only consulted with duplicates forbidden)
  * @param {string} [defaultId]
+ * @param {{ duplicatesAllowed?: boolean }} [o]
  * @returns {string|null}
  */
-export function timeoutBand(bands, taken, defaultId = DEFAULT_TIMEOUT_BAND) {
+export function timeoutBand(bands, taken, defaultId = DEFAULT_TIMEOUT_BAND, { duplicatesAllowed } = {}) {
   const list = Array.isArray(bands) ? bands : [];
+  const isBand = (id) => !list.length || list.some((b) => b.bandId === id);
+  if (dupOpt({ duplicatesAllowed })) return (defaultId && isBand(defaultId) ? defaultId : list[0]?.bandId) || defaultId || null;
   const has = (id) => !!(taken && typeof taken.has === 'function' && taken.has(id));
   if (defaultId && !has(defaultId) && (!list.length || list.some((b) => b.bandId === defaultId))) return defaultId;
   return list.find((b) => !has(b.bandId))?.bandId || defaultId || null;
 }
 
 /**
- * Bands taken by teammates (队友已选): bandId → the picking players (never the viewer).
+ * Who picked each band: bandId → the picking players (never the viewer). It draws the avatars on a card both ways —
+ * with duplicates allowed they mean 「谁选了这张」 only, with duplicates forbidden they also drive 队友已选.
  * @param {Map<string, string>} picks normalizeDraft(...).picks (playerId → bandId)
  * @param {string} myId
  */
@@ -92,31 +125,36 @@ export function teammateBands(picks, myId) {
 
 /**
  * The band the detail pane shows (= the highlighted band a turn that runs out takes): the current one, else my pick,
- * else the band a timeout would give me (timeoutBand: 「华法琳」 while free, else the first free one). When it is my
- * turn and the shown band was taken meanwhile (队友已选), that default instead (confirm would be disabled).
+ * else the band a timeout would give me (timeoutBand). With duplicates forbidden, a shown band a teammate took
+ * meanwhile (队友已选) would disable 确认选择, so my turn moves the selection to that default instead; with duplicates
+ * allowed (the default) nothing moves — the card stays choosable.
  * @param {string|null} sel
- * @param {{ bands: any[], taken: Map<string, any>, myPick: string|null, myTurn: boolean, defaultId?: string }} o
+ * @param {{ bands: any[], taken: Map<string, any>, myPick: string|null, myTurn: boolean, defaultId?: string,
+ *   duplicatesAllowed?: boolean }} o
  */
-export function draftSelection(sel, { bands, taken, myPick, myTurn, defaultId = DEFAULT_TIMEOUT_BAND }) {
+export function draftSelection(sel, { bands, taken, myPick, myTurn, defaultId = DEFAULT_TIMEOUT_BAND, duplicatesAllowed }) {
   if (!Array.isArray(bands) || !bands.length) return sel;
-  const free = timeoutBand(bands, taken, defaultId) || bands[0].bandId;
+  const dup = dupOpt({ duplicatesAllowed });
+  const free = timeoutBand(bands, taken, defaultId, { duplicatesAllowed: dup }) || bands[0].bandId;
   if (!sel) return myPick || free;
-  if (!myPick && myTurn && taken.has(sel)) return free;
+  if (!dup && !myPick && myTurn && taken && taken.has(sel)) return free;
   return sel;
 }
 
 /**
- * The strategy a turn that runs out assigns me (server Match.timeoutBand): the highlighted band while it is one of
- * the mode's and no teammate holds it, else timeoutBand. Null after my pick.
+ * The strategy a turn that runs out assigns me (server Match.timeoutBand): the highlighted band while it is one of the
+ * mode's — and, with duplicates forbidden, no teammate holds it — else timeoutBand. Null after my pick.
  * @param {string|null} sel the highlighted band
- * @param {{ bands: any[], taken: Map<string, any>, myPick?: string|null, defaultId?: string }} o
+ * @param {{ bands: any[], taken: Map<string, any>, myPick?: string|null, defaultId?: string,
+ *   duplicatesAllowed?: boolean }} o
  */
-export function autoPickBand(sel, { bands, taken, myPick = null, defaultId = DEFAULT_TIMEOUT_BAND }) {
+export function autoPickBand(sel, { bands, taken, myPick = null, defaultId = DEFAULT_TIMEOUT_BAND, duplicatesAllowed }) {
   if (myPick) return null;
   const list = Array.isArray(bands) ? bands : [];
-  const has = (id) => !!(taken && typeof taken.has === 'function' && taken.has(id));
+  const dup = dupOpt({ duplicatesAllowed });
+  const has = (id) => !dup && !!(taken && typeof taken.has === 'function' && taken.has(id));
   if (sel && !has(sel) && list.some((b) => b.bandId === sel)) return sel;
-  return timeoutBand(list, taken, defaultId);
+  return timeoutBand(list, taken, defaultId, { duplicatesAllowed: dup });
 }
 
 /**
@@ -186,7 +224,11 @@ export function BandDraftScreen() {
   const myTurn = !myPick && (solo || draft.turnPid === myId);
   const skipsLeft = draft.skipsLeft.has(myId) ? draft.skipsLeft.get(myId) : (skipped ? 0 : 1);
   const canSkip = !solo && myTurn && skipsLeft > 0 && draft.order.filter((pid) => !draft.picks.has(pid)).length > 1;
+  // 多人可选同一个策略 (the default): teammates' picks only feed the 「谁选了这张」 avatars; with the switch off they
+  // also mark 队友已选 and hold 确认选择 back (isTakenOn)
+  const dupesAllowed = duplicatesAllowedOf(pub, gd.config);
   const taken = solo ? new Map() : teammateBands(draft.picks, myId);
+  const isTakenOn = (bandId) => !dupesAllowed && taken.has(bandId);
   const pickers = new Map(); // bandId → players
   for (const [pid, bid] of draft.picks) {
     const p = players.find((x) => x.playerId === pid);
@@ -194,14 +236,15 @@ export function BandDraftScreen() {
     pickers.get(bid).push(p || { playerId: pid, name: '?' });
   }
 
-  // default selection: my pick, else what a timeout gives me (华法琳 while free); when my turn comes while the selected
-  // band has been taken by a teammate meanwhile (队友已选), move the selection back to that default
+  // default selection: my pick, else what a timeout gives me (华法琳; while free too, with duplicates forbidden); when my
+  // turn comes while the selected band has been taken by a teammate meanwhile (队友已选 only — never with duplicates
+  // allowed), move the selection back to that default
   const defaultId = gd.config?.bandDraft?.timeoutBandId || DEFAULT_TIMEOUT_BAND;
   const takenKey = [...taken.keys()].sort().join(',');
   useEffect(() => {
-    const next = draftSelection(sel, { bands, taken, myPick, myTurn, defaultId });
+    const next = draftSelection(sel, { bands, taken, myPick, myTurn, defaultId, duplicatesAllowed: dupesAllowed });
     if (next !== sel) setSel(next);
-  }, [bands.length, myPick, myTurn, takenKey]);
+  }, [bands.length, myPick, myTurn, takenKey, dupesAllowed]);
   // "your turn" cue
   useEffect(() => { if (myTurn && !solo) audio.sfx('yourTurn'); }, [myTurn]);
   // the 本局信息 dialog never outlives the turn it was opened in: a turn change (a pick, a skip, a turn that ran out, an
@@ -221,12 +264,13 @@ export function BandDraftScreen() {
     act('g.bandFocus', { bandId: sel }, { sfx: false, quiet: true });
   }, [sel, timed, myPick]);
 
-  // what a timeout gives me: the highlighted band while free, else the default (never 队友已选 — match/phases.js timeoutBand)
-  const autoId = autoPickBand(sel, { bands, taken, myPick, defaultId });
+  // what a timeout gives me: the highlighted band while allowed (and free, with duplicates forbidden), else the default
+  // (match/phases.js timeoutBand; with duplicates allowed a teammate's pick never blocks it)
+  const autoId = autoPickBand(sel, { bands, taken, myPick, defaultId, duplicatesAllowed: dupesAllowed });
   const autoName = (autoId && gd.band(autoId)?.name) || gd.band(defaultId)?.name || tName('华法琳');
 
   const band = sel ? gd.band(sel) : null;
-  const selTaken = !!band && taken.has(band.bandId);
+  const selTaken = !!band && isTakenOn(band.bandId);
   const confirm = async () => {
     if (!band || busy || !myTurn || selTaken) return;
     setBusy('pick');
@@ -286,7 +330,8 @@ export function BandDraftScreen() {
       <section class="draft-grid" role="listbox" aria-label=${t('策略')}>
         ${bands.map((b) => {
           const who = pickers.get(b.bandId) || [];
-          const isTaken = taken.has(b.bandId);
+          // 队友已选 only with duplicates forbidden; with them allowed the avatars still say who picked this one
+          const isTaken = isTakenOn(b.bandId);
           const offNames = bandOffBonds(b, offBonds).map((id) => gd.bond(id)?.name || id); // 本局禁用 (still selectable)
           return html`<button key=${b.bandId} type="button" role="option" aria-selected=${sel === b.bandId ? 'true' : 'false'} data-band=${b.bandId}
               aria-disabled=${isTaken ? 'true' : 'false'} title=${isTaken ? t('队友已选') : offNames.length ? bandOffLine(offNames) : undefined}

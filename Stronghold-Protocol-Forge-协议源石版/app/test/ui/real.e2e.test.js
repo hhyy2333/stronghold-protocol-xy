@@ -5,8 +5,8 @@
 //   SP_REAL_E2E=1 SP_REAL_ROUNDS=6 node --test test/ui/real.e2e.test.js
 //
 // Co-op: host creates a 同盟模拟 room (险境), adds an AI teammate; the guest joins through the ?room= invite link;
-// both ready, the host starts. Briefing ready → band draft (guest skips once, then picks a strategy nobody took —
-// 队友已选) → every prep round: take a merge reward if offered (two taps), buy from the shop (two taps: 确认购买), drag
+// both ready, the host starts. Briefing ready → band draft (guest skips once, then picks a strategy — duplicates are
+// allowed by default, bandDraft.duplicatesAllowed) → every prep round: take a merge reward if offered (two taps), buy from the shop (two taps: 确认购买), drag
 // hand pieces onto legal board tiles and choose a direction on the deploy wheel (g.move carries `dir`), sell a unit by
 // tapping it → underframe 出售 +N, level up (two taps), refresh, freeze/unfreeze, equip bought items by dragging them
 // onto a unit, ready (mouse / keyboard) → 机变 picks → combat rendered by the Pixi engine with real Spine units (client-
