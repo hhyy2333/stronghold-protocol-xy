@@ -20,7 +20,7 @@
 
 import { gameData, directMods, passiveBuff, unitBonds, bondActive, bondLayers, isMember, isOp, fxOn } from './support/index.js';
 import { fissionBondIds as sharedFissionBondIds, fissionCap } from '../../../shared/hextech.js';
-import { elem, hurt, areaAlliesInTiles, spawnChildren, isHitCount, abOf } from './enemies/helpers.js';
+import { elem, hurt, areaAlliesInTiles, spawnChildren, isHitCount, abOf, expectedFinal } from './enemies/helpers.js';
 // 战地医院 (业主 2026-10-24): the damage-kind predicates its `damaged` gate shares with 身负重担 (流失 / 反伤 / 链式伤害 are
 // not 「造成伤害」). Imported here because the install() reader lives in this file, not in a hexcards module.
 import { isHpLoss, isRetaliation, isChained } from '../damage.js';
@@ -1929,10 +1929,21 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
       const last = t.mem && t.mem[THORN_CD] != null ? t.mem[THORN_CD] : -Infinity;
       if (battle.time - last < cd - 1e-9) return;
       const atk = t.s && Number.isFinite(t.s.atk) ? t.s.atk : 0;
-      const back = atk * ratio;
+      // 业主 2026-10-24「敌方协议铁壁修改成反伤不会致死」: the reflect is a punishment for hitting the wall, never the
+      // executioner — the attacker keeps at least 1 HP, the same never-lethal rule 不区区！ (`batch10.js`, clamps by
+      // `hp - 1`) and 远见透支 use. The clamp is applied to the FINAL delivered amount (via `expectedFinal`, the same
+      // projection the damage pipeline mitigates by), not to the raw share: 脆弱 / 增伤 multipliers act after this, and
+      // clamping the pre-mitigation number would still let a buffed reflect kill a 1-HP operator.
+      const room = Math.max(0, (Number.isFinite(src.hp) ? src.hp : 0) - 1);
+      if (!(room > 0)) return;
+      let back = atk * ratio;
+      if (!(back > 0)) return;
+      const info = battle.makeDamage({ amount: back, type: 'phys', isSkill: true, defIgnorePct: 1, tags: ['hexVerb'] });
+      const projected = expectedFinal(t, src, info);
+      if (projected > room) back *= room / projected;
+      info.amount = back;
       if (!(back > 0)) return;
       if (t.mem) t.mem[THORN_CD] = battle.time;
-      const info = battle.makeDamage({ amount: back, type: 'phys', isSkill: true, defIgnorePct: 1, tags: ['hexVerb'] });
       info.steadThorn = true;
       battle.dealDamage(t, src, info);
     });
