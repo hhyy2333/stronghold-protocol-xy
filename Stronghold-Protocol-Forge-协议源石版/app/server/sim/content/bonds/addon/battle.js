@@ -404,12 +404,29 @@ function raidRefreshContact(battle, u) {
   }
 }
 
+/**
+ * 突袭 members, re-read from the live unit bonds (业主 2026-10-24「远程干员被亮剑视作突袭好像不会重部署到敌人附近」).
+ *
+ * `makeState` captures `members[bond]` once, at install time — and the content modules install **bonds before
+ * hextech** (content/index.js DOMAIN_NAMES), so a 借来的盟约 that 亮剑 (hex_drawblade) writes into
+ * `u.extraBonds = ['raidShip']` during ITS install was never in that set: `st.members[ID.raid]` stayed empty for the
+ * whole battle, the install gate below (`... && st.members[ID.raid].size`) skipped registering the poll at all, and a
+ * ranged operator under 亮剑 never did the 「保留技力立即再部署至地面敌人周围」 jump even though the bond strip counted
+ * it as a 突袭 member. `unitBonds` is cached on (items, morph pairing, extraBonds), so a poll-time recompute is cheap
+ * (a handful of operators, twice a second) and follows any later source of membership too.
+ */
+function refreshRaidMembers(battle, st) {
+  const live = new Set(st.ops.filter((u) => isMember(battle, u, ID.raid)));
+  st.members[ID.raid] = live;
+  return live;
+}
+
 function raidPoll(battle, st) {
   const bb = st.bb[ID.raid];
   const idle = num(bb.no_attack_duration, 10);
   // Ordinary and post-revive orders stay separate: one poll can hold a member of each.
   let plain = null, taunted = null;
-  for (const u of st.members[ID.raid]) {
+  for (const u of refreshRaidMembers(battle, st)) {
     if (!onField(u) || !u.canAct) continue;
     // Maintainer 2026-10-10: one fresh target check after revival when unblocked, even with enemies in attack range.
     // Ordinary later polls retain their original empty-range rule and distance order. A Raid jump cannot arm another check.
@@ -513,14 +530,17 @@ export function install(battle) {
 
   // 突袭
   if (has(ID.raid)) {
-    const raid = states.filter((st) => st.tiers[ID.raid] && st.members[ID.raid].size);
+    // NOT `&& st.members[ID.raid].size`: at this point bonds have installed before hextech, so 亮剑's borrowed
+    // raidShip membership (written at ITS install) is not in the captured set yet — requiring a member here would skip
+    // registering the poll entirely and the card would never make a ranged operator 再部署 (see refreshRaidMembers).
+    const raid = states.filter((st) => st.tiers[ID.raid]);
     if (raid.length) {
       battle.on('deploy', (c) => {
         const u = c.unit;
         // Only a revive: the previous exit was a knock-out and the operator is back before its respawn timer.
         // A retreat (宴 / 史尔特尔 / 伊内丝 / 耀骑士临光), a move, a timer redeploy and the initial deploy stay on the old poll.
         if (!u || c.initial || c.move || u.removeReason !== 'killed' || !(u.respawnAt > battle.time + 1e-9)) return;
-        if (raid.some((st) => st.members[ID.raid].has(u))) u.mem.raidReviveSeq = u.deploySeq;
+        if (raid.some((st) => refreshRaidMembers(battle, st).has(u))) u.mem.raidReviveSeq = u.deploySeq;
       });
       battle.every(RAID_POLL, () => { for (const st of raid) raidPoll(battle, st); });
     }

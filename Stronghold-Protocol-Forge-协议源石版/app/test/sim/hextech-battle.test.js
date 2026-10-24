@@ -1903,3 +1903,40 @@ test('灵魂炸弹 (soulBomb): every 10 s it hits every enemy for the banked hea
   assert.ok(u.hp > uHp0, `and the board was healed by the same number (${uHp0} → ${u.hp})`);
   h.invariants();
 });
+
+// 业主 2026-10-24「远程干员被亮剑视作突袭好像不会重部署到敌人附近」：亮剑把远程干员借成【突袭】成员，但那半边是在
+// hextech 的 install 里写的，而内容模块的安装顺序是 bonds 在 hextech **之前**（content/index.js DOMAIN_NAMES），
+// 所以 bonds 侧 `makeState` 抓下来的 `members[raidShip]` 里没有这些远程干员 —— install 里那句
+// `... && st.members[ID.raid].size` 直接把「每 0.25 s 一次 突袭 轮询」整个跳过，整局都不会再部署。
+// 现在轮询按活的成员重算（refreshRaidMembers），这条用例就是那个缺口。
+test('亮剑 + 突袭: a borrowed 突袭 ranged operator really does 再部署 to a ground enemy after 10 s idle', () => {
+  const rangedFar = () => chessRec({
+    id: 'test_ranged_far', profession: 'CASTER', position: 'RANGED',
+    stats: { maxHp: 1200, atk: 200, def: 100, res: 0, aspd: 100, bat: 1, blockCnt: 0, respawnTime: 20, rangeRadius: 3.5 },
+    skill: null,
+  });
+  const mk = () => makeBattle({
+    // 敌人走第 2 行（离干员第 9 行很远）：干员范围内始终没有敌人，10 秒后才该跳
+    defs: { chess: { test_ranged_far: rangedFar() }, enemies: { enemy_dummy: dummy({ speed: 0 }) } },
+    players: [{
+      playerId: 'p1', seat: 0, side: 'L', colOffset: 0,
+      bonds: { raidShip: { count: 2, active: true, tier: 1, layers: 0 } },
+      playerEffects: [refOf('hex_drawblade')],
+      units: [{ uid: 1, kind: 'chess', chessId: 'test_ranged_far', row: 12, col: 2 }],
+    }],
+    enemies: [{ key: 'enemy_dummy', time: 0, route: { start: [2, 18], end: [2, 2], checkpoints: [] }, pos: [2, 12] }],
+    autoFinish: false, timeLimit: 20,
+  });
+  const h = mk();
+  h.run(0.5);
+  const u = h.battle.allyUnits.find((x) => x.kind === 'op');
+  assert.ok(u && u.extraBonds && u.extraBonds.includes('raidShip'), 'premise: 亮剑 gave it the borrowed 突袭 bond');
+  const seq0 = u.deploySeq;
+  const y0 = u.y;
+  // 10 s 的 no_attack_duration 之后，轮询才该让它跳到地面敌人身边
+  h.run(11.5);
+  assert.ok(u.deploySeq > seq0, `it redeployed (deploySeq ${seq0} → ${u.deploySeq})`);
+  assert.ok(u.y < y0 - 2, `and moved toward the enemy's row (row ${y0.toFixed(1)} → ${u.y.toFixed(1)})`);
+  assert.ok(u.alive, 'it is still alive after the jump');
+  h.invariants();
+});
