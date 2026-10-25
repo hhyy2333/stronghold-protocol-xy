@@ -482,3 +482,29 @@
   }
   .oex__title { font-size: 14px; }
 }
+
+/* 矮屏二代（业主 2026-10-25「商店和交易所 ui 有问题，手机网页的」）：
+   上一档只把面板限制在视口内，但**内容**仍比可用高度高 —— 头部（标题 / 指数 / 总资产 / 每单手数 / 杠杆 / 显示）
+   都是固定高度且不缩，而股票列表又被上一档写了 `min-height: 120px`，两者相加超过 `100vh - top - bottom`，
+   于是最下面的「显示」那一行被裁到屏幕外（截图里正是这样：面板底部那条按钮被切掉）。
+   这一档按**可用高度**重排：顶栏让开到安全区之上、头部逐段收紧、列表给一个能收缩的下限而不是 120px 死值。 */
+@media (max-height: 420px) {
+  .oex__panel {
+    top: calc(var(--sa-t, 0px) + 44px);
+    bottom: calc(var(--sa-b, 0px) + 6px);
+    max-height: none;
+  }
+  .oex__head { padding-top: 3px; padding-bottom: 2px; }
+  .oex__title { font-size: 13px; }
+  .oex__kicker { font-size: 9px; line-height: 1.2; }
+  .oex__tape { padding-top: 1px; padding-bottom: 1px; font-size: 10px; }
+  /* 金额区压成一行四列，别占两行 */
+  .oex__summary { grid-template-columns: repeat(4, 1fr); }
+  .oex__metric { padding-top: 2px; padding-bottom: 2px; }
+  .oex__metric-label { font-size: 9px; line-height: 1.2; }
+  .oex__metric-value { font-size: 13px; line-height: 1.15; }
+  .oex__qty, .oex__lever, .oex__display { padding-top: 2px; padding-bottom: 2px; }
+  .oex__foot { padding: 3px 8px 4px; font-size: 10px; }
+  /* 关键：列表要能缩，才能把脚注留在屏幕内。给一个 72px 的实用下限（约两行股票）。 */
+  .oex__list { min-height: 72px; }
+}
