@@ -9,6 +9,64 @@
 
 ---
 
+## 0.19.26 — 2026-10-25
+
+**管理员吞牌修复 ＋ 两个新策略「管理员2」「管理员3」＋ 玩偶批发商每回合再给一个（业主 2026-10-25）。**
+
+### 修：管理员「第一回合多选一次」在倒计时到点时会吞掉第二张
+
+业主「管理员策略有问题，不一定能选两次」。根因在 `server/match/match/hexDraft.js` 的 `_timeoutHexDraft`：它按
+「这名玩家已经记过一次选择了吗」判断要不要自动选，然后**无条件** `finishHexDraft()`。管理员的第二次选牌是同一场
+草稿的第二轮，玩家选完第一张时 `picks[pid]` 已经有值了，于是超时循环**直接跳过**这个人，紧接着的强制结束把那张
+票一起关掉。
+
+**「不一定」的准确边界**：单人局草稿不计时（`soloUntimed`），所以一定拿得到两次；**联机局有 30 秒倒计时**
+（`data/hextech.json` 的 `timerSec`），第二张没点完就没了。
+
+改法：`_timeoutHexDraft` 改成按「还欠几次」（`_hexPicksLeft`）判定，把每名玩家欠的票**逐张补完**；`_applyHex` 会
+重新发牌，所以每轮重读 offer，循环有上界、空 offer 退出（保留原来的兜底强制结束，不会卡住阶段）。
+机器人座位有两个同源问题一起修：`scheduleHexBot` 用同一个「已记过选择」判断（AI 永远不选第二张），且重新发牌后
+没有重新排程。
+
+### 新增策略「管理员2」「管理员3」
+
+| 策略 | 效果 | 实现 |
+|---|---|---|
+| **管理员2** | 第 1、3 回合开始时，**随机**获得一枚协议源石 | `band_hex_grant_rounds { roundA: 1, roundB: 3 }` |
+| **管理员3** | 第 4、10 回合开始时，获得【潘多拉魔盒】 | 同一个 buff + `bbStr.hexId: "hex_pandora"` |
+
+两个策略共用一个 buff 键：`bb.roundA` / `bb.roundB` 是那两回合，`bbStr.hexId` 钉住卡片（不给就是随机抽）。
+`bb` 必须全是数字（`test/data.test.js` 逐值校验），所以两回合是两个具名键而不是数组。
+
+随机是抽**这名玩家自己的池子**（`hexPoolFor`：禁用表 + 专属卡的盟约条件），排除已拥有，再按 id 排序用种子的
+`rngHex` 抽 —— 同一局可复现，也不会抽到被禁掉的卡。发放走 `grantHex`（生产发放路径），所以「获得时」的全套效果
+照跑。触发点在 `startRound` 的 `onRoundStart` 结算**之后**：这张卡是「本回合获得」的，它自己的每回合部分从下一回合
+起算——与草稿选牌一致；没有命中的回合既不碰状态也不碰 RNG。
+
+管理员3 的第二次（R10）会把当时的**全部**协议源石再重掷一遍（包括 R4 那次洗出来的）——这是潘多拉魔盒本身的效果。
+
+### 玩偶批发商：获得时 1 个 ＋ 之后每回合 1 个
+
+`effect` 里保留原来的 `onPick.randomItem`，再加一条 `onRoundStart.randomItem`。两半走同一个 `spec.randomItem`
+处理器（它不按 hook 分流），没有新机制。卡面文案同步。
+
+### 顺手修掉两处随改动变旧的数据计数
+
+`data/bands.json` **41 → 43**、`data/hextech.json` 的 `playerHexes` **123 → 124**。124 是 0.19.25 加「复制」时
+漏改的，`test/content/hextech.test.js` 里 3 条断言因此**一直在红**；`bands` 那几条同源。`docs/DATA.md` /
+`docs/design/overview.md` / `docs/design/engine.md` 的策略数一并跟上（40 官方 + 3 个手写策略）。
+
+### 验证
+
+- 新增 `test/match/admin-round-hexes.test.js`（6 条）：数据面、玩偶批发商「获得 1 + 每回合 1」、buff 读取、
+  管理员2 的 R1/R3 与「其它回合为 0」、管理员3 的 R4/R10（用「之后拥有的全是 3 阶」反证潘多拉真的跑了），
+  以及一条**差分整局**（同种子，只有 bandId 不同 ⇒ R1 开局时管理员2 恰好多一张协议源石）。
+- 管理员倒计时修复配红绿回归：撤掉修复时 2 条变红，加回 5/5 绿。
+- 通过：`hextech` 71/71、`content/hextech` 55/55、`items` 64/64、`hexcards-25cards` 4/4、`draft` 10/10、
+  `draft-many-players` 2/2、`grantHex` 4/4、`sp-payoff` 5/5、`admin-extra-pick` 5/5、`admin-copy-own-pick` 3/3、
+  `hex-replicate-doll` 4/4、`announce` 24/24、`version` 6/6、`i18n-server` 5/5。
+- `bands` 37/2、`docs-consistency` 16/9、`docs-paths` 3/4、`fullmatch` 3/5 与改动前逐条相同（既有问题，无新增回归）。
+
 ## 0.19.25 — 2026-10-25
 
 **官方特效回归 ＋ 敌人模型修复 ＋ 尸山合成 ＋ 管理员第一回合多选 ＋ 协议源石「复制」＋ 悬赏「破财消灾」＋ 手机横屏商店（业主 2026-10-25）。**
