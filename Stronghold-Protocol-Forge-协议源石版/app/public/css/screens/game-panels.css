@@ -430,6 +430,22 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .spov__grid--many { grid-auto-rows: minmax(3.2rem, auto); align-content: start; }
 .spov__grid--3 { grid-template-columns: repeat(3, minmax(0, 4.3rem)); grid-template-rows: minmax(0, 4.6rem); justify-content: center; align-content: start; gap: .36rem; margin-top: .3rem; }
 .spov__grid--3 .spcard__icon { width: 1.3rem; height: 1.3rem; }
+/* 破财消灾 (业主 2026-10-25)：悬赏决策轮栅格下的那颗「花钱跳过」按钮。它不是卡，所以不占栅格单元，
+   横跨整行、矮一些，弱化成「次要出口」的样子（金色 coin + 价格），点两次确认与卡片一致。 */
+.spov__payoff {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: .12rem;
+  flex: 0 0 auto; margin-top: .16rem; padding: .12rem .2rem; min-height: .6rem;
+  background: linear-gradient(180deg, rgba(230, 196, 120, .14), rgba(150, 120, 60, .07));
+  border: 1px dashed rgba(230, 196, 120, .45); border-radius: .12rem; color: var(--text-hi);
+  transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast), background var(--t-fast);
+}
+.spov__payoff:disabled { opacity: .5; }
+.spov__payoff.is-pickable { cursor: pointer; }
+.spov__payoff.is-pickable:hover { border-color: rgba(230, 196, 120, .85); background: linear-gradient(180deg, rgba(230, 196, 120, .22), rgba(150, 120, 60, .1)); }
+.spov__payoff.is-armed { border-style: solid; border-color: #e6c478; box-shadow: 0 0 0 1px rgba(230, 196, 120, .5) inset; }
+.spov__payoff b { font-size: calc(.16 * var(--t)); }
+.spov__payoff small { font-size: calc(.12 * var(--t)); opacity: .8; }
+.spov__payoff > svg, .spov__payoff > .gicon { width: .24rem; height: .24rem; color: #e6c478; }
 /* The official card (research 06 §11.5; the official 悬赏 / 机密商店 / 战术 screenshots): a framed icon at the top-left
    with the bold name beside it, the effect text under both across the card, left-aligned; the tier chip on the icon's
    corner, the taker's round avatar at the top-right (user playtest #6 item 6: the centred icon + name used to push the

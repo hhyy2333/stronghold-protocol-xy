@@ -2757,5 +2757,9 @@
   "惊惧": "Dread",
   "炼狱导管": "Infernal Conduit",
   "神器整备": "Artifact Outfitting",
-  "【锻炉】融合的两件装备：": "The two items 【Furnace】 fused:"
+  "【锻炉】融合的两件装备：": "The two items 【Furnace】 fused:",
+  "破财消灾": "Pay-Off",
+  "支付 {cost} 资金，本回合不拿悬赏": "Pay {cost} funds to skip this round’s bounty",
+  "破财消灾，已选中，再次点击确认": "Pay-off, selected — tap again to confirm",
+  "破财消灾：支付 {cost} 资金，本回合不拿悬赏": "Pay-off: pay {cost} funds to skip this round’s bounty"
 }

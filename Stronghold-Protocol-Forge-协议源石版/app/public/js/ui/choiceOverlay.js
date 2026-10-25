@@ -121,6 +121,15 @@ export function spTap(armed, idx, pickable) {
  */
 export function armedCard(armed, sp, o) {
   if (armed == null || !sp) return null;
+  /**
+   * 破财消灾 (业主 2026-10-25): the payoff is a pseudo-card with a negative index and is NOT in `sp.cards`, so the
+   * lookup below would return null and the two-tap selection would cancel itself the instant it armed. Keep it while
+   * the same conditions that enabled the button still hold.
+   */
+  if (sp.payoff && armed === sp.payoff.idx) {
+    const canPay = !!(o && o.myId && (o.solo || sp.turnPid === o.myId) && sp.pickOf.get(o.myId) == null && o.busyIdx == null);
+    return canPay ? armed : null;
+  }
   const card = sp.cards.find((c) => c && c.idx === armed);
   return cardPickable(sp, card, o) ? armed : null;
 }
@@ -243,6 +252,21 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
           </button>`;
         })}
       </div>
+      ${/* 破财消灾 (业主 2026-10-25)：悬赏决策轮里额外的一颗按钮 —— 花 1 资金本回合不拿悬赏。
+            它不是一张卡（不进 taken、人人可用），所以画在栅格下面而不是混进卡片里。 */ ''}
+      ${sp.payoff ? (() => {
+        // 资金是私有信息，客户端这里不读（服务端会拒绝付不起的那次），所以按钮的可点性只看「轮到我 + 还没选」。
+        const canPay = !!(myId && myTurn && mine == null && busyIdx == null);
+        const isArmedPay = canPay && armed === sp.payoff.idx;
+        return html`<button type="button" class=${cx('spov__payoff', canPay && 'is-pickable', isArmedPay && 'is-armed')}
+            disabled=${!canPay} onClick=${() => canPay && onTap(sp.payoff.idx)}
+            aria-label=${isArmedPay ? t('破财消灾，已选中，再次点击确认') : t('破财消灾：支付 {cost} 资金，本回合不拿悬赏', { cost: sp.payoff.cost })}>
+          <${GIcon} name="coin" />
+          <b>${t('破财消灾')}</b>
+          <small>${t('支付 {cost} 资金，本回合不拿悬赏', { cost: sp.payoff.cost })}</small>
+          ${isArmedPay ? html`<span class="spcard__confirm" role="status"><b>${t('确认选择')}</b><small>${t('再次点击')}</small></span>` : null}
+        </button>`;
+      })() : null}
     </div>
   </div>`;
 }
