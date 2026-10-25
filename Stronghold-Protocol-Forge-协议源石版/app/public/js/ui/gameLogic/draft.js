@@ -72,12 +72,17 @@ export function normalizeSp(sp, players = []) {
   let turnPid = null;
   if (typeof sp.turn === 'string') turnPid = sp.turn;
   else if (Number.isInteger(sp.turn) && sp.turn >= 0 && sp.turn < order.length) turnPid = order[sp.turn];
+  // 破财消灾 (业主 2026-10-25): a pseudo-card beside the real ones on a 悬赏决策 round. Its `idx` is negative, so the
+  // `add()` guard above (idx >= 0) leaves `takenBy` alone — that is exactly what keeps it available to every player.
+  const payoff = isObj(sp.payoff) && Number.isInteger(sp.payoff.idx) && Number.isFinite(sp.payoff.cost)
+    ? { idx: sp.payoff.idx, cost: sp.payoff.cost }
+    : null;
   return {
     family: typeof sp.family === 'string' ? sp.family : null,
     name: typeof sp.name === 'string' && sp.name ? sp.name : null,
     desc: typeof sp.desc === 'string' && sp.desc ? sp.desc : null,
     untimed: !!sp.untimed,
-    cards, order, turnPid, pickOf, takenBy, pickedCount: pickOf.size,
+    cards, order, turnPid, pickOf, takenBy, pickedCount: pickOf.size, payoff,
   };
 }
 

@@ -14,6 +14,19 @@ import { OK, fail, DELAYS } from './common.js';
 /** Cards of the personal choice (PRTS 卫戍协议：盟约 下半 §法术 教鞭: "于3个战术特训的悬赏任务中选择一项"). */
 const PERSONAL_OFFER_SIZE = 3;
 
+/**
+ * 破财消灾 (业主 2026-10-25「悬赏加个可被多人选择的－1块钱选项」): on a 悬赏决策 round an extra option lets a player pay
+ * 1 资金 to take NO bounty this round — so no bounty enemies join their next battle.
+ *
+ * It is NOT one of the drafted cards: those are dealt once and `taken[idx]` makes them unique, while this one must stay
+ * available to EVERY player at the table (「可被多人选择」). It therefore rides beside the cards as a fixed pseudo-card
+ * with a negative index — `SP_PAYOFF_IDX` — so no card index can collide with it and `taken` never touches it.
+ */
+const SP_PAYOFF_IDX = -1;
+const SP_PAYOFF_COST = 1;
+const SP_PAYOFF_ID = 'sp_payoff';
+const SP_PAYOFF_NAME = '破财消灾';
+
 export class MatchSpDraft {
   enterSpDraft() {
     const alive = this.alivePlayers();
@@ -27,10 +40,17 @@ export class MatchSpDraft {
     order = this.humansFirst(order);
     // untimed: solo and any single-human match (soloUntimed); the co-op order / 6 cards stay
     const untimed = this.soloUntimed;
-    this.sp = { ...draft, order, idx: 0, picks: {}, taken: {}, untimed, turnDeadline: 0 };
+    // 破财消灾 rides beside the cards on a 悬赏决策 round only (业主 2026-10-25), and is never taken
+    const payoff = draft.family === 'bounty' ? { idx: SP_PAYOFF_IDX, cost: SP_PAYOFF_COST } : null;
+    this.sp = { ...draft, order, idx: 0, picks: {}, taken: {}, untimed, turnDeadline: 0, payoff };
     this.setDeadline(0);
     this.startSpTurn();
     this.markPublic();
+  }
+
+  /** The 破财消灾 pseudo-card this draft offers, or null (not a 悬赏 round). */
+  spPayoff() {
+    return (this.sp && this.sp.payoff) || null;
   }
 
   spTurn() {
@@ -51,7 +71,10 @@ export class MatchSpDraft {
       s.idx++;
     }
     const available = s.cards.filter(c => this.spCardAvailable(c)).map(c => c.idx);
-    if (s.idx >= s.order.length || !available.length) { this.setDeadline(0); this.later(0, () => this.finishSpDraft()); return; }
+    // 破财消灾 keeps the turn alive when every card is already taken: a 悬赏 round whose cards all went to earlier
+    // players still offers 「花 1 块跳过」 to the rest, instead of ending the draft early.
+    const payoffLeft = !!this.spPayoff() && s.payoff.idx === SP_PAYOFF_IDX;
+    if (s.idx >= s.order.length || (!available.length && !payoffLeft)) { this.setDeadline(0); this.later(0, () => this.finishSpDraft()); return; }
     const token = ++this._turnToken;
     if (!s.untimed) {
       const first = s.idx === 0;
@@ -85,15 +108,42 @@ export class MatchSpDraft {
     });
   }
 
+  /**
+   * Choose card `idx`, or 破财消灾 with `idx === SP_PAYOFF_IDX`.
+   *
+   * 业主 2026-10-25「悬赏加个可被多人选择的－1块钱选项」: the payoff is NOT unique — `taken` never holds it, so every
+   * player in turn may take it. It costs `SP_PAYOFF_COST` 资金 and gives up this round's bounty (no card is taken).
+   */
   pickCard(ps, idx) {
     if (this.phase !== PHASE.SP_DRAFT || !this.sp) return fail(ERR.WRONG_PHASE);
     if (!ps.alive) return fail(ERR.ELIMINATED);
     if (this.sp.picks[ps.playerId] != null) return fail(ERR.ALREADY);
     if (this.spTurn() !== ps.playerId) return fail(ERR.NOT_YOUR_TURN);
+    if (idx === SP_PAYOFF_IDX) {
+      if (!this.spPayoff()) return fail(ERR.BAD_TARGET);
+      if (!(ps.funds >= SP_PAYOFF_COST)) return fail(ERR.NO_FUNDS);
+      this._applyPayoff(ps);
+      return OK;
+    }
     if (!Number.isInteger(idx) || idx < 0 || idx >= this.sp.cards.length) return fail(ERR.BAD_TARGET);
     if (!this.spCardAvailable(this.sp.cards[idx])) return fail(ERR.SOLD_OUT);
     this._applyCard(ps, idx);
     return OK;
+  }
+
+  /**
+   * 破财消灾: pay, take no card. The pick is recorded with the pseudo index so the turn advances and `views` can show
+   * that this player sat the round out; `taken` is untouched, which is what keeps the option open for everyone else.
+   */
+  _applyPayoff(ps) {
+    const s = this.sp;
+    if (!s || s.picks[ps.playerId] != null) return;
+    ps.funds = Math.max(0, ps.funds - SP_PAYOFF_COST);
+    s.picks[ps.playerId] = SP_PAYOFF_IDX;
+    ps.dirty();
+    this.markPrivate(ps);
+    this.markPublic();
+    this.startSpTurn();
   }
 
   _applyCard(ps, idx) {

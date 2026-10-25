@@ -127,6 +127,9 @@ export class MatchViews {
         family: s.family, name: s.name, desc: s.desc, eventId: s.eventId,
         cards: s.cards.map(c => ({ ...cardView(c), soldOut: c.kind === 'item' && !this.itemPool.canGain(c.id) })), order: s.order.slice(),
         turn: this.spTurn(), picks: { ...s.picks }, taken: { ...s.taken }, untimed: !!s.untimed,
+        // 破财消灾 (业主 2026-10-25): present only on a 悬赏决策 round. `idx` is the pseudo index a client sends back with
+        // `g.pick`; it is deliberately NOT in `taken`, so every player at the table may still choose it.
+        ...(s.payoff ? { payoff: { idx: s.payoff.idx, cost: s.payoff.cost } } : {}),
       };
     }
     if (this.phase === PHASE.UNITE && this.unitePlan) v.unite = { helpers: this.unitePlan.helpers.map((p) => p.playerId), leakers: this.unitePlan.leakers.map((p) => p.playerId) };

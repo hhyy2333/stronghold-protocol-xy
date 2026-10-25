@@ -844,7 +844,10 @@ export const C2S = {
   'g.reward': { idx: (v) => isInt(v, 0, 5) },
   // 卡数随人数走（`generateDraft`: max(6, 存活人数)，上限 `DRAFT_CARDS_MAX`），所以上界不能写死 5：
   // 7 人以上的房第 7 张卡（idx 6）从前在这一层就被判 BAD_MSG（业主 2026-10-17「无效的请求」）。
-  'g.choice': { idx: (v) => isInt(v, 0, DRAFT_CARDS_MAX - 1), choiceId: isId, $optional: ['choiceId'] },
+  // 负索引入口：破财消灾 (业主 2026-10-25「悬赏加个可被多人选择的－1块钱选项」) is a pseudo-card beside the drafted
+  // ones; its index is -1 (`spDraft.js SP_PAYOFF_IDX`) because no real card index can collide with it. The engine
+  // still refuses it unless the running draft offers it (`spPayoff()`), so widening the bound here opens no other door.
+  'g.choice': { idx: (v) => isInt(v, -1, DRAFT_CARDS_MAX - 1), choiceId: isId, $optional: ['choiceId'] },
   // 协议源石 (Hextech): the player's pick among their own offered hexes, and the one reroll of that offer.
   // Added by the hextech port; the engine has no such message of its own.
   'g.hex': { idx: (v) => isInt(v, 0, 5) },
