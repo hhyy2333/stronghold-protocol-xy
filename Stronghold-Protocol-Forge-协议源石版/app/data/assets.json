@@ -7,7 +7,7 @@
   "bytes": 742908941,
   "chars": 211,
   "charsWithBack": 208,
-  "enemies": 297,
+  "enemies": 304,
   "enemiesWithSpine": 253,
   "tokens": 58,
   "tokensWithSpine": 13,
@@ -55580,6 +55580,378 @@
      "width": 571.011,
      "height": 494.039
     }
+   }
+  },
+  "enemy_10109_mjcgst": {
+   "spineLocal": {
+    "skel": "enemy_10109_mjcgst.skel",
+    "atlas": "enemy_10109_mjcgst.atlas",
+    "textures": [
+     "enemy_10109_mjcgst.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Start",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 2,
+     "Idle_2": 2,
+     "Move": 1.333,
+     "Move_2": 1.333,
+     "Start": 1
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.4
+     ]
+    },
+    "bounds": null
+   }
+  },
+  "enemy_10196_ubba": {
+   "spineLocal": {
+    "skel": "enemy_10196_ubba.skel",
+    "atlas": "enemy_10196_ubba.atlas",
+    "textures": [
+     "enemy_10196_ubba.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Start",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1.667,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 1.333,
+     "Move": 1.333,
+     "Start": 1
+    },
+    "events": [
+     "OnAttack",
+     "OnStart"
+    ],
+    "hits": {
+     "Attack": [
+      0.633
+     ]
+    },
+    "bounds": null
+   }
+  },
+  "enemy_10229_agactr": {
+   "spineLocal": {
+    "skel": "enemy_10229_agactr.skel",
+    "atlas": "enemy_10229_agactr.atlas",
+    "textures": [
+     "enemy_10229_agactr.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1.833,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 1.667,
+     "Move": 1.333
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.733
+     ]
+    },
+    "bounds": null
+   }
+  },
+  "enemy_1309_mhboar": {
+   "spineLocal": {
+    "skel": "enemy_1309_mhboar.skel",
+    "atlas": "enemy_1309_mhboar.atlas",
+    "textures": [
+     "enemy_1309_mhboar.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 0.8,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 2,
+     "Move": 0.4
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.233
+     ]
+    },
+    "bounds": {
+     "x": -243.749,
+     "y": -4.16,
+     "width": 504.5,
+     "height": 358.425
+    }
+   }
+  },
+  "enemy_1413_mmstck_2": {
+   "spineLocal": {
+    "skel": "enemy_1413_mmstck_2.skel",
+    "atlas": "enemy_1413_mmstck_2.atlas",
+    "textures": [
+     "enemy_1413_mmstck_2.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 1,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 1,
+     "Move": 0.8
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      0.433
+     ]
+    },
+    "bounds": null
+   }
+  },
+  "enemy_2011_csppt": {
+   "spineLocal": {
+    "skel": "enemy_2011_csppt.skel",
+    "atlas": "enemy_2011_csppt.atlas",
+    "textures": [
+     "enemy_2011_csppt.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 3.767,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 2.667,
+     "Move": 1.333
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      1.267
+     ]
+    },
+    "bounds": {
+     "x": -237.431,
+     "y": -3.579,
+     "width": 607.344,
+     "height": 544.52
+    }
+   }
+  },
+  "enemy_9005_aicemn": {
+   "spineLocal": {
+    "skel": "enemy_9005_aicemn.skel",
+    "atlas": "enemy_9005_aicemn.atlas",
+    "textures": [
+     "enemy_9005_aicemn.png"
+    ],
+    "pma": true,
+    "anims": {
+     "idle": "Idle",
+     "deploy": "Idle",
+     "attack": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null
+     },
+     "attackDown": null,
+     "skill": {
+      "begin": null,
+      "loop": "Attack",
+      "end": null,
+      "via": "attack",
+      "index": 0,
+      "idle": null
+     },
+     "die": "Die",
+     "move": {
+      "begin": null,
+      "loop": "Move",
+      "end": null
+     },
+     "stun": null
+    },
+    "animations": {
+     "Attack": 2.1,
+     "Default": 0,
+     "Die": 1,
+     "Idle": 1.333,
+     "Move": 1.067
+    },
+    "events": [
+     "OnAttack"
+    ],
+    "hits": {
+     "Attack": [
+      1.2
+     ]
+    },
+    "bounds": null
    }
   }
  },

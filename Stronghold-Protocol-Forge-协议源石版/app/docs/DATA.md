@@ -496,6 +496,23 @@ the pool anchors that fit them, so they attach at the wider [0.7, 1.5] power ban
 | `enemy_1163_hvymot` 水手重艇 | ≥ 3 block slots; on death it leaves the 水手 it carried (`DeathRattle.enemy_key`) | `blockWeight(3)` + `spawnChildren` |
 | ~~`enemy_10109_mjcgst` 沃尔夫之影~~ | **back out** (owner 2026-10-25「去掉沃尔夫之影」): without 月光 it would have been 隐匿 + unblockable + never attacking — a unit nobody can stop and nobody can answer | — |
 
+**Batch 4 (0.19.24, owner 2026-10-25「优雅刀技厨师3块剧场组装体4块赏金猎人"大骑士"4块搏命养家者3块加入悬赏。凶豕兽作战里少放点，
+冰晶射手作战里少放点」) — four bounties and two reduced-share wave enemies:**
+
+| key | mechanic | primitive |
+|---|---|---|
+| `enemy_1413_mmstck_2` 赏金猎人“大骑士” | 「移动时逐渐加速，被阻挡后的首次攻击根据移速造成额外法术伤害」 (`Rush.enemy_mmstck_t[trigger]` 0.5 / 0.5 / 25, `FirstAttack.atk_scale` 650) | own `rushFirstHit` helper (the 穿刺手's rule on THIS data's prefix) |
+| `enemy_10229_agactr` 优雅刀技厨师 | 「使自身周围一定范围内地面敌人的攻击速度和法术抗性提升」 (`AuraAttributeUp` radius 2.5, ASPD +35, RES +20) | `enemyAura` |
+| `enemy_2011_csppt` 剧场组装体 | 「只能被阻挡数大于等于4的单位阻挡」+「攻击对自身周围较近范围内所有我方单位造成溅射伤害」 (no blackboard: radius 1.2 [ASSUMED]) | `blockWeight(4)` + a `hitOut` splash centred on ITSELF |
+| `enemy_10196_ubba` 搏命养家者 | 「周围敌人受到的物理和法术伤害降低」 (`Talent1.damage_resistance` 0.25); its 警戒 line needs a warning-tower stage system and is **not** modelled | `enemyAura` |
+| `enemy_1309_mhboar` 凶豕兽 | 「≥2 阻挡」+ rush acceleration; **`share: 0.25`** (owner: 作战里少放点) | `blockWeight(2)` + `rushFirstHit` |
+| `enemy_9005_aicemn` 冰晶射手 | 「攻击造成物理溅射伤害并施加<寒冷>」 (`talent.attack@freeze` = duration); **`share: 0.25`** (owner: 作战里少放点) | `splashAttack({ onEach })` + `applyStatus('cold')` |
+
+A research row's **`share`** (< 1) makes the key eligible for only that fraction of the pools — gated by a stable hash of
+the pool key, so `data/factions.json` stays deterministic. Both of batch 4's reduced keys land on about a quarter of the
+pools an average fork key gets (measured: 凶豕兽 1 pool, 冰晶射手 2, average 3.7), and `extra-enemies.test.js` asserts it.
+One more cap came out of this batch: a `band: 'wide'` key that outpowers **every** pool of its class and rank (爆破攻坚手
+组长, P 39000) takes a single over-cap slot instead of staying unwired.
 Every skill blackboard a batch-3 kit reads lives under `ab.sk[<prefabKey>].bb` (data/enemies.json `skills[i].bb`), not
 under the talents — 周期性治疗 and 【微光之触】 are SKILLS of their enemy, so `T(ab, …)` (which reads `ab.t`) finds nothing.
 An enemy whose handbook line names a system this mode does not have (结晶, 装备, 狂欢时刻, 摄影区域, 月光, 沙尘暴, 闪亮果实,

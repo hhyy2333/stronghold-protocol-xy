@@ -293,6 +293,87 @@ test('batch 3: every mechanic key of all the batches is authored in forkwave.js 
   }
 });
 
+// 业主 2026-10-25「优雅刀技厨师3块剧场组装体4块赏金猎人"大骑士"4块搏命养家者3块加入悬赏。
+// 凶豕兽作战里少放点，冰晶射手作战里少放点」—— 第四批的六个机制，以及两张“少放”的 share。
+test('batch 4 mechanics: the block weight 4 / 2, the two auras, the rush acceleration, the chill', async () => {
+  const { makeBattle, chessRec } = await import('../helpers/battleHarness.js');
+  const enemiesMod = await import('../../server/sim/content/enemies.js');
+  const bossesMod = await import('../../server/sim/content/bosses.js');
+  const arena = (block = 3) => {
+    const h = makeBattle({
+      content: 'generic', extraContent: [enemiesMod, bossesMod], seed: 5, autoFinish: false, timeLimit: 200,
+      defs: { chess: { t_wall: chessRec({ id: 't_wall', profession: 'TANK', stats: { atk: 0, maxHp: 4e4, def: 0, res: 0, blockCnt: block }, rangeGrid: [[0, 0]], skill: null }) } },
+      kits: { t_wall: () => ({ trait: { noAttack: true } }) },
+      units: [{ chessId: 't_wall', row: 10, col: 5 }],
+    });
+    h.step();
+    return h;
+  };
+  const put = (h, key, pos = [10, 5]) => h.spawn(key, { pos, routeIndex: 0 });
+  const holds = (key, block) => { const h = arena(block); put(h, key); h.run(0.5); return h.allies()[0].blocking.length > 0; };
+
+  // 剧场组装体 · "只能被阻挡数大于等于4的单位阻挡"
+  assert.equal(holds('enemy_2011_csppt', 3), false, '剧场组装体 is not blocked by 3 slots');
+  assert.equal(holds('enemy_2011_csppt', 4), true, '剧场组装体 is blocked by 4 slots');
+  // 凶豕兽 · "只能被阻挡数大于等于2的单位阻挡"
+  assert.equal(holds('enemy_1309_mhboar', 1), false, '凶豕兽 is not blocked by 1 slot');
+  assert.equal(holds('enemy_1309_mhboar', 2), true, '凶豕兽 is blocked by 2 slots');
+
+  // 优雅刀技厨师 · the aura on the ground enemies near it: ASPD +35, RES +20 (AuraAttributeUp)
+  {
+    const h = arena();
+    put(h, 'enemy_10229_agactr', [10, 5]);
+    const o = put(h, 'enemy_1007_slime', [10, 5.6]);
+    h.run(1);
+    const b = (o.buffs || []).filter((x) => x.key === 'ab:agactrAura');
+    assert.equal(b.length, 1, '优雅刀技厨师 gives a neighbour its aura');
+    assert.equal(b[0].mods.aspd, 35, 'the aura is +35 ASPD');
+    assert.equal(b[0].mods.resFlat, 20, 'the aura is +20 RES');
+  }
+
+  // 搏命养家者 · "周围敌人受到的物理和法术伤害降低" (Talent1.damage_resistance 0.25 ⇒ taken ×0.75)
+  {
+    const h = arena();
+    put(h, 'enemy_10196_ubba', [10, 5]);
+    const o = put(h, 'enemy_1007_slime', [10, 5.6]);
+    h.run(1);
+    const b = (o.buffs || []).filter((x) => x.key === 'ab:ubbaAura');
+    assert.equal(b.length, 1, '搏命养家者 gives a neighbour its aura');
+    assert.ok(Math.abs(b[0].mods.dmgTakenMul - 0.75) < 1e-9, `the aura is ×0.75 damage taken (${b[0].mods.dmgTakenMul})`);
+  }
+
+  // 赏金猎人“大骑士” · "移动时逐渐加速": unblocked, its move speed climbs above the data value
+  {
+    const h = arena();
+    const e = put(h, 'enemy_1413_mmstck_2', [10, 12]);
+    const s0 = e.s.moveSpeed;
+    h.run(3);
+    assert.ok(e.s.moveSpeed > s0, `赏金猎人 accelerates (${s0} → ${e.s.moveSpeed})`);
+  }
+
+  // 冰晶射手 · "攻击造成物理溅射伤害并施加<寒冷>效果" (talent.attack@freeze = the duration)
+  {
+    const h = arena();
+    put(h, 'enemy_9005_aicemn', [10, 7]);
+    h.runUntil(() => h.allies()[0].stats.taken > 0, 15);
+    h.run(0.3);
+    assert.ok(h.allies()[0].stats.taken > 0, '冰晶射手 hits the wall');
+    assert.ok((h.allies()[0].buffs || []).some((x) => x.status === 'cold' || x.key === 'cold'), '冰晶射手 chills what it hits');
+  }
+});
+
+// 业主 2026-10-25「凶豕兽作战里少放点，冰晶射手作战里少放点」: both carry `share: 0.25` in the research file, and the
+// data build honours it — each is attached to clearly fewer pools than an average fork key.
+test('batch 4 shares: 凶豕兽 and 冰晶射手 are attached to fewer pools than the batch average', () => {
+  const counts = new Map();
+  for (const entry of Object.values(F)) for (const cls of ['N', 'E']) for (const x of entry[cls] || []) if (x.fork) counts.set(x.key, (counts.get(x.key) || 0) + 1);
+  const avg = [...counts.values()].reduce((a, b) => a + b, 0) / counts.size;
+  for (const e of ALL.filter((x) => x.share != null && x.share < 1)) {
+    const n = counts.get(e.key) || 0;
+    assert.ok(n > 0, `${e.key} is still attached somewhere`);
+    assert.ok(n < avg, `${e.key} is attached to fewer pools (${n}) than the average (${avg.toFixed(1)})`);
+  }
+});
 // 业主 2026-10-25「搞点强怪加入悬赏」：这批强怪里挑 5 只做成 R9 悬赏卡（击杀得资金）。官方 effect 表没有它们的
 // ENEMY_GAIN 行，所以卡片由 tools/build-data.mjs 的 customBounties() 从研究文件现造，R9 悬赏决策里单独一张 fork 列表。
 test('强怪悬赏: the fork bounty cards exist, resolve their enemy, and reach the R9 boss draft', async () => {

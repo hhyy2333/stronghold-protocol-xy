@@ -156,6 +156,9 @@ ENEMY_SPINES += [
     # 沃尔夫之影 (enemy_10109_mjcgst) was in the batch and is OUT again (owner 2026-10-25「去掉沃尔夫之影」)
     'enemy_10007_trspsb', 'enemy_10089_hlsprt',
     'enemy_10004_trdiam',
+    # batch 4 (2026-10-25, owner「…加入悬赏。凶豕兽作战里少放点，冰晶射手作战里少放点」)
+    'enemy_1413_mmstck_2', 'enemy_10229_agactr', 'enemy_2011_csppt', 'enemy_10196_ubba',
+    'enemy_1309_mhboar', 'enemy_9005_aicemn',
 ]
 ENEMY_ART = 'refs/arts/enm_art_*.ab'
 ENEMY_SPINE_SUB = 'spine/enemy'

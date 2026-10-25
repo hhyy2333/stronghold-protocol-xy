@@ -3478,6 +3478,13 @@ const FORK_EXTRA_PER_POOL = 1;
 /** Slots a batch enemy WITH a kit (research `kit`) may fill per pool — see the rules above. */
 const FORK_EXTRA_PER_POOL_KIT = 3;
 
+/** A stable [0, 1) number for one pool, so a `share` gate is reproducible (no RNG in the data build). */
+function shareHash(entryKey, cls) {
+  let h = 2166136261;
+  for (const ch of `${entryKey}|${cls}`) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return h / 4294967296;
+}
+
 function attachWaveEnemies(ctx, entries, enemies) {
   const extra = customWaveEnemies(ctx);
   if (!extra.length) return;
@@ -3540,6 +3547,10 @@ function attachWaveEnemies(ctx, entries, enemies) {
     const roomWide = wideHeld ? 0 : 1;
     const pool = (isKit, tightOnly) => usable.filter((e) => {
       if (kit.has(e.key) !== isKit) return false;
+      // `share` (research file, owner 2026-10-25「凶豕兽作战里少放点，冰晶射手作战里少放点」): a key with share < 1 is only
+      // ELIGIBLE for that fraction of the pools. The pick is a stable hash of the pool's key, not a random draw, so the
+      // regenerated data/factions.json stays deterministic — the enemy still reaches the waves, just in fewer of them.
+      if (e.share != null && e.share < 1 && shareHash(entry.key, cls) >= e.share) return false;
       const r = enemies[e.key];
       if (r.isFlyEnemy !== entry.fly || r.rank !== anchor.rank) return false;
       if (have.some((x) => x.key === e.key)) return false;
@@ -3579,7 +3590,7 @@ function attachWaveEnemies(ctx, entries, enemies) {
   // wide band. Only the odd enemy the tight band could not fit anywhere ends up here.
   let rescued = 0;
   for (const e of usable) {
-    if (used.get(e.key) || (e.kit && !e.poolEligible)) continue;
+    if (used.get(e.key)) continue;
     const r = enemies[e.key];
     let best = null;
     for (const entry of Object.values(entries)) {
@@ -3595,7 +3606,31 @@ function attachWaveEnemies(ctx, entries, enemies) {
         if (!best || d < best.d) best = { entry, cls, d, have };
       }
     }
-    if (!best) continue;
+    if (!best) {
+      // Last resort for a `band: 'wide'` key that outpowers EVERY pool of its class and rank (爆破攻坚手组长, P 39000 —
+      // stronger than the strongest ELITE anchor): the pools are all full, so it takes the closest one's LAST slot
+      // (1 + FORK_EXTRA_PER_POOL_KIT + 1 cards). Only a key the research file explicitly marks `band: 'wide'` gets this,
+      // and only when no pool can take it under the normal caps — the per-round enemy count is still the guard.
+      if (e.band !== 'wide') continue;
+      let over = null;
+      for (const entry of Object.values(entries)) {
+        if (entry.fly !== r.isFlyEnemy) continue;
+        for (const cls of ['N', 'E']) {
+          const have = entry[cls] || [];
+          if (!have.length) continue;
+          const anchor = anchorOf(have);
+          if (!anchor || anchor.rank !== r.rank || !(anchor.attrPower > 0)) continue;
+          // a pool may take ONE over-cap key (the 1 + kit slots are full by now on every pool that could hold it)
+          if (have.some((x) => x.overCap)) continue;
+          const d = Math.abs(Math.log(r.attrPower / anchor.attrPower));
+          if (!over || d < over.d) over = { entry, cls, d, have };
+        }
+      }
+      if (!over) continue;
+      over.have.push({ key: e.key, fork: true, overCap: true });
+      used.set(e.key, 1); added++; rescued++;
+      continue;
+    }
     best.have.push({ key: e.key, fork: true });
     used.set(e.key, 1); added++; rescued++;
   }
