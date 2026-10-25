@@ -68,6 +68,12 @@
   right: .26rem;
   bottom: 3.75rem;
   left: auto;
+  /* 层级（业主 2026-10-25「手机网页那个 UI 被挡住了」）：抽屉是 `position: fixed` 的浮层，但它是商店栏按钮行的
+     后代 —— 商店栏的卡牌行（.shopbar__row）在 DOM 里排在按钮行**后面**，两者 z-index 都是 auto，于是卡牌行永远画在
+     抽屉上面，抽屉的下半截（列表最后几行 + 自己的下边框）被卡牌和「收起」盖住。
+     .gm__hud 里的层级：.fwheel/.ewheel 6、.bpop 8/10、.dpanel 9、.uframe 12、.shopbar.has-armed 10、
+     协议源石浮层 .spov 20。取 15：压过商店栏与轮盘、卡牌详情，仍让位给协议源石 / 机变那种整屏浮层。 */
+  z-index: 15;
   width: 344px;
   max-width: calc(100vw - 20px);
   max-height: calc(100vh - 4.1rem);
@@ -292,13 +298,15 @@
    关掉抽屉（头部 ▾）就回到商店栏。​ */
 
 @media (min-width: 768px) and (max-height: 620px) {
-  /* 横屏手机 / 矮窗口：右侧一整条，宽度收在 520px 以内（1280 宽的手机上不至于每行横跨半个屏幕）。​ */
+  /* 横屏手机 / 矮窗口：右侧一整条，宽度收在 560px 以内（1280 宽的手机上不至于每行横跨半个屏幕）。
+     宽度必须**盖满**商店栏：1280×576 下商店栏左沿在 748px，520px 宽的抽屉从 752 起，左边会漏出 4px 的卡牌边。
+     560px 让它从 712 起，整条压住，不留缝。 */
   .fst__panel {
     left: auto;
     right: 8px;
-    width: min(520px, calc(100vw - 16px));
+    width: min(560px, calc(100vw - 16px));
     max-width: none;
-    top: max(1.06rem, 68px);
+    top: max(.86rem, 52px);
     bottom: 8px;
     max-height: none;
   }
@@ -311,30 +319,68 @@
     right: 8px;
     width: auto;
     max-width: none;
-    top: max(1.06rem, 68px);
+    top: max(.86rem, 52px);
     bottom: 8px;
     max-height: none;
   }
 }
 
+/* 矮屏（手机横屏）上抽屉就是屏幕上唯一的操作面：顶栏以下、安全区以上全给它，商店栏压在下面不露边。
+   这时最贵的东西是「列表能看到几行」——51 件装备，改之前 933×420 只露 3 行、700×315 只露 1 行。
+   所以头部 / 页签 / 过滤条 / 每一行都按 px 收紧一档，字号不跟着缩（最小 10px，看得清、点得到）。 */
 @media (max-width: 767px), (max-height: 620px) {
-  /* 头部与过滤条压缩一档，把高度让给列表（手机上每一行都算钱）。​ */
-  .fst__head { padding: 8px 10px 6px; }
+  .fst__head { padding: 5px 9px 4px; align-items: center; }
   .fst__kicker { display: none; }
-  .fst__title { font-size: 14px; }
+  .fst__title { font-size: 13px; }
   .fst__round { font-size: 9px; }
-  .fst__cash { padding: 2px 7px; }
-  .fst__cash-value { font-size: 14px; }
-  .fst__tabs { padding: 6px 10px 0; }
-  .fst__tab-btn { padding: 4px 0; font-size: 12px; }
-  .fst__filters { padding: 6px 10px; gap: 4px; }
+  .fst__head-actions { gap: 6px; }
+  .fst__cash { padding: 1px 6px; }
+  .fst__cash-label { font-size: 8px; }
+  .fst__cash-value { font-size: 13px; }
+  .fst__collapse { width: 20px; height: 20px; }
+  .fst__tabs { padding: 3px 9px 0; }
+  .fst__tab-btn { padding: 3px 0; font-size: 11px; }
+  .fst__filters { padding: 4px 9px; gap: 3px; }
   /* 阶级过滤条改成横向一条（可滑），不再折成两三行占掉一格列表的高度。​ */
   .fst__chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .fst__chips::-webkit-scrollbar { display: none; }
-  .fst__chip { flex: 0 0 auto; }
-  .fst__list { padding: 0 6px 6px; }
-  .fst__row { padding: 5px 6px; gap: 6px; }
+  .fst__chip { flex: 0 0 auto; padding: 1px 6px; font-size: 9px; }
+  .fst__search { padding: 3px 7px; font-size: 10px; }
+  .fst__list { padding: 0 6px 6px; gap: 3px; }
+  .fst__row { padding: 3px 6px; gap: 6px; }
   .fst__desc { display: none; }   /* 一行描述在手机上挤不出可读的字，留给详情 tooltip */
-  .fst__icon { width: 26px; height: 26px; }
-  .fst__toast { margin: 0 10px 8px; }
+  .fst__icon { width: 22px; height: 22px; font-size: 10px; }
+  .fst__name { font-size: 11px; }
+  .fst__tier { font-size: 8px; line-height: 12px; padding: 0 3px; }
+  .fst__bond { font-size: 8px; }
+  .fst__price { font-size: 9px; }
+  .fst__buy { min-width: 42px; padding: 2px 6px; font-size: 10px; }
+  .fst__toast { margin: 0 9px 6px; padding: 4px 6px; font-size: 10px; }
+}
+
+/* 矮而宽（手机横屏）：单列列表一行横跨 500–700px，名字贴左、购买贴右，中间一大片空白，又空又别扭；
+   而且 315px 高的屏只露 3 行。两列以后同样的高度装一倍，行宽也回到「一行字 + 一个按钮」的正常比例。
+   价格与「购买」并排，行高从 45px 压到 ~30px（原来价格在上、按钮在下，白占一行）。
+   竖屏手机（高 > 620px）不走这一档：那里单列才是对的。 */
+@media (max-height: 620px) and (min-width: 560px) {
+  .fst__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
+  .fst__empty { grid-column: 1 / -1; }
+  .fst__side { flex-direction: row; align-items: center; gap: 6px; }
+}
+
+/* 更矮一档（手机横屏 + 浏览器工具栏占位，约 315px 高）：把还能省的全省掉。​ */
+@media (max-height: 380px) {
+  .fst__round { display: none; }        /* 第几回合在顶栏上已经有了 */
+  .fst__filters { padding: 3px 8px; }
+  .fst__search { display: none; }       /* 搜索在 51 件里排不上号，先让位给列表 */
+  .fst__row { padding: 2px 5px; }
+  .fst__icon { width: 20px; height: 20px; }
+  .fst__bond { display: none; }
+}
+
+/* 收起态那颗「商店」按钮：跟冻结 / 刷新同一行，所以高度跟它们走（.48rem），但字号必须有个 px 下限 ——
+   横屏手机的 1rem 恒为 40px，.19rem 只有 7.6px，业主说的「跟蚂蚁似的看不清」就是这个。 */
+@media (max-width: 767px), (max-height: 620px) {
+  .fst__tab { height: max(.3rem, 24px); padding: 0 .1rem; gap: .05rem; font-size: max(.13rem, 11px); letter-spacing: .04em; }
+  .fst__tab-badge { width: 6px; height: 6px; min-width: 6px; min-height: 6px; }
 }

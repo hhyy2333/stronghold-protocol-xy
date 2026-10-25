@@ -259,26 +259,47 @@
 .scard { width: var(--shop-card-w); height: var(--shop-card-h); }
 .lvcard { width: var(--shop-card-w); height: var(--shop-card-h); }
 
-/* 手机横屏：视口高度不足 420px（截图 2800x1260 ≈ 700x315 CSS px 就在这一档） */
+/* 手机横屏：视口高度不足 420px（截图 2800x1260 ≈ 700x315 CSS px 就在这一档）。
+ *
+ * 字号一律写成 `max(<rem 值>, <px 下限>)`：1rem 在横屏恒为 40px，`.15rem` 只有 6px、`.12rem` 只有 4.8px、
+ * `.09rem` 只有 3.6px —— 业主说的「缩得跟蚂蚁似的看不清」就是这个。px 下限只在矮屏这一档生效，
+ * 桌面档（1rem 40–240px）的 rem 值更大，max() 永远取 rem，逐像素不变。 */
 @media (max-height: 420px) {
   :root { --shop-card-h: 1.5rem; --shop-card-w: 1.04rem; }
   /* 卡行整体上移一点，别贴着安全区；工具行也压薄 */
   .shopbar { bottom: calc(.1rem + var(--sa-b)); gap: .06rem; }
-  .toolbtn { height: .38rem; font-size: .15rem; padding: 0 .1rem 0 .06rem; }
+  .toolbtn { height: .38rem; font-size: max(.15rem, 11px); padding: 0 .1rem 0 .06rem; }
+  .toolbtn kbd { font-size: max(.11rem, 9px); }
   .toolbtn__img { width: .26rem; height: .26rem; }
   .toolbtn .icon { width: .18rem; height: .18rem; }
-  .shopbar__remain { font-size: .13rem; padding: .02rem .1rem; }
-  .shopbar__remain b { font-size: .16rem; }
-  /* 卡面上的字随之缩小，否则 60px 高的卡里塞不下名字 */
-  .scard__name { font-size: .12rem; }
-  .scard__idesc { font-size: .1rem; }
-  .scard__price { font-size: .1rem; }
-  .lvcard__num { font-size: .46rem; }
-  .lvcard__label { font-size: .09rem; }
+  .shopbar__remain { font-size: max(.13rem, 10px); padding: .02rem .1rem; }
+  .shopbar__remain b { font-size: max(.16rem, 12px); }
+  /* 卡面上的字随之缩小，否则 60px 高的卡里塞不下名字；但 9px / 8px 是底线，再小就不是字了 */
+  .scard__name { font-size: max(.12rem, 9px); }
+  .scard__idesc { font-size: max(.1rem, 8px); }
+  .scard__price { font-size: max(.1rem, 9px); }
+  .scard__bond { font-size: max(.13rem, 8px); }
+  .scard__bond .bglyph { width: 10px; height: 10px; }
+  .scard__class { font-size: max(.13rem, 8px); }
+  .scard__prof { width: 10px; height: 10px; }
+  .scard__confirm b { font-size: max(.18rem, 10px); letter-spacing: .12em; padding-left: .12em; }
+  .scard__confirm small { font-size: max(.11rem, 8px); }
+  .lvcard__num { font-size: max(.46rem, 18px); }
+  .lvcard__label { font-size: max(.09rem, 7px); }
+  .funds__label { font-size: max(.14rem, 9px); }
+  .funds__collapse { font-size: max(.15rem, 10px); }
 }
 
-/* 更矮（手机横屏 + 浏览器工具栏占位时）再收一档 */
-@media (max-height: 340px) {
+/* 只有比「手机横屏」还矮得多（< 280px，比如分屏 / 小窗）时才再收一档卡面。
+ * 340px 那一档已经撤掉：上一版把卡压到 1.28rem×.92rem（51×37px），配上 9px 的字，卡里的名字和盟约行
+ * 直接被裁掉半截，比裁到屏幕外还难看；而 420px 档的 60px 卡在 315px 高的屏上本来就装得下（条高 145px）。 */
+@media (max-height: 280px) {
   :root { --shop-card-h: 1.28rem; --shop-card-w: .92rem; }
   .shopbar__remain { display: none; }   /* 第一行让位：卡牌优先 */
+}
+
+/* 竖屏手机：游戏本体是横屏玩法（devices.css 的 .rotate-hint 会盖一层「请横屏」），但商店栏仍然要自己站得住 ——
+ * 390px 宽的竖屏上卡行是 389px，右对齐之后左边被切掉 10px。这一档只把卡面收窄到装得下，不改任何横屏档。 */
+@media (max-width: 520px) and (orientation: portrait) {
+  :root { --shop-card-h: 1.9rem; --shop-card-w: 1.26rem; }
 }
