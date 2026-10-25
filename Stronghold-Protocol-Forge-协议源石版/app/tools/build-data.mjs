@@ -2532,6 +2532,19 @@ function customWaveEnemies(ctx) {
 }
 
 /**
+ * The fork's own 悬赏 cards (docs/research/16-extra-enemies.json `bounties`): a strong enemy of the fork's wave batches
+ * offered as a kill bounty, because the official effect table has no ENEMY_GAIN row for an enemy it never carried. Each
+ * row: {effectId, name, desc, coin, tier?, enemyKey, group?} — `group` names the fork bounty draft list it joins
+ * (default 'strong').
+ * @returns {Array<{effectId:string, name:string, desc:string, coin:number, tier?:number, enemyKey:string, group?:string}>}
+ */
+function customBounties(ctx) {
+  const list = ctx.research.waveEnemies?.bounties;
+  if (!Array.isArray(list)) return [];
+  return list.filter((b) => b && typeof b.effectId === 'string' && typeof b.enemyKey === 'string' && /^enemy_/.test(b.enemyKey));
+}
+
+/**
  * Hand-added leaders (docs/research/15-extra-bosses.json): the official autochess tables carry no enemy row, wave or
  * boss row for them, so this fork declares them here and the builders below merge them in. Each entry names the enemy
  * (`enemyId`), the leader record (`bossId`, weight, bloodPoint), the official boss wave it clones (`waveBase`:
@@ -3917,6 +3930,22 @@ function buildChoices(ctx, effects, items, chess) {
     });
   }
   bounty.sort((a, b) => naturalCmp(a.effectId, b.effectId));
+  // The fork's own 悬赏 cards (docs/research/16-extra-enemies.json `bounties`, owner 2026-10-25「搞点强怪加入悬赏」): the official
+  // tables carry no ENEMY_GAIN effect for these enemies, so the fork declares the card here — same shape as an official
+  // 下场作战 kill bounty (round 1, kill payout, coin = the card's bountyFunds). They are appended to the R9 `boss` draft
+  // through BOUNTY_FORK_GROUPS below rather than to an official group: the official R9 groups are a record of what the
+  // live client showed, and a fork card inside one would silently rewrite that record.
+  for (const b of customBounties(ctx)) {
+    const enemy = ctx.enemyDb.get(b.enemyKey);
+    if (!enemy) { warn(`fork bounty ${b.effectId}: unknown enemy ${b.enemyKey}`); continue; }
+    const card = {
+      effectId: b.effectId, name: b.name, desc: b.desc, tier: b.tier ?? Math.min(3, Math.max(1, b.coin)),
+      coin: b.coin, payout: 'kill', rounds: 1, multiRound: false, enemyKey: b.enemyKey, count: 1,
+      adds: [{ enemyKey: b.enemyKey, count: 1, coin: b.coin, rounds: 1, payout: 'kill', buffKey: 'add_enemy_kill_gain_coin' }],
+      draft: true, draftExcluded: null, draftPool: 'boss', series: null, fork: true,
+    };
+    bounty.push(card);
+  }
   // the official draft structures (see BOUNTY_INITIAL_SETS) only name cards of their own kind
   const bountyById = new Map(bounty.map((c) => [c.effectId, c]));
   const checkKind = (ids, kind, what) => { for (const id of ids) if (bountyById.get(id)?.draftPool !== kind) warn(`bounty draft ${what}: ${id} is not a "${kind}" card`); };
@@ -3936,6 +3965,15 @@ function buildChoices(ctx, effects, items, chess) {
   const hunterTier = (t) => bounty.filter((c) => c.draftPool === 'hunter' && c.tier === t).map((c) => c.effectId);
   if (hunterTier(1).length + hunterTier(2).length + hunterTier(3).length !== bounty.filter((c) => c.draftPool === 'hunter').length) warn('bounty: an R11 card of no tier I–III');
   const withWeights = ({ hits, ...g }) => ({ ...g, weights: hits.map((h) => h + 1) });
+  /** The fork's own R9 list(s): the custom bounty cards of one `group` name (default 'strong'). */
+  const forkBountyGroups = [];
+  for (const b of bounty) {
+    if (!b.fork) continue;
+    const name = customBounties(ctx).find((x) => x.effectId === b.effectId)?.group || 'strong';
+    let g = forkBountyGroups.find((x) => x.name === name);
+    if (!g) { g = { name, cards: [], seen: [1], open: 0 }; forkBountyGroups.push(g); }
+    g.cards.push(b.effectId);
+  }
 
   // Tactic cards (BUFF_GAIN effects).
   const tactic = [];
@@ -4028,7 +4066,10 @@ function buildChoices(ctx, effects, items, chess) {
       },
       boss: {
         events: eventsOf('bounty', (e) => bountyEventRe.boss.test(e.id) && !e.solo), slots: BOUNTY_BOSS_GROUPS.length,
-        pick: 'seen', groups: BOUNTY_BOSS_GROUPS.map(withWeights), count: 6,
+        // the 6 official R9 groups as seen in the live client, plus the fork's own list of its strong wave enemies
+        // (BOUNTY_FORK_GROUPS, owner 2026-10-25「搞点强怪加入悬赏」). The fork list weighs 1 in the group pick: it is a
+        // deliberate addition, not an official record, so the official groups keep most of the drafts (6 : 1).
+        pick: 'seen', groups: [...BOUNTY_BOSS_GROUPS.map(withWeights), ...forkBountyGroups.map((g) => ({ ...g, weights: g.cards.map(() => 1) }))], count: 6,
         assumed: ['a group picked by the matches it came in (the per-match cause is open)', 'card weights 1 + hits', 'the single-draft groups completed with their base cards', 'boss bounties of no seen group are not offered'],
       },
       hunter: {

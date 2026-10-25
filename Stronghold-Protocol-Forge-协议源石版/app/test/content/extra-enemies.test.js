@@ -293,6 +293,47 @@ test('batch 3: every mechanic key of all the batches is authored in forkwave.js 
   }
 });
 
+// 业主 2026-10-25「搞点强怪加入悬赏」：这批强怪里挑 5 只做成 R9 悬赏卡（击杀得资金）。官方 effect 表没有它们的
+// ENEMY_GAIN 行，所以卡片由 tools/build-data.mjs 的 customBounties() 从研究文件现造，R9 悬赏决策里单独一张 fork 列表。
+test('强怪悬赏: the fork bounty cards exist, resolve their enemy, and reach the R9 boss draft', async () => {
+  const { GameData } = await import('../../server/match/gamedata.js');
+  const { generateDraft, bountyCard } = await import('../../server/match/choices.js');
+  const { createRng } = await import('../../server/sim/rng.js');
+  const R = RESEARCH.bounties || [];
+  assert.ok(R.length >= 5, `${R.length} fork bounty rows in the research file`);
+  const gd = new GameData(DATA, 'mode_multi_hard');
+  const cards = (DATA.choices.cards && DATA.choices.cards.bounty) || [];
+  for (const b of R) {
+    const c = cards.find((x) => x.effectId === b.effectId);
+    assert.ok(c, `${b.effectId} is a bounty card`);
+    assert.equal(c.fork, true, `${b.effectId}: marked as a fork card`);
+    assert.equal(c.enemyKey, b.enemyKey, `${b.effectId}: the enemy of the research row`);
+    assert.ok(DATA.enemies[c.enemyKey], `${b.effectId}: ${c.enemyKey} is a data row`);
+    assert.equal(c.draftPool, 'boss', `${b.effectId}: offered by the R9 boss draft`);
+    assert.ok(c.draft, `${b.effectId}: not draft-excluded`);
+    assert.equal(c.payout, 'kill', `${b.effectId}: kill bounty`);
+    assert.equal(c.rounds, 1, `${b.effectId}: next battle only`);
+    assert.equal(c.coin, b.coin, `${b.effectId}: coin`);
+    const view = bountyCard(gd, c);
+    assert.equal(view.enemyKey, b.enemyKey, `${b.effectId}: the card spawns the enemy`);
+  }
+  // the fork list is a 7th R9 group, and it really comes out of the draft
+  const groups = DATA.choices.bountyDrafts.boss.groups;
+  const forkGroup = groups.find((g) => g.cards.some((id) => /^forkbounty_/.test(id)));
+  assert.ok(forkGroup, 'the fork bounty list is one of the R9 groups');
+  assert.equal(forkGroup.cards.length, R.length, 'every fork card is in that list');
+  let seen = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const d = generateDraft(gd, createRng(seed * 7919), 9, { players: 4 });
+    if (d && d.cards.some((c) => /^forkbounty_/.test(String(c.effectId || c.id)))) seen++;
+  }
+  assert.ok(seen > 0, `a fork bounty appeared in ${seen} of 200 R9 drafts`);
+  for (const g of groups) {
+    const fork = g.cards.filter((id) => /^forkbounty_/.test(id));
+    if (g === forkGroup) assert.equal(fork.length, R.length);
+    else assert.equal(fork.length, 0, 'no fork card inside an official R9 group');
+  }
+});
 // 业主 2026-10-24「新的怪刷新了还是看不见」：模型文件在、data/assets.json 的 spineLocal 也在，但
 // data/local-assets.json 里少了对应的 `spine/enemy/<id>` group —— 客户端拼不出本地 spine 的 URL，只能回落到
 // 不存在的 web spine，于是敌人刷出来是空的。data/local-assets.json 是本机状态（git-ignored），所以这里只在她

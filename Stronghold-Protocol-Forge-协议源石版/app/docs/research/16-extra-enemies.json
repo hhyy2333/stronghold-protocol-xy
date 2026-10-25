@@ -15,7 +15,8 @@
       "例外：enemy_1018_aoemag（高阶术师，ELITE，attrPower 8710）对每一个 ELITE 池锚点都低于 0.85，按规则挂不上，所以它只进图鉴、不进波次。要让它上场就把带宽放到 [0.7, 1.5]，代价是每回合人数相对官方的偏差从 8.2 % 升到约 14 %。",
       "实测（20 局 × 13 回合）：21 个里 20 个会真的刷出来；每回合人数相对官方分布的偏差 8.2 %，FLY 回合占比 9.9 %（官方约 10 %）。",
       "第二批（2026-10-23）只挑「会真的打人、机制能用引擎原语表达、模型客户端里有」的 6 个；带结晶 / 装备 / 狂欢时刻 / 摄影区域这类本模式没有的系统的敌人一律不做，避免半残机制上线。",
-      "第三批：沃尔夫之影（enemy_10109_mjcgst）抽出模型并写完 kit 后按业主要求撤下（2026-10-25「去掉沃尔夫之影」），key 不再进波次池，也不再有 kit。"
+      "第三批：沃尔夫之影（enemy_10109_mjcgst）抽出模型并写完 kit 后按业主要求撤下（2026-10-25「去掉沃尔夫之影」），key 不再进波次池，也不再有 kit。",
+      "悬赏（业主 2026-10-25「搞点强怪加入悬赏」）：bounties[] 让这批强怪以「下场作战 + 击杀得资金」的悬赏卡出现；官方 effect 表没有它们的 ENEMY_GAIN 行，所以卡片由 tools/build-data.mjs 的 customBounties() 现造，R9 悬赏决策里单独一张 fork 列表（不写进官方 6 组，那 6 组是实机记录）。"
     ]
   },
   "batches": [
@@ -581,6 +582,53 @@
           "kit": "server/sim/content/enemies/forkwave.js"
         }
       ]
+    }
+  ],
+  "bounties": [
+    {
+      "effectId": "forkbounty_1",
+      "group": "strong",
+      "enemyKey": "enemy_1076_bsthmr_2",
+      "name": "爆破攻坚手组长·悬赏",
+      "desc": "为自身下场作战添加1个爆破攻坚手组长，将其击倒者获得4资金",
+      "coin": 4,
+      "tier": 3
+    },
+    {
+      "effectId": "forkbounty_2",
+      "group": "strong",
+      "enemyKey": "enemy_1058_traink_2",
+      "name": "倾轧者·悬赏",
+      "desc": "为自身下场作战添加1个倾轧者，将其击倒者获得3资金",
+      "coin": 3,
+      "tier": 3
+    },
+    {
+      "effectId": "forkbounty_3",
+      "group": "strong",
+      "enemyKey": "enemy_1163_hvymot",
+      "name": "水手重艇·悬赏",
+      "desc": "为自身下场作战添加1个水手重艇，将其击倒者获得3资金",
+      "coin": 3,
+      "tier": 3
+    },
+    {
+      "effectId": "forkbounty_4",
+      "group": "strong",
+      "enemyKey": "enemy_10038_cnvpiz",
+      "name": "“方便快餐”·悬赏",
+      "desc": "为自身下场作战添加1个“方便快餐”，将其击倒者获得3资金",
+      "coin": 3,
+      "tier": 3
+    },
+    {
+      "effectId": "forkbounty_5",
+      "group": "strong",
+      "enemyKey": "enemy_1135_redman",
+      "name": "“红标”根除者·悬赏",
+      "desc": "为自身下场作战添加1个“红标”根除者，将其击倒者获得2资金",
+      "coin": 2,
+      "tier": 2
     }
   ]
 }

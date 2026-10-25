@@ -446,6 +446,22 @@ The fork adds enemies this repository did not carry before, declared in
   `attackAnim` up from it (`enemyAttackAnim` prefers `spineLocal` over the web/aliased `spine`).
 - Bounty pools (`types[type].pool`), `types`, `placeholders` and `generation` are untouched.
 
+**The fork's own 悬赏 cards (0.19.24, owner 2026-10-25「搞点强怪加入悬赏」).** The official effect table has no `ENEMY_GAIN`
+row for an enemy it never carried, so five of the batch-3 enemies get a fork card instead of a hand-edited official one:
+
+| effectId | enemy | tier | coin |
+|---|---|---|---|
+| `forkbounty_1` | `enemy_1076_bsthmr_2` 爆破攻坚手组长 | III | 4 |
+| `forkbounty_2` | `enemy_1058_traink_2` 倾轧者 | III | 3 |
+| `forkbounty_3` | `enemy_1163_hvymot` 水手重艇 | III | 3 |
+| `forkbounty_4` | `enemy_10038_cnvpiz` “方便快餐” | III | 3 |
+| `forkbounty_5` | `enemy_1135_redman` “红标”根除者 | II | 2 |
+
+Each is a normal 下场作战 kill bounty (one battle, `round: 1`, the killer takes the coin). They are declared in
+[`docs/research/16-extra-enemies.json`](research/16-extra-enemies.json) `bounties` and built by `customBounties()`; the R9
+悬赏决策 offers them through their OWN 7th group (`custom_bounties.boss.groups`, weight 1 — the six official groups stay
+the record of what the live client showed, so no fork card is ever written into one). Measured: about 3 % of R9 drafts
+carry a fork card, and when its group is drawn the draft is made of them.
 **Batch 2 (0.19.19) — the ones with a mechanic.** Six more enemies whose handbook line needs behaviour, authored in
 `server/sim/content/enemies/forkwave.js` on the primitives the engine already has:
 
