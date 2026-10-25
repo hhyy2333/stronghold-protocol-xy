@@ -204,17 +204,19 @@ export function applyHex(m, ps, hex, opts = {}) {
     applyHexLp(m, p, hex);
     // every other source observes the pick (the hex's own key already ran above)
     m.dispatch(p, 'onHexPick', ev, { skipKey: `hex:${hex.id}` });
+    // 复制 (业主 2026-10-25)：「随机复制一个拥有协议源石，自身消失」。 The spec handler only QUEUED it (a copy is another
+    // GAIN, and only applyHex may grant one); drain here, after the pick has fully settled, so the copy cannot re-enter
+    // the dispatch that armed it.
+    drainPendingHexCopies(m, p, hex);
     p.recompute();
   }
-  // 策略「管理员」(业主 2026-10-26): 「当你获得协议源石时，复制一个。限一次。」 — ONCE PER MATCH, so WHICH gain it is
-  // spent on decides what the card is worth.
+  // 策略「管理员」 — REPLACED 2026-10-25 (业主「管理员策略改成第一回合多选择一次海克斯」). The old mechanic was
+  // 「当你获得协议源石时，复制一个。限一次。」 and it lived here, at the GAIN: `applyBandHexCopy` below. The strategy now
+  // acts on the DRAFT instead — round 1 deals its owner one extra three-card offer (server/match/match/hexDraft.js
+  // `_hexExtraPicksFor`, buff key `band_hex_extra_pick_r1`), so nothing runs on a gain.
   //
-  // 业主 2026-10-24「管理员会优先获得队友选的全队增益，应该改一下优先获得自己选的」: only the PICKER's own copy. A
-  // 全队 hex (战争机器 / 团结之力 …: `effect.team`) reaches every teammate, and the old loop below copied it for each of
-  // them — so a teammate picking a team card burned the copy of a player who had not picked yet, and that player's own
-  // choice then got nothing. A card somebody else chose for you is not 「你获得的」 in the sense the card means; the
-  // once-per-match copy now waits for a gain this player picked themselves.
-  applyBandHexCopy(m, ps, hex, opts);
+  // `applyBandHexCopy` is kept (exported, tested, and still the one seam a workshop pack may call) but no strategy
+  // carries `band_hex_copy_once` any more, so `bandHexCopyCount()` returns 0 and it is a no-op for the shipped data.
   // 万物归虚 (业主 2026-10-19): 「装备时 将移除备战区所有干员」 —— the prep half of the card. The battle half
   // (server/sim/content/hexcards/batch15b.js installVoidReturn) reads the count it writes into the ref, so the two halves
   // stay in one place each. Runs AFTER the refs exist (addHexRef above), so it can write onto them.
@@ -308,9 +310,64 @@ export function applyBandHexCopy(m, ps, hex, { depth = 0, gift = false } = {}) {
   return n;
 }
 
+/**
+ * 复制 (业主 2026-10-25)：**「随机复制一个拥有协议源石，自身消失」**.
+ *
+ * The card's `onPick` (`copyOwnedHex`) queues one job per target; this drains it after that target's pick settled.
+ *  1. pick ONE random OTHER card the player already owns and gain it a second time — a 管理员-style second EffectRef
+ *     (`hex:<id>#<copySeq>`), so the copy shares the card's `key` and both refs settle every hook (the 0.19.22
+ *     mechanic), with per-ref counters kept apart by makeCtx;
+ *  2. then remove 复制 itself: its refs are dropped and the card leaves the collection — 「自身消失」.
+ *
+ * Deterministic: the pick uses the match's seeded rng and a sort on the ids, so the same battle replays identically.
+ * @param {any} m @param {any} ps @param {any} hex the card that queued the job (its own refs are the ones removed)
+ */
+function drainPendingHexCopies(m, ps, hex) {
+  const jobs = Array.isArray(ps.pendingHexCopies) ? ps.pendingHexCopies.slice() : [];
+  if (!jobs.length) return 0;
+  ps.pendingHexCopies = [];
+  let done = 0;
+  for (const job of jobs) {
+    // only the card that queued it may consume itself
+    const srcId = job && typeof job.sourceHexId === 'string' ? job.sourceHexId : (hex && hex.id);
+    if (srcId !== (hex && hex.id)) continue;
+    // 1) the candidates: every OTHER card this player owns, deduped by catalogue id
+    const owned = new Set();
+    for (const e of ps.effects || []) {
+      if (!e || typeof e.key !== 'string' || !e.key.startsWith('hex:')) continue;
+      const id = e.data && typeof e.data.hexId === 'string' ? e.data.hexId : e.key.slice(4);
+      if (id && id !== srcId) owned.add(id);
+    }
+    const candidates = [...owned].sort();
+    // 1) the copy (skipped when there is nothing to copy — 「自身消失」 still happens below)
+    if (candidates.length) {
+      const pickId = candidates[Math.floor(m.rngHex() * candidates.length) % candidates.length];
+      const target = m.gd.hex(pickId);
+      if (target) {
+        // the copy is a second ref of the SAME card: reuse the next free copySeq so counters never collide
+        let copySeq = 2;
+        while ((ps.effects || []).some((e) => e && e.id === `hex:${pickId}#${copySeq}`)) copySeq++;
+        try {
+          const ref = addHexRef(m, ps, target, { copySeq });
+          const ev = { hex: { ...target }, picker: ps.playerId, forTeammate: false, copySeq, copiedBy: srcId };
+          m.dispatcher.runKey(ps, ref.key, 'onHexPick', { kind: 'hex', hex: target, ref, copySeq }, ev);
+          applyHexLp(m, ps, target);
+          applyHexExtras(m, ps, target, { depth: 1 });
+          m.dispatch(ps, 'onHexPick', ev, { skipKey: ref.key });
+        } catch (e) { m.reportError(`hex ${pickId} (复制)`, e); }
+      }
+    }
+    // 2) 自身消失: drop every ref of 复制 from this player
+    const before = (ps.effects || []).length;
+    ps.effects = (ps.effects || []).filter((e) => !(e && typeof e.key === 'string' && e.key === `hex:${srcId}`));
+    if (ps.effects.length !== before) ps.dirty?.();
+    done++;
+  }
+  return done;
+}
+
 /** `effect.onPick.lp` (the ctx has no LP mutator and LP is match state, not sim state). */
-function applyHexLp(m, ps, hex) {
-  const spec = hex.effect && hex.effect.onPick;
+function applyHexLp(m, ps, hex) {  const spec = hex.effect && hex.effect.onPick;
   const lp = spec ? spec.lp : 0;
   if (typeof lp === 'number' && Number.isFinite(lp) && lp !== 0) {
     ps.lp = Math.max(0, ps.lp + Math.trunc(lp));

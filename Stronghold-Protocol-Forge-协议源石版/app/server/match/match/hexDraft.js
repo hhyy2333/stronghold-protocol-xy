@@ -14,6 +14,12 @@ import { protocolLevelExtraHexesAt } from '../../../shared/protocolLevels.js';
 import { applyHex, hexIdsOf, hexPoolFor } from '../hextech.js';
 import { OK, fail, DELAYS } from './common.js';
 
+/**
+ * 管理员's buff key (data/bands.json `band_admin.buffs[0].key`). Round 1's draft deals this player one extra three-card
+ * offer — 业主 2026-10-25「管理员策略改成第一回合多选择一次海克斯」, replacing the old 「获得协议源石时复制一个」.
+ */
+const HEX_EXTRA_PICK_KEY = 'band_hex_extra_pick_r1';
+
 export class MatchHexDraft {
   /** Enter the draft for this round (called from MatchPhases.afterRoundStart). */
   enterHexDraft() {
@@ -45,7 +51,18 @@ export class MatchHexDraft {
     /** @type {Record<string, number[]>} */
     const slotRerolls = {};
     for (const ps of alive) slotRerolls[ps.playerId] = offers[ps.playerId].map(() => 1);
-    this.hex = { offers, picks: {}, rerolls, slotRerolls, untimed: this.soloUntimed, turnDeadline: 0 };
+    /**
+     * 管理员 (业主 2026-10-25「管理员策略改成第一回合多选择一次海克斯」): how many EXTRA picks each player gets in this
+     * draft. Only a strategy that carries the `band_hex_extra_pick_r1` buff grants one, and only in round 1.
+     *
+     * `picks[pid]` keeps its wire shape (one integer = the player has chosen), so the client's `Number.isInteger`
+     * filter still sees a decided player and `hexDraftDone` stays a simple every(); the extra rounds ride on
+     * `extraPicks` (a countdown per player) plus `offers` being re-dealt. A player with extraPicks > 0 has ONE pick
+     * recorded but is not "done" until the counter reaches 0 — see `_hexPicksLeft`.
+     */
+    const extraPicks = {};
+    for (const ps of alive) extraPicks[ps.playerId] = this._hexExtraPicksFor(ps);
+    this.hex = { offers, picks: {}, rerolls, slotRerolls, extraPicks, untimed: this.soloUntimed, turnDeadline: 0 };
     const secs = gd.hexTimer();
     if (secs && !this.soloUntimed) {
       this.setDeadline(secs, () => this._timeoutHexDraft());
@@ -57,22 +74,65 @@ export class MatchHexDraft {
     this.markPublic();
   }
 
+  /**
+   * How many EXTRA 海克斯 picks this player's strategy grants in THIS draft.
+   *
+   * 管理员 (业主 2026-10-25「管理员策略改成第一回合多选择一次海克斯」): the `band_hex_extra_pick_r1 { count }` buff on
+   * the player's band. Round 1 only — 「第一回合」 is the whole point of the card, and the owner chose to REPLACE the old
+   * 「获得协议源石时复制一个」 mechanic rather than stack on top of it.
+   * @param {any} ps @returns {number}
+   */
+  _hexExtraPicksFor(ps) {
+    if (Number(this.round) !== 1) return 0;
+    const bandId = ps && typeof ps.bandId === 'string' ? ps.bandId : null;
+    const band = bandId && this.gd && typeof this.gd.band === 'function' ? this.gd.band(bandId) : null;
+    for (const b of (band && Array.isArray(band.buffs) ? band.buffs : [])) {
+      if (!b || b.key !== HEX_EXTRA_PICK_KEY) continue;
+      const n = Number(b.bb && b.bb.count);
+      return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 1;
+    }
+    return 0;
+  }
+
+  /**
+   * Picks this player still owes in the running draft: 1 while nothing is chosen yet, plus whatever `extraPicks` is
+   * left. A player with 0 extra picks behaves exactly like before (one pick, then done).
+   * @param {string} playerId @returns {number}
+   */
+  _hexPicksLeft(playerId) {
+    const s = this.hex;
+    if (!s) return 0;
+    const base = s.picks[playerId] == null ? 1 : 0;
+    const extra = Number.isFinite((s.extraPicks || {})[playerId]) ? (s.extraPicks[playerId] || 0) : 0;
+    return base + extra;
+  }
+
   /** The offered hex ids of one player ([] when the phase is not running). */
   hexOfferOf(playerId) {
     return (this.hex && this.hex.offers && this.hex.offers[playerId]) || [];
   }
 
-  /** Whether every alive player has picked. */
+  /**
+   * Whether every alive player is done drafting.
+   *
+   * 管理员's extra pick makes this `_hexPicksLeft === 0` rather than "has a pick recorded": a player who just spent their
+   * first pick with one extra left is NOT done — they get a fresh three-card offer and must pick again.
+   */
   hexDraftDone() {
     if (!this.hex) return true;
-    return this.alivePlayers().every((ps) => this.hex.picks[ps.playerId] != null);
+    return this.alivePlayers().every((ps) => this._hexPicksLeft(ps.playerId) <= 0);
   }
 
-  /** g.hex { idx } — the player's own three options, so only the offer's length bounds the index. */
+  /**
+   * g.hex { idx } — the player's own three options, so only the offer's length bounds the index.
+   *
+   * A player may pick more than once when their strategy grants it (管理员, round 1). `picks[pid]` keeps holding the
+   * LAST index chosen (the client only needs "decided"), while `extraPicks[pid]` counts the rounds left.
+   */
   pickHex(ps, idx) {
     if (this.phase !== PHASE.HEX_DRAFT || !this.hex) return fail(ERR.WRONG_PHASE);
     if (!ps.alive) return fail(ERR.ELIMINATED);
-    if (this.hex.picks[ps.playerId] != null) return fail(ERR.ALREADY);
+    if (this._hexPicksLeft(ps.playerId) <= 0) return fail(ERR.ALREADY);
     const offer = this.hexOfferOf(ps.playerId);
     if (!Number.isInteger(idx) || idx < 0 || idx >= offer.length) return fail(ERR.BAD_TARGET);
     this._applyHex(ps, idx);
@@ -126,15 +186,43 @@ export class MatchHexDraft {
     return OK;
   }
 
-  /** Apply the choice at `idx` of the player's offer and finish the phase once everyone has one. */
+  /**
+   * Apply the choice at `idx` of the player's offer and finish the phase once everyone is done.
+   *
+   * 管理员 (业主 2026-10-25「第一回合多选择一次」): when the player still owes an extra pick, deal a FRESH three-card offer
+   * for that pick instead of finishing — 「选完第一张，再弹一次三选一」. The new offer excludes what they own and what
+   * they were just shown, the same rule `rerollHex` uses so a card never comes back immediately.
+   */
   _applyHex(ps, idx) {
     const s = this.hex;
-    if (!s || s.picks[ps.playerId] != null) return;
-    const id = this.hexOfferOf(ps.playerId)[idx];
+    if (!s || this._hexPicksLeft(ps.playerId) <= 0) return;
+    const offer = this.hexOfferOf(ps.playerId);
+    const id = offer[idx];
     const hex = id ? this.gd.hex(id) : null;
     if (!hex) return;
+    /**
+     * Pick accounting. `picks[pid]` is the BASE pick (one per draft, exactly as before). The strategy's extra picks live
+     * in `extraPicks[pid]` and are only consumed AFTER the base one is in — so:
+     *   first choice  → picks set, extraPicks untouched  ⇒ `_hexPicksLeft` = 0 + 1 = 1 (owes one more)
+     *   second choice → extraPicks − 1                   ⇒ `_hexPicksLeft` = 0 (done)
+     * That is the order the owner described (「选完第一张，再弹一次三选一」): the re-deal happens right after the first
+     * choice, because the base pick is what just got spent.
+     */
+    const baseSpent = s.picks[ps.playerId] != null;
+    if (baseSpent) s.extraPicks[ps.playerId] = Math.max(0, (s.extraPicks[ps.playerId] || 0) - 1);
     s.picks[ps.playerId] = idx;
     try { applyHex(this, ps, hex); } catch (e) { this.reportError(`applyHex ${hex.id}`, e); }
+    // still owes a pick (the extra one): re-deal their three cards and let them choose again
+    if (!baseSpent && (s.extraPicks[ps.playerId] || 0) > 0) {
+      const pool = hexPoolFor(ps, this.gd);
+      const weights = this.gd.hexWeights();
+      s.offers[ps.playerId] = rollOffers(this.rngHex, {
+        pool, owned: [...hexIdsOf(ps), ...offer], weights, count: this.gd.hexOfferCount(),
+      });
+      // the re-dealt batch gets its own per-card reroll budget, like the first one
+      s.slotRerolls[ps.playerId] = s.offers[ps.playerId].map(() => 1);
+      s.rerolls[ps.playerId] = this.gd.hexRerolls();
+    }
     this.markPrivate(ps);
     this.markPublic();
     // the transition to PREP is deferred by one tick, like the other drafts (MatchSpDraft.finishSpDraft runs from a

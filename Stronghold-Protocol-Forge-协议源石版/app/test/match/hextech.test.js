@@ -12,7 +12,7 @@ import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
 import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
 import { BATTLE_SPEC_KEYS, HEX_SCRIPT_KEYS, hasBattlePart } from '../../server/sim/content/hextech.js';
-import { enemyHexWantedKey, bankThiefPenalty, applyThiefIncomeCut } from '../../server/match/hextech.js';
+import { enemyHexWantedKey, bankThiefPenalty, applyThiefIncomeCut, applyBandHexCopy } from '../../server/match/hextech.js';
 import { createRng } from '../../server/sim/rng.js';
 
 /** Start a match and drive the humans to the 海克斯 draft of `round`. */
@@ -1686,13 +1686,23 @@ test('记录部抑制: without the card, or on a round that is not its tick, a d
 
 // 业主 2026-10-26「好多协议源石被'管理员'复制后只会触发1个」：复制必须让这张卡的**每一条腿**都算两份。
 // 旧实现只重放 onPick、且 addHexRef 按 hexId 去重（一人一张）⇒ 盟约回响 / 量产线 / 神器整备这些「每回合」或「阶梯」
-// 的卡复制后毫无变化。现在复制 = 同一张卡的**第二个 ref**（id `hex:<id>#2`、key 不变），派发器逐个 ref 跑，于是
+// 的卡复制后毫无变化。复制 = 同一张卡的**第二个 ref**（id `hex:<id>#2`、key 不变），派发器逐个 ref 跑，于是
 // 每回合类 ×2；makeCtx 按 ref id 给计数器加命名空间，两套阶梯互不覆盖。
-test('管理员: a copied 神器整备 runs TWO independent ladders (2 refs, per-ref counters)', () => {
+//
+// 2026-10-25: 管理员 no longer copies on gain (「管理员策略改成第一回合多选择一次海克斯」), so these call
+// `applyBandHexCopy` DIRECTLY — they pin the copy MECHANISM (the seam a workshop pack may still call), not the band.
+// The mechanism still asks the player's band for `band_hex_copy_once`, so the fixture arms that buff itself.
+const armCopyBuff = (h, ps) => {
+  const real = h.m.gd.band(ps.bandId);
+  h.m.gd.band = (id) => (id === ps.bandId
+    ? { ...(real || {}), bandId: ps.bandId, buffs: [{ key: 'band_hex_copy_once', bb: { count: 1 }, bbStr: {} }] }
+    : real);
+};
+test('复制机制: a copied 神器整备 runs TWO independent ladders (2 refs, per-ref counters)', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 11, fake: true }).start();
   h.toPrep(1);
   const ps = h.ps('p_0');
-  ps.bandId = 'band_admin';
+  armCopyBuff(h, ps);
   const items = () => {
     const out = [];
     for (const p of ps.hand || []) if (p && p.kind === 'item') out.push(p.id);
@@ -1701,6 +1711,7 @@ test('管理员: a copied 神器整备 runs TWO independent ladders (2 refs, per
   };
   const countOf = (id) => items().filter((x) => x === id).length;
   applyHex(h.m, ps, h.m.gd.hex('hex_artifactkit'));
+  applyBandHexCopy(h.m, ps, h.m.gd.hex('hex_artifactkit'));
   // two refs of the same card, one of them the copy
   const refs = ps.effects.filter((e) => e.key === 'hex:hex_artifactkit');
   assert.deepEqual(refs.map((r) => r.id).sort(), ['hex:hex_artifactkit', 'hex:hex_artifactkit#2'], 'the copy is its own ref');
@@ -1718,17 +1729,20 @@ test('管理员: a copied 神器整备 runs TWO independent ladders (2 refs, per
   h.m.dispose();
 });
 
-test('管理员: the copy is 限一次 — a second gain in the same match does not copy again', () => {
+// 管理员 no longer touches a gain at all: the strategy's own replacement is the round-1 extra pick
+// (test/match/admin-extra-pick.test.js). Gaining two cards with 管理员 chosen must leave BOTH un-copied.
+test('管理员: gaining cards no longer copies anything (the mechanic moved to the draft)', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 12, fake: true }).start();
   h.toPrep(1);
   const ps = h.ps('p_0');
   ps.bandId = 'band_admin';
   applyHex(h.m, ps, h.m.gd.hex('hex_stipend'));   // 获得时 +3 资金，之后再每回合 +2
-  assert.ok(ps.effects.some((e) => e.id === 'hex:hex_stipend#2'), 'the first gain was copied');
+  assert.ok(!ps.effects.some((e) => e.id === 'hex:hex_stipend#2'), 'no copy on the first gain');
   const refsAfterFirst = ps.effects.filter((e) => e.key.startsWith('hex:hex_')).length;
-  applyHex(h.m, ps, h.m.gd.hex('hex_echo'));      // a second gain: the strategy is spent
-  assert.ok(!ps.effects.some((e) => e.id === 'hex:hex_echo#2'), 'the second gain is NOT copied');
+  applyHex(h.m, ps, h.m.gd.hex('hex_echo'));
+  assert.ok(!ps.effects.some((e) => e.id === 'hex:hex_echo#2'), 'no copy on the second gain either');
   assert.equal(ps.effects.filter((e) => e.key.startsWith('hex:hex_')).length, refsAfterFirst + 1, 'only the new card itself joined');
+  assert.equal(ps.counters['band_hex_copy:used'], undefined, 'the old once-per-match counter is never written');
   h.invariants();
   h.m.dispose();
 });
@@ -1773,21 +1787,26 @@ test('addEffect merges nested params, so a partial write cannot erase another ow
   h.m.dispose();
 });
 
-// 业主 2026-10-24「为什么二次抽取只生效了一个」：管理员的复制只重放了卡自己的 onHexPick，而「额外随机两枚」那半边在
+// 业主 2026-10-24「为什么二次抽取只生效了一个」：复制只重放了卡自己的 onHexPick，而「额外随机两枚」那半边在
 // `applyHexExtras` 里 —— 于是复制出来的那份只拿到一个空 ref，随机两枚只发了一次。现在副本也走 extras。
-test('管理员 + 二次抽取: the copy rolls its own 额外随机两枚 too (four random cards, not two)', () => {
+// (2026-10-25: 管理员 no longer copies on gain; this drives the copy seam directly.)
+test('复制机制 + 二次抽取: the copy rolls its own 额外随机两枚 too (four random cards, not two)', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 71, fake: true }).start();
   h.toPrep(1);
   const ps = h.ps('p_0');
-  ps.bandId = 'band_admin';
+  armCopyBuff(h, ps);
   applyHex(h.m, ps, h.m.gd.hex('hex_double'));
+  applyBandHexCopy(h.m, ps, h.m.gd.hex('hex_double'));
   const refs = ps.effects.filter((e) => typeof e.key === 'string' && e.key.startsWith('hex:'));
   assert.equal(refs.filter((e) => e.key === 'hex:hex_double').length, 2, '二次抽取 itself is a double');
   // the match's own starting card is neither of them; ignore it
   const before = 1;
   const randoms = refs.filter((e) => e.key !== 'hex:hex_double' && e.key !== 'hex:hex_weaponmaster');
-  assert.equal(randoms.length, 4, `each copy rolls two, so four random hexes (got ${randoms.length}: ${randoms.map((e) => e.key).join(',')})`);
-  // they are four DISTINCT cards at most (the pool never offers one you already own)
+  // Each of the two copies rolls its own 「额外随机两枚」 ⇒ four cards. The COUNT is what this pins; the identities are
+  // drawn from the live pool and change whenever the roster grows (e.g. 复制 joined it on 2026-10-25). A random draw may
+  // itself be a card that grants more (复制 copies another card), so allow the pool's own effects to add a little: the
+  // floor is 4 and the assertion on distinct ids below still holds.
+  assert.ok(randoms.length >= 4, `each copy rolls two, so at least four random hexes (got ${randoms.length}: ${randoms.map((e) => e.key).join(',')})`);
   assert.equal(new Set(randoms.map((e) => e.data.hexId)).size, randoms.length, 'no duplicated random card');
   h.invariants();
   h.m.dispose();

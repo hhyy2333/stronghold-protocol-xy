@@ -1854,15 +1854,19 @@ function buildEffects(ctx) {
 /**
  * 业主 2026-10-26: the effect behind the hand-authored 策略「管理员」 (CUSTOM_BANDS). Same shape as an official band
  * effect (`BAND_INITIAL`, one buff with its blackboard) so buildBands / the strategy draft / the bot read it like any
- * of the 40; the mechanic itself is match code (server/match/hextech.js `applyBandHexCopy`, keyed by the buff `key`).
+ * of the 40; the mechanic itself is match code (server/match/match/hexDraft.js, keyed by the buff `key`).
+ *
+ * 业主 2026-10-25「管理员策略改成第一回合多选择一次海克斯」: the strategy used to duplicate the first 协议源石 gained
+ * (`band_hex_copy_once`). That is REPLACED — the 管理员 now drafts the ROUND-1 海克斯 twice: pick one of your three, and
+ * a second three-card offer is dealt for one more pick. Same once-per-match spirit, different mechanic.
  */
 const CUSTOM_BAND_EFFECTS = Object.freeze({
   aceffect_band_admin: {
     name: '管理员',
     effectType: 'BAND_INITIAL',
-    desc: '【管理员】当你获得协议源石时，复制一个。限一次。',
-    descRaw: '【管理员】当你获得协议源石时，<@ba.vup>复制一个</>。限一次。',
-    buffs: [{ key: 'band_hex_copy_once', countType: 'NONE', bb: { count: 1 }, bbStr: {} }],
+    desc: '【管理员】第一回合的协议源石可以多选一次（选完一张后再来一组三选一）。',
+    descRaw: '【管理员】第一回合的协议源石可以<@ba.vup>多选一次</>（选完一张后再来一组三选一）。',
+    buffs: [{ key: 'band_hex_extra_pick_r1', countType: 'NONE', bb: { count: 1 }, bbStr: {} }],
   },
 });
 

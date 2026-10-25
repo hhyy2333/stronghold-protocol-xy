@@ -118,15 +118,24 @@ export function normalizeHex(hex, myId = null, _players = []) {
   if (isObj(hex.picks)) for (const [k, v] of Object.entries(hex.picks)) if (Number.isInteger(v)) picks.set(k, v);
   const rerollsLeft = new Map();
   if (isObj(hex.rerollsLeft)) for (const [k, v] of Object.entries(hex.rerollsLeft)) if (Number.isFinite(v)) rerollsLeft.set(k, v);
+  // 管理员 (业主 2026-10-25「第一回合多选择一次海克斯」): picks left from a strategy. A player who already picked but
+  // still owes one (`extraPicksLeft > 0`) is NOT decided — the server re-dealt their three cards and waits for the
+  // second choice. Absent key = no extra picks anywhere, i.e. exactly the old behaviour.
+  const extraPicksLeft = new Map();
+  if (isObj(hex.extraPicksLeft)) for (const [k, v] of Object.entries(hex.extraPicksLeft)) if (Number.isFinite(v) && v > 0) extraPicksLeft.set(k, v);
   const mine = myId && offers.has(myId) ? offers.get(myId) : [];
-  const decided = [...offers.keys()].every((pid) => picks.has(pid));
+  const decided = [...offers.keys()].every((pid) => picks.has(pid) && !extraPicksLeft.has(pid));
   const myRerolls = myId && rerollsLeft.has(myId) ? rerollsLeft.get(myId) : 0;
+  const myExtraLeft = myId && extraPicksLeft.has(myId) ? extraPicksLeft.get(myId) : 0;
   return {
     offers,
     picks,
     rerollsLeft,
+    extraPicksLeft,
     myOffer: mine,
-    myPick: myId && picks.has(myId) ? picks.get(myId) : null,
+    // a player who owes another pick presents as "not yet chosen", so every caller that gates on myPick re-opens
+    myPick: myId && picks.has(myId) && !myExtraLeft ? picks.get(myId) : null,
+    myExtraLeft,
     myRerolls,
     /**
      * 单张刷新的次数（每张卡一次）。业主 2026-10-20「刷新次数用完的就不要有按钮了」：这个数组是**按钮画不画**、

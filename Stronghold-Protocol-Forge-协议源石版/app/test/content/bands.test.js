@@ -714,29 +714,22 @@ test('Touch 外勤医疗: every player of a match with the band gets 预备干�
   cover('band_amedic');
 });
 
-test('管理员 协议源石复制: the first 协议源石 gained settles twice, once per match (业主 2026-10-26)', () => {
+test('管理员: the strategy grants a round-1 EXTRA hex pick instead of copying a 协议源石 (业主 2026-10-25)', () => {
   const { m, ps } = setup({ band: 'band_admin' });
-  const refs = (id) => ps.effects.filter((e) => e && e.data && e.data.hexId === id).length;
-  assert.equal(bandHexCopyCount(m, ps), 1, 'the buff is read off the strategy record');
-  assert.equal(bandHexCopyCount(m, { bandId: null }), 0, 'no strategy, no copy');
+  // the buff moved: `band_hex_extra_pick_r1`, read by the draft (server/match/match/hexDraft.js `_hexExtraPicksFor`)
+  const buffs = (DATA.bands.band_admin.buffs || []).map((b) => b.key);
+  assert.deepEqual(buffs, ['band_hex_extra_pick_r1'], 'the strategy carries the extra-pick buff');
+  assert.match(DATA.bands.band_admin.desc, /多选一次/, 'and says so on the card');
 
-  // 战备津贴's 获得时 half is +3 funds: the copy is the same card, gained again ⇒ +6 in total
+  // the OLD copy mechanic is off for this band: gaining a card does not settle twice and spends no copy
   const funds0 = ps.funds;
   applyHex(m, ps, m.gd.hex('hex_stipend'));
-  assert.equal(ps.funds - funds0, 6, 'the pick and its duplicate both pay');
-  assert.equal(refs('hex_stipend'), 1, 'a duplicated card is still owned once (one EffectRef)');
-  assert.equal(ps.counters['band_hex_copy:used'], 1, '限一次 is spent by the first gain');
+  assert.equal(ps.funds - funds0, 3, 'one settlement — no duplicate any more');
+  assert.equal(ps.counters['band_hex_copy:used'], undefined, 'no once-per-match copy is written');
+  assert.equal(ps.effects.filter((e) => e && String(e.id).includes('#2')).length, 0, 'and no copy ref exists');
 
-  // 限一次: the NEXT gain is not duplicated — 二次抽取 would roll four extra cards instead of two
-  const before = ps.effects.length;
-  applyHex(m, ps, m.gd.hex('hex_double'));
-  assert.equal(ps.effects.length - before, 3, '二次抽取: the pick + its two cards, no duplicate');
-
-  // and a player without the strategy is untouched
-  ps.bandId = null;
-  const funds1 = ps.funds;
-  applyHex(m, ps, m.gd.hex('hex_stipend'));
-  assert.equal(ps.funds - funds1, 3, 'one settlement without 管理员');
+  // the extra pick itself is exercised end-to-end in test/match/admin-extra-pick.test.js (it needs a live draft)
+  assert.equal(typeof m._hexExtraPicksFor, 'function', 'the draft owns the new mechanic');
   cover('band_admin');
 });
 

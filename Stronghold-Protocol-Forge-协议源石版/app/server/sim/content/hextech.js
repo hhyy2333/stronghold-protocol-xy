@@ -309,6 +309,18 @@ function applySpec(ctx, spec, hex = null, hook = '') {
   if (!spec || typeof spec !== 'object') return false;
   const id = hex && typeof hex.id === 'string' ? hex.id : '';
   let did = false;
+  /**
+   * 复制 (业主 2026-10-25): 「随机复制一个拥有协议源石，自身消失」 — duplicate ONE random other card this player already
+   * owns, then remove 复制 itself from their collection.
+   *
+   * It must run through the match (a copy is another GAIN and only `applyHex` may grant one, and removing a ref is
+   * match state), so the primitive only QUEUES the work on the ctx; `server/match/hextech.js` performs both after the
+   * dispatch returns — the same pattern the LP half uses.
+   */
+  if (spec.copyOwnedHex) {
+    ctx.queueHexCopy(spec.copyOwnedHex);
+    did = true;
+  }
   if (isPos(spec.funds)) { ctx.addFunds(spec.funds, 'hex'); did = true; }
   if (isPos(spec.freeRefresh)) { ctx.grantFreeRefresh(spec.freeRefresh); did = true; }
   // The outer guard accepts EITHER form: a count-driven grant (id / pool / tier) or the `ids` list (武器大师, which has

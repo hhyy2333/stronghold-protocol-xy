@@ -123,6 +123,12 @@ function prepWithBoard(bondId = 'preciShip', n = 4, seed = 4242, { admin = false
 test('复制「盟约之主」: a copy is a second EffectRef and its bond-count line is added twice', () => {
   const { m, ps } = prepWithBoard('preciShip', 4, 4242, { admin: true });
   m.grantHex(ps, 'hex_overlord');
+  // 2026-10-25: 管理员 no longer copies on gain, so the copy is driven through the mechanism's own seam. It still asks
+  // the band for `band_hex_copy_once`, so the fixture arms that buff (the band itself now grants the round-1 extra pick).
+  const realBand = m.gd.band.bind(m.gd);
+  m.gd.band = (id) => (id === 'band_admin'
+    ? { ...(realBand(id) || {}), bandId: 'band_admin', buffs: [{ key: 'band_hex_copy_once', bb: { count: 1 }, bbStr: {} }] }
+    : realBand(id));
   applyBandHexCopy(m, ps, m.gd.hextech.playerHexes.hex_overlord);
   const refs = (ps.effects || []).filter((e) => (e.key || '').includes('hex_overlord'));
   assert.equal(refs.length, 2, 'the copy is its own ref');

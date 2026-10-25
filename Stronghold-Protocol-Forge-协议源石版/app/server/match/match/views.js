@@ -151,6 +151,13 @@ export class MatchViews {
         // 单张刷新：每张卡自己的一次（业主 2026-10-20「单个刷新应该3个都能刷一次」）。键 = playerId，值 = 与 offer 等长的
         // 次数数组；老客户端不认识这个键，只读 rerollsLeft，所以整批刷新的语义不变。
         slotRerollsLeft: Object.fromEntries(Object.entries(s.slotRerolls || {}).map(([pid, a]) => [pid, Array.isArray(a) ? a.slice() : []])),
+        // 管理员 (业主 2026-10-25「第一回合多选择一次海克斯」): how many more picks each player still owes from their
+        // strategy. A player with `picks[pid]` set but `extraPicks[pid] > 0` is NOT done — the client re-opens the draft
+        // with the freshly dealt offer instead of showing "已选择". Absent/0 for every other player, so the wire is
+        // byte-for-byte what it was when no strategy grants extra picks.
+        ...(Object.values(s.extraPicks || {}).some((n) => n > 0)
+          ? { extraPicksLeft: Object.fromEntries(Object.entries(s.extraPicks || {}).map(([pid, n]) => [pid, n > 0 ? n : 0])) }
+          : {}),
         untimed: !!s.untimed,
         turnDeadline: s.turnDeadline || 0,
         timerSec: s.untimed ? 0 : (this.gd.hexTimer() || 0),

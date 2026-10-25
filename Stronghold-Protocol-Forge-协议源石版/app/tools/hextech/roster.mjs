@@ -1248,9 +1248,21 @@ export const PLAYER_HEXES = [
     name: '玩偶批发商',
     // 业主原文是「阿米娅玩偶 / 可露希尔玩偶」；本作装备表里只有两个【玩偶】记录（可露希尔柜台的两种玩偶），
     // 所以这张卡在这两个之间随机：[ASSUMED] 精打细算玩偶 / 见钱眼开玩偶。
-    desc: '每回合开始时，随机获得一个【精打细算玩偶】或【见钱眼开玩偶】。',
+    // 业主 2026-10-25「玩偶批发在获得时，获得一个玩偶」：从「每回合发一个」改成「获得时发一个」。
+    desc: '获得时，随机获得一个【精打细算玩偶】或【见钱眼开玩偶】。',
     rarity: 'gold',
-    effect: { onRoundStart: { randomItem: { ids: ['chess_item_2_05_e_a', 'chess_item_2_07_e_a'] } } },
+    effect: { onPick: { randomItem: { ids: ['chess_item_2_05_e_a', 'chess_item_2_07_e_a'] } } },
+  },
+  {
+    id: 'hex_replicate',
+    name: '复制',
+    // 业主 2026-10-25：「增加协议源石『复制』2阶：随机复制一个拥有协议源石，自身消失」。
+    // 2 阶 = rarity 'gold'. The copy is a second EffectRef of a random OTHER card the player owns, then 复制 removes
+    // itself — both halves are match state, so the spec only carries the switch (server/match/hextech.js
+    // `drainPendingHexCopies`).
+    desc: '获得时，随机复制一个你已拥有的协议源石，随后【复制】自身消失。',
+    rarity: 'gold',
+    effect: { onPick: { copyOwnedHex: true } },
   },
   {
     id: 'hex_pager',

@@ -1032,6 +1032,22 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     addBounty: (card) => m.addBounty(ps, card),
     offerBountyChoice: (cards, sourceItemId) => m.offerBountyChoice(ps, cards, sourceItemId),
 
+    /**
+     * 复制 (业主 2026-10-25)：「随机复制一个拥有协议源石，自身消失」 — the spec key `copyOwnedHex` reaches this.
+     *
+     * Both halves are match state and cannot live in the spec handler: a copy is another GAIN (`applyHex` is the only
+     * door) and removing a card is deleting its EffectRef. The `onPick` dispatch is still running when the card fires,
+     * so this only QUEUES: `applyHex` drains the queue right after the dispatch returns and before the next gain.
+     * @param {boolean|number} spec the effect's own value (truthy = enabled)
+     */
+    queueHexCopy: (spec) => {
+      if (!Array.isArray(ps.pendingHexCopies)) ps.pendingHexCopies = [];
+      // the running card is the dispatch's own source ref (its `data.hexId` is the catalogue id)
+      const ref = source && source.ref ? source.ref : null;
+      const srcId = ref && ref.data && typeof ref.data.hexId === 'string' ? ref.data.hexId : null;
+      ps.pendingHexCopies.push({ sourceHexId: srcId, spec });
+    },
+
     // ---- messaging
     // a string or a shared/i18n.js msg(msgid, params)
     toast: (text, kind = 'info') => m.toast(ps, kind, text && typeof text === 'object' ? text : String(text)),
