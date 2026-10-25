@@ -26,19 +26,22 @@ const hexesOwned = (ps) => (ps.effects || [])
 // ---------------------------------------------------------------------------------------------------------------
 // 玩偶批发商
 
-test('玩偶批发商: ONE doll on gain, and nothing per round afterwards', () => {
+// 玩偶批发商 (业主 2026-10-25「增加每回合获得一个」): the 获得时 half stays, and the per-round half is back on top of
+// it — one on pick, then one at every round start.
+test('玩偶批发商: one doll on gain, then one at every round start', () => {
   const { h, m, ps } = prep();
-  assert.deepEqual(m.gd.hex('hex_dollwholesale').effect.onPick.randomItem.ids, DOLLS, 'the card grants one of the two dolls on pick');
-  assert.equal(m.gd.hex('hex_dollwholesale').effect.onRoundStart, undefined, 'and no longer every round');
+  const card = m.gd.hex('hex_dollwholesale');
+  assert.deepEqual(card.effect.onPick.randomItem.ids, DOLLS, 'the card grants one of the two dolls on pick');
+  assert.deepEqual(card.effect.onRoundStart.randomItem.ids, DOLLS, 'and another one every round start');
 
   const before = itemsInHand(ps).filter((id) => DOLLS.includes(id)).length;
-  applyHex(m, ps, m.gd.hex('hex_dollwholesale'));
+  applyHex(m, ps, card);
   const afterPick = itemsInHand(ps).filter((id) => DOLLS.includes(id)).length;
   assert.equal(afterPick - before, 1, 'exactly one doll on gain');
 
-  // a round later: still exactly one (no drip)
+  // a round later: one more (the drip is intentional now)
   h.toPrep(2);
-  assert.equal(itemsInHand(ps).filter((id) => DOLLS.includes(id)).length, afterPick, 'no extra doll at the round start');
+  assert.equal(itemsInHand(ps).filter((id) => DOLLS.includes(id)).length, afterPick + 1, 'one more doll at the round start');
   h.invariants();
   m.dispose();
 });

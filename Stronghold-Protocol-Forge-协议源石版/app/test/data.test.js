@@ -193,8 +193,8 @@ test('items: 122 item chess with valid effects, bonds and golden links', () => {
   }
 });
 
-test('bands: 41 strategies (40 official + 管理员) with effects and starting LP', () => {
-  assert.equal(Object.keys(bands).length, 41);
+test('bands: 43 strategies (40 official + 管理员 / 管理员2 / 管理员3) with effects and starting LP', () => {
+  assert.equal(Object.keys(bands).length, 43);
   for (const b of Object.values(bands)) {
     assert.ok(effects[b.effectId], `${b.bandId}: effect`);
     assert.ok(isInt(b.totalHp) && b.totalHp >= 20 && b.totalHp <= 45, `${b.bandId}: totalHp`);

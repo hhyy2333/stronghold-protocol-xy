@@ -1,6 +1,7 @@
-// The 40 official strategies (bands) plus the hand-authored 管理员: prep side (server/sim/content/bands/meta.js through
-// the real registry + dispatcher) and battle side (bands/battle.js with synthetic operators / enemies for exact
-// numbers). Numbers are the band blackboards (data/bands.json, research 01 §11); every band is covered (last test).
+// The 40 official strategies (bands) plus the hand-authored 管理员 / 管理员2 / 管理员3: prep side
+// (server/sim/content/bands/meta.js through the real registry + dispatcher) and battle side (bands/battle.js with
+// synthetic operators / enemies for exact numbers). Numbers are the band blackboards (data/bands.json, research 01
+// §11); every band is covered (last test).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeBattle, chessRec, enemyRec, checkInvariants } from '../helpers/battleHarness.js';
@@ -71,7 +72,7 @@ test('bands.js wires both parts: 28 bands with a prep handler, 10 with a battle 
   assert.equal(typeof bands.install, 'function');
   assert.equal(typeof bands.registerMeta, 'function');
   const ids = Object.keys(DATA.bands);
-  assert.equal(ids.length, 41);
+  assert.equal(ids.length, 43);
   const meta = ids.filter((id) => REG.has(`band:${id}`));
   const battle = ids.filter(hasBattlePart);
   assert.equal(meta.length, 28);
@@ -80,7 +81,7 @@ test('bands.js wires both parts: 28 bands with a prep handler, 10 with a battle 
   // no prep handler and no battle part: 歌利亚 is starting LP only, 鸭爵 is the global above, 管理员's one mechanic runs
   // match-side (server/match/hextech.js applyBandHexCopy — a copy is another GAIN, only applyHex can grant one)
   const none = ids.filter((id) => !meta.includes(id) && !battle.includes(id));
-  assert.deepEqual(none.sort(), ['band_admin', 'band_ducklord', 'band_sarkazb']);
+  assert.deepEqual(none.sort(), ['band_admin', 'band_admin2', 'band_admin3', 'band_ducklord', 'band_sarkazb']);
   for (const id of ids) if (!meta.includes(id)) assert.equal(bandMetaHandler(id), null, id);
 });
 
@@ -731,6 +732,22 @@ test('管理员: the strategy grants a round-1 EXTRA hex pick instead of copying
   // the extra pick itself is exercised end-to-end in test/match/admin-extra-pick.test.js (it needs a live draft)
   assert.equal(typeof m._hexExtraPicksFor, 'function', 'the draft owns the new mechanic');
   cover('band_admin');
+});
+
+// 业主 2026-10-25: two more hand-authored strategies that pay 协议源石 on named rounds. Their mechanics are match-side
+// too (a GAIN may only come from the match), and the round-by-round behaviour is exercised in
+// test/match/admin-round-hexes.test.js — this pins the DATA half and the seam they run through.
+test('管理员2 / 管理员3: the round-grant strategies', () => {
+  const { m } = setup();
+  assert.deepEqual(DATA.bands.band_admin2.buffs, [{ key: 'band_hex_grant_rounds', bb: { roundA: 1, roundB: 3 }, bbStr: {} }]);
+  assert.deepEqual(DATA.bands.band_admin3.buffs, [{ key: 'band_hex_grant_rounds', bb: { roundA: 4, roundB: 10 }, bbStr: { hexId: 'hex_pandora' } }]);
+  assert.match(DATA.bands.band_admin2.desc, /1、3 回合/, 'the card text names its rounds');
+  assert.match(DATA.bands.band_admin3.desc, /潘多拉/, 'and 管理员3 names its card');
+  assert.equal(typeof m.applyBandRoundHexes, 'function', 'the match owns the mechanic');
+  assert.equal(bandMetaHandler('band_admin2'), null, 'no prep handler');
+  assert.equal(bandMetaHandler('band_admin3'), null);
+  cover('band_admin2');
+  cover('band_admin3');
 });
 
 test('coverage: every band is exercised by a test above', () => {

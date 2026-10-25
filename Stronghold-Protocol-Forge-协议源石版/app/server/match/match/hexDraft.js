@@ -19,6 +19,12 @@ import { OK, fail, DELAYS } from './common.js';
  * offer — 业主 2026-10-25「管理员策略改成第一回合多选择一次海克斯」, replacing the old 「获得协议源石时复制一个」.
  */
 const HEX_EXTRA_PICK_KEY = 'band_hex_extra_pick_r1';
+/**
+ * 管理员2 / 管理员3 (业主 2026-10-25). One buff carries both halves: `bb.roundA` / `bb.roundB` are the two ROUNDS the
+ * strategy pays on, and `bbStr.hexId` (optional) pins the card — 管理员3 names 潘多拉魔盒, 管理员2 leaves it out and the
+ * card is rolled from the player's own pool. See `applyBandRoundHexes`.
+ */
+const BAND_HEX_GRANT_ROUNDS_KEY = 'band_hex_grant_rounds';
 
 export class MatchHexDraft {
   /** Enter the draft for this round (called from MatchPhases.afterRoundStart). */
@@ -373,6 +379,71 @@ export class MatchHexDraft {
       }
     }
     this.afterHexDraft();
+  }
+
+  /**
+   * 管理员2 / 管理员3 (业主 2026-10-25): the strategies' `band_hex_grant_rounds` entries as `{ rounds, hexId }`.
+   * `hexId` is null for the "随机获得一枚" half (管理员2) and the pinned card for the "获得潘多拉" half (管理员3).
+   * @param {any} ps @returns {Array<{ rounds: number[], hexId: string|null }>}
+   */
+  bandHexGrants(ps) {
+    const bandId = ps && typeof ps.bandId === 'string' ? ps.bandId : null;
+    const band = bandId && this.gd && typeof this.gd.band === 'function' ? this.gd.band(bandId) : null;
+    const out = [];
+    for (const b of (band && Array.isArray(band.buffs) ? band.buffs : [])) {
+      if (!b || b.key !== BAND_HEX_GRANT_ROUNDS_KEY) continue;
+      // `bb` values are finite numbers by contract (test/data.test.js), so the rounds are two named keys, not a list
+      const rounds = [Number(b.bb && b.bb.roundA), Number(b.bb && b.bb.roundB)]
+        .filter((n) => Number.isInteger(n) && n > 0);
+      if (!rounds.length) continue;
+      const pinned = b.bbStr && typeof b.bbStr.hexId === 'string' && b.bbStr.hexId ? b.bbStr.hexId : null;
+      out.push({ rounds, hexId: pinned });
+    }
+    return out;
+  }
+
+  /**
+   * One random 协议源石 the player does not own yet, drawn from their OWN pool.
+   *
+   * The pool is the draft's (`hexPoolFor`: bans + 专属 cards whose bond is not active), so a strategy can never hand out a
+   * banned card or someone else's 锻炉. The roll uses the match's seeded `rngHex` over a **sorted** id list, so a replay
+   * draws the same card.
+   * @param {any} ps @returns {any|null} the hex record, or null (everything already owned / empty pool)
+   */
+  _rollBandHex(ps) {
+    const owned = new Set(hexIdsOf(ps));
+    const ids = hexPoolFor(ps, this.gd)
+      .filter((h) => h && typeof h.id === 'string' && !owned.has(h.id))
+      .map((h) => h.id)
+      .sort();
+    if (!ids.length) return null;
+    return this.gd.hex(ids[Math.floor(this.rngHex() * ids.length) % ids.length]);
+  }
+
+  /**
+   * Grant the strategies' round-start 协议源石 for this round.
+   *
+   * 业主 2026-10-25「增加策略『管理员2』：第一回合随机获得一个协议源石，第3回合随机获得一个协议源石」
+   * 「增加策略『管理员3』：第4，10 回合获得『潘多拉』」. Called once per round from `MatchPhases.startRound`, beside
+   * `applyProtocolLevelEnemyHexes` (the enemy's half). The grant goes through `grantHex`, the production pick path, so
+   * every immediate `onPick` part and every 获得时 extra runs exactly as if the card had been picked in a draft.
+   *
+   * A round with nothing due touches neither the state nor the RNG.
+   * @param {number} [round] @returns {number} how many cards were granted
+   */
+  applyBandRoundHexes(round = this.round) {
+    const r = Number(round);
+    if (!Number.isInteger(r)) return 0;
+    let granted = 0;
+    for (const ps of this.alivePlayers()) {
+      for (const spec of this.bandHexGrants(ps)) {
+        if (!spec.rounds.includes(r)) continue;
+        const hex = spec.hexId ? this.gd.hex(spec.hexId) : this._rollBandHex(ps);
+        if (!hex) continue;
+        if (this.grantHex(ps, hex.id)) granted += 1;
+      }
+    }
+    return granted;
   }
 
   /**

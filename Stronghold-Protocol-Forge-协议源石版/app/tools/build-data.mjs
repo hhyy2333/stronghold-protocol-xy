@@ -1868,6 +1868,29 @@ const CUSTOM_BAND_EFFECTS = Object.freeze({
     descRaw: '【管理员】第一回合的协议源石可以<@ba.vup>多选一次</>（选完一张后再来一组三选一）。',
     buffs: [{ key: 'band_hex_extra_pick_r1', countType: 'NONE', bb: { count: 1 }, bbStr: {} }],
   },
+  /**
+   * 业主 2026-10-25「增加策略『管理员2』：第一回合随机获得一个协议源石，第3回合随机获得一个协议源石」。
+   *
+   * The mechanic is match code (`server/match/match/hexDraft.js applyBandRoundHexes`, keyed by the buff key): the
+   * blackboard names the two ROUNDS, and no `bbStr.hexId` means "roll one from the player's own pool". `bb` must stay
+   * finite numbers (test/data.test.js checks every blackboard value), which is why the rounds are two named keys
+   * (`roundA` / `roundB`) rather than a list.
+   */
+  aceffect_band_admin2: {
+    name: '管理员2',
+    effectType: 'BAND_INITIAL',
+    desc: '【管理员2】第 1、3 回合开始时，随机获得一枚协议源石。',
+    descRaw: '【管理员2】第 <@ba.vup>1、3</> 回合开始时，随机获得<@ba.vup>一枚协议源石</>。',
+    buffs: [{ key: 'band_hex_grant_rounds', countType: 'NONE', bb: { roundA: 1, roundB: 3 }, bbStr: {} }],
+  },
+  /** 业主 2026-10-25「增加策略『管理员3』：第4，10 回合获得『潘多拉』」— `bbStr.hexId` pins the card (潘多拉魔盒). */
+  aceffect_band_admin3: {
+    name: '管理员3',
+    effectType: 'BAND_INITIAL',
+    desc: '【管理员3】第 4、10 回合开始时，获得【潘多拉魔盒】。',
+    descRaw: '【管理员3】第 <@ba.vup>4、10</> 回合开始时，获得【<@ba.vup>潘多拉魔盒</>】。',
+    buffs: [{ key: 'band_hex_grant_rounds', countType: 'NONE', bb: { roundA: 4, roundB: 10 }, bbStr: { hexId: 'hex_pandora' } }],
+  },
 });
 
 /**
@@ -2434,6 +2457,27 @@ const CUSTOM_BANDS = Object.freeze({
     modeTypeList: ['LOCAL', 'SINGLE', 'MULTI'],
     totalHp: 26,
     effectId: 'aceffect_band_admin',
+    victorCount: 3,
+    rewardModulus: 1,
+  },
+  // 业主 2026-10-25: two more hand-authored strategies that hand out 协议源石 on fixed rounds.
+  band_admin2: {
+    sortId: 42,
+    name: '管理员2',
+    iconId: 'icon_admin2',
+    modeTypeList: ['LOCAL', 'SINGLE', 'MULTI'],
+    totalHp: 26,
+    effectId: 'aceffect_band_admin2',
+    victorCount: 3,
+    rewardModulus: 1,
+  },
+  band_admin3: {
+    sortId: 43,
+    name: '管理员3',
+    iconId: 'icon_admin3',
+    modeTypeList: ['LOCAL', 'SINGLE', 'MULTI'],
+    totalHp: 26,
+    effectId: 'aceffect_band_admin3',
     victorCount: 3,
     rewardModulus: 1,
   },

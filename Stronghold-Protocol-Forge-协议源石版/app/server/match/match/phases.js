@@ -354,6 +354,11 @@ export class MatchPhases {
     // 只有编辑器 spawn 的试玩服务器会发牌（见 directToHandIds）
     if (r === 1) this.grantDirectToHand(alive);
     for (const ps of alive) this.dispatch(ps, 'onRoundStart', { round: r });
+    // 管理员2 / 管理员3 (业主 2026-10-25): the players' half — a strategy that pays 协议源石 on named rounds
+    // (`hexDraft.js applyBandRoundHexes`). AFTER the round-start dispatch on purpose: a card gained this way is gained
+    // at this round's start, so its own 每回合 part first ticks NEXT round — the same rule a draft pick follows.
+    // A round with nothing due touches neither the state nor the RNG.
+    this.applyBandRoundHexes(r);
     // an eliminated player's pending 信标 gift still goes to its teammate (effects flagged afterElimination; GitHub #86)
     for (const ps of this.order) {
       if (ps.alive) continue;

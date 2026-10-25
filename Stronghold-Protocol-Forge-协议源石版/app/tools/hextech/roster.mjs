@@ -1249,9 +1249,15 @@ export const PLAYER_HEXES = [
     // 业主原文是「阿米娅玩偶 / 可露希尔玩偶」；本作装备表里只有两个【玩偶】记录（可露希尔柜台的两种玩偶），
     // 所以这张卡在这两个之间随机：[ASSUMED] 精打细算玩偶 / 见钱眼开玩偶。
     // 业主 2026-10-25「玩偶批发在获得时，获得一个玩偶」：从「每回合发一个」改成「获得时发一个」。
-    desc: '获得时，随机获得一个【精打细算玩偶】或【见钱眼开玩偶】。',
+    // 业主 2026-10-25「玩偶批发增加每回合获得一个」：**加回来**——`onPick` 那一份保留，另加每回合开始再发一个，
+    // 于是「获得时 1 个 + 之后每回合 1 个」。两半走的是同一个 spec 处理器（server/sim/content/hextech.js
+    // `spec.randomItem`），它不按 hook 分流，`onPick` 与 `onRoundStart` 都会跑到。
+    desc: '获得时，随机获得一个【精打细算玩偶】或【见钱眼开玩偶】；之后每回合开始时再随机获得一个。',
     rarity: 'gold',
-    effect: { onPick: { randomItem: { ids: ['chess_item_2_05_e_a', 'chess_item_2_07_e_a'] } } },
+    effect: {
+      onPick: { randomItem: { ids: ['chess_item_2_05_e_a', 'chess_item_2_07_e_a'] } },
+      onRoundStart: { randomItem: { ids: ['chess_item_2_05_e_a', 'chess_item_2_07_e_a'] } },
+    },
   },
   {
     id: 'hex_replicate',

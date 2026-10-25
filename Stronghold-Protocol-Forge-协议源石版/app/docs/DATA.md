@@ -333,7 +333,7 @@ full-rank build from the others; the build fails unless `atRank` rebuilds every 
 | `rangeGrid` | `[[0,0]]` | Arts area (画卷 `[[0,0],[0,1]]`) |
 | `flavor` | | |
 
-## 6. `bands.json` — `{ [bandId]: Band }` (41: the 40 official + 管理员)
+## 6. `bands.json` — `{ [bandId]: Band }` (43: the 40 official + 管理员 / 管理员2 / 管理员3)
 
 | Field | Example | Meaning |
 |---|---|---|
@@ -345,7 +345,15 @@ full-rank build from the others; the build fails unless `atRank` rebuilds every 
 | `victorCount`, `rewardModulus`, `unlockDesc` | `3`, `1`, `null` | |
 | `bondIds` | `["lateranoShip"]` (潘格尼尼) / `[]` | the bonds the strategy is built around (`shared/bandBonds.js`: the bond names in <…> of its text — the official note "在<X>部分干员缺席时体验可能不完整" among them — and the bond ids / bond pools of its blackboards, `pool` → choices.json `pools[pool].bond`); 9 bands are tied. The bot never picks, and the strategy draft marks 本局禁用, a band whose bond the mode switches off (DESIGN §21.26) |
 
-**管理员** (业主 2026-10-26) is the one hand-authored strategy: it has no `bandDataListDict` row, so `tools/build-data.mjs` writes it from `CUSTOM_BANDS` + its effect `aceffect_band_admin` (`CUSTOM_BAND_EFFECTS`) instead of copying one. Everything textual lives on that effect, so the two tables cannot drift; `iconId: "icon_admin"` has no art behind it and `ui/gameComponents.js BandIcon` falls back to the name's first character (what a hextech card without its tier art does). Its single buff `band_hex_extra_pick_r1 { count: 1 }` is match-side code, not a `bands/meta.js` handler: 「第一回合的协议源石可以多选一次」 is a second 协议源石 GAIN, and only the match's hex draft may deal one (`server/match/match/hexDraft.js _hexExtraPicksFor`; the extra pick re-deals a fresh three-card offer). So `band_admin` is one of the three bands with neither a prep handler nor a battle part (the others: 鸭爵, 歌利亚). (`band_hex_copy_once` / `applyBandHexCopy` still exist as the seam a workshop pack may call, but no shipped strategy carries that buff since the owner moved the copy into the 2阶 hex card 「复制」 on 2026-10-25.)
+**管理员 / 管理员2 / 管理员3** (业主 2026-10-26, 2026-10-25) are the three hand-authored strategies: they have no `bandDataListDict` row, so `tools/build-data.mjs` writes them from `CUSTOM_BANDS` + their effects `aceffect_band_admin*` (`CUSTOM_BAND_EFFECTS`) instead of copying one. Everything textual lives on the effect, so the two tables cannot drift; `iconId: "icon_admin*"` has no art behind it and `ui/gameComponents.js BandIcon` falls back to the name's first character (what a hextech card without its tier art does). Their buffs are match-side code, not `bands/meta.js` handlers, because each is a 协议源石 GAIN and only the match may grant one:
+
+| Band | Buff | Mechanic (match code) |
+|---|---|---|
+| 管理员 | `band_hex_extra_pick_r1 { count: 1 }` | 「第一回合的协议源石可以多选一次」 — the R1 draft deals a second three-card offer (`hexDraft.js _hexExtraPicksFor` / `_applyHex`) |
+| 管理员2 | `band_hex_grant_rounds { roundA: 1, roundB: 3 }` | 第 1、3 回合开始时**随机**获得一枚（同一次抽卡池 `hexPoolFor`，排除已拥有；`hexDraft.js applyBandRoundHexes` + `_rollBandHex`）|
+| 管理员3 | `band_hex_grant_rounds { roundA: 4, roundB: 10 }` + `bbStr.hexId: "hex_pandora"` | 第 4、10 回合开始时获得【潘多拉魔盒】（`bbStr.hexId` 钉住卡片；走 `grantHex`，onPick 全套照跑）|
+
+So all three are bands with neither a prep handler nor a battle part (the others: 鸭爵, 歌利亚). (`band_hex_copy_once` / `applyBandHexCopy` still exist as the seam a workshop pack may call, but no shipped strategy carries that buff since the owner moved the copy into the 2阶 hex card 「复制」 on 2026-10-25.)
 
 ## 7. `effects.json` — `{ [effectId]: Effect }` (362: every effect of the season)
 
