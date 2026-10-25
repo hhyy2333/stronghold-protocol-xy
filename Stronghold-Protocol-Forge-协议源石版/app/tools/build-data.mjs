@@ -2149,13 +2149,19 @@ function buildItems(ctx, effects) {
     if (!ri) warn(`item ${chessId}: no research 04 entry (category/kind unknown)`);
   }
   for (const [id, c] of Object.entries(CUSTOM_ITEMS)) {
+    // 自制装备的合成对（业主 2026-10-25「两个装备尸山应该能合成」）：官方的 mergeable 由 trapShopChessDatas 的
+    // `goldenItemId` 决定，自制装备没有那条记录，所以由作者在这里声明 `mergeInto: '<_b 的 id>'`。写出来的记录与官方
+    // 合成对同形（`goldenId` + `upgradeChessId` 指向 `_b`，`_a` 为 `isGolden: false`），因此 `shared/itemAuthoring.js`
+    // 的 isMergeable、合并逻辑、卡面与商店都无需特判。`_b` 自己由下面的循环再生成一次（它自己也有一条 CUSTOM_ITEMS 记录）。
+    const mergeInto = typeof c.mergeInto === 'string' && c.mergeInto ? c.mergeInto : null;
+    if (mergeInto && !CUSTOM_ITEMS[mergeInto]) warn(`item ${id}: mergeInto ${mergeInto} has no CUSTOM_ITEMS entry`);
     out[id] = {
-      id, baseId: id, goldenId: null, isGolden: false,
+      id, baseId: id, goldenId: mergeInto, isGolden: false,
       trapId: c.iconId || id, iconId: c.iconId || id, identifier: c.identifier ?? null,
       name: c.name, itemType: 'EQUIP', tier: c.tier ?? 1, shopSortId: c.shopSortId ?? null,
       price: c.price ?? 0, hideInShop: true,
       shopExcluded: true, shopExcludedBy: '本作自制装备（只由协议源石发放）',
-      mergeable: false, upgradeNum: 100, upgradeChessId: null,
+      mergeable: !!mergeInto, upgradeNum: mergeInto ? 2 : 100, upgradeChessId: mergeInto,
       duration: -1, giveBondId: c.giveBondId || null, givePowerId: null, canGiveBond: c.canGiveBond === true, requiresBondId: null,
       effectId: c.effectId || `eff_${id}`, effectName: c.effectName || c.name,
       desc: c.desc || null, descRaw: c.descRaw || null,
@@ -2283,6 +2289,8 @@ const CUSTOM_ITEMS = Object.freeze({
   },
   // 尸山: 「获得装备“尸山”：战斗开始时直接击杀其他所有干员（不可重部署）。每击杀1名干员，该干员便获得20%攻击力，防御力，最大生命值，1阻挡数，0.3技力回复速度，5法抗。且每秒恢复自身3%最大生命」
   // 业主改版 2026-10-20：「三阶『尸山』，加成改成：获得其他干员属性（生命值，攻击力，阻挡数，防御力，法抗）和技力回复+1，每秒回复1%最大生命」
+  // 业主 2026-10-25「两个装备尸山应该能合成」：`_a` 合成进 `_b`，两件尸山换成一件更强的。
+  //   业主定下的合成后数值：「击杀队友获得属性 ×1.5，技力 +2，回血 2%/s」—— 即 `attrScale` / `spRecovery` / `regenPct` 三项。
   chess_item_9_95_e_a: {
     name: '尸山',
     tier: 1,
@@ -2290,13 +2298,31 @@ const CUSTOM_ITEMS = Object.freeze({
     shopSortId: 995,
     identifier: 9006,
     iconId: 'item_corpsehill',
+    mergeInto: 'chess_item_9_95_e_b',
     desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命',
     descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者<@ba.vup>获得他们的基础生命值、攻击力、阻挡数、防御力与法抗</>，<@ba.vup>技力回复 +1</>，且<@ba.vup>每秒恢复自身 1% 最大生命</>',
     effectId: 'eff_item_corpsehill',
     effectName: '尸山',
     buffs: [],
-    params: { spRecovery: 1, regenPct: 1 },
-    note: '本作自制装备：只由协议源石【尸山】发放，商店不出售、不可合并',
+    params: { spRecovery: 1, regenPct: 1, attrScale: 1 },
+    note: '本作自制装备：只由协议源石【尸山】发放，商店不出售；两件可合成「尸山·极」',
+  },
+  // 尸山·极 (_b): what TWO 尸山 merge into (业主 2026-10-25「击杀队友获得属性×1.5，技力+2，回血2%/s」).
+  // `attrScale` is read by server/sim/content/hexcards/batch15b.js installCorpseHill for the eaten operators' stats.
+  chess_item_9_95_e_b: {
+    name: '尸山·极',
+    tier: 1,
+    price: 0,
+    shopSortId: 995,
+    identifier: 9006,
+    iconId: 'item_corpsehill',
+    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗的 150%，技力回复 +2，且每秒恢复自身 2% 最大生命',
+    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗的<@ba.vup>150%</>，<@ba.vup>技力回复 +2</>，且<@ba.vup>每秒恢复自身 2% 最大生命</>',
+    effectId: 'eff_item_corpsehill',
+    effectName: '尸山',
+    buffs: [],
+    params: { spRecovery: 2, regenPct: 2, attrScale: 1.5 },
+    note: '本作自制装备：两件【尸山】合成，商店不出售',
   },
   // 心之钢 (业主 2026-10-21): 「立刻获取一件装备『心之钢』，此后每两回获得一件心之钢装备，共获得三件。（心之钢:携带者
   // 视为坚守盟约，坚守盟约干员每隔三秒攻击附带自身最大生命值伤害，并增加最大生命值150点，增加坚守层数2层）」

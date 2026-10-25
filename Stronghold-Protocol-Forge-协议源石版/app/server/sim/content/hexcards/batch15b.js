@@ -13,7 +13,7 @@
 // 同一个 `hexHooks(battle)` 契约；随机只用 battle.rng()，计时器只用 battle.every()。
 
 import { mitigate } from '../../damage.js';
-import { num, passiveBuff } from '../support/index.js';
+import { num, passiveBuff, itemRecord, itemKeyOf, itemsOf } from '../support/index.js';
 import { carries } from '../items/battle.js';
 
 /** 加护 / 万物归虚 / 尸山 的装备 key（items.json 里 strip 掉 `_a`）。 */
@@ -177,9 +177,34 @@ export function installCorpseHill(hooks) {
   const { battle, specOf, passivePerCopy } = hooks;
   const owned = new Set(owners);
   const spec = specOf(owners[0], 'hex_corpsehill', 'corpsehill');
-  // 两项固定加成（不随击杀数放大）
-  const spRec = pos(spec.spRecovery, 1);
-  const regenPct = pos(spec.regenPct, 1) / 100;
+  /**
+   * The three numbers of the worn item — `attrScale` / `spRecovery` / `regenPct` — read from the ITEM record, not from
+   * the card's spec. 尸山 is one card granting one of two items (`_a` 尸山, `_b` 尸山·极 after two merge), and the
+   * card's spec can only carry one set of values. Reading per carrier from the record it actually wears
+   * (业主 2026-10-25「击杀队友获得属性×1.5，技力+2，回血2%/s」for the merged one) keeps a single source of truth and
+   * means merging upgrades all three lines without a second code path.
+   * The card's spec stays the fallback (an install whose items.json predates the params).
+   */
+  const itemParamsOf = (carrier) => {
+    for (const id of itemsOf(carrier)) {
+      if (itemKeyOf(id) !== CORPSEHILL_ITEM_KEY) continue;
+      const rec = itemRecord(id);
+      if (rec && rec.params) return rec.params;
+    }
+    return null;
+  };
+  const scaleOf = (carrier) => {
+    const p = itemParamsOf(carrier);
+    return pos(p && p.attrScale, pos(spec.attrScale, 1));
+  };
+  const spRecOf = (carrier) => {
+    const p = itemParamsOf(carrier);
+    return pos(p && p.spRecovery, pos(spec.spRecovery, 1));
+  };
+  const regenOf = (carrier) => {
+    const p = itemParamsOf(carrier);
+    return pos(p && p.regenPct, pos(spec.regenPct, 1)) / 100;
+  };
   let kills = 0;
   /** carriers that already ate (an explicit guard: the pool below now includes already-dead units, so "nobody to eat"
    *  is no longer a reliable idempotency signal when a repeat battleStart is emitted). */
@@ -203,6 +228,7 @@ export function installCorpseHill(hooks) {
       if (!others.length) continue;
       eaten.add(marker);
       // 先把属性读下来 —— retreat 之后单位还活着，但读 base 更稳，也避免任何收尾逻辑改字段
+      const scale = scaleOf(carrier);
       let hp = 0, atk = 0, def = 0, block = 0, res = 0;
       for (const u of others) {
         hp += num(u.base?.maxHp, 0);
@@ -211,6 +237,7 @@ export function installCorpseHill(hooks) {
         block += num(u.base?.blockCnt, 0);
         res += num(u.base?.res, 0);
       }
+      if (scale !== 1) { hp *= scale; atk *= scale; def *= scale; block *= scale; res *= scale; }
       for (const u of others) {
         if (!u.alive) continue;   // 已经倒下的（联防的 down）：不再执行一次，但它的基础属性照样被吞掉
         battle.retreat(u, { reason: 'corpsehill', permanent: true });
@@ -223,8 +250,10 @@ export function installCorpseHill(hooks) {
       if (block > 0) mods.blockCnt = block;
       if (res > 0) mods.resFlat = res;
       if (Object.keys(mods).length) passiveBuff(battle, carrier, 'hex:corpsehill', mods, { tags: ['hex'] });
-      // 技力回复 +1 与每秒恢复 1% 最大生命：定值，不随击杀数叠加
+      // 技力回复 与 每秒回血：定值，不随击杀数叠加；合成后的 尸山·极 读装备自己的 +2 / 2%
       const extra = {};
+      const spRec = spRecOf(carrier);
+      const regenPct = regenOf(carrier);
       if (spRec > 0) extra.spRecoveryFlat = spRec;
       if (regenPct > 0) extra.hpRegenRatio = regenPct;
       if (Object.keys(extra).length) passiveBuff(battle, carrier, 'hex:corpsehill:regen', extra, { tags: ['hex'] });

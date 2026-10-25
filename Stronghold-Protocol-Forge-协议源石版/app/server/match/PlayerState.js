@@ -242,7 +242,18 @@ export class PlayerState {
      * settle() makes them persistent — the views add them (bondsView, DESIGN §20.15); null otherwise
      */
     this.pendingLayerGains = null;
-    /** optional per-bond count bonus written by effects */
+    /**
+     * Per-bond count bonus written by effects — **kept per SOURCE**, then summed into `bondCountBonus`.
+     *
+     * 业主 2026-10-25「这因小失大和盟约之主卡一起又出bug了」: `setBondCountBonus` used to ASSIGN one number per bond, so
+     * two cards touching the same bond overwrote each other. 盟约之主 resets its own previous pick to 0 every round
+     * start, and that reset deleted 因小失大's +1 that happened to live in the same slot (measured 1 → 0). Keeping one
+     * entry per source (`<sourceId>` → number) and summing on read makes the contributions independent: a card can only
+     * ever change its own line, never another's. `bondCountBonus` stays the materialized sum so every existing reader
+     * (`computeBonds`, views, battle inputs) is unchanged.
+     */
+    this.bondCountBonusBySource = {};
+    /** optional per-bond count bonus written by effects — the SUM over `bondCountBonusBySource` */
     this.bondCountBonus = {};
     /** EffectRef list: { id, key, name, desc, iconKind, iconId, counter?, battle, params, data } */
     this.effects = [];

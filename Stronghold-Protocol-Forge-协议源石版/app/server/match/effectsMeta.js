@@ -926,7 +926,44 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     freeShopChess: () => ps.freeShopChess(),
     addDeployCap: (n) => { const v = finiteInt(n); ps.deployCapBonus += v; ps.dirty(); return ps.deployCap; },
     setDeployCapAtLeast: (n) => { const v = finiteInt(n); if (v > ps.deployCapMin) { ps.deployCapMin = Math.min(v, 12); ps.dirty(); } return ps.deployCap; },
-    setBondCountBonus: (bondId, n) => { if (gd.bond(bondId) && Number.isInteger(n)) { ps.bondCountBonus[bondId] = n; ps.recompute(); } },
+    /**
+     * 盟约所需人数的增减，按**来源**记账（业主 2026-10-25「这因小失大和盟约之主卡一起又出bug了」）。
+     *
+     * It used to ASSIGN `ps.bondCountBonus[bondId] = n`, one number per bond shared by every card. Two cards touching the
+     * same bond overwrote each other — and that was a real, measurable bug: 盟约之主 clears its previous pick to 0 at
+     * every round start, which erased 因小失大's +1 sitting in the same slot (1 → 0). Now each source keeps its own line
+     * in `ps.bondCountBonusBySource`, and `bondCountBonus` is their sum, so no card can ever clobber another's number.
+     *
+     * `source` identifies WHO wrote it: the effect ref id (`hex:<id>`, or `hex:<id>#<copySeq>` for a 管理员 copy) plus
+     * an optional tag, so one card can own several independent lines (盟约之主's per-round pick vs. a future card's).
+     * Writing 0 removes the line (that is how 盟约之主 un-picks its previous bond).
+     */
+    setBondCountBonus: (bondId, n, opts) => {
+      if (!gd.bond(bondId) || !Number.isInteger(n)) return;
+      // WHO is writing. The dispatcher hands `{ ...source, key }` to makeCtx, and for a hex ref the source carries the
+      // EffectRef — whose `id` already ends in `#<copySeq>` for a 管理员 copy, so the two copies keep separate lines.
+      // Fall back to `source.key` (always present) and only then to a constant, so a card with no ref still works.
+      const ref = source && source.ref ? source.ref : null;
+      const who = (opts && typeof opts.source === 'string' && opts.source)
+        || (ref && (ref.id || ref.key))
+        || (source && source.key)
+        || 'effect';
+      const byBond = ps.bondCountBonusBySource || (ps.bondCountBonusBySource = {});
+      const mine = byBond[who] || (byBond[who] = {});
+      if (n === 0) delete mine[bondId];
+      else mine[bondId] = n;
+      if (!Object.keys(mine).length) delete byBond[who];
+      // materialize the sum every reader already uses
+      const sum = {};
+      for (const lines of Object.values(byBond)) {
+        for (const [bid, v] of Object.entries(lines || {})) {
+          if (!Number.isFinite(v) || !v) continue;
+          sum[bid] = (sum[bid] || 0) + v;
+        }
+      }
+      ps.bondCountBonus = sum;
+      ps.recompute();
+    },
     setDeviceActive: (alias, on) => { if (typeof alias === 'string') { ps.deviceOverrides[alias] = !!on; ps.invalidateDeployMap(); ps.dirty(); } },
     setTileOverride: (r, c, cls) => { if (Number.isInteger(r) && Number.isInteger(c) && ['melee', 'ranged', 'none'].includes(cls)) { ps.tileOverrides[`${r},${c}`] = cls; ps.invalidateDeployMap(); ps.dirty(); } },
 
