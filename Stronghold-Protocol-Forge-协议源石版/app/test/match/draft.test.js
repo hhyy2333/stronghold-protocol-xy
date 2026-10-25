@@ -310,9 +310,23 @@ test('a single human (a 同盟 room started alone or with AI teammates only) is 
     assert.equal(m.soloUntimed, true);
     assert.equal(m.isSolo, false, 'the co-op mode rules stay');
     const seen = new Map(); // phase → deadlines published
-    const note = (pub) => { if (!seen.has(pub.phase)) seen.set(pub.phase, []); seen.get(pub.phase).push(pub.deadline); };
+    // A `{ t: 'm.public', delta: true }` frame is an incremental patch of the full view (server/viewsDelta.js): it carries
+    // only the keys that changed, so a phase CHANGE is in it but the follow-up patches of the same phase are not — those
+    // have no `phase` at all. Recording one as a phase would file it under `undefined`; skipping every delta would lose
+    // the phase changes, because after the first full frame they all come as deltas. So: record a frame only when it names
+    // a phase, whichever kind it is.
+    const note = (pub) => {
+      if (pub.phase == null) return;
+      if (!seen.has(pub.phase)) seen.set(pub.phase, []);
+      seen.get(pub.phase).push(pub.deadline);
+    };
     for (const msg of h.bc) if (msg.t === 'm.public') note(msg);
     h.onBroadcast.push((msg) => { if (msg.t === 'm.public') note(msg); });
+    // The 机变 of this seat: whether it opened and whether it had a clock. Watched on the engine, not on the wire (see the
+    // SP_DRAFT note further down): the draft can open and be answered inside one throttle window.
+    let sawSpDraft = false, spUntimed = null;
+    const origEnterSpDraft = m.enterSpDraft.bind(m);
+    m.enterSpDraft = () => { origEnterSpDraft(); if (m.sp) { sawSpDraft = true; spUntimed = m.sp.untimed; } };
     assert.equal(m.phase, PHASE.INFO_CHECK);
     h.sched.advance(10 * 60_000);
     assert.equal(m.phase, PHASE.INFO_CHECK, `briefing waits (${bots} AI)`);
@@ -334,10 +348,17 @@ test('a single human (a 同盟 room started alone or with AI teammates only) is 
     // 休整期也在内（业主 2026-10-16：「同盟单人带人机不限时」，取消了原来的 25 s 兜底）。
     // 注意视图把「没有倒计时」序列化成 `null`（`deadline: 0` 不上线，省带宽），所以这里 0 与 null 都算「无」。
     const noClock = (d) => d === 0 || d == null;
-    for (const ph of [PHASE.INFO_CHECK, PHASE.BAND_DRAFT, PHASE.BATTLE_CHECK, PHASE.ROUND_START, PHASE.SP_DRAFT, PHASE.PREP, PHASE.SETTLE]) {
+    // SP_DRAFT is NOT in this list: `m.public` is throttled (DELAYS.PUBLIC_THROTTLE, one frame per window, deltas
+    // merged), and the R3 机变 of a single human is answered the instant it opens (drive → g.choice), so its frame can
+    // fall inside a window the next one overwrites — the phase runs without a frame of its own ever reaching the wire.
+    // Watched below through the draft itself instead of through a broadcast.
+    for (const ph of [PHASE.INFO_CHECK, PHASE.BAND_DRAFT, PHASE.BATTLE_CHECK, PHASE.ROUND_START, PHASE.PREP, PHASE.SETTLE]) {
       assert.ok(seen.has(ph), `saw ${ph}`);
       assert.ok(seen.get(ph).every(noClock), `${ph}: no countdown with a single human (${bots} AI): ${seen.get(ph)}`);
     }
+    // the 机变 did run in between, and it was untimed (the same rule: no clock outside battles)
+    assert.ok(sawSpDraft, 'the R3 机变 ran');
+    assert.equal(spUntimed, true, 'the 机变 of a single human is untimed');
     assert.ok(seen.get(PHASE.COMBAT).some((d) => d > 0), 'the battles keep their clock');
     m.dispose();
   }

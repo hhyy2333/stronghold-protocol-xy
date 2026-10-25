@@ -23,7 +23,11 @@ import { GameData } from '../../server/match/gamedata.js';
 import { generateDraft, bountyDraftKind } from '../../server/match/choices.js';
 import { createRng } from '../../server/sim/rng.js';
 
-const OFFICIAL = JSON.parse(readFileSync(new URL('../fixtures/official-bounty-drafts.json', import.meta.url), 'utf8'));
+// Derived from the game's own data, so it is NOT distributed with the repository (NOTICE §2). A checkout without the game
+// data has no such file; the fixture-bound tests below skip instead of failing to load (see test/match/waves-official.test.js).
+const FIXTURE = new URL('../fixtures/official-bounty-drafts.json', import.meta.url);
+const SKIP = !existsSync(FIXTURE) && 'no test/fixtures/official-bounty-drafts.json (official-data fixture, not distributed)';
+const OFFICIAL = SKIP ? null : JSON.parse(readFileSync(FIXTURE, 'utf8'));
 const CARDS = DATA.choices.cards.bounty;
 const CARD = new Map(CARDS.map((c) => [c.effectId, c]));
 const SPEC = DATA.choices.bountyDrafts;
@@ -85,7 +89,7 @@ function initialRule(ids) {
     && ids.some((id) => r.prefer.includes(id));
 }
 
-test('#2 screenshots → data: every card read is one act2autochess (下半) effect, whose enemy_id is the enemy the card brings', (t) => {
+test('#2 screenshots → data: every card read is one act2autochess (下半) effect, whose enemy_id is the enemy the card brings', { skip: SKIP }, (t) => {
   const seen = new Set();
   for (const d of officialDrafts()) for (const id of d.ids || []) seen.add(id);
   assert.equal(seen.size, 81, 'distinct cards in the 59 bounty drafts: 40 at R3, 20 at R9, 21 at R11');
@@ -111,7 +115,7 @@ test('#2 screenshots → data: every card read is one act2autochess (下半) eff
   assert.equal(act.act2autochess.modeDataDict.mode_multi_abyss.startTime, Date.UTC(2026, 2, 27, 8) / 1000);
 });
 
-test('#2 R3 (22 of 22 official drafts): one of the official sets of six "接下来两场作战" cards, 3 × I + 2 × II + 1 × III — 9 of the 10 seen', () => {
+test('#2 R3 (22 of 22 official drafts): one of the official sets of six "接下来两场作战" cards, 3 × I + 2 × II + 1 × III — 9 of the 10 seen', { skip: SKIP }, () => {
   const r3 = officialDrafts().filter((d) => d.round === 3);
   assert.equal(r3.length, 22);
   const hits = SPEC.initial.groups.map(() => []);
@@ -138,7 +142,7 @@ test('#2 R3 (22 of 22 official drafts): one of the official sets of six "接下�
   assert.ok(SPEC.initial.rule.prefer.every((id) => CARD.get(id).tier === 3));
 });
 
-test('#2 R3 generated: a seen set (all six cards) or the unseen 10th set — every seen set comes up, the unseen one about 1 in 10', () => {
+test('#2 R3 generated: a seen set (all six cards) or the unseen 10th set — every seen set comes up, the unseen one about 1 in 10', { skip: SKIP }, () => {
   const counts = new Map();
   let n = 0;
   for (const modeId of COOP_BOUNTY_MODES) {
@@ -165,7 +169,7 @@ test('#2 R3 generated: a seen set (all six cards) or the unseen 10th set — eve
   }
 });
 
-test('#2 R9 (23 official drafts): six groups (9, 9, 9, 9, 8, 6 cards) of boss bounties / 源石虫·特训, 6 cards a draft — 庞贝 and 鼠王 never together, the 鼠王 group in 14 of 22 matches', () => {
+test('#2 R9 (23 official drafts): six groups (9, 9, 9, 9, 8, 6 cards) of boss bounties / 源石虫·特训, 6 cards a draft — 庞贝 and 鼠王 never together, the 鼠王 group in 14 of 22 matches', { skip: SKIP }, () => {
   const r9 = officialDrafts().filter((d) => d.round === 9);
   assert.equal(r9.length, 23, '22 matches + the Bahamut co-op screenshot');
   const B = SPEC.boss;
@@ -224,7 +228,7 @@ test('#2 R9 (23 official drafts): six groups (9, 9, 9, 9, 8, 6 cards) of boss bo
   }
 });
 
-test('#2 R11 (22 matches: 悬赏决策 14, 机密商店 4, 战术决策 4, 道具补给 0): the families, and the bounty — 6 of a list of 7 "下场战斗" cards, one per faction series', () => {
+test('#2 R11 (22 matches: 悬赏决策 14, 机密商店 4, 战术决策 4, 道具补给 0): the families, and the bounty — 6 of a list of 7 "下场战斗" cards, one per faction series', { skip: SKIP }, () => {
   const r11 = officialDrafts().filter((d) => d.round === 11);
   const fam = {};
   for (const d of r11) fam[d.family] = (fam[d.family] || 0) + 1;
@@ -316,7 +320,7 @@ test('#2 R11 (22 matches: 悬赏决策 14, 机密商店 4, 战术决策 4, 道�
   for (const c of CARDS.filter((x) => x.draftPool === 'hunter')) assert.ok(offered.has(c.effectId), `${c.effectId} ${c.name} offered at R11`);
 });
 
-test('#2 never offered by a draft (in none of the 59 official bounty drafts): multi-round cards, enemyeffect_3_*, 战术特训, the 鸭爵 set', () => {
+test('#2 never offered by a draft (in none of the 59 official bounty drafts): multi-round cards, enemyeffect_3_*, 战术特训, the 鸭爵 set', { skip: SKIP }, () => {
   const reasons = {};
   for (const c of CARDS) {
     if (!c.draft) reasons[c.draftExcluded] = (reasons[c.draftExcluded] || 0) + 1;
@@ -341,7 +345,7 @@ test('#2 never offered by a draft (in none of the 59 official bounty drafts): mu
   }
 });
 
-test('#2 the mode\'s inactive enemy list does not thin the bounty draft (PRTS 卫戍协议：盟约 11/18 note "不影响悬赏决策出场")', () => {
+test('#2 the mode\'s inactive enemy list does not thin the bounty draft (PRTS 卫戍协议：盟约 11/18 note "不影响悬赏决策出场")', { skip: SKIP }, () => {
   // 险境 turns off 尖端萨卡兹枯朽战车 and 灼藤 in its waves; their R11 cards (13_8, 12_7) stay in an R11-kind draft there
   const sch = DATA.choices.schedule.mode_multi_normal;
   const data = { ...DATA, choices: { ...DATA.choices, schedule: { ...DATA.choices.schedule, mode_multi_normal: { ...sch, rounds: { ...sch.rounds, 9: { ...sch.rounds['9'], families: [{ family: 'bounty', weight: 1 }], bountyDraft: 'hunter' } } } } } };
@@ -353,7 +357,7 @@ test('#2 the mode\'s inactive enemy list does not thin the bounty draft (PRTS �
   assert.deepEqual([...seen].sort(), dropped.slice().sort());
 });
 
-test('#2 E2E (co-op 绝境, the players\' case): the real R3 draft is an official R3 set, and the picked enemy comes for R3 and R4 at their round scale', () => {
+test('#2 E2E (co-op 绝境, the players\' case): the real R3 draft is an official R3 set, and the picked enemy comes for R3 and R4 at their round scale', { skip: SKIP }, () => {
   for (let seed = 1; seed <= 6; seed++) {
     // no 海克斯 draft: an enemy hex (虫群's hpMul 0.92 …) would ride on the spawn mods this test pins (HANDOVER §27.5)
     const h = makeMatch({ mode: 'coop', difficulty: 'HARD', humans: 1, bots: 1, seed: 910 + seed, fake: true, data: withoutHextech() }).start();

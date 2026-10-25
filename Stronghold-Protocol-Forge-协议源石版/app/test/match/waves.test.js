@@ -161,10 +161,15 @@ test('boss templates: leaders never scaled, pairs use the multi template, single
         for (const s of boss) { assert.equal(s.mods.hpMul, undefined); assert.equal(s.preview.boss, true); }
         assert.equal(w.timeLimit, Infinity);
         const tpl = DATA.waves[w.templateId];
+        const placeholders = (DATA.factions.generation && DATA.factions.generation.placeholders) || {};
         for (const s of w.spawns) {
           assert.ok(DATA.enemies[s.enemyKey], s.enemyKey);
           const a = tpl.spawns[s.actionIndex];
-          if (a.slot === 'E' || a.slot === 'EF') {
+          // Only a PLACEHOLDER escort is replaced by the round pick (templateSpawns: `ph[key0]`). The hand-added
+          // custom_boss_12 (梅菲斯特, docs/research/15-extra-bosses.json) clones its base wave with the leader's own 宿主
+          // units spelled out as literal keys — those keep their key, so asserting they equal pick.elite was wrong for it
+          // (the test only passed while the pick happened to draw that same key).
+          if ((a.slot === 'E' || a.slot === 'EF') && placeholders[a.key]) {
             assert.equal(s.enemyKey, pick.elite);
             assert.equal(a.slot === 'EF', pick.fly, 'only the escorts of the pick\'s class');
           }

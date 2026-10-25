@@ -2,13 +2,19 @@
 // the official PRTS screenshots and from the research script over every special entry × round.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { GameData } from '../../server/match/gamedata.js';
 import { setupMatchWaves, buildNormalWave, replacedCount, roundHalfEven, previewOf } from '../../server/match/waves.js';
 import { createRng } from '../../server/sim/rng.js';
 import { DATA } from './harness.js';
 
-const OFFICIAL = JSON.parse(readFileSync(new URL('../fixtures/official-waves.json', import.meta.url), 'utf8')).entries;
+// The fixture is derived from the game's own data, so it is NOT distributed with the repository (NOTICE §2: "由官方数据表
+// 生成的 data/*.json，以及含有或派生自游戏数据的 … test/fixtures/official-waves.json"). A checkout without the game data
+// has no such file; the whole file then skips instead of failing to load (the same guard the other fixture-driven suites
+// use, e.g. test/assets.test.js / test/backups.test.js).
+const FIXTURE = new URL('../fixtures/official-waves.json', import.meta.url);
+const SKIP = !existsSync(FIXTURE) && 'no test/fixtures/official-waves.json (official-data fixture, not distributed)';
+const OFFICIAL = SKIP ? { entries: [] } : JSON.parse(readFileSync(FIXTURE, 'utf8')).entries;
 const name = (k) => DATA.enemies[k].name;
 
 /** The round's wave with a forced pick (entry key, round). */
@@ -28,7 +34,7 @@ test('roundHalfEven is C# Math.Round (banker\'s)', () => {
   assert.deepEqual([0.5, 1.5, 2.5, 3.5, 4.5, 4.49, 4.51, 4.33, 9.1].map(roundHalfEven), [0, 2, 2, 4, 4, 4, 5, 4, 9]);
 });
 
-test('R1 fixtures of the official screenshots (research 08 §2.6): one kind per round, no drones in a ground round', () => {
+test('R1 fixtures of the official screenshots (research 08 §2.6): one kind per round, no drones in a ground round', { skip: SKIP }, () => {
   const gd = new GameData(DATA, 'mode_multi_normal');
   assert.deepEqual(byName(waveOf(gd, 'enemy_1325_cbgpro_2', 1)), { 源石虫: 2, 猎狗pro: 4 }, '战场02/07: 高级军用猎狗');
   assert.deepEqual(byName(waveOf(gd, 'enemy_1305_mhslim_2', 1)), { 源石虫: 2, 灼热源石虫: 5 }, '战场04: 炽焰源石虫 (9.1 → cap 5)');
@@ -41,7 +47,7 @@ test('R1 fixtures of the official screenshots (research 08 §2.6): one kind per 
   assert.ok(r1fly.spawns.some((s) => s.enemyKey === 'enemy_1007_slime') && !r1fly.spawns.some((s) => s.enemyKey === 'enemy_1422_lrsldr'), '战场01: 源石虫 + drones, no ground N');
 });
 
-test('the .5 tie: an elite action of 2 × “灵幛” becomes 隐形弩手组长 ×4 (4.5 → 4, banker\'s rounding)', () => {
+test('the .5 tie: an elite action of 2 × “灵幛” becomes 隐形弩手组长 ×4 (4.5 → 4, banker\'s rounding)', { skip: SKIP }, () => {
   const gd = new GameData(DATA, 'mode_multi_normal');
   assert.equal(replacedCount(gd, 'enemy_1427_lrnazg', 2, 'enemy_1019_jshoot_2'), 4);
   assert.equal(replacedCount(gd, 'enemy_1427_lrnazg', 1, 'enemy_1019_jshoot_2'), 2);
@@ -49,7 +55,7 @@ test('the .5 tie: an elite action of 2 × “灵幛” becomes 隐形弩手组�
   assert.equal(replacedCount(gd, 'enemy_1425_lrcmra', 1, 'enemy_1439_dslntf'), 1, 'floor 1');
 });
 
-test('every special entry × round matches the official per-action composition (429 fixtures: kind, count, gate)', () => {
+test('every special entry × round matches the official per-action composition (429 fixtures: kind, count, gate)', { skip: SKIP }, () => {
   const gd = new GameData(DATA, 'mode_multi_abyss');
   let n = 0;
   for (const [short, rounds] of Object.entries(OFFICIAL)) {
@@ -63,7 +69,7 @@ test('every special entry × round matches the official per-action composition (
   assert.equal(n, 429);
 });
 
-test('同盟 险境 R3 never exceeds 10 enemies per board (official 6–10; ours used to reach 68)', () => {
+test('同盟 险境 R3 never exceeds 10 enemies per board (official 6–10; ours used to reach 68)', { skip: SKIP }, () => {
   const gd = new GameData(DATA, 'mode_multi_normal');
   for (const e of Object.values(DATA.factions.entries)) {
     if (!e.firstHalf || gd.inactiveEnemies.has(e.key)) continue;
@@ -72,7 +78,7 @@ test('同盟 险境 R3 never exceeds 10 enemies per board (official 6–10; ours
   }
 });
 
-test('distribution over matches ≈ the official one (research 08 §2.7, 4 000 simulated official matches)', () => {
+test('distribution over matches ≈ the official one (research 08 §2.7, 4 000 simulated official matches)', { skip: SKIP }, () => {
   const gd = new GameData(DATA, 'mode_multi_normal');
   const official = [0, 4.7, 7.7, 7.7, 10.3, 20.0, 23.2, 26.2, 18.2, 20.3, 22.2, 23.6, 35.0, 37.5];
   const sums = new Array(14).fill(0);
