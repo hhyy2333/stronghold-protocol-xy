@@ -255,7 +255,7 @@ export class FieldRunner {
 /** Real-time grace after a battle's time limit before the server takes a silent client's field over (ms). */
 export const RESULT_GRACE_MS = 15_000;
 /** A boss field whose authoritative client sent no b.progress for this long is handed over (ms). */
-export const BOSS_SILENCE_MS = 12_000;
+export const BOSS_SILENCE_MS = 25_000;
 /** Game-time spacing of the progress timeline samples of a server-run field (s). */
 export const TIMELINE_EVERY = 1;
 

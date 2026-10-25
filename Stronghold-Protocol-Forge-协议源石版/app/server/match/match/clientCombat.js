@@ -9,6 +9,20 @@ import { DeadBattle, syntheticResult, RESULT_GRACE_MS, HARD_CAP_SECONDS, Headles
 import { buildBattleSpec, createBattleFromSpec } from '../../sim/spec.js';
 import { specBattleOpts, withEnemyHexes } from './battleOpts.js';
 
+/**
+ * 同一局里**同时**由服务端跑的重算战场上限（2026-10-25）。
+ *
+ * 为什么要这个上限：一局 4 人 co-op 有 4 个战场，如果同一次判定里多个战场都被判 invalid
+ * （`uncounted leak` 这类误判），它们会**同时**开始整局重算。每个重算最坏 111,000 步、
+ * 每步遍历最多 600 个敌人 —— 1.6 GB 的机器上瞬时分配会把 available 打到 133 MB，
+ * 再叠加 `vm.swappiness=0`（不肯用 swap），内核回收阻塞会把整个用户态冻死。
+ * 那是 2026-10-25 23:21 那次强制重启的直接原因。
+ *
+ * 2 是保守值：正常 4 人局最多 4 个战场，但真同时重算 4 个本来就是异常状态；
+ * 超出就放弃后面那些战场（记 `verifyStats.cappedRun` 并 warn），宁少一局不拖垮整机。
+ */
+const MAX_CONCURRENT_SERVER_FIELDS = 2;
+
 export class MatchClientCombat {
   /** Stop every client-combat timer and the headless pacer (phase end, finish, dispose). */
   _stopClientCombat() {
@@ -185,6 +199,26 @@ export class MatchClientCombat {
     // the former authority (still online after a timeout / an invalid result) stops reporting and keeps its view
     if (prev) this.sendTo(prev, { t: 'b.end', battleId: f.battleId, fieldId: f.fieldId, reason: 'takeover' });
     if (f.kind === 'boss' || f.kind === 'hidden') { this._bossServerRun(f); return; }
+    // 熔断（2026-10-25）：**接管类**重算（战报被判 invalid / 超时 / 校验出错）在同一局里同时最多
+    // MAX_CONCURRENT_SERVER_FIELDS 个。起因：2026-10-25 23:20 一局里多个战场接连被判 invalid
+    // （"uncounted leak" 误判）而同时开始整局重算，每步要遍历最多 600 个敌人，瞬时分配把 1.6 GB 机器的
+    // available 打到 133 MB，叠加 vm.swappiness=0（不肯用 swap）⇒ 内核回收阻塞 ⇒ 整个用户态冻死，
+    // 最后只能强制重启。超出上限的战场判「放弃」并结束：宁少一局，不拖垮整机。
+    //
+    // **不覆盖 `no-human`**：bot 局 / 全场没真人的局，所有战场本来就该由服务端跑，那是正常路径不是异常，
+    // 砍掉会直接改变对局结果（clientCombat-review 的 "server-run fields (bots)" 用例钉着这一点）。
+    const takeover = reason === 'invalid' || reason === 'timeout' || reason === 'verify-error';
+    if (takeover) {
+      const running = this.fields.filter((x) => x !== f && x.cc && !x.done && x.mode === 'server' && x.job).length;
+      if (running >= MAX_CONCURRENT_SERVER_FIELDS) {
+        this.verifyStats.cappedRun++;
+        this.log.warn?.(`[match ${this.roomCode}] ${f.fieldId} R${this.round}: server re-simulation capped (${running} already running, reason=${reason}) — field ended as a loss`);
+        f.result = syntheticResult(f.players, { bossBy: f.bossBy, time: this._fieldElapsed(f) });
+        f.resultSource = 'server';
+        this._fieldDone(f);
+        return;
+      }
+    }
     const job = new HeadlessJob(this._specBattle(f.spec), { onError: (e) => this.reportError(`field ${f.fieldId} step`, e), players: f.players });
     f.job = job;
     f.battle = job.battle;

@@ -454,7 +454,7 @@ export class Match {
     this.verifyMode = parseVerify(opts.verify ?? env('SP_VERIFY'));
     /** wall-clock ms per slice of a server-run normal / 联防 field (virtual time: at once) */
     this.headlessSliceMs = Number.isFinite(opts.headlessSliceMs) && opts.headlessSliceMs > 0 ? opts.headlessSliceMs : this.sched.virtual ? Infinity : HEADLESS_SLICE_MS;
-    this.verifyStats = { checked: 0, mismatches: 0, rejected: 0, takeovers: 0 };
+    this.verifyStats = { checked: 0, mismatches: 0, rejected: 0, takeovers: 0, cappedRun: 0 };
     this._battleSeq = 0;
     /** solo pause (g.pause, DESIGN §14): the field clocks / deadlines are frozen while true (m.public.paused) */
     this.paused = false;
