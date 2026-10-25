@@ -222,6 +222,9 @@ export class MatchHexDraft {
       // the re-dealt batch gets its own per-card reroll budget, like the first one
       s.slotRerolls[ps.playerId] = s.offers[ps.playerId].map(() => 1);
       s.rerolls[ps.playerId] = this.gd.hexRerolls();
+      // a BOT that owes this second pick has to be scheduled for it: `scheduleHexBot` fires once per draft start, so
+      // without this the seat would sit on its owed pick until the timer (solo is untimed → the draft would wedge)
+      if (ps.botControlled) this.scheduleHexBot(ps);
     }
     this.markPrivate(ps);
     this.markPublic();
@@ -274,21 +277,35 @@ export class MatchHexDraft {
     const token = this._turnToken;
     this.later(this.scaled(DELAYS.BOT_ACTION), () => {
       if (this.phase !== PHASE.HEX_DRAFT || token !== this._turnToken || !this.hex) return;
-      if (!ps || !ps.botControlled || !ps.alive || this.hex.picks[ps.playerId] != null) return;
+      // 管理员 (业主 2026-10-25): "owes a pick", not "has no pick recorded" — a bot that picked once and still owes the
+      // extra one has to take it too, or the draft can only end on the timer.
+      if (!ps || !ps.botControlled || !ps.alive || this._hexPicksLeft(ps.playerId) <= 0) return;
       const offer = this.hexOfferOf(ps.playerId);
       if (!offer.length) return;
       this._applyHex(ps, this.botPickHex(offer));
     });
   }
 
-  /** The timer ran out: everyone still deciding gets a random one of their three. */
+  /**
+   * The timer ran out: everyone still deciding gets a random one of their three.
+   *
+   * 管理员's extra pick (业主 2026-10-25) is a SECOND round of the same draft, so the old test — "skip anyone who
+   * already has a pick recorded" — silently DROPPED it: the player kept the one card they had chosen, and the
+   * `finishHexDraft` below ran on a draft that was not done. That is 业主 2026-10-25「管理员策略有问题，不一定能选两次」:
+   * the extra pick only existed if you clicked it before the 30 s deadline. Resolve every pick the player still OWES
+   * instead, re-reading the offer each round because `_applyHex` re-deals it after the base pick.
+   */
   _timeoutHexDraft() {
     if (this.phase !== PHASE.HEX_DRAFT || !this.hex) return;
     for (const ps of this.alivePlayers()) {
-      if (this.hex.picks[ps.playerId] != null) continue;
-      const offer = this.hexOfferOf(ps.playerId);
-      if (!offer.length) continue;
-      this._applyHex(ps, Math.min(offer.length - 1, Math.floor(this.rngHex() * offer.length)));
+      // bounded: `_hexPicksLeft` falls by exactly one per `_applyHex`, and a player with no card to give must not spin
+      // (an empty offer breaks out, which is the old force-finish path)
+      for (let guard = 0; guard < 8; guard++) {
+        if (this.phase !== PHASE.HEX_DRAFT || this._hexPicksLeft(ps.playerId) <= 0) break;
+        const offer = this.hexOfferOf(ps.playerId);
+        if (!offer.length) break;
+        this._applyHex(ps, Math.min(offer.length - 1, Math.floor(this.rngHex() * offer.length)));
+      }
     }
     if (this.phase === PHASE.HEX_DRAFT) this.finishHexDraft();
   }

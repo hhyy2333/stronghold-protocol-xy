@@ -19,7 +19,10 @@ test('协议层：g.choice.idx 的上界跟草稿卡数同源，不再是写死�
     assert.equal(validateC2S({ t: 'g.choice', idx: i }), null, `idx ${i} 必须合法（草稿最多 ${DRAFT_CARDS_MAX} 张）`);
   }
   assert.equal(typeof validateC2S({ t: 'g.choice', idx: DRAFT_CARDS_MAX }), 'string', '越界仍要拒');
-  assert.equal(typeof validateC2S({ t: 'g.choice', idx: -1 }), 'string', '负数仍要拒');
+  // 悬赏决策「破财消灾」(业主 2026-10-25, shared/protocol.js) 用的就是 `idx: -1`，所以下界放宽到了 -1。它**只**
+  // 放过这一个负数：更小的负数仍要在协议层被拒。
+  assert.equal(validateC2S({ t: 'g.choice', idx: -1 }), null, '破财消灾的 -1 必须合法');
+  assert.equal(typeof validateC2S({ t: 'g.choice', idx: -2 }), 'string', '更小的负数仍要拒');
   // 教鞭的 personal choice 走同一个字段，也必须照旧能过
   assert.equal(validateC2S({ t: 'g.choice', idx: 2, choiceId: 'x.choice.1' }), null);
 });

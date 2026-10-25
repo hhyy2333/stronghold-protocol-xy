@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PHASE } from '../../shared/constants.js';
 import { makeMatch, DATA } from '../match/harness.js';
+import { hexIdsOf } from '../../server/match/hextech.js';
 
 /** A solo match sitting in the round-1 HEX_DRAFT with `bandId` chosen. */
 function atRound1Draft(bandId, seed = 5150) {
@@ -65,5 +66,42 @@ test('no strategy → exactly one pick, as before', () => {
   assert.deepEqual(m.handle('p_0', { t: 'g.hex', idx: 0 }), { ok: true });
   assert.equal(m.hexDraftDone(), true, 'one pick and the draft is done');
   assert.notDeepEqual(m.handle('p_0', { t: 'g.hex', idx: 0 }), { ok: true }, 'a second pick is refused');
+  m.dispose();
+});
+
+// 业主 2026-10-25「管理员策略有问题，不一定能选两次」: the extra pick only existed if you clicked it before the draft
+// timer ran out. `_timeoutHexDraft` used to skip anyone with a pick already recorded and then force-`finishHexDraft()`,
+// so a player who had spent the base pick and still OWED the extra one lost it. The deadline is not armed in a solo
+// match (`soloUntimed`), so the test drives the very function the deadline calls.
+test('管理员: when the timer runs out, the OWED extra pick is auto-made instead of dropped', () => {
+  const { m, ps } = atRound1Draft('band_admin');
+  if (m.phase !== PHASE.HEX_DRAFT) { m.dispose(); return; }
+  assert.equal(m.hex.extraPicks.p_0, 1);
+  assert.deepEqual(m.handle('p_0', { t: 'g.hex', idx: 0 }), { ok: true });
+  assert.equal(m.hexDraftDone(), false, 'the base pick is spent, the extra one is still owed');
+  const owned = hexIdsOf(ps).length;
+
+  m._timeoutHexDraft();   // what the 30 s deadline runs
+
+  assert.equal(m.hexDraftDone(), true, 'the draft is complete, not merely closed');
+  assert.equal(hexIdsOf(ps).length, owned + 1, 'the owed extra pick was granted a second card');
+  m.dispose();
+});
+
+// The same hole on the bot path: `scheduleHexBot` skipped a seat that already had a pick recorded, and the re-deal never
+// re-scheduled it — in a solo match (untimed) an AI 管理员 would sit on its owed pick and wedge the draft.
+test('管理员: a bot seat takes BOTH picks without waiting for a timer', () => {
+  const { h, m, ps } = atRound1Draft('band_admin');
+  if (m.phase !== PHASE.HEX_DRAFT) { m.dispose(); return; }
+  assert.equal(m.hex.extraPicks.p_0, 1);
+  const owned = hexIdsOf(ps).length;
+  ps.autoplay = true;   // botControlled = isBot || left || autoplay (player/basics.js)
+  m.scheduleHexBot(ps);
+  // the first bot action (900 ms) picks the base card, the re-deal re-schedules the seat, and that second timer fires
+  // inside the same window — no draft deadline is armed here (solo is untimed), so nothing but the re-schedule can
+  // produce the second card
+  h.sched.advance(2000);
+  assert.equal(hexIdsOf(ps).length, owned + 2, 'the bot owns two cards, both taken by itself');
+  assert.equal(m.hexDraftDone(), true, 'the draft is complete, not waiting on a timer');
   m.dispose();
 });
