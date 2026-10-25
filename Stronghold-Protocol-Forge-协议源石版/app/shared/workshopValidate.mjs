@@ -371,7 +371,13 @@ export async function validateWorkshop({ root = WORKSHOP_DIR, only = null, log =
             }
           }
         }
-        const known = OFFICIAL_IDS.has(charId) || Object.keys(pack.files.chess || {}).includes(charId);
+        // 台词键 = 客户端按 **`u.spine`** 查的那个 id（`audio.js _track`：`u.spine || u.defId`，而
+        // `u.spine = d.spine ?? d.charId ?? defId`）。官方干员的 `assets.spine` 恰好等于 charId，所以这个键看起来
+        // 就是 charId；但**包自带外观的新干员**可以自己挑 art id（本判据漏掉它时，一条真能播的台词会被报成
+        // 「永远播不了」）。所以这一份豁免还要算上本包 `art.chars` 声明的那些 id。
+        const known = OFFICIAL_IDS.has(charId)
+          || Object.keys(pack.files.chess || {}).includes(charId)
+          || Object.keys((pack.art && pack.art.chars) || {}).includes(charId);
         if (!known) {
           push(report.checks, 'voice', { field: lang ? `${lang}:${charId}` : charId, code: 'VOICE_UNKNOWN_OPERATOR', severity: 'warning', message: `${charId} is neither an official operator nor one this pack adds — these lines can never play`, hint: 'add the operator to this pack\'s chess.json, or ignore this if another installed pack adds it' }, ['checks'], pack.id);
         }

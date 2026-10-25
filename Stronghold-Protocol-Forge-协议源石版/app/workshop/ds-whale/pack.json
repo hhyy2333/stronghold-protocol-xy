@@ -1,10 +1,10 @@
 {
   "id": "ds-whale",
   "name": "大肥鱼（DeepSeek 鲸鱼娘）",
-  "version": "0.3.6",
+  "version": "0.4.1",
   "author": "整合包作者（模型：B站@氵六青；形象版权 @上善无形 / @ZipZipPin，CC BY-NC-SA 4.0）",
   "license": "CC BY-NC-SA 4.0（Live2D 模型与形象，非商业）；本包 JSON 与转换脚本 GPL-3.0-or-later",
-  "description": "新增 6★ 5 阶吟游者（辅助）干员「大肥鱼」：三技能（数据流溢出 / 代码重构 / 深度求索·涌现）+ 两天赋（大模型算力 / 吃白饭），带自制 Spine 3.8 战斗模型（由 Live2D 烘焙）。0.3.x 起带自制盟约「前文明」（层数由消耗的部署费用驱动，见 bonds.json + battle/bonds.mjs）与极简矢量图标（盟约 + 三技能，见 assets/art/icon/）。",
+  "description": "新增 6★ 5 阶吟游者（辅助）干员「大肥鱼」：三技能（数据流溢出 / 代码重构 / 深度求索·涌现）+ 两天赋（大模型算力 / 吃白饭），带自制 Spine 3.8 战斗模型（由 Live2D 烘焙）。0.3.x 起带自制盟约「前文明」（层数由消耗的部署费用驱动，见 bonds.json + battle/bonds.mjs）与极简矢量图标（盟约 + 三技能，见 assets/art/icon/）。0.4.x：S3 自带音乐（技能开始播 LetMeGo.m4a、技能停止就停，走新的 music fx）；盟约「前文明」从每 20 点部署费用 1 层改为每 5 点 1 层（一局约 199 层，三个阈值都吃得到）；S1/S2/S3 与 T2 的数值按设计稿对齐。",
   "gameVersion": ">=0.2.1",
   "api": ">=1 <2",
   "content": [

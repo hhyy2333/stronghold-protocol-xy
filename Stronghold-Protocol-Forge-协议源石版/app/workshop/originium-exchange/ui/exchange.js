@@ -79,6 +79,29 @@ const PRICE_MODE_TEXT = Object.freeze({ decimal: '保留小数', integer: '无�
 /** 源石大盘保留一位小数（100 起）。 */
 const fmtIndex = (value) => (Math.round((Number(value) || 0) * 10) / 10).toFixed(1);
 
+/**
+ * 金额（持仓市值 / 负债 / 总资产 / 现金）的显示：**两位小数**， тысяче分位。
+ *
+ * 业主 2026-10-25：「让持仓和负债可以显示小数」。持仓 = Σ(股数 × 股价)，而股价本身就是两位小数
+ * （3 股 × 3.07 = 9.21），取整会把这个数悄悄抹成 9 —— 面板上看到的「持仓」和真正值钱的数字对不上。
+ * 负债是整数元（`_oexSetDebt` 存整数），但同样留两位小数显示，两栏才对得齐。
+ *
+ * 与价格共用同一个显示模式开关（用户切到「无小数点（×100）」时，金额也 ×100 显示成整数）。
+ * @param {number} value
+ * @param {'decimal'|'integer'} mode
+ */
+export function formatMoney(value, mode = 'decimal') {
+  const raw = Math.round((Number(value) || 0) * 100) / 100;
+  if (mode === 'integer') return String(Math.round(raw * INTEGER_SCALE));
+  const abs = Math.abs(raw);
+  const [intPart, frac] = abs.toFixed(2).split('.');
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${raw < 0 ? '-' : ''}${grouped}.${frac}`;
+}
+/** 面板当前用的金额格式化（闭包里绑定当前显示模式）。 */
+let moneyMode = 'decimal';
+const fmtMoney = (value) => formatMoney(value, moneyMode);
+
 /** 市场情绪中文名（服务端下行帧里也有 `label`，这里只是兜底）。 */
 const SENTIMENT_TEXT = Object.freeze({ bull: '牛市', bear: '熊市', calm: '平静' });
 
@@ -545,12 +568,13 @@ export function mount(ctx) {
       sentimentText.textContent = '';
       sentimentText.className = 'oex__sentiment';
     }
-    netWorthValue.textContent = fmt(data.netWorth);
-    cashValue.textContent = fmt(data.cash);
-    portfolioValue.textContent = fmt(data.portfolio);
+    moneyMode = priceMode;
+    netWorthValue.textContent = fmtMoney(data.netWorth);
+    cashValue.textContent = fmtMoney(data.cash);
+    portfolioValue.textContent = fmtMoney(data.portfolio);
     const debt = Number(data.debt) || 0;
     const marginPct = Number(data.marginPct) || 0;
-    debtValue.textContent = debt > 0 ? `-${fmt(debt)}` : '0';
+    debtValue.textContent = debt > 0 ? `-${fmtMoney(debt)}` : '0.00';
     // 追保距离：**按这一档的**维持担保比例算（服务端下行帧的 `maintainPct`；1x–3x 是 70，4x/5x 更宽）。
     // 黄线 = 阈值 −15 个百分点，红线 = 阈值 −5。旧代码把 55/65/70 三个数字写死，加了 4x/5x 之后
     // 5x 的 88% 会在「还没到 65%」时就把人强平，面板却一个字都不预警 —— 那是最坏的一种谎。
@@ -571,7 +595,7 @@ export function mount(ctx) {
     levHint.textContent = debt > 0
       ? `负债率 ${marginPct.toFixed(0)}% · 追保 ${maintainPct}%`
       : level > 1
-        ? (room > 0 ? `可借 ${fmt(room)}` : `额度已用满 · 追保 ${maintainPct}%`)
+        ? (room > 0 ? `可借 ${fmtMoney(room)}` : `额度已用满 · 追保 ${maintainPct}%`)
         : '不借钱';
     if (data.news && data.news.text) {
       newsText.textContent = `${data.news.text}（${data.news.pct > 0 ? '+' : ''}${data.news.pct}%）`;
@@ -580,7 +604,7 @@ export function mount(ctx) {
       newsText.textContent = '今日风平浪静，行情跟着各盟约的冷热走。';
       newsText.className = 'oex__news-text';
     }
-    dividendText.textContent = data.dividend > 0 ? `分红 +${fmt(data.dividend)}` : '';
+    dividendText.textContent = data.dividend > 0 ? `分红 +${fmtMoney(data.dividend)}` : '';
     if (typeof data.closed === 'boolean' && data.closed) footHint.textContent = '本局已收盘 · 下一局重新开市';
     else footHint.textContent = '休整期才能交易 · 单回合 ±45% · 新闻 45% · 手续费 1% · 分红 1.2% · 息 0.4%';
     renderStockList(data.stocks);
@@ -599,12 +623,12 @@ export function mount(ctx) {
     // 出局的人没有名次（服务端发 rank: null + out: true），但仍然看到本局的排行榜。
     closeRank.textContent = (data.out
       ? `已出局 · 本局排行共 ${data.ofPlayers} 人`
-      : `第 ${data.rank} 名 / 共 ${data.ofPlayers} 人 · 总资产 ${fmt(data.netWorth)}`) + indexLine;
+      : `第 ${data.rank} 名 / 共 ${data.ofPlayers} 人 · 总资产 ${fmtMoney(data.netWorth)}`) + indexLine;
     while (closeList.firstChild) closeList.removeChild(closeList.firstChild);
     for (const row of data.rows || []) {
       const item = el('li', 'oex__close-row' + (row.isMe ? ' is-me' : ''));
       item.appendChild(el('span', 'oex__close-name', `${row.seat != null ? `${row.seat + 1}. ` : ''}${row.name || '???'}`));
-      item.appendChild(el('span', 'oex__close-worth', fmt(row.netWorth)));
+      item.appendChild(el('span', 'oex__close-worth', fmtMoney(row.netWorth)));
       closeList.appendChild(item);
     }
   }
@@ -729,7 +753,8 @@ export function mount(ctx) {
       priceMode = mode;
       writePriceMode(mode);
       renderDisplayButtons();
-      if (state) renderStockList(state.stocks);
+      // 金额（持仓 / 负债 / 总资产 / 现金）与价格共用这个开关，所以整块重画一次而不是只画股票列表。
+      if (state) renderState(state);
       return;
     }
     if (action === 'buy' || action === 'sell') {

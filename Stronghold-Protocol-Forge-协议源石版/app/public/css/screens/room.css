@@ -463,5 +463,46 @@
 @media (max-width: 900px) { .room-mods__pick .mod-list { grid-template-columns: 1fr; } }
 /* The edit form is a new BLOCK under the room-mods summary, not the next inline item after 「本房间没有声明模组」. */
 .room-mods__edit { flex: 1 1 100%; }
-.room-mods__pick { display: flex; flex-direction: column; gap: .08rem; width: min(100%, 8rem); }
-.room-mods__apply { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem; }
+/* 房主的勾选对话框（2026-10-25）：它从前是房间里一块普通文档流，房间屏不滚动 ⇒ 行一多「应用更改」就被挤到视口外
+   且无法拉回（业主的手机截图，420×910）。现在整份选择在一张 Modal 里，这里只负责「脚注永远可见」：给对话框一个
+   高度上限，列表占满余下的高度并自己滚动；行再长也不会把脚注推出屏幕。 */
+.mdialog-roommods { max-height: min(92vh, 9.6rem); }
+.mdialog-roommods .modal__body {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column; padding-bottom: .18rem;
+  /* 手机上拉列表时不要带动底下的页面 */
+  overscroll-behavior: contain;
+}
+.room-mods__pick { display: flex; flex-direction: column; gap: .08rem; min-height: 0; width: 100%; }
+.room-mods__scroll {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgba(78, 216, 175, .45) transparent;
+  /* 右边的滚动条不压住行的边框 */
+  margin: 0 -.04rem; padding: 1px .04rem;
+}
+/* 脚注：说明在上、按钮在下（窄屏也一样），并且**始终**贴在对话框底部 */
+.mdialog-roommods .modal__actions { flex-wrap: wrap; align-items: center; }
+.room-mods__apply { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .14rem; width: 100%; }
+.room-mods__apply .t-lo { flex: 1 1 3.2rem; min-width: 0; font-size: calc(.13 * var(--t)); line-height: 1.45; }
+.room-mods__applybtns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .1rem; margin-left: auto; }
+/* 触摸屏（--tap-min 是 devices.css 的 44px）：`.btn--sm` 的 `.36rem` 在手机档只有 14px（根字号被 clamp 到 40px），
+   手指按不稳 —— 这两颗是「改完就走」的唯一出口，按触摸标准给足高度与宽度，说明文字也抬到能读的字号。
+   选择器用引擎自己打的 `html.sp-coarse`（ui/device.js 开机时按真实输入设备写，从不用 UA 嗅探），与 devices.css
+   那一套触摸规则同一条口径。 */
+.sp-coarse .mdialog-roommods .modal__head { padding-left: .2rem; padding-right: .2rem; }
+.sp-coarse .mdialog-roommods .modal__body { padding-left: .2rem; padding-right: .2rem; }
+.sp-coarse .mdialog-roommods .modal__actions { padding: .14rem .2rem; }
+/* 说明独占一行（手机上它挤在按钮旁边会变成竖着的一条），按钮两个各占一半宽度 */
+.sp-coarse .mdialog-roommods .room-mods__apply .t-lo {
+  flex: 1 1 100%; font-size: max(calc(.13 * var(--t)), 12px); line-height: 1.5;
+}
+.sp-coarse .mdialog-roommods .room-mods__applybtns { flex: 1 1 100%; width: 100%; }
+.sp-coarse .mdialog-roommods .room-mods__applybtns .btn {
+  flex: 1 1 auto; height: max(.5rem, var(--tap-min)); min-width: 2rem;
+  font-size: max(calc(.15 * var(--t)), 13px);
+}
+/* 手机竖屏（业主截图的那一档：420×910，根字号 40px）：对话框铺满可用的高度，列表拿到全部余量，行也按手指放大 */
+@media (max-aspect-ratio: 1/1) and (max-width: 760px) {
+  .mdialog-roommods { width: 96vw; max-height: calc(100vh - 2 * var(--sa-t, 0px) - max(.3rem, 12px) * 2); }
+  .mdialog-roommods .room-mods__pick .mod-list { gap: .05rem; }
+}

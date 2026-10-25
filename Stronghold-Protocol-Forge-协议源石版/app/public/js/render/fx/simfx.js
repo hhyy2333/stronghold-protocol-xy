@@ -96,6 +96,9 @@ export class FxSim {
       }
       // 技能范围的地面高亮：tiles 是判定格清单（tilesAround 直接透传 [[r,c]]），dur 是真实的持续秒数
       case 'field': this.tileField(tilesAround(at.x, at.y, r, ex.tiles), col, Math.max(0.6, dur || 1.5)); break;
+      // 技能自己的那段音乐：开始 / 停止（不画任何东西；见 zones.js 的 music / stopMusic）
+      case 'music': this.music(typeof ex.url === 'string' ? ex.url : null, dur > 0 ? dur : 0); break;
+      case 'musicStop': this.stopMusic(); break;
       case 'telegraph': {
         const d = Math.max(0.4, dur || 1);
         if (r >= 12) { this.flashScreen(col, 0.45, d); break; }

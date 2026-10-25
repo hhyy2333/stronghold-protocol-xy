@@ -15,6 +15,8 @@ import { makeMatch, give, legalTileFor, DATA, withoutHextech } from './harness.j
 import { planBoard, applyBoard, makeMatch as balanceMatch, withoutTuning } from '../../tools/balance.mjs';
 import { buildNormalWave } from '../../server/match/waves.js';
 import { createRng } from '../../server/sim/rng.js';
+import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
+import { specBattleOpts } from '../../server/match/match/battleOpts.js';
 
 /** A solo match (fake battles) at PREP R1 with an empty layer table; onLayers dispatches are recorded. */
 function prepMatch(seed = 71, o = {}) {
@@ -207,6 +209,115 @@ test('Final Assault + Hidden Core with a 999-layer 炎 board (real sim, server-r
   assert.equal(end.victory, true, 'the board still won once its hits stayed under the line');
   assert.equal(m.errorCount, 0);
   m.dispose();
+});
+
+// ---- the limit has to reach EVERY battle of a boss round, not just the server-run one --------------------------
+
+/**
+ * The shape 业主 2026-10-25 reported (「打boss伤害过高时圣聆初雪吞伤害」): a board whose hits are pushed past the line —
+ * 999 谢拉格 ×(1.35 + 0.01·L) vs cold / 奥术 ×(1.2 + 0.01·L) arts taken — so her S3 hits 300000+. With 限伤 off
+ * (`SP_BOSS_HIT_LIMIT=off`, which every unit in 05-部署 ships and scripts/launch.mjs sets for a local double-click) they
+ * must land; with the official default they must be swallowed exactly as before.
+ */
+const LIMIT_BOARD = ['chess_char_6_02_a'];   // 圣聆初雪 (阵法术师, S3 群山俯首)
+/** A real Final Assault (client-side combat, so the spec is what the browser runs) with `bossHitLimit` as configured. */
+function limitMatch(bossHitLimit, seed = 78) {
+  const h = makeMatch({ mode: 'solo', difficulty: 'HARD', seed, fake: true, captureFrames: false, clientCombat: true, clients: false,
+    data: withoutHextech(), script: (b) => (b.kind === 'normal' ? { duration: 1 } : {}) });
+  if (bossHitLimit !== undefined) h.m.bossHitLimit = bossHitLimit;
+  h.m.bossId = 'boss_6';
+  h.m.gd.bossHpMul = () => 0.1;
+  h.start();
+  h.toPrep(14);
+  const ps = h.ps('p_0');
+  for (const p of [...ps.board.values()]) if (p.kind === 'chess') ps.returnCopies(p);
+  ps.board.clear();
+  const used = new Set();
+  for (const id of LIMIT_BOARD) {
+    const at = legalTileFor(h.m, ps, id, used);
+    used.add(`${at[0]},${at[1]}`);
+    give(h.m, ps, id, 'board', at);
+  }
+  for (const b of ['kjeragShip', 'arcaneShip']) { ps.addLayers(b, 5000); assert.equal(ps.layers[b], 999); }
+  ps.recompute();
+  ps.lp = 200;
+  h.drive(() => h.m.phase === PHASE.FINAL_ASSAULT || h.ended != null);
+  assert.equal(h.m.phase, PHASE.FINAL_ASSAULT);
+  return h;
+}
+
+test('限伤 off (SP_BOSS_HIT_LIMIT=off) reaches a CLIENT-run boss field: the browser\'s own battle must have the override too', () => {
+  const h = limitMatch(Infinity);
+  const m = h.m;
+  const f = m.fields[0];
+  assert.equal(f.kind, 'boss');
+  assert.ok(Object.hasOwn(f.spec, 'bossHitLimit'), 'the client-run boss BattleSpec carries the 限伤 override');
+  assert.equal(f.spec.bossHitLimit, null, 'null on the wire = Infinity (JSON has no Infinity)');
+  // the browser rebuilds exactly this spec and nothing else (public/js/battle/runner.js → createBattleFromSpec)
+  const browser = createBattleFromSpec(f.spec, m.ds);
+  assert.equal(browser.kind, 'boss');
+  assert.equal(browser.bossHitLimit, Infinity, 'the field the browser fights has 限伤 off');
+  // …and so does the server's re-computation / takeover of the same field (`specBattleOpts` hands opts.bossHitLimit).
+  // Built with the REAL Battle class: this fixture runs a FakeBattle (no price for the sim), which does not carry the
+  // option at all — the fallback below is what `createBattleFromSpec` does with no BattleClass.
+  const sopts = { ...specBattleOpts(m, { sharedBoss: null }), BattleClass: undefined };
+  assert.equal(sopts.bossHitLimit, Infinity, 'specBattleOpts hands the override to the re-computation');
+  const server = createBattleFromSpec(f.spec, m.ds, sopts);
+  assert.equal(server.bossHitLimit, Infinity);
+  m.dispose();
+});
+
+test('限伤 off: a hit past the line on a leader LANDS in the browser-run boss battle (圣聆初雪 stops being swallowed)', () => {
+  const h = limitMatch(Infinity);
+  const b = createBattleFromSpec(h.m.fields[0].spec, h.m.ds);
+  for (let i = 0; i < 200 && !(b.enemies || []).some((e) => e.isBoss); i++) b.step();
+  const leader = b.enemies.find((e) => e.isBoss);
+  const op = b.allyUnits.find((u) => u.kind === 'op');
+  assert.ok(leader && op, 'the leader and her operator are both on the field');
+  assert.equal(op.defId, 'chess_char_6_02_a', 'the board is 圣聆初雪');
+  // the reported board (999 谢拉格 + 奥术) pushes her S3 hits far past 300000; this fixture's pool is small, so the whole
+  // bar is the most a hit can remove — the point is that NOTHING is cancelled
+  const caps = [];
+  const fx0 = b.fx.bind(b);
+  b.fx = (k, p) => { if (k === 'hitCap') caps.push(p.n); return fx0(k, p); };
+  const bar0 = b.sharedBoss ? b.sharedBoss.hp : leader.hp;
+  const hit = BOSS_HIT_LIMIT + 100000;
+  const dealt = b.dealDamage(op, leader, { amount: hit, type: 'true' });
+  assert.equal(caps.length, 0, 'no hitCap — the hit was not swallowed');
+  assert.equal(dealt, Math.min(hit, bar0), 'the whole hit landed (up to what the bar still had)');
+  assert.ok(dealt > 0, 'the leader took damage');
+  h.m.dispose();
+});
+
+test('the official default is unchanged: with no override the client-run boss spec carries no key and the hit is still swallowed', () => {
+  const h = limitMatch(undefined);
+  const m = h.m;
+  const f = m.fields[0];
+  assert.equal(m.bossHitLimit, undefined);
+  assert.ok(!Object.hasOwn(f.spec, 'bossHitLimit'), 'an unconfigured server sends the spec it always sent');
+  const b = createBattleFromSpec(f.spec, m.ds);
+  assert.equal(b.bossHitLimit, undefined, 'the battle falls back to BOSS_HIT_LIMIT');
+  for (let i = 0; i < 200 && !(b.enemies || []).some((e) => e.isBoss); i++) b.step();
+  const leader = b.enemies.find((e) => e.isBoss);
+  const op = b.allyUnits.find((u) => u.kind === 'op');
+  assert.ok(leader && op);
+  const bar0 = leader.hp;
+  assert.equal(b.dealDamage(op, leader, { amount: BOSS_HIT_LIMIT, type: 'true' }), 0, 'the official 300000 line still cancels');
+  assert.equal(leader.hp, bar0, 'nothing removed');
+  // a hit under the line lands (a small fixture pool caps what the bar can give back — the point is the line is not it)
+  assert.equal(b.dealDamage(op, leader, { amount: BOSS_HIT_LIMIT - 1, type: 'true' }), Math.min(BOSS_HIT_LIMIT - 1, bar0));
+  m.dispose();
+});
+
+test('createBattleFromSpec honours an explicit opts.bossHitLimit when the spec has no key (specBattleOpts has always passed one)', () => {
+  const spec = buildBattleSpec({ kind: 'boss', seed: 1, players: [], spawns: [], routes: [], timeLimit: null, content: 'none' });
+  assert.ok(!Object.hasOwn(spec, 'bossHitLimit'), 'no key from a caller that did not set one');
+  assert.equal(createBattleFromSpec(spec, undefined).bossHitLimit, undefined, 'absent both ways ⇒ the BOSS_HIT_LIMIT default');
+  assert.equal(createBattleFromSpec(spec, undefined, { bossHitLimit: Infinity }).bossHitLimit, Infinity, 'the option is honoured');
+  assert.equal(createBattleFromSpec(spec, undefined, { bossHitLimit: 1234 }).bossHitLimit, 1234);
+  // the spec's own key still wins when it has one: the wire is the decision, the option is only the fallback
+  const withKey = buildBattleSpec({ kind: 'boss', seed: 1, players: [], spawns: [], routes: [], timeLimit: null, content: 'none', bossHitLimit: 5000 });
+  assert.equal(createBattleFromSpec(withKey, undefined, { bossHitLimit: Infinity }).bossHitLimit, 5000);
 });
 
 // ---- the dev tools write layers too: they stop at the cap like every gain ---------------------------------------

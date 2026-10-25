@@ -118,6 +118,17 @@ export class MatchBoss {
         enemyOverrides: wave.overrides,
         waveId: wave.templateId,
         bossId,
+        // 限伤 override (`SP_BOSS_HIT_LIMIT`, shared/constants.js bossHitLimitFrom) — the one battle kind that NEEDS it and
+        // the one place that used to miss it: the Final Assault / Hidden Core is where 限伤 applies at all (damage.js
+        // leaderHitCancelled: a leader in a 'boss' / 'hidden' battle), and this option list is copied verbatim into the
+        // client-run BattleSpec (`_ccField`). Every other path (normal / 联防 / the server-run battle through
+        // `battleOptsFromMatch`) carried the override, so a deployment with 限伤 off (`SP_BOSS_HIT_LIMIT=off`, which every
+        // unit in 05-部署 ships, and scripts/launch.mjs sets for a local double-click) still swallowed every hit of
+        // ≥ 300000 on a leader — the browser rebuilt the field without the key and fell back to BOSS_HIT_LIMIT. 业主
+        // 2026-10-25「打boss伤害过高时圣聆初雪吞伤害」: a 999-layer 谢拉格 + 奥术 board pushed her S3 hits past the line
+        // and they dealt 0. Only present when the deployment set the variable (the 0.19.x behaviour otherwise:
+        // an unconfigured server sends byte-for-byte the spec it sent before).
+        ...(this.bossHitLimit === undefined ? {} : { bossHitLimit: this.bossHitLimit }),
       };
       if (this.clientCombat) return { fieldId, kind: hidden ? 'hidden' : 'boss', players: g.map((p) => p.playerId), opts: bopts, battle: null, live: true };
       const battle = this.newBattle(bopts);

@@ -251,4 +251,67 @@ export class FxZones {
   leak() {
     this.vigT = 0.9;
   }
+  // ---- 一段技能音频（fx 'music' / 'musicStop'）-------------------------------------------------------------
+  // 与上面那些都是「画面」不同，这两个管的是**声音**：一段随技能开始、随技能结束的曲目。放在 FxSystem 里是因为
+  // 它已经有每帧的 update / clear，一处就能保证「技能停了声音也停」「换战场不会留着上一场的歌」。
+  // 用独立的 HTMLAudioElement 而不是 WebAudio 语音通道：语音通道（audio.js）没有对外的停止入口，曲目 2 分钟会
+  // 一直放下去；这里的音频只归这段技能所有。
+
+  /** Start a loop-free piece of music for `dur` game-seconds (0/absent = until stopped). A second call replaces the first. */
+  music(url, dur = 0) {
+    this.stopMusic();
+    if (typeof url !== 'string' || !url) return;
+    let el;
+    try {
+      el = new Audio(url);
+      el.volume = 0.6;
+      el.loop = false;
+      const pr = el.play();
+      if (pr && typeof pr.catch === 'function') pr.catch(() => { /* autoplay refused: the next gesture will not retry */ });
+    } catch { return; }
+    this.musicEl = el;
+    this.musicT = 0;
+    this.musicDur = dur > 0 ? dur : 0;
+  }
+
+  /** Stop it now (fade out over MUSIC_FADE s). */
+  stopMusic() {
+    const el = this.musicEl;
+    if (!el) return;
+    this.musicEl = null;
+    this.musicT = 0;
+    this.musicDur = 0;
+    this._fadeOutMusic(el);
+  }
+
+  /** Per-frame: count the music's own duration down, fade at the end, release the element. */
+  _updateMusic(dt) {
+    const el = this.musicEl;
+    if (!el) return;
+    this.musicT += dt;
+    const left = this.musicDur > 0 ? this.musicDur - this.musicT : Infinity;
+    if (Number.isFinite(left) && left <= MUSIC_FADE) {
+      this.musicEl = null;
+      this._fadeOutMusic(el);
+      return;
+    }
+    if (el.ended) { this.musicEl = null; this.musicT = 0; }
+  }
+
+  _fadeOutMusic(el) {
+    try {
+      const v0 = el.volume;
+      const steps = Math.max(1, Math.round(MUSIC_FADE * 20));
+      let i = 0;
+      const tick = () => {
+        if (i++ >= steps) { try { el.pause(); } catch { /* ignore */ } return; }
+        try { el.volume = Math.max(0, v0 * (1 - i / steps)); } catch { return; }
+        setTimeout(tick, 50);
+      };
+      tick();
+    } catch { /* ignore */ }
+  }
 }
+
+/** Fade-out length of fx 'music' (real seconds) — short enough that the skill's end reads as "the song stops with it". */
+const MUSIC_FADE = 0.35;

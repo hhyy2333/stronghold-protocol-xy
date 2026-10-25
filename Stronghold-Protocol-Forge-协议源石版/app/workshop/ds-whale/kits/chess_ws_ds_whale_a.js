@@ -3,18 +3,18 @@
 // 设计稿（业主 2026-10-24，见包内 PROVENANCE 的 KIT 一节）：
 //   T1 大模型算力：范围内友方技力自然回复 +0.2/秒；范围内友方释放技能时自身 +1 层「数据样本」（最多 20），
 //                  每层自身治疗量 +3%
-//   T2 吃白饭：在场每秒消耗 1 点部署费用；范围内友方获得 (10% + 层数×1%) 庇护与抵抗（上限 30%）
-//   S1 数据流溢出（自动触发 / 持续 20 s）：+5 层「数据样本」，攻击力 +45%，范围内友方攻速 +35
-//   S2 代码重构（自动触发）：先 +1 层再**清空全部**样本：每层本场战斗攻击力 +30%；另对范围内血量最低的友方
-//                    **各一次** 180% 攻击力的治疗与 1 点技力（层数只决定攻击力，不回技力 n 次）
+//   T2 吃白饭：在场每秒消耗 1 点部署费用；范围内友方获得 (20% + 层数×2%) 庇护与抵抗（不设上限）
+//   S1 数据流溢出（自动触发 / 持续 20 s）：+5 层「数据样本」，攻击力 +45%，范围内友方攻速 +35，
+//                   **特性（吟游者光环比例）提高到 35%**，持续 20 s
+//   S2 代码重构（自动触发）：先 +1 层再**清空全部**样本：每层**本场战斗特性 +2%**；并对范围内生命比例最低的友方
+//                   进行一次「她最大生命 80%」的治疗 + 护盾、回复 1 点技力
 //   S3 深度求索·涌现（持续）：样本 +20，展开「深水区」+攻击范围扩大；自身不受伤害；区内友方每秒回复她 50% 最大生命的
-//                  生命、并获得 +50% 攻击力/防御力；区内敌人移速 -50%、脆弱 +50%（Lv4 为 +40%）、
-//                  每秒受到她 150% 最大生命的法术伤害
+//                   生命、并获得**鼓舞 = 她最大生命 65%**；区内敌人移速 -50%、脆弱 +50%（Lv4 为 +40%）、
 //
-// 两处与设计稿的偏差（引擎能力所限，已与业主确认口径前的临时实现）：
-//   * 「数值增益效果提升至 1.5 倍」没有通用实现点（buff 是逐条加算/乘算的，没有二次结算钩子），
-//     这里按「区内友方攻击力、防御力 +50%」近似 —— 也就是把 1.5 倍落到两个最主要的数值维度上。
+// 一处与官方口径的差别（业主 2026-10-25 已把「1.5 倍」那条去掉，改成鼓舞 + 特性）：
 //   * 「抗性」用引擎的状态 resist（同名取最高、默认减半）实现，覆盖全部常规控制；持续 0.6s 由 0.5s 的光环心跳续上。
+//   * 鼓舞（inspire）按官方口径是「附加的基础属性」，这里用引擎的 `hpFlat` 挂最大生命值，并**按目标当前的
+//     最大生命倍率折算**（`s.maxHp / base.maxHp`），这样 +生命% 的 buff 不会把鼓舞一起放大。
 //
 // 确定性：所有随机都不需要（没有随机数），计时只用 battle.every / 事件，不用 Date/Math.random。
 
@@ -28,9 +28,15 @@ const S2 = 'skchr_ws_ds_whale_2';
 const S3 = 'skchr_ws_ds_whale_3';
 
 const KEY_SAMPLES = 'dsw:samples';   // her own healing bonus, 1 layer = +3%
-const KEY_S2_ATK = 'dsw:s2:atk';      // permanent ATK of 代码重构
-const KEY_AMP = 'dsw:s3:amp';         // 深水区: the 1.5x approximation
+const KEY_INSPIRE_HP = 'inspire:hp';  // 鼓舞（最大生命值）—— 与魔王的鼓舞同一个 key，同名取最强
+const KEY_S2_SHIELD = 'dsw:s2:shield';
 const KEY_SLOW = 'dsw:s3:slow';       // 深水区: enemy -50% move
+
+// S3 的那段音乐：包内素材的 URL 规则是 `/workshop-assets/<包 id>/<包内路径>`（shared/workshop.js 的
+// WORKSHOP_MEDIA_PREFIX）。技能开始播、技能结束（正常结束/被打断/阵亡）停 —— 两端都发 fx 事件，客户端 `music` /
+// `musicStop` 负责播与停。改了包 id 或文件路径要同步改这里。
+const PACK_ID = 'ds-whale';
+const S3_MUSIC = `/workshop-assets/${PACK_ID}/voice/LetMeGo.m4a`;
 
 export default (bb, chess, def) => {
   void bb; void def;
@@ -49,7 +55,9 @@ export default (bb, chess, def) => {
   const DP_PER_SEC = num(t2.dp_per_sec, 1);
   const PROTECT_BASE = num(t2.protect_base, 0.1);
   const PROTECT_PER = num(t2.protect_per_stack, 0.01);
-  const PROTECT_CAP = num(t2.protect_cap, 0.3);
+  // 庇护 = 基线 + 每层 × 数据样本层数（业主 2026-10-25：20 + 2x%）。数据里不写上限就不截断（默认 1 = 不封顶）；
+  // 「同名效果取最高」（applyStrongest），所以与其它庇护来源不会叠乘，只取最大那一份。
+  const PROTECT_CAP = num(t2.protect_cap, 1);
 
   const d1 = num(r1.duration, 20);
   const d3 = num(r3.duration, 25);
@@ -58,12 +66,14 @@ export default (bb, chess, def) => {
   // S1 的 +5 层是规格里的固定值：写成数据键 `bb.stacks` 会被共享校验器的「通用黑板白名单」当成未知键提醒
   // （那只校验 `skill` 这一条默认技能），所以默认值放在这里；哪天数据里真写了 stacks，这一段照样读得到。
   const s1Stacks = Math.max(0, Math.floor(num(b1.stacks, 5)));
-  const s2Per = num(b2.atk_per_stack, 0.3);
-  const s2Heal = num(b2.heal_scale, 1.8);
+  const s1Trait = num(b1.trait_ratio, 0.35);          // S1 期间特性提高到 35%
+  const s2TraitPer = num(b2.trait_per_stack, 0.02);   // S2 每消耗 1 层：本场战斗特性 +2%
+  const s2HealRatio = num(b2.heal_maxhp_ratio, 0.8);  // S2 治疗：她最大生命的 80%
+  const s2ShieldRatio = num(b2.shield_maxhp_ratio, 0.8); // S2 护盾：同上
   const s3Stacks = Math.floor(num(b3.stacks, 20));
   const s3Radius = num(b3.radius, 2.5);
   const s3HealRatio = num(b3.heal_maxhp_ratio, 0.5);
-  const s3Amp = num(b3.ally_amp, 0.5);
+  const s3Inspire = num(b3.inspire_max_hp_ratio, 0.65); // S3 鼓舞：她最大生命的 65%
   const s3DmgRatio = num(b3.enemy_dmg_maxhp_ratio, 1.5);
   const s3Slow = num(b3.slow, 0.5);
   // 脆弱：受到的物理 / 法术 / 真实伤害 ×(1 + value)，走引擎的 catalogue 状态 'fragile'（同名效果取最高）
@@ -89,6 +99,41 @@ export default (bb, chess, def) => {
     const list = alliesInRange(battle, unit).slice();
     list.sort((a, b) => (a.hp / Math.max(1, a.s.maxHp)) - (b.hp / Math.max(1, b.s.maxHp)) || a.deploySeq - b.deploySeq);
     return list[0] || null;
+  };
+
+  // ---------------------------------------------------------------- 特性（吟游者光环比例）与鼓舞
+  // 特性 = `profile.auraRatio`：她的光环每秒回血 = 攻击力 × 比例（professions.js installBard）。三个来源：
+  //   · 基础值（trait.bb 的 attack@atk_to_hp_recovery_ratio，0.1）
+  //   · S2 的**永久**加成：每消耗 1 层「数据样本」+2%（整场保留，存 mem.dswAuraBonus）
+  //   · S1 的**临时**覆盖：技能期间提高到 35%（复刻魔王的 setTrait / resetTrait）
+  const auraBase = (u) => (u.mem.dswAuraBase != null ? u.mem.dswAuraBase : (u.mem.dswAuraBase = u.profile.auraRatio));
+  const applyAura = (u) => {
+    if (!u || !u.profile) return;
+    const base = auraBase(u);
+    const bonus = u.mem.dswAuraBonus || 0;
+    u.profile.auraRatio = u.mem.dswS1Trait ? Math.max(base + bonus, s1Trait) : base + bonus;
+  };
+
+  /**
+   * 鼓舞（ba.inspire「获得额外附加的基础属性加成（同类属性取最高）」）：给目标加 `val` 点最大生命（`hpFlat`），
+   * 与魔王的 鼓舞 用**同一个 buff key**（`inspire:hp`）—— 所以多来源取最强的那一份，不会叠乘。
+   * 官方是「附加在目标自己的百分比乘算之后」，这里按目标当前的最大生命倍率折算一下，效果等价。
+   */
+  const inspireHp = (battle, target, val, src) => {
+    if (!(val > 0) || !target || !target.alive || (target.mem && target.mem.noInspire)) return;
+    const cur = target.findBuff(KEY_INSPIRE_HP);
+    if (cur && cur.data && cur.data.src !== src.id && cur.data.val > val && cur.timeLeft > 1e-6) return;
+    // 换算系数 f = 目标当前的「最大生命倍率」（hpPct / hpMul）。必须先把自己上一次的鼓舞摘掉再量，否则量到的是
+    // 「含鼓舞的 maxHp」——每刷一次都会把系数算大一点，数值会越滚越小（这是第一次实现踩到的坑）。
+    const hadMine = !!cur;
+    if (hadMine) battle.removeBuff(target, KEY_INSPIRE_HP);
+    const base = Math.max(1, (target.base && target.base.maxHp) || target.s.maxHp);
+    const f = Math.max(1e-6, target.s.maxHp / base);
+    battle.addBuff(target, {
+      key: KEY_INSPIRE_HP, mods: { hpFlat: val / f }, duration: 0.6, source: src,
+      // 不做「可见状态」：它每 0.5 秒重刷一次，visible 会让客户端每刷一次都收到一条 status 0/1
+      data: { src: src.id, val },
+    });
   };
 
   // ---------------------------------------------------------------- T1 大模型算力
@@ -147,6 +192,13 @@ export default (bb, chess, def) => {
       for (const a of alliesInRange(battle, unit)) {
         battle.addBuff(a, { key: 'dsw:s1:aspd', duration: d1, mods: { aspd: s1Aspd }, source: unit, tags: ['skill'] });
       }
+      // 特性提高到 35%（技能结束后回到「基础 + S2 的永久加成」）
+      unit.mem.dswS1Trait = true;
+      applyAura(unit);
+    },
+    onEnd({ unit }) {
+      unit.mem.dswS1Trait = false;
+      applyAura(unit);
     },
   };
 
@@ -159,14 +211,20 @@ export default (bb, chess, def) => {
       if (n <= 0) return;
       setStacks(unit, 0);              // 立刻消耗全部
       syncSamples(battle, unit);
-      const total = (unit.mem.dswS2Atk || 0) + s2Per * n;
-      unit.mem.dswS2Atk = total;
-      if (unit.findBuff(KEY_S2_ATK)) battle.removeBuff(unit, KEY_S2_ATK);
-      battle.addBuff(unit, { key: KEY_S2_ATK, mods: { atkPct: total }, persist: true, allowDead: true, tags: ['skill'] });
-      // 治疗与回技力**各一次**：层数只进攻击力，不是每层都回一次技力
+      // 每消耗 1 层：本场战斗**特性** +2%（永久，存 mem；与 S1 的临时 35% 取较高者）
+      unit.mem.dswAuraBonus = (unit.mem.dswAuraBonus || 0) + s2TraitPer * n;
+      applyAura(unit);
+      // 治疗 + 护盾 + 回技力**各一次**（层数只进特性，不是每层都回一次技力）
       const target = lowestAlly(battle, unit);
       if (target) {
-        battle.heal(unit, target, unit.s.atk * s2Heal, { tags: ['skill', 'ds-whale'] });
+        const big = unit.s.maxHp;
+        if (s2HealRatio > 0) battle.heal(unit, target, big * s2HealRatio, { tags: ['skill', 'ds-whale'] });
+        if (s2ShieldRatio > 0) {
+          battle.addBuff(target, {
+            key: KEY_S2_SHIELD, shield: big * s2ShieldRatio, duration: 12, source: unit,
+            visible: true, tags: ['skill', 'ds-whale'],
+          });
+        }
         giveSp(target, 1, 'skill');
       }
     },
@@ -193,6 +251,7 @@ export default (bb, chess, def) => {
       syncSamples(battle, unit);
       battle.applyStatus(unit, 'invulnerable', { duration: d3, source: unit, value: 1 });
       emitRangeField(battle, unit, CALC_GRID, d3);   // 25 格范围铺在地上
+      battle.fx('music', { url: S3_MUSIC, dur: d3 });
       const maxHp = unit.s.maxHp;
       const x = unit.x, y = unit.y;
       makeZone(battle, unit, {
@@ -201,7 +260,6 @@ export default (bb, chess, def) => {
           for (const a of b.alliesInRadius(x, y, s3Radius, null)) {
             if (!b.allySelectable(a, unit)) continue;
             b.heal(unit, a, maxHp * s3HealRatio, { tags: ['skill', 'ds-whale'] });
-            b.addBuff(a, { key: KEY_AMP, duration: 1.2, mods: { atkPct: s3Amp, defPct: s3Amp }, source: unit, tags: ['skill'] });
           }
           for (const e of b.foesInRadius(x, y, s3Radius)) {
             if (!e.alive || e.s.flags.untargetable) continue;
@@ -212,6 +270,16 @@ export default (bb, chess, def) => {
           }
         },
       });
+    },
+    // 鼓舞：整段技能内，攻击范围内的**其它**友方获得她最大生命 65% 的鼓舞（同名取最强，每 0.5s 续一次）
+    onTick({ battle, unit }) {
+      if (!(s3Inspire > 0)) return;
+      const val = unit.s.maxHp * s3Inspire;
+      for (const a of battle.alliesInGrid(unit)) if (a !== unit) inspireHp(battle, a, val, unit);
+    },
+    // 技能结束（时间到 / 被掐断 / 阵亡）就停音乐：`dur` 只是兜底，真正的停止点是这里
+    onEnd({ battle }) {
+      battle.fx('musicStop', {});
     },
   };
 

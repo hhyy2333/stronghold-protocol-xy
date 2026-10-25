@@ -372,6 +372,7 @@ workshop/*/ ──┘        （冻结之前）              └─→ /data/<fi
 |---|---|
 | 槽位固定 | `start`（行动出发）`faceEnemy`（行动开始）`select`（选中）`place`（部署）`skill1`–`skill4`（作战中 1-4）`resultFour` / `resultThree` / `resultTwo` / `resultLose`（四种结算）—— 即 `shared/constants.js` 的 `VOICE_SLOTS`，客户端、资产管线与校验器共用同一份词表；写别的槽位会被拒（`VOICE_SLOT_UNKNOWN`） |
 | 路径相对 `assets/` | 必须放在该包自己的 `assets/` 里（音频同样受 §1.4 的授权闸门约束：有 `assets/` 就必须声明 `license`）。绝对路径、`..`、`.`、反斜杠与盘符都会被拒（`VOICE_PATH_UNSAFE`） |
+| **台词的键 = 客户端的 `u.spine`** | `public/js/audio.js` 的 `_track` 按 `u.spine || u.defId` 查台词，而 `u.spine` 取记录的 `assets.spine` → `charId` → `defId`。官方干员的 `assets.spine` 恰好等于 charId，所以平时看起来就是 charId；**包自带外观的新干员**（`art.chars` 里自造的 id）就用那个 id —— 校验器认「官方 id / 本包 chess id / 本包 `art.chars` 的 id」三种，其它键报 `VOICE_UNKNOWN_OPERATOR` |
 | 一个槽位可以多条 | 客户端每次随机挑一条，并避免连续重复 |
 | 与官方语音**并存** | 同一干员同一槽位，官方台词在前、包台词在后，一起参与随机；不会替换官方语音 |
 

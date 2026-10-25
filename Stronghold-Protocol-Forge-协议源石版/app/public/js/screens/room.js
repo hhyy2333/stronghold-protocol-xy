@@ -691,17 +691,24 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
       : null}
     ${editable
       ? html`<div class="room-mods__edit">
-          ${editing
-            ? html`<div class="room-mods__pick">
-                <span class="t-lo">${t('勾选本房间要声明的模组（不勾 = 不声明，模拟按服务器加载的全部模组运行）')}</span>
+          ${/* 2026-10-25（业主的手机截图）：勾选面板从前是房间里一块普通文档流，而房间屏本身不滚动（`.screen` 是 overflow: hidden），所以模组一多、手机上（420×910，根字号被 clamp 到 40px）那串行就把「应用更改」挤到视口下面，页面上再没有任何滚动条能把它拉回来。现在它是一张对话框（Modal 自带的 Esc / 背板关闭都在）：行多时限高、列表自己滚动，脚注的「应用更改」永远留在屏幕上。 */ ''}
+          <${Modal} open=${editing} title=${t('本房间使用的模组')} micro="ROOM MODS" tone="mint" class="mdialog-roommods"
+            width="min(94vw, 9.2rem)" onClose=${() => { if (!saving) setEditing(false); }}
+            actions=${html`<div class="room-mods__apply">
+              <span class="t-lo">${t('集合变更后，本房其它博士需要重新对齐并再次准备就绪')}</span>
+              <span class="room-mods__applybtns">
+                <${Button} variant="secondary" size="sm" loading=${saving} disabled=${saving} onClick=${save}>${t('应用更改')}<//>
+                <${Button} variant="ghost" size="sm" disabled=${saving} onClick=${() => setEditing(false)}>${t('取消更改')}<//>
+              </span>
+            </div>`}>
+            <div class="room-mods__pick">
+              <span class="t-lo">${t('勾选本房间要声明的模组（不勾 = 不声明，模拟按服务器加载的全部模组运行）')}</span>
+              <div class="room-mods__scroll">
                 <${ModList} packs=${available} selected=${picked} onToggle=${togglePick} names=${modNames} />
-                <div class="room-mods__apply">
-                  <span class="t-lo">${t('集合变更后，本房其它博士需要重新对齐并再次准备就绪')}</span>
-                  <${Button} variant="secondary" size="sm" loading=${saving} disabled=${saving} onClick=${save}>${t('应用更改')}<//>
-                  <${Button} variant="ghost" size="sm" disabled=${saving} onClick=${() => setEditing(false)}>${t('取消更改')}<//>
-                </div>
-              </div>`
-            : html`<${Button} variant="secondary" size="sm" icon="refresh" onClick=${openEdit}>${t('更改本房间模组')}<//>`}
+              </div>
+            </div>
+          <//>
+          ${editing ? null : html`<${Button} variant="secondary" size="sm" icon="refresh" onClick=${openEdit}>${t('更改本房间模组')}<//>`}
         </div>`
       : null}
   </div>`;

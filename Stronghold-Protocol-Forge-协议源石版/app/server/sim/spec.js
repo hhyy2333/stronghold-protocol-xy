@@ -228,6 +228,11 @@ export function createBattleFromSpec(spec, dataSource, opts = {}) {
   // without one, i.e. the BOSS_HIT_LIMIT default, which is the behaviour of every existing spec.
   if (s.bossHitLimit === null && Object.hasOwn(s, 'bossHitLimit')) battleOpts.bossHitLimit = Infinity;
   else if (typeof s.bossHitLimit === 'number') battleOpts.bossHitLimit = s.bossHitLimit;
+  // …and a caller's own `opts.bossHitLimit` is honoured when the spec carries no key at all. `specBattleOpts`
+  // (server/match/match/battleOpts.js) has always passed it — the same helper `newBattle` uses — but this function
+  // dropped it, so 复算 / a takeover re-simulated a deployment's 限伤-off room with the official 300000. The spec wins
+  // when it has the key (it is the wire form of the same decision); otherwise the explicit option is the decider.
+  else if (opts.bossHitLimit !== undefined && !Object.hasOwn(s, 'bossHitLimit')) battleOpts.bossHitLimit = opts.bossHitLimit;
   // 行为开关 `morphPairing`（DESIGN §28.43.1）：spec 上带了这个键就递给这一场 Battle（`opts.morphPairing`），战斗把
   // 它压进 `withMorphPairing` 的作用域、`unitBonds` 从那里读。缺省的 spec 没有这个键 ⇒ 战斗与从前逐字节相同。
   if (opts.morphPairing === undefined && typeof s.morphPairing === 'string' && s.morphPairing) battleOpts.morphPairing = s.morphPairing;
