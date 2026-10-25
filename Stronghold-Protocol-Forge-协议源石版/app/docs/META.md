@@ -197,6 +197,16 @@ otherwise every "之后 / 后续的每场作战" card — e.g. 教鞭's 法术�
 "之后的每场作战"). The 战术特训 cards are what the 教鞭 Art offers (§2.5).
 A `choice:<effectId>` registry handler overrides the default application (§2.4).
 
+**「破财消灾」(业主 2026-10-25)** is the one choice that is **not a card**: on a 悬赏决策 round every player may, once,
+pay **1 资金** to take **no bounty** this round (`match/spDraft.js SP_PAYOFF_IDX = -1`, `SP_PAYOFF_COST = 1`). It is
+attached to the draft only when `draft.family === 'bounty'` (道具补给 / 机密商店 / 战术决策 rounds never show it), it goes
+through `g.choice { idx: -1 }` rather than a card index — `shared/protocol.js` widens `idx`'s lower bound to −1 for this
+and nothing else — and it deliberately **skips `taken`**: several players in one room may each buy it while the shared
+draft keeps its remaining cards for everyone else. Funds are checked, not assumed: `ps.funds < cost` answers `NO_FUNDS`
+instead of silently dropping the pick. The public view carries it as `v.sp.payoff { idx, cost }`, so the client renders
+the button only on those rounds; a player who takes it is recorded as having picked (the turn moves on) even though no
+card was removed.
+
 ### 1.3 Disconnects, AI takeover
 * Local multi-window recovery (#431, DESIGN §30.27) sends optional `hello.noReplace` for a tentative shared token,
   and `hello.claimAt` for a previously welcomed token. Before binding a different socket, the server rejects a

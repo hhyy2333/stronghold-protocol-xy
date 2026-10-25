@@ -204,7 +204,8 @@ test('bands: 41 strategies (40 official + 管理员) with effects and starting L
   // 业主 2026-10-26: the hand-authored strategy (tools/build-data.mjs CUSTOM_BANDS) is built like an official one
   assert.equal(bands.band_admin.name, '管理员');
   assert.equal(bands.band_admin.effectId, 'aceffect_band_admin');
-  assert.deepEqual(bands.band_admin.buffs, [{ key: 'band_hex_copy_once', bb: { count: 1 }, bbStr: {} }]);
+  // 业主 2026-10-25: 管理员's copy became 「第一回合多选一次」; the buff key is the round-1 extra pick now
+  assert.deepEqual(bands.band_admin.buffs, [{ key: 'band_hex_extra_pick_r1', bb: { count: 1 }, bbStr: {} }]);
   assert.deepEqual(bands.band_admin.modeTypeList, ['LOCAL', 'SINGLE', 'MULTI']);
 });
 

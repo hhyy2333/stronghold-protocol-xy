@@ -5,8 +5,10 @@
 //   install(battle)          IN_BATTLE band buffs of every player of the battle — bands/battle.js
 //   registerMeta(registry)   prep-side band effects (band:<bandId>) + the 鸭爵 global — bands/meta.js
 // Starting LP (totalHp), the draft and 坎诺特's kept leftover funds are the match's own rules (Match / PlayerState);
-// 管理员's one mechanic (`band_hex_copy_once`: 「当你获得协议源石时，复制一个。限一次。」) is match-side too — a copy is
-// another GAIN and only server/match/hextech.js `applyHex` may grant one (applyBandHexCopy).
+// 管理员's one mechanic (`band_hex_extra_pick_r1`: 「第一回合的协议源石可以多选一次」) is match-side too — it is a second
+// GAIN in round 1, and only the match's own hex draft (server/match/match/hexDraft.js) deals one.
+// (`band_hex_copy_once` / `applyBandHexCopy` still exist as the seam a workshop pack may call, but no shipped strategy
+// carries the buff any more — 业主 2026-10-25 turned 管理员's copy into the 2阶 hex card 「复制」.)
 // Parts are loaded with guarded dynamic imports and run in isolation: one failing part never disables the other
 // (the first error is re-thrown afterwards so content/index.js records it in battle.errors / the server log).
 
