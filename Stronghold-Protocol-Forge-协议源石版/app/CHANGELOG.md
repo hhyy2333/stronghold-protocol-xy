@@ -9,6 +9,50 @@
 
 ---
 
+## 0.19.28 — 2026-10-26
+
+**敌方协议「亡语」120% → 50% ＋「悬赏倍增」新增对悬赏敌人 +30% 伤害（业主 2026-10-26「发布」）。**
+
+两条都是数值/效果改动，没有新机制。
+
+### 亡语：120% → 50%
+
+业主「敌方协议亡语，120%的数值降低到50%」。
+
+`ehex_deathrattle` 的 `params.ratio` 1.2 → **0.5**，卡面同步改成「造成其攻击力 50% 的法术伤害」；sim 侧
+`ENEMY_VERB_SCRIPTS.deathrattle` 的缺省值也从 1.2 改成 0.5（与「铁壁」ratio 改 10% 那次同一个做法 —— 手写 ref
+不带 `params` 时不会按旧数值跑）。范围不变：仍是被击倒敌人周围四格、法术伤害、走正常法术减伤。
+
+### 悬赏倍增：新增「对悬赏敌人 +30% 伤害」
+
+业主「悬赏倍增，加个对悬赏怪增加30%伤害的效果」。
+
+卡面：`本局中，你获得的悬赏资金 ×3；作战中，你的单位对悬赏敌人造成的伤害 +30%。`
+
+- 钱那一半不动：`bountyMul: 3` 仍由结算路径（`settle.js` / `bossRounds.js`）乘。
+- 新增 `bountyDamage: { pct: 30 }`：`install()` 里加一个 `hit` 钩子 —— 拥有该卡的玩家，其己方单位（含召唤物）
+  对 `tag === 'bounty'` 的敌人 `dmg.mul *= 1.3`。已被取消的伤害实例跳过；纯乘区，不会递归。
+- **必须同时进 `BATTLE_SPEC_KEYS`**：这张卡以前是纯准备阶段（ref 被标 `battle: false`），不声明的话战斗里永远
+  看不到它；`test/match/hextech.test.js` 的 prep-only 清单已按设计把它移到 battle 清单。
+- 悬赏怪的三条路径都已核实带 `tag: 'bounty'`：普通回合（`withBounties → bountyPlan`）、首领/隐秘核心
+  （`bossRounds → bountySpawns`，同一个 `bountyPlan`）、联防（`leaked[].tag → planUnite → buildUniteWave`）。
+
+[ASSUMED: 1) 「你的单位」含召唤物（判定 `side === 'ally' && ownerId === 你`）；若只算干员，加 `kind === 'op'` 即可；
+2) 只认对局派生的悬赏怪（`tag === 'bounty'`），内容卡自己刷的敌人（通缉令 / 通厕大队）不吃这 30%。]
+
+### 验证
+
+- `test/content/hextech.test.js` 57/57：新增一条 data pin（ratio 0.5、卡面不含 120 而含 50、`bountyDamage`、
+  `BATTLE_SPEC_KEYS` 含 `bountyDamage`、`hasBattlePart` 为真）。
+- `test/sim/hextech-battle.test.js` 85/85：新增两条 —— 亡语伤害 = 敌人 ATK × 0.5 经法术减伤（RES 0 → 300、
+  RES 50 → 150）；悬赏倍增同场两玩家实测（有卡打悬赏怪 1300 / 打普通怪 1000 / 无卡打悬赏怪 1000，取消实例不乘）。
+- `test/match/hextech.test.js` 71/71、`test/content/items.test.js` 71/71、`test/sim/browser-data.test.js` 5/5。
+- `node tools/build-hextech.mjs --check` 通过（124 player + 43 enemy）。
+
+### 顺手
+
+README 的版本号表格还停在 `0.19.26`（0.19.27 那次漏改），这次一并更新到 0.19.28。
+
 ## 0.19.27 — 2026-10-26
 
 **协议源石装备改成「装上就生效」＋ 多人机变选装备不再缺牌 ＋ 管理员第二次三选一能刷新能选（业主 2026-10-26「发布」）。**
