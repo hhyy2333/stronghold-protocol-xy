@@ -9,6 +9,35 @@
 
 ---
 
+## 0.19.29 — 2026-10-26
+
+**撤下「畸变体傀儡」（`enemy_1130_infstr`）（业主 2026-10-26「把删除畸变体傀儡 enemy_1130_infstr 改动发布了」）。**
+
+这个敌人只做一件事：被击倒时分裂出两个自己。哪怕分裂只做一代（子怪带 `forkSplit` tag，自己的 death 钩子直接返回），
+它落到哪个池子就把那个池子的身体数翻一倍 —— 业主不要这个效果，所以整个敌人一起撤：没有 kit、不进任何波次池、
+研究文件里也不再有它的行。
+
+### 改了什么
+
+- `server/sim/content/enemies/forkwave.js`：删掉 `enemy_1130_infstr` 的 kit，以及只为它存在的 `SPLIT_TAG` 常量。
+- `docs/research/16-extra-enemies.json`：第二批从 6 个变 5 个，畸变体傀儡那一行删掉，`_meta.notes` 记下撤下理由。
+- `tools/local-extract/extract.py`：`ENEMY_SPINES` 去掉 `enemy_1130_infstr`，模型不再抽。
+- `tools/assets/local-enemy-spines.json`：删掉它的 spine 元数据。
+- `data/enemies.json` / `data/factions.json` / `data/assets.json`：`node tools/build-data.mjs` 重算 ——
+  enemies 304 → **303**；资产清单 enemies 304 → **303**（它在清单里只有 `spineLocal` 一条字面量，不占
+  `stats.files` / `stats.bytes`，所以只有 `stats.enemies` 与 `hash` 变）；factions 里 12 个池子少了一个候选键、
+  5 个池子因此缩到 4 个（官方键仍在 index 0，不受影响）。
+- `test/content/extra-enemies.test.js`：原来那条「分裂只做一代」的回归随 kit 一起删；换成断言它**没有 kit、不在任何池子里、
+  研究文件里也没有它** —— 守的是「撤干净了」，而不是「撤了但留个尾巴」。
+- `docs/DATA.md` / `docs/BALANCE.md`：第二批那张表把它划掉并标注撤下理由。
+
+### 验证
+
+- `test/content/extra-enemies.test.js` 13/13（含新的「out of the batch — no kit and no pool slot」）。
+- `test/content/enemies_bosses.test.js`、`test/content/tokens_summons.test.js`、`test/match/waves.test.js` 全绿。
+- `node tools/build-data.mjs --offline` 与改动前逐字节比对：只有 `data/enemies.json`（少一条）与 `data/factions.json`
+  （池子换键）变，其余 13 个生成文件一字未动。
+
 ## 0.19.28 — 2026-10-26
 
 **敌方协议「亡语」120% → 50% ＋「悬赏倍增」新增对悬赏敌人 +30% 伤害（业主 2026-10-26「发布」）。**
