@@ -576,6 +576,37 @@ test('面板：离开休整期整块收起；unmount 退订并摘掉根节点', 
   assert.equal(root.parentNode, null, 'the root was detached');
 });
 
+test('面板：第一下「购买」进入确认态时不许把列表滚回顶端（业主 2026-10-26「点一下滚动条会回到最上面」）', () => {
+  const { host, inst, deliver } = mountWith();
+  deliver(sampleFrame());
+  const root = host.childNodes[0];
+  const list = findAll(host, (n) => n.className === 'fst__list')[0];
+  assert.ok(list, 'the equipment list exists');
+
+  // 玩家把列表滚到中间，点第 6 行的「购买」
+  list.scrollTop = 260;
+  let buys = findAll(host, (n) => String(n.className).split(/\s+/).includes('fst__buy'));
+  const targetId = buys[5].dataset.id;
+  clickOn(root, buys[5]);
+  assert.equal(list.scrollTop, 260, '确认态的重画把滚动位置丢了（整块重建 51 行时浏览器会回到顶部）');
+
+  // 变成确认态的是同一行，第二下才真的下单
+  const armed = findAll(host, (n) => String(n.className).split(/\s+/).includes('is-armed'));
+  assert.equal(armed.length, 1, 'exactly one row is armed');
+  assert.equal(armed[0].dataset.id, targetId);
+  assert.match(armed[0].textContent, /^确认 · \d+$/);
+
+  // 资金到账的帧（服务端 sync）也是同一批内容，位置同样要保住
+  deliver({ ...sampleFrame(), funds: 3 });
+  assert.equal(list.scrollTop, 260, '资金变化的重画同样不该跳顶');
+
+  // 换阶级是真的换了一批内容，这时才该回到顶部
+  const chip = findAll(host, (n) => n.dataset && n.dataset.action === 'tier' && n.dataset.tier === '3')[0];
+  clickOn(root, chip);
+  assert.equal(list.scrollTop, 0, '换阶级回顶部');
+  inst.unmount();
+});
+
 // =====================================================================================================================
 // 面板纯函数
 // =====================================================================================================================

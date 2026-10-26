@@ -135,6 +135,7 @@ export function mount(ctx) {
   let pendingUntil = 0;      // 上一次下单之后按钮空转的截止时刻
   let toastTimer = null;     // 回执行淡出
   let listSignature = '';    // 列表上一次重画的签名（见 renderList）
+  let filterSignature = '';  // 只含「看什么」（件数 / 阶级 / 搜索）的签名：它没变就说明这次重画与滚动无关
   let seenState = false;
   let helloAttempts = 0;
 
@@ -336,6 +337,14 @@ export function mount(ctx) {
     if (sig === listSignature && list.dataset.built === '1') return;
     listSignature = sig;
     list.dataset.built = '1';
+    /* 这一层是整块重建（51 行一次换掉），浏览器会把滚动位置丢回顶部 —— 业主 2026-10-26「购买时需要确认，
+       但是点一下滚动条会回到最上面」：第一下「购买」只是把 armed 从空变成 {buy,id}，签名一变就整块重画，
+       列表弹回顶端，第二下根本点不到原来那一行。
+       所以重画前后接住 scrollTop。只有「看什么」变了（件数 / 阶级 / 搜索）才该回到顶部 ——
+       那才是真的换了一批内容；资金变化、确认态、售罄、下单空转都属于同一批内容，位置要保住。 */
+    const filterSig = [rows.length, tier, query].join('|');
+    const keepTop = filterSig === filterSignature ? list.scrollTop : 0;
+    filterSignature = filterSig;
     while (list.firstChild) list.removeChild(list.firstChild);
     for (const row of visible) {
       const handFull = !!(frame && frame.handFull);
@@ -398,6 +407,7 @@ export function mount(ctx) {
     emptyLine.hidden = visible.length > 0;
     if (!rows.length) emptyLine.textContent = '货架还没送到（等待服务端）。';
     else emptyLine.textContent = '没有符合条件的装备。';
+    list.scrollTop = keepTop;   // 重建后把位置放回去；换了内容时 keepTop 就是 0，也就是回到顶部（见上面那段注释）
   }
 
   function renderHex() {
