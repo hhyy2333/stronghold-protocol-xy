@@ -38,6 +38,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { DEPLOY_REFUSED_TILES } from '../server/sim/grid.js';
 import { validateReferences } from '../shared/plugins/validate.js';
 import { computeGroundPaths } from '../server/sim/groundPaths.js';
+import { applyCustomOps, FIXED_CHESS_IDS } from './custom-ops.mjs';
 import { bandBondIds } from '../shared/bandBonds.js';
 import { statusKey, composeUnitRecord } from '../shared/standIn.js';
 import { extendedGrid } from '../shared/loadoutRecord.js';
@@ -1015,7 +1016,10 @@ function buildChess(ctx) {
     rec.trait = traitDefault.trait;
     rec.rangeId = rangeId;
     rec.rangeGrid = rangeGrid(ctx, rangeId);
-    Object.assign(rec, traitDefault.classify);
+    // 攻击弹道外观：丰川祥子的攻击本体就是「音符」（官方：攻击会演奏追踪敌人的音符），把默认的 arrow 换成 note。
+    // 这只是**外观**：弹道、命中结算、可对空仍走引擎原本那套（ai.js「ranged profiles fire projectiles; damage
+    // applies on impact」），不额外算伤害。
+    Object.assign(rec, withProjectileVisual(shop.charId, traitDefault.classify));
 
     // Every skill unlocked at the chess status (DESIGN §16), at the chess skill level; the trigger is
     // resolved per skill (resolveTrigger: charId rows by index, class rows for every MANUAL skill, 技能范围, and the
@@ -1169,11 +1173,27 @@ function buildChess(ctx) {
 const DIY_EXTRA_PROTOTYPES = Object.freeze({ 5: Object.freeze({ rarity: 4, excludedProfessions: Object.freeze(['PIONEER', 'SPECIAL']) }) });
 
 /**
+ * 攻击弹道外观的逐干员覆盖（只换视觉，不改伤害/命中）：丰川祥子的攻击是「音符」，用客户端的 PROJ.note。
+ * 键是 charId，值必须是 public/js/render/style.js 里 PROJ 的一个键。
+ */
+const PROJECTILE_VISUAL_OVERRIDES = Object.freeze({ char_4182_oblvns: 'note' });
+
+/** 把逐干员的弹道外观覆盖套到一次 classifyAttack 的结果上（chess 与 unit form 两条路径都要走，见 unit parity）。 */
+function withProjectileVisual(charId, classify) {
+  const vis = PROJECTILE_VISUAL_OVERRIDES[charId];
+  return vis && classify && classify.attackKind === 'ranged' ? { ...classify, projectile: vis } : classify;
+}
+
+/**
  * 自选 owned picks left out of the data and the pool by the owner's decision of 2026-10-05: the collab operators
  * (copyright) — every 6★ whose `mainPower` or a `subPower` names one of these 联动 teams: rainbow (灰烬, 艾拉), action4
- * (麒麟R夜刀), mujica (丰川祥子), sees (结城理), laios (玛露西尔). The excel does not exclude them (research 0.2.0 §2.2).
+ * (麒麟R夜刀), laios (玛露西尔). The excel does not exclude them (research 0.2.0 §2.2).
+ *
+ * mujica (丰川祥子) 与 sees (结城理) 原本也在这张表里；业主 2026-10-25 决定把这两名联动干员做成**固定干员**
+ * （tools/custom-ops.mjs 补商店行，见 chess_char_6_21 / 6_22），它们已经在名单里、本来就不可能成为自选，
+ * 所以这两个 team 不再需要出现在这里（留在表里只会让构建警告「no owned-6★ pick of team mujica」）。
  */
-const DIY_EXCLUDED_TEAMS = Object.freeze(['rainbow', 'action4', 'mujica', 'sees', 'laios']);
+const DIY_EXCLUDED_TEAMS = Object.freeze(['rainbow', 'action4', 'laios']);
 /**
  * …and every 6★ of a 联动寻访, by the prefix of its character_table `displayNumber` (the collab series: MH Monster Hunter —
  * 麒麟R夜刀 MH02, 焰狐龙梓兰 MH05, whose team reserve6 names no collab —, RS Rainbow Six, AM Ave Mujica, PS Persona, DD
@@ -1279,7 +1299,7 @@ function buildUnitForm(ctx, charId, status, { chessId = null, skillIndex = null 
     status: { phase, level, skillLevel, equipLevel },
     stats, immunities: stats ? immunitiesOf(attrs) : null,
     rangeId, rangeGrid: rangeGrid(ctx, rangeId),
-    ...base.classify,
+    ...withProjectileVisual(charId, base.classify),
     trait: base.trait,
     skills, talents,
     displayTokens,
@@ -1949,6 +1969,14 @@ const CUSTOM_EFFECTS = Object.freeze({
     descRaw: '由【锻炉】融合两件装备而成：同时拥有那两件装备的<@ba.vup>全部效果</>；<@ba.vup>不会再被融合</>，仍可被【变形同构体】识别',
     buffs: [],
   },
+  // 骑士徽章 (业主 2026-10-26): the equipment the 协议源石【骑士】hands out. The mechanic is
+  // server/sim/content/items/knightbadge.js (BY_ITEM['chess_item_9_98_e']); numbers live on the item record's params.
+  eff_item_knightbadge: {
+    name: '骑士徽章',
+    desc: '装备者成为【卡西米尔】的「骑士」：己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×3；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒',
+    descRaw: '装备者成为<@ba.vup>【卡西米尔】</>的「骑士」：己方【卡西米尔】干员受到的伤害<@ba.vup>转移给装备者</>；己方【卡西米尔】干员造成的真实伤害<@ba.vup>×3</>；装备者受到致命伤害时<@ba.vup>+5 层【不屈】</>，并<@ba.vup>锁血 5 秒</>',
+    buffs: [],
+  },
 });
 
 // ===== bonds ====================================================================================
@@ -2393,6 +2421,24 @@ const CUSTOM_ITEMS = Object.freeze({
     buffs: [],
     params: {},
     note: '本作自制装备：只由协议源石【锻炉】合成，商店不出售、不可合并、不可再融合',
+  },
+  // 骑士徽章 (业主 2026-10-26): 协议源石【骑士】发放的装备。装备者=「骑士」：同 owner 的卡西米尔干员受伤时伤害转移给他，
+  // 卡西米尔造成的真实伤害 ×3，致命伤害时 +5 不屈并锁血 5 秒。数值全部走 params，行为在
+  // server/sim/content/items/knightbadge.js（BY_ITEM['chess_item_9_98_e']），装备本身生效、不依赖卡是否还在。
+  chess_item_9_98_e_a: {
+    name: '骑士徽章',
+    tier: 1,
+    price: 0,
+    shopSortId: 998,
+    identifier: 9009,
+    iconId: 'trap_1073_acarm073',
+    desc: '装备者成为【卡西米尔】的「骑士」：己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×3；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒',
+    descRaw: '装备者成为<@ba.vup>【卡西米尔】</>的「骑士」：己方【卡西米尔】干员受到的伤害<@ba.vup>转移给装备者</>；己方【卡西米尔】干员造成的真实伤害<@ba.vup>×3</>；装备者受到致命伤害时<@ba.vup>+5 层【不屈】</>，并<@ba.vup>锁血 5 秒</>',
+    effectId: 'eff_item_knightbadge',
+    effectName: '骑士徽章',
+    buffs: [],
+    params: { transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 },
+    note: '本作自制装备：只由协议源石【骑士】发放，商店不出售、不可合并',
   },
 });
 
@@ -4619,7 +4665,9 @@ function validateAll(f) {
   const visible = Object.values(chess).filter((c) => !c.isGolden && c.visible);
   if (Object.keys(bonds).length !== 23) err(`expected 23 bonds, got ${Object.keys(bonds).length}`);
   if (Object.keys(bands).length !== 40 + Object.keys(CUSTOM_BANDS).length) err(`expected ${40 + Object.keys(CUSTOM_BANDS).length} bands (40 official + the hand-authored ones), got ${Object.keys(bands).length}`);
-  if (visible.length !== 112) err(`expected 112 visible non-DIY chess, got ${visible.length}`);
+  // 官方 112 条 + tools/custom-ops.mjs 的固定干员（每人一条可见的普通形态）
+  const fixedVisible = FIXED_CHESS_IDS.filter((id) => !/_b$/.test(id) && chess[id] && chess[id].visible && !chess[id].isGolden).length;
+  if (visible.length !== 112 + fixedVisible) err(`expected ${112 + fixedVisible} visible non-DIY chess, got ${visible.length}`);
   // the deliberate trigger deviations (DESIGN §21.29, §22.10) still override an official TAKE_DAMAGE row, on the normal
   // chess and its elite alike (a DEFAULT one may resolve to the owner's ACTIVE_RANGE on top: 深巡 S2)
   const deviationHolds = (rule, trig) => trig.rawRule === 'TAKE_DAMAGE' && (trig.rule === rule || (ACTIVE_RANGE_OVER.has(rule) && trig.rule === 'ACTIVE_RANGE'));
@@ -4681,6 +4729,9 @@ function validateAll(f) {
 async function main() {
   const t0 = Date.now();
   const ctx = await loadContext();
+  // 自制 / 联动干员（tools/custom-ops.mjs）：把商店行、盟约成员与召唤物补进官方表，数据本身照官方原值走。
+  const customAdded = applyCustomOps(ctx);
+  if (customAdded.length) log(`custom ops: ${customAdded.length} row(s) merged (${customAdded.join(', ')})`);
   log('building…');
   // one pass of the operator builders per potential rank (潜能 1–6, ctx.potRank): the full-potential pass is the data,
   // annotated below with what every lower rank changes (attachPotential)

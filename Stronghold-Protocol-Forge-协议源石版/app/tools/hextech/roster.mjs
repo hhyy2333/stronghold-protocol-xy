@@ -100,7 +100,12 @@ export const RARITIES = [
 /** When a draft happens, how many options, how many rerolls, and how the enemy side is fed. */
 export const FORMAT = {
   // R3 added 2026-10-19 (owner: 「在第三回合加一次选择协议源石」): four draws instead of three.
-  rounds: [1, 3, 6, 11],
+  // R7 added 2026-10-26 (owner: 「第7回合变成一个选取盟约专属协议源石的回合」): the round is EXCLUSIVE — the pool is
+  // narrowed to cards with `requiresBond` whose bond is active for that player (server/match/match/hexDraft.js).
+  rounds: [1, 3, 6, 7, 11],
+  // Rounds whose draft only offers 盟约专属协议 (requiresBond cards of the player's active core bonds). An empty pool
+  // (no active core bond) falls back to the normal pool so the round never deals nothing.
+  exclusiveRounds: [7],
   offer: 3,
   rerolls: 1,
   timerSec: 30,
@@ -1377,10 +1382,100 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_forge',
     name: '锻炉',
-    desc: '仅【维多利亚】盟约激活时才会出现。你的干员装备第 2 件装备时，两件装备融合为装备【百变】：百变同时拥有这两件装备的全部效果，不会再被融合，仍可被【变形同构体】识别。',
+    desc: '仅【维多利亚】盟约激活时才会出现。获得时立即获得干员【薄绿】与【洛洛】。你的干员装备第 2 件装备时，两件装备融合为装备【百变】：百变同时拥有这两件装备的全部效果，不会再被融合，仍可被【变形同构体】识别。',
     rarity: 'gold',
     requiresBond: 'victoriaShip',
-    effect: { forge: { itemId: 'chess_item_9_97_e_a' } },
+    effect: {
+      onPick: { chess: { ids: ['chess_char_3_08_a', 'chess_char_2_10_a'] } },
+      forge: { itemId: 'chess_item_9_97_e_a' },
+    },
+  },
+  // ---- 第十八批（业主 2026-10-26）：其余 7 个核心盟约的专属协议 --------------------------------------------
+  // 全部 requiresBond：只在对应核心盟约当前激活时才会被抽到；第 7 回合（format.exclusiveRounds）只抽这一族。
+  // 战斗半段在 server/sim/content/hexcards/stone_*.js（各自 gated by params.<key>），备战半段由 applySpec 的
+  // deployCap / chess.ids / layerGift / bondPriceDiscount 处理。数值全部在 effect 参数里，调数不用改代码。
+  {
+    id: 'hex_yan_ember',
+    name: '燎原',
+    desc: '仅【炎】盟约激活时才会出现。获得时，可部署人数 +2。作战中，己方干员造成伤害时附加相当于攻击力 2% 的灼燃损伤（每名干员每秒至多 1 次）；【炎】达到 200 层时，灼燃爆发伤害翻倍；达到 300 层时，【炎】干员视为【坚守】干员。',
+    rarity: 'prismatic',
+    requiresBond: 'yanShip',
+    effect: {
+      onPick: { deployCap: 2 },
+      yanEmber: { burnPct: 2, burstLayer: 200, steadLayer: 300, steadRatio: 40, thorn: 850, thornPerLayer: 10, fragile: 40, fragileSec: 5, cd: 0.2 },
+    },
+  },
+  {
+    id: 'hex_sargon_oasis',
+    name: '绿洲',
+    desc: '仅【萨尔贡】盟约激活时才会出现。作战中，【萨尔贡】干员释放技能时获得相当于攻击力 100% 的护盾，其下一次攻击额外造成等同护盾值的法术伤害。【萨尔贡】首次达到 60 层时获得干员【缇缇】，首次达到 325 层时获得装备【黄沙罗盘】。',
+    rarity: 'prismatic',
+    requiresBond: 'sargonShip',
+    effect: {
+      sargonOasis: { shieldPct: 100 },
+      // 层数里程碑走备战侧 onLayers（applySpec 的 layerGift），所以必须挂在 effect.onLayers 下才会被注册成钩子。
+      onLayers: {
+        layerGift: {
+          runOnPick: true,
+          bondId: 'sargonShip',
+          rungs: [
+            { at: 60, chess: 'chess_char_5_02_a' },
+            { at: 325, item: 'chess_item_6_07_e_a' },
+          ],
+        },
+      },
+    },
+  },
+  {
+    id: 'hex_kjerag_thaw',
+    name: '冰雪消融',
+    desc: '仅【谢拉格】盟约激活时才会出现。获得时立即获得干员【耶拉】，所有【谢拉格】干员价格 −1（最低 1）。作战中，【谢拉格】干员攻击带有寒冷/冻结的敌人时解除其寒冷/冻结，获得 5 层谢拉格，这次伤害提升至 180%（寒冷）/360%（冻结），并施加 60% 减速 6 秒。【谢拉格】达到 75 层时，【谢拉格】干员攻击力 +50%、生命值 +50%。',
+    rarity: 'prismatic',
+    requiresBond: 'kjeragShip',
+    effect: {
+      onPick: { chess: { ids: ['chess_char_3_20_a'] } },
+      // 价格折扣走 onPrice（applySpec 的 bondPriceDiscount），同样必须挂在 effect.onPrice 下。
+      onPrice: { bondPriceDiscount: { bondId: 'kjeragShip', delta: -1, min: 1 } },
+      kjeragThaw: { layers: 5, coldMul: 180, frozenMul: 360, slowPct: 60, slowSec: 6, buffLayer: 75, atkPct: 50, hpPct: 50 },
+    },
+  },
+  {
+    id: 'hex_laterano_sanctuary',
+    name: '圣佑',
+    desc: '仅【拉特兰】盟约激活时才会出现。作战中，【拉特兰】干员每消耗 1 颗弹药，回复所有【拉特兰】干员 5% 最大生命；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药免疫本次伤害，并获得 1 层次数盾。',
+    rarity: 'prismatic',
+    requiresBond: 'lateranoShip',
+    effect: { lateranoSanctuary: { healPct: 5, shieldHits: 1 } },
+  },
+  {
+    id: 'hex_egir_symbiosis',
+    name: '协同进化',
+    desc: '仅【阿戈尔】盟约激活时才会出现。【阿戈尔】的吞噬不再造成伤害；吞噬结束后，【阿戈尔】干员的攻击力、最大生命提升至（高了不降低）阿戈尔干员最大值的 80%。',
+    rarity: 'prismatic',
+    requiresBond: 'egirShip',
+    effect: { egirSymbiosis: { statPct: 80 } },
+  },
+  {
+    id: 'hex_siracusa_godfather',
+    name: '教父',
+    desc: '仅【叙拉古】盟约激活时才会出现。获得时立即获得干员【安洁莉娜】。作战中，己方干员造成伤害时使敌人 +10% 易伤，最高 +200%。',
+    rarity: 'prismatic',
+    requiresBond: 'siracusaShip',
+    effect: {
+      onPick: { chess: { ids: ['chess_char_5_20_a'] } },
+      siracusaGodfather: { vulnPct: 10, maxPct: 200 },
+    },
+  },
+  {
+    id: 'hex_kazimierz_knight',
+    name: '骑士',
+    desc: '仅【卡西米尔】盟约激活时才会出现。获得时立即获得装备【骑士徽章】：装备者成为【卡西米尔】的「骑士」，己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×3；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒。',
+    rarity: 'prismatic',
+    requiresBond: 'kazimierzShip',
+    effect: {
+      onPick: { item: { id: 'chess_item_9_98_e_a', count: 1 } },
+      kazimierzKnight: { transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 },
+    },
   },
 ];
 

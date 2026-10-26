@@ -98,6 +98,10 @@ import {
   installSoulBomb, installDread, installInfernalConduit, installEchoForm,
 } from './hexcards/batch16.js';
 import { reviveNow } from './items/battle.js';
+// 第十九批（业主 2026-10-26）：第 7 回合的盟约专属协议战斗半段。
+import { installKjeragThaw, installLateranoSanctuary } from './hexcards/stone_kjerag_laterano.js';
+import { installYanEmber, installSargonOasis } from './hexcards/stone_yan_sargon.js';
+import { installEgirSymbiosis, installSiracusaGodfather } from './hexcards/stone_egir_siracusa.js';
 
 /** Player effect-ref key prefix (parallel to `choice:`). */
 export const HEX_KEY = 'hex:';
@@ -272,6 +276,10 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // The new `bountyDamage` half acts INSIDE a battle (the `hit` handler in install()), hence its declaration here
   // — without it the card would draft, show in the effects column and never multiply anything.
   'bountyDamage',
+  // 第十八批（业主 2026-10-26）：7 张盟约专属协议的战斗半段（hexcards/stone_*.js）。每张都是 ownership-only 脚本，
+  // 没有 params.battle；不在这里声明的话 addHexRef 会把 ref 标成 prep-only，战斗里静默无效。
+  // 骑士徽章是装备行为（items/knightbadge.js，由装备记录驱动），卡本身只有 onPick 发装备，故不在此列。
+  'yanEmber', 'sargonOasis', 'kjeragThaw', 'lateranoSanctuary', 'egirSymbiosis', 'siracusaGodfather',
 ]);
 
 /**
@@ -388,6 +396,15 @@ function applySpec(ctx, spec, hex = null, hook = '') {
       if (ctx.grantItem(gid, { source: 'hex' })) { ctx.setCounter(key, want); did = true; }
     }
   }
+  // 指定干员 (业主 2026-10-26): `chess.ids` grants ONE of EACH named operator, the same shape `item.ids` has for
+  // equipment (锻炉 → 薄绿 + 洛洛, 冰雪消融 → 耶拉, 教父 → 安洁莉娜). The tier/same form below cannot express a fixed
+  // operator, and a roll would not be the operator the card names.
+  if (spec.chess && Array.isArray(spec.chess.ids) && spec.chess.ids.length) {
+    for (const want of spec.chess.ids) {
+      if (typeof want === 'string' && want) ctx.grantChess(want, { source: 'hex' });
+    }
+    did = true;
+  }
   if (spec.chess && isPos(spec.chess.count)) {
     // `tier: 'level'` = the player's current 调度中心 level, so the grant escalates with the shop (量产线 / 精锐预兆);
     // `same: true` = ONE roll granted `count` times — three identical copies merge immediately (精锐预兆's 同名 3 张)
@@ -404,6 +421,51 @@ function applySpec(ctx, spec, hex = null, hook = '') {
       }
     }
     did = true;
+  }
+  // 可部署人数 (业主 2026-10-26, 燎原): +N 部署位. The prep primitive exists (PlayerState.deployCapBonus); this is only
+  // the spec spelling of it, gated to the pick so a re-run of another hook cannot add it twice.
+  if (isPos(spec.deployCap)) {
+    if (hook === 'onHexPick' && typeof ctx.addDeployCap === 'function') { ctx.addDeployCap(spec.deployCap); did = true; }
+  }
+  // 层数里程碑 (业主 2026-10-26, 绿洲): the FIRST time a bond's layers reach `at`, grant `chess` / `item` once.
+  // Runs on the prep-side `onLayers` hook (PlayerState.addLayers dispatches it), with one counter per rung so a bond
+  // that crosses the threshold again (掉层后回升) does not pay twice. [ASSUMED: 「首次达到」= 每档一次/局]
+  // `runOnPick` is set by rosters that hang a ONE-SHOT milestone spec under a hook name purely so the dispatcher
+  // registers it (绿洲 / 冰雪消融): the pick must also evaluate it against the layers / prices already standing, or a
+  // threshold crossed BEFORE the card was gained would never pay.
+  if (spec.layerGift && typeof spec.layerGift === 'object' && (hook === 'onLayers' || (hook === 'onHexPick' && spec.layerGift.runOnPick))) {
+    const bondId = typeof spec.layerGift.bondId === 'string' ? spec.layerGift.bondId : '';
+    const ev = ctx.event() || {};
+    const rungs = Array.isArray(spec.layerGift.rungs) ? spec.layerGift.rungs : [];
+    const crossed = hook === 'onHexPick' ? Number(ctx.layers ? ctx.layers(bondId) : 0) : Number(ev.to);
+    if (bondId && (ev.bondId === bondId || hook === 'onHexPick')) {
+      const reached = crossed;
+      for (const rung of rungs) {
+        const at = Number(rung && rung.at);
+        if (!Number.isFinite(at) || at <= 0 || !Number.isFinite(reached) || reached < at) continue;
+        const key = `${HEX_KEY}${id}:layerGift:${at}`;
+        if (ctx.counter(key) > 0) continue;
+        let granted = false;
+        if (typeof rung.chess === 'string' && rung.chess) granted = !!ctx.grantChess(rung.chess, { source: 'hex' });
+        if (typeof rung.item === 'string' && rung.item) granted = !!ctx.grantItem(rung.item, { source: 'hex' }) || granted;
+        if (granted) { ctx.setCounter(key, 1); did = true; }
+      }
+    }
+  }
+  // 盟约专属折扣 (业主 2026-10-26, 冰雪消融): that bond's operators cost `delta` less (never below `min`). onPrice only.
+  if (spec.bondPriceDiscount && typeof spec.bondPriceDiscount === 'object'
+    && (hook === 'onPrice' || (hook === 'onHexPick' && spec.bondPriceDiscount.runOnPick))) {
+    const d = spec.bondPriceDiscount;
+    const ev = ctx.event() || {};
+    const rec = ev.kind === 'chess' && ev.slot && typeof ctx.chessRecord === 'function' ? ctx.chessRecord(ev.slot.id) : null;
+    const bondId = typeof d.bondId === 'string' ? d.bondId : '';
+    if (rec && bondId && Array.isArray(rec.bonds) && rec.bonds.includes(bondId)) {
+      const delta = Number.isFinite(d.delta) ? Math.trunc(d.delta) : -1;
+      const min = Number.isFinite(d.min) ? Math.max(0, Math.trunc(d.min)) : 1;
+      // onHexPick has no price event; the discount is counted by `bondPriceDiscount.seen` and applied on onPrice.
+      const price = Number(ev.price);
+      if (Number.isFinite(price)) { ctx.setPrice(Math.max(min, price + delta)); did = true; }
+    }
   }
   if (spec.layers && isPos(spec.layers.count)) {
     const n = countOf(spec.layers.count);
@@ -1689,6 +1751,10 @@ export const HEX_SCRIPT_KEYS = Object.freeze({
     hex_adaptivegrowth: 'adaptiveGrowth', hex_drawblade: 'drawBlade', hex_pressurecooker: 'pressureCooker',
     hex_spellarcher: 'spellArcher', hex_soulbomb: 'soulBomb', hex_dread: 'dread',
     hex_infernalconduit: 'infernalConduit', hex_echoform: 'echoForm',
+    // nineteenth batch (业主 2026-10-26)
+    hex_yan_ember: 'yanEmber', hex_sargon_oasis: 'sargonOasis', hex_kjerag_thaw: 'kjeragThaw',
+    hex_laterano_sanctuary: 'lateranoSanctuary', hex_egir_symbiosis: 'egirSymbiosis',
+    hex_siracusa_godfather: 'siracusaGodfather',
 });
 
 function installHexCards(battle) {
@@ -1763,6 +1829,13 @@ function installHexCards(battle) {
   installDread(gated);
   installInfernalConduit(gated);
   installEchoForm(gated);
+  // nineteenth batch (业主 2026-10-26) — same bundle, same gate
+  installYanEmber(gated);
+  installSargonOasis(gated);
+  installKjeragThaw(gated);
+  installLateranoSanctuary(gated);
+  installEgirSymbiosis(gated);
+  installSiracusaGodfather(gated);
 }
 
 /**

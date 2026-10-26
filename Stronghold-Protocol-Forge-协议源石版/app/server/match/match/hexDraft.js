@@ -35,7 +35,7 @@ export class MatchHexDraft {
     // never the enemy pool, never a card another effect grants.
     // 核心盟约专属协议 (业主 2026-10-24): a card with `requiresBond` is only offered while that bond is ACTIVE for the
     // player — same per-player narrowing, hence the shared `hexPoolFor` (bans + requiresBond).
-    const poolFor = (ps) => hexPoolFor(ps, gd);
+    const poolFor = (ps) => this._hexPoolFor(ps);
     const pool = gd.hexPlayerPool();
     // Nothing to offer (no alive player, or a data set without the roster): the round still continues through
     // afterHexDraft — a same-round 机变 must run even when 海克斯 cannot (test/match/harness.js withoutHextech).
@@ -68,7 +68,7 @@ export class MatchHexDraft {
      */
     const extraPicks = {};
     for (const ps of alive) extraPicks[ps.playerId] = this._hexExtraPicksFor(ps);
-    this.hex = { offers, picks: {}, rerolls, slotRerolls, extraPicks, untimed: this.soloUntimed, turnDeadline: 0 };
+    this.hex = { offers, picks: {}, rerolls, slotRerolls, extraPicks, untimed: this.soloUntimed, turnDeadline: 0, exclusive: this._isExclusiveHexRound() };
     const secs = gd.hexTimer();
     if (secs && !this.soloUntimed) {
       this.setDeadline(secs, () => this._timeoutHexDraft());
@@ -98,6 +98,31 @@ export class MatchHexDraft {
       return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 1;
     }
     return 0;
+  }
+
+  /**
+   * Is THIS round an 盟约专属协议 round (data/hextech.json `format.exclusiveRounds`, owner 2026-10-26
+   * 「第7回合变成一个选取盟约专属协议源石的回合」)?
+   * @returns {boolean}
+   */
+  _isExclusiveHexRound() {
+    const fmt = this.gd && typeof this.gd.hexFormat === 'function' ? this.gd.hexFormat() : null;
+    const list = fmt && Array.isArray(fmt.exclusiveRounds) ? fmt.exclusiveRounds : [];
+    return list.includes(Number(this.round));
+  }
+
+  /**
+   * The player-hex pool THIS round's draft draws from. `hexPoolFor` already narrows by that player's bans and by every
+   * `requiresBond` card whose bond is not active; on an exclusive round it is narrowed ONCE MORE to the `requiresBond`
+   * family itself, so 第 7 回合 deals only 盟约专属协议. A player with no active core bond (or a data set whose exclusive
+   * pool is empty) falls back to the ordinary pool: the round must never deal nothing.
+   * @param {any} ps @returns {any[]}
+   */
+  _hexPoolFor(ps) {
+    const base = hexPoolFor(ps, this.gd);
+    if (!this._isExclusiveHexRound()) return base;
+    const only = base.filter((h) => h && typeof h.requiresBond === 'string' && h.requiresBond);
+    return only.length ? only : base;
   }
 
   /**
@@ -181,7 +206,8 @@ export class MatchHexDraft {
     // 几乎必然如此（实测：3 张卡的池子，20 个种子里 5 次刷出与原来完全相同的三张）。
     const offered = this.hexOfferOf(ps.playerId);
     // 禁用 + 专属（`requiresBond`）一起在这里收窄：刷新与首次抽取必须是同一个池子，否则刷一下就能刷出没激活盟约的专属卡
-    const pool = hexPoolFor(ps, gd);
+    // （第 7 回合的 exclusive 收窄也在 _hexPoolFor 里，见那里）
+    const pool = this._hexPoolFor(ps);
     const weights = gd.hexWeights();
     if (Number.isInteger(idx)) {
       // one slot: everything else about the batch is kept, so the other two cards must be excluded from the draw as well
@@ -224,7 +250,7 @@ export class MatchHexDraft {
     try { applyHex(this, ps, hex); } catch (e) { this.reportError(`applyHex ${hex.id}`, e); }
     // still owes a pick (the extra one): re-deal their three cards and let them choose again
     if (!baseSpent && (s.extraPicks[ps.playerId] || 0) > 0) {
-      const pool = hexPoolFor(ps, this.gd);
+      const pool = this._hexPoolFor(ps);
       const weights = this.gd.hexWeights();
       s.offers[ps.playerId] = rollOffers(this.rngHex, {
         pool, owned: [...hexIdsOf(ps), ...offer], weights, count: this.gd.hexOfferCount(),

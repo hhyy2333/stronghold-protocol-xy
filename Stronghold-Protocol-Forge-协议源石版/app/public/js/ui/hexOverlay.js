@@ -361,7 +361,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
         <div class="spov__titles">
           <${MicroLabel} tone="gold">${t('PROTOCOL // 协议源石')}</${MicroLabel}>
           <h2 class="spov__title hxov__title"><span class="hx-glitch" data-text=${t('协议源石')}>${t('协议源石')}</span><span class="spov__bar">|</span><span class="spov__desc">${waiting ? t('从三枚协议源石中选择一枚') : t('已选择')}</span></h2>
-          <p class="spov__sub">${hex.untimed ? t('选择一项（无时间限制）') : t('倒计时结束后仍未选定将自动分配')}${waiting ? t(' · 点击卡牌选中，再次点击确认') : ''}</p>
+          <p class="spov__sub">${hex.exclusive ? t('盟约专属协议 · 只出现已激活盟约的专属协议源石') : ''}${hex.exclusive ? ' · ' : ''}${hex.untimed ? t('选择一项（无时间限制）') : t('倒计时结束后仍未选定将自动分配')}${waiting ? t(' · 点击卡牌选中，再次点击确认') : ''}</p>
         </div>
         <div class="spov__turn">
           ${armed != null ? html`<${Button} variant="primary" size="lg" icon="check" class="spov__confirm" data-testid="hex-confirm"

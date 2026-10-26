@@ -162,6 +162,9 @@ export class MatchViews {
           ? { extraPicksLeft: Object.fromEntries(Object.entries(s.extraPicks || {}).map(([pid, n]) => [pid, n > 0 ? n : 0])) }
           : {}),
         untimed: !!s.untimed,
+        // 盟约专属协议回合 (owner 2026-10-26): the client labels the draft 「盟约专属协议」. Absent on every other round,
+        // so the wire is byte-identical to before on rounds 1/3/6/11.
+        ...(s.exclusive ? { exclusive: true } : {}),
         turnDeadline: s.turnDeadline || 0,
         timerSec: s.untimed ? 0 : (this.gd.hexTimer() || 0),
       };

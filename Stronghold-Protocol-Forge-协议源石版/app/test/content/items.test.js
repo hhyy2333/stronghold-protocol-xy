@@ -1273,7 +1273,7 @@ test('merging: two identical normal items become the golden one (upgradeNum 2); 
   const never = Object.values(DATA.items).filter((r) => r.itemType === 'EQUIP' && !r.isGolden && r.upgradeNum === 100).map((r) => r.name).sort();
   // 尸山 left this list on 2026-10-25 (owner「两个装备尸山应该能合成」): it is upgradeNum 2 now, with 尸山·极 as its
   // golden. 尸山·极 itself is a terminal form (upgradeNum 100 = never merges again), so it IS in the list.
-  assert.deepEqual(never, ['人事部文档', '信标', '变形同构体', '寻呼模块', '拟态物质', '突变细胞', '幽魂', '恶魔之契', '残光', '加护', '万物归虚', '心之钢', '尸山·极', '百变'].sort());
+  assert.deepEqual(never, ['人事部文档', '信标', '变形同构体', '寻呼模块', '拟态物质', '突变细胞', '幽魂', '恶魔之契', '残光', '加护', '万物归虚', '心之钢', '尸山·极', '百变', '骑士徽章'].sort());
   const { m, ps } = setup();
   ps.acquireItem(A('3_07'));
   ps.acquireItem(A('3_07'));
@@ -1555,10 +1555,10 @@ test('coverage: every equipment (normal + golden) and every Art is exercised by 
   // items whose numbers are asserted in the stat table, the proc tests or the meta tests
   // 百变 (chess_item_9_97_e_a, the 锻炉 fusion piece) has no row HERE and none in HEAD — pre-existing gap, kept visible
   // rather than silently asserted-away; the forge behaviour lives in test/match/hextech.test.js.
-  const KNOWN_UNCOVERED = new Set(['chess_item_9_97_e_a']);
+  // 骑士徽章 (chess_item_9_98_e_a, the 骑士 stone's equipment) is covered by test/sim/hex-stone-kazimierz.test.js.
+  const KNOWN_UNCOVERED = new Set(['chess_item_9_97_e_a', 'chess_item_9_98_e_a']);
   const missing = Object.keys(DATA.items).filter((id) => !COVER.has(id) && !KNOWN_UNCOVERED.has(id)).sort();
   assert.deepEqual(missing, []);
-  // 124 = 123 at HEAD (the count said 122 and had gone stale) + 尸山·极 (chess_item_9_95_e_b), added 2026-10-25 with the
-  // 尸山 merge pair.
-  assert.equal(Object.keys(DATA.items).length, 124);
+  // 125 = 124 + 骑士徽章 (chess_item_9_98_e_a), added 2026-10-26 with the 骑士 exclusive stone.
+  assert.equal(Object.keys(DATA.items).length, 125);
 });

@@ -401,6 +401,12 @@ function egirDownAtStart(battle, u) {
  * marker as usual. Each devoured operator adds its tier to 阿戈尔 once (IN_BATTLE gain, disabled in 联防 / boss fields).
  * Tokens / devices / empty tiles are never devoured.
  */
+/** Does player `pid` own the 协议源石 `hexId` in THIS battle? (the same read server/sim/content/hextech.js uses) */
+function ownsHex(battle, pid, hexId) {
+  const ps = battle && typeof battle.getPlayer === 'function' ? battle.getPlayer(pid) : null;
+  return ((ps && ps.playerEffects) || []).some((e) => e && (e.data?.hexId === hexId || e.key === `hex:${hexId}`));
+}
+
 function devour(battle, pid, bb, members) {
   // 联防: an operator down at the end of its own combat (carryState.down — Battle.start forced it out right before
   // battleStart, FORCED_EXIT) takes part in the devour as if it stood on its tile, then stays out: it marks in its turn,
@@ -445,6 +451,9 @@ function devour(battle, pid, bb, members) {
     if (Object.keys(mods).length) S.passiveBuff(battle, m, 'bond:egir:devour', mods);
   }
   const amount = num(bb.damage_value, 0);
+  // 协同进化 (业主 2026-10-26): 「【阿戈尔】的吞噬不再造成伤害」 — the mark still lands (fx, layers, attributes), only the
+  // 5000 物理流失 is skipped. The stat half runs from the 'egirDevourEnd' event below (hexcards/stone_egir_siracusa.js).
+  const noDevourDamage = ownsHex(battle, pid, 'hex_egir_symbiosis');
   const layered = new Set();
   // a target knocked out during the pass = off the field, or in another deployment than when the marks were placed (items
   // deploymentOf: 不屈 and the 复活 of 埃芒加德 / M3茧甲 redeploy it at once; the 5-tier revive did until 0.2.0) — a
@@ -463,12 +472,16 @@ function devour(battle, pid, bb, members) {
     // opening HP loss (or trigger deaths/revives) to an operator restored from the previous field. Battle.start
     // applies its exact HP ratio and SP after the opening hooks. Fresh units and all other battle kinds still pay.
     const restored = battle.kind === 'unite' && Number.isFinite(t.carry?.hpPct) && t.carry.hpPct > 0;
-    if (amount > 0 && !restored) battle.loseHp(t, mitigate(amount, 'phys', t.s), { source: m, tags: ['bond:egir:devour'] });
+    if (amount > 0 && !restored && !noDevourDamage) battle.loseHp(t, mitigate(amount, 'phys', t.s), { source: m, tags: ['bond:egir:devour'] });
     if (!layered.has(t)) {
       layered.add(t);
       S.gainLayers(battle, { playerId: pid, bonds: 'egirShip', n: S.tierOf(t), source: m, reason: 'bond' });
     }
   }
+  // 协同进化 (业主 2026-10-26): the devour is over for this player — hand the event to the card's battle script (it raises
+  // the 阿戈尔 members' ATK / max HP to 80 % of the highest member, never lowering). Emitted even when nothing was
+  // devoured: the card's sentence is 「吞噬结束后」, not 「吞噬到东西后」.
+  battle.emit('egirDevourEnd', { playerId: pid });
 }
 
 function installEgir(battle, pid, bb, members) {

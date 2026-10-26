@@ -6,7 +6,8 @@
 // seeded rng gives the same result on both sides (the draft itself only ever runs on the server).
 //
 // Draft rules (DESIGN §29):
-//   * a draft happens on the rounds in `data/hextech.json` `format.rounds` (1 / 3 / 6 / 11);
+//   * a draft happens on the rounds in `data/hextech.json` `format.rounds` (1 / 3 / 6 / 7 / 11); round 7 is an
+//     EXCLUSIVE draft — only 盟约专属协议 (requiresBond cards of the player's active core bonds) are offered there;
 //   * every player is offered `format.offer` hexes (3) they do not own yet, picked by rarity weight;
 //   * every player may reroll once per draft;
 //   * after a draft the enemy side gains `format.enemyPerDraw` hex (1) whose rarity is drawn at random from the
@@ -18,7 +19,7 @@
 export const RARITY_ORDER = Object.freeze(['silver', 'gold', 'prismatic']);
 
 /** Round numbers the default schedule draws on (mirrors data/hextech.json `format.rounds`). */
-export const HEX_ROUNDS = Object.freeze([1, 3, 6, 11]);
+export const HEX_ROUNDS = Object.freeze([1, 3, 6, 7, 11]);
 
 /**
  * The largest offer a draft may configure (`format.offer`). The wire schema bounds `g.hex { idx }` by this, NOT by the

@@ -130,7 +130,8 @@ test('one enemy hex per draw, of a rarity a player picked, never a repeat, and i
   const m = h.m;
   const pickedRarities = [];
   const seen = [];
-  for (const round of [1, 3, 6, 11]) {
+  // 第 7 回合是盟约专属协议回合（业主 2026-10-26），仍然是一次抽取 —— 敌方也照常得到一张。
+  for (const round of [1, 3, 6, 7, 11]) {
     toHexDraft(h, round);
     // the harness drives the human seats (g.hex idx 0); both humans answer
     const ok = h.drive(() => m.hex == null || m.phase !== 'HEX_DRAFT');
@@ -153,12 +154,12 @@ test('one enemy hex per draw, of a rarity a player picked, never a repeat, and i
     seen.length = 0;
     seen.push(...m.enemyHexes.map((e) => e.id));
   }
-  assert.equal(m.enemyHexes.length, 4);
+  assert.equal(m.enemyHexes.length, 5);
   // The enemy side is a MIX of shapes (DESIGN §29.10): `mods` cards feed the wave multipliers, `verb` cards drive
-  // battle scripts. With four draws the side may hold only verbs, so the guarantee is the union — every owned hex
+  // battle scripts. With five draws the side may hold only verbs, so the guarantee is the union — every owned hex
   // contributes something, and each one is one of the two known shapes.
   const owned = m.enemyHexes.map((e) => m.gd.hex(e.id));
-  assert.ok(owned.length === 4, 'four enemy hexes');
+  assert.ok(owned.length === 5, 'five enemy hexes');
   for (const rec of owned) {
     const hasMods = rec.mods && Object.keys(rec.mods).length > 0;
     assert.ok(hasMods || typeof rec.verb === 'string', `${rec.id} carries mods or a verb`);

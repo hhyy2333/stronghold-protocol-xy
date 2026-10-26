@@ -39,12 +39,13 @@ test('roster: 124 player + 43 enemy hexes, unique ids, known rarities and an eff
   // sixteenth batch (业主 2026-10-24): 11 more player cards (111 -> 122).
   // seventeenth batch (业主 2026-10-24): 1 more — 核心盟约专属协议·维多利亚·锻炉 (122 -> 123).
   // eighteenth batch (业主 2026-10-25): 1 more — 协议源石「复制」(123 -> 124).
-  assert.equal(PLAYER.length, 124);
+  // nineteenth batch (业主 2026-10-26): 7 more — 其余 7 个核心盟约的专属协议 (124 -> 131); 锻炉 itself is the 17th batch's 1.
+  assert.equal(PLAYER.length, 131);
   // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
   // fourteenth batch (业主 2026-10-19): 5 more enemy cards. 38 -> 43.
   assert.equal(ENEMY.length, 43);
   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
-  assert.equal(ids.size, 167);
+  assert.equal(ids.size, 174);
   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
   assert.deepEqual([...rarities], [...RARITY_ORDER]);
   for (const h of PLAYER) {
@@ -85,7 +86,7 @@ test('roster: 124 player + 43 enemy hexes, unique ids, known rarities and an eff
 test('every player hex has a registered hex: handler with onHexPick and onRoundStart (choices.test.js style)', () => {
   const reg = getDefaultRegistry();
   const ids = hexIds();
-  assert.equal(ids.length, 124);
+  assert.equal(ids.length, 131);
   for (const id of ids) {
     const h = reg.get(hexEffectKey(id));
     assert.ok(h, `hex:${id} handler`);
@@ -778,7 +779,7 @@ test('the eleventh batch: 79 player hexes, the owner’s names and tiers verbati
     assert.equal(rec.name, name, `${id} name`);
     assert.equal(rec.rarity, rarity, `${id} tier`);
   }
-  assert.equal(Object.keys(HEXTECH.playerHexes).length, 124, '124 player hexes after the eighteenth batch');
+  assert.equal(Object.keys(HEXTECH.playerHexes).length, 131, '131 player hexes after the nineteenth batch');
 });
 
 
@@ -1349,4 +1350,62 @@ test('锻炉 (专属·维多利亚): the card, its bond gate and the 百变 item
   assert.equal(hexAvailableTo({ bonds: { victoriaShip: { active: true } } }, rec), true);
   // and every other card is untouched by the rule (no regression for the rest of the pool)
   assert.equal(hexAvailableTo({ bonds: {} }, HEXTECH.playerHexes.hex_stipend), true);
+});
+
+
+// =====================================================================================================================
+// §29.42 — 第 7 回合：盟约专属协议 + 其余 7 个核心盟约的专属卡（业主 2026-10-26）
+// =====================================================================================================================
+
+test('第 7 回合是盟约专属协议回合：exclusiveRounds 与 HEX_ROUNDS 对齐，卡池只收 requiresBond', () => {
+  assert.deepEqual(HEXTECH.format.rounds, [...HEX_ROUNDS]);
+  assert.deepEqual(HEXTECH.format.exclusiveRounds, [7]);
+  const exclusive = PLAYER.filter((h) => typeof h.requiresBond === 'string' && h.requiresBond);
+  assert.ok(exclusive.length >= 8, '至少 8 张专属卡（维多利亚 + 其余 7 个核心盟约）');
+  for (const h of exclusive) assert.ok(DATA.bonds[h.requiresBond], `${h.id}: requiresBond 能在 bonds.json 里解析`);
+});
+
+test('第十九批：7 张盟约专属协议 —— 名称/阶位/requiresBond/战斗脚本 key 全部接上', () => {
+  const want = {
+    hex_yan_ember: ['燎原', 'yanShip', 'yanEmber'],
+    hex_sargon_oasis: ['绿洲', 'sargonShip', 'sargonOasis'],
+    hex_kjerag_thaw: ['冰雪消融', 'kjeragShip', 'kjeragThaw'],
+    hex_laterano_sanctuary: ['圣佑', 'lateranoShip', 'lateranoSanctuary'],
+    hex_egir_symbiosis: ['协同进化', 'egirShip', 'egirSymbiosis'],
+    hex_siracusa_godfather: ['教父', 'siracusaShip', 'siracusaGodfather'],
+  };
+  for (const [id, [name, bond, key]] of Object.entries(want)) {
+    const rec = HEXTECH.playerHexes[id];
+    assert.ok(rec, `${id} 在 roster 里`);
+    assert.equal(rec.name, name, `${id} 名称`);
+    assert.equal(rec.rarity, 'prismatic', `${id} 3 阶`);
+    assert.equal(rec.requiresBond, bond, `${id} 专属盟约`);
+    assert.equal(rec.effect[key] !== undefined, true, `${id} 带 ${key} 参数`);
+    assert.ok(BATTLE_SPEC_KEYS.includes(key), `${id}: ${key} 必须进 BATTLE_SPEC_KEYS，否则 ref 不会进战斗`);
+    assert.equal(HEX_SCRIPT_KEYS[id], key, `${id}: HEX_SCRIPT_KEYS 接线`);
+  }
+  // 骑士：卡只发装备，战斗行为在装备自己的 BY_ITEM 里
+  const knight = HEXTECH.playerHexes.hex_kazimierz_knight;
+  assert.ok(knight, '骑士 在 roster 里');
+  assert.equal(knight.name, '骑士');
+  assert.equal(knight.rarity, 'prismatic');
+  assert.equal(knight.requiresBond, 'kazimierzShip');
+  assert.deepEqual(knight.effect.onPick.item, { id: 'chess_item_9_98_e_a', count: 1 });
+  const badge = DATA.items['chess_item_9_98_e_a'];
+  assert.ok(badge, '骑士徽章 在 items.json 里');
+  assert.equal(badge.name, '骑士徽章');
+  assert.equal(badge.itemType, 'EQUIP');
+  assert.equal(badge.mergeable, false);
+  assert.equal(badge.shopExcluded, true);
+  assert.ok(DATA.effects[badge.effectId], '骑士徽章 的 effect 记录能解析');
+  assert.deepEqual(badge.params, { transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 });
+  // 锻炉：获得时给薄绿 + 洛洛
+  assert.deepEqual(HEXTECH.playerHexes.hex_forge.effect.onPick.chess.ids, ['chess_char_3_08_a', 'chess_char_2_10_a']);
+  // 绿洲 / 冰雪消融 的备战侧 spec 挂在会被注册的钩子名下
+  assert.equal(HEXTECH.playerHexes.hex_sargon_oasis.effect.onLayers.layerGift.runOnPick, true);
+  assert.equal(HEXTECH.playerHexes.hex_kjerag_thaw.effect.onPrice.bondPriceDiscount.delta, -1);
+  // 指定干员/装备的 id 都存在
+  for (const id of ['chess_char_3_08_a', 'chess_char_2_10_a', 'chess_char_3_20_a', 'chess_char_5_20_a', 'chess_char_5_02_a', 'chess_item_6_07_e_a']) {
+    assert.ok(DATA.chess[id] || DATA.items[id], `${id} 能在 data 里解析`);
+  }
 });

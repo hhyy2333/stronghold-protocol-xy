@@ -154,6 +154,8 @@ export function normalizeHex(hex, myId = null, _players = []) {
       ? hex.slotRerollsLeft[myId].map((n) => (Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0))
       : mine.map(() => myRerolls),
     untimed: !!hex.untimed,
+    // 盟约专属协议回合 (owner 2026-10-26): the overlay names the round; absent ⇒ ordinary draft.
+    exclusive: !!hex.exclusive,
     turnDeadline: Number(hex.turnDeadline) || 0,
     timerSec: Number(hex.timerSec) || 0,
     decided,

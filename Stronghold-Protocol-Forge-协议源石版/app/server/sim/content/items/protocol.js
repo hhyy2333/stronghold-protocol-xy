@@ -20,6 +20,8 @@
 
 import { makeDamageInfo, isChained, mitigate } from '../../damage.js';
 import { num, itemKeyOf, itemsOf, isMember, battleStore } from '../support/index.js';
+// 骑士徽章 (业主 2026-10-26)：三个互相独立的半边（转移 / 真伤 ×3 / 致命锁血）单独一个模块，见该文件头。
+import { knightBadge } from './knightbadge.js';
 
 /** Positive number, else the documented default (a 0 / a missing field means "not configured"). */
 const pos = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -358,4 +360,5 @@ export const PROTOCOL_ITEMS = Object.freeze({
   chess_item_9_94_e: voidReturn,  // 万物归虚
   chess_item_9_95_e: corpseHill,  // 尸山 / 尸山·极
   chess_item_9_96_e: heartsteel,  // 心之钢
+  chess_item_9_98_e: knightBadge, // 骑士徽章（协议源石【骑士】）
 });
