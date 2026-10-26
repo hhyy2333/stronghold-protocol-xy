@@ -775,11 +775,43 @@
   --mote: transparent; --radar: rgba(89, 244, 202, .11);
 }
 [data-hub-theme="custom"] { --radar: rgba(235, 245, 240, .14); }
+/* 始发（官方主页大厅，默认）：雪原 + 冰湖 + 天环，画面是**冷白高亮**的。
+   HUD token 跟着走 —— 冰蓝为底、天环的暖白作强调；比 starlight 更亮，字一律靠 --text-hi。 */
+[data-hub-theme="start"] {
+  --sky-0: #0b0f14; --sky-1: #16202b; --sky-2: #2b3946; --sky-3: #080b0f;
+  --haze: rgba(190, 214, 236, .18); --cloud: rgba(226, 238, 248, .07);
+  --ridge-far: #2a3641; --ridge-mid: #1a232c; --ridge-near: #0c1116;
+  --rim: rgba(226, 240, 252, .42); --fog: rgba(150, 175, 196, .22); --beam: rgba(235, 245, 255, .1);
+  --beacon: #9fd4ff; --window: rgba(200, 226, 248, .72); --grid: rgba(180, 210, 236, .3);
+  --mote: rgba(236, 246, 255, .82); --radar: rgba(180, 214, 240, .2);
+}
+/* 星迹（官方主页大厅）：官方那张厅堂图的色调是「深蓝丝绒 + 金色天文仪」，
+   HUD token 跟着走 —— 蓝作底、金作强调，和 mint 的系统色区分开但不冲突。 */
+[data-hub-theme="star"] {
+  --sky-0: #05060c; --sky-1: #0a0f1e; --sky-2: #14224a; --sky-3: #04050a;
+  --haze: rgba(70, 110, 200, .16); --cloud: rgba(120, 150, 210, .05);
+  --ridge-far: #0d1730; --ridge-mid: #091020; --ridge-near: #04070f;
+  --rim: rgba(150, 190, 255, .30); --fog: rgba(30, 46, 84, .3); --beam: rgba(200, 220, 255, .08);
+  --beacon: #e8c667; --window: rgba(232, 198, 103, .7); --grid: rgba(150, 190, 255, .26);
+  --mote: rgba(190, 215, 255, .8); --radar: rgba(150, 190, 255, .16);
+}
 
 .lobby-hub { --hub-entry-w: 2.1rem; --hub-gap: .14rem; display: flex; flex-direction: column; overflow: hidden; background: #050909; }
 .hub-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: var(--sky-3); }
 .hub-bg__sky { position: absolute; inset: 0;
   background: linear-gradient(180deg, var(--sky-0) 0%, var(--sky-1) 36%, var(--sky-2) 63%, var(--sky-3) 100%); }
+/* 官方主页大厅整图（左右两半预拼，tools/home-theme-sheet.py）。1824x1024，按 cover 铺满。
+   挂两个主题：data-art="start" = 始发（雪原天环，默认）/ "star" = 星迹（蓝丝绒厅堂）。
+   始发那张很亮，所以默认略压 + 底部加深，保证贴底的入口卡与顶部工具条读得清。 */
+.hub-bg__star {
+  position: absolute; inset: 0;
+  background-position: center 46%; background-size: cover; background-repeat: no-repeat;
+  filter: brightness(.92) saturate(1.06);
+  animation: star-breathe 26s ease-in-out infinite alternate;
+}
+.hub-bg__star[data-art="start"] { filter: brightness(.82) saturate(.98) contrast(1.02); }
+@keyframes star-breathe { from { transform: scale(1.02); } to { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .hub-bg__star { animation: none; transform: scale(1.03); } }
 .hub-bg__stars { position: absolute; left: 0; top: 0; width: 1px; height: 1px; border-radius: 50%;
   animation: hub-twinkle 7s ease-in-out infinite alternate; }
 .hub-bg__haze { position: absolute; inset: 0;
@@ -953,25 +985,80 @@
 .hub-entry__group { display: flex; align-items: center; gap: .06rem; height: .2rem; padding-left: .04rem; font-size: calc(.13 * var(--t)); color: rgba(223, 230, 226, .7); }
 .hub-entry {
   position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start;
-  width: var(--hub-entry-w); height: 1.34rem; padding: .14rem .16rem; overflow: hidden; cursor: pointer; text-align: left; color: var(--text-hi);
-  background: linear-gradient(160deg, rgba(30, 46, 42, .94), rgba(9, 15, 14, .96)); border: 1px solid rgba(223, 230, 226, .26);
-  box-shadow: 0 .06rem .24rem rgba(0, 0, 0, .5); transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast); }
-.hub-entry:hover:not(:disabled) { transform: translateY(-.04rem); border-color: var(--mint-400); box-shadow: 0 .08rem .3rem rgba(0, 0, 0, .55), 0 0 .2rem var(--mint-a20); }
+  width: var(--hub-entry-w); height: 1.34rem; padding: .14rem .16rem .14rem .22rem; overflow: hidden; cursor: pointer; text-align: left; color: var(--text-hi);
+  /* 官方主页功能按钮的形制（业主 2026-10-26「按钮形式也换」）：
+     方角深色玻璃底 + 左侧通高青色竖条（::before）+ 右下角小三角切角（::after）。
+     比原来的「渐变玻璃砖」更接近官方那块「编队 / 干员」。 */
+  background: linear-gradient(150deg, rgba(18, 30, 34, .92), rgba(8, 13, 15, .96));
+  border: 1px solid rgba(120, 190, 200, .22);
+  box-shadow: 0 .06rem .24rem rgba(0, 0, 0, .5), inset 0 1px 0 rgba(150, 220, 230, .07);
+  transition: transform var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), background var(--t-fast); }
+/* 左侧通高青色竖条 —— 官方那两块最显著的识别点 */
+.hub-entry::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: .045rem;
+  background: linear-gradient(180deg, var(--mint-400), rgba(58, 186, 203, .55));
+  opacity: .9; pointer-events: none;
+}
+/* 右下角三角切角（官方按钮的「折角」） */
+.hub-entry::after {
+  content: ''; position: absolute; right: 0; bottom: 0; width: .34rem; height: .34rem; pointer-events: none;
+  background: linear-gradient(135deg, transparent 50%, rgba(78, 216, 175, .9) 50%);
+  opacity: .85; transition: opacity var(--t-med);
+}
+.hub-entry:hover:not(:disabled) {
+  transform: translateY(-.04rem); border-color: var(--mint-400);
+  background: linear-gradient(150deg, rgba(24, 42, 46, .94), rgba(10, 17, 19, .97));
+  box-shadow: 0 .08rem .3rem rgba(0, 0, 0, .55), 0 0 .2rem var(--mint-a20), inset 0 1px 0 rgba(150, 230, 240, .12);
+}
+.hub-entry:hover:not(:disabled)::after { opacity: 1; }
 .hub-entry:disabled { opacity: .5; cursor: default; }
-.hub-entry__icon { position: absolute; right: .14rem; top: .12rem; font-size: calc(.42 * var(--t)); color: var(--mint-a35); }
+.hub-entry__icon { position: absolute; right: .1rem; top: 50%; transform: translateY(-50%); display: grid; place-items: center; font-size: calc(.42 * var(--t)); color: var(--mint-a35); }
+/* 官方方舟字母标（lobby.js HUB_ENTRY_GLYPH，本机提取组 ui/homeicon）：取代原来右上角的字形图标。
+   官方那两块是「右侧大标 + 左侧竖排小字」，所以标放在卡片右侧居中、占近半卡高，文字压在左下。
+   图标已是透明底 + 官方青，不再额外上色；缺图时 lobby.js 退回 <Icon>，本类不生效。 */
+.hub-entry__mark {
+  display: block; width: .82rem; height: .82rem; object-fit: contain;
+  opacity: .5; transition: opacity var(--t-med) var(--ease-out);
+  filter: drop-shadow(0 0 .05rem rgba(58, 186, 203, .45));
+}
+.hub-entry:hover:not(:disabled) .hub-entry__mark { opacity: .82; }
+.hub-entry--bright .hub-entry__mark { opacity: .62; }
+.hub-entry--gold .hub-entry__mark { opacity: .42; }
+.hub-entry--gold::before { background: linear-gradient(180deg, var(--gold), rgba(255, 198, 0, .5)); }
+.hub-entry--bright::before { background: linear-gradient(180deg, #04140f, rgba(4, 20, 15, .5)); }
 .hub-entry__en { font: 700 .11rem/1 ui-monospace, Consolas, monospace; letter-spacing: .22em; color: var(--mint-400); }
 .hub-entry__name { display: flex; align-items: center; gap: .08rem; margin-top: .04rem; font-size: calc(.3 * var(--t)); font-weight: 900; letter-spacing: .06em; white-space: nowrap; }
 .hub-entry__name .mode-beta { font-size: calc(.12 * var(--t)); }
 .hub-entry__count { position: absolute; left: .16rem; top: .12rem; }
-.hub-entry__corner { position: absolute; right: 0; bottom: 0; width: .3rem; height: .3rem;
-  background: linear-gradient(135deg, transparent 50%, var(--mint-500) 50%); opacity: .8; }
+/* 官方陆行舰剪影做底纹（lobby.js HUB_ENTRY_ART，本机提取组 ui/outer）。
+   去色 + 低透明度：这张图官方是按**难度**上色的，而入口卡讲的是**模式**，彩色会误导。
+   素材缺失时 lobby.js 不渲染这一层 ⇒ 卡片就是原来的玻璃砖。 */
+.hub-entry__art {
+  position: absolute; inset: 0; pointer-events: none;
+  background-position: right bottom; background-size: auto 112%; background-repeat: no-repeat;
+  opacity: .22; filter: grayscale(1) contrast(1.05);
+  -webkit-mask-image: linear-gradient(90deg, transparent 20%, #000 86%);
+  mask-image: linear-gradient(90deg, transparent 20%, #000 86%);
+  transition: opacity var(--t-med) var(--ease-out);
+}
+.hub-entry:hover:not(:disabled) .hub-entry__art { opacity: .34; }
+/* 底纹是第一个定位子元素；把两行文字也变成定位元素，按 DOM 顺序后画，保证字在图上 */
+.hub-entry__en, .hub-entry__name { position: relative; }
+/* 薄荷实心卡（搜寻队友）上的剪影再压淡一点，别把深色字糊掉 */
+.hub-entry--bright .hub-entry__art { opacity: .12; }
+@media (prefers-reduced-motion: reduce) { .hub-entry__art { transition: none; } }
+/* 手机横屏：卡更矮，底纹再淡一档 */
+@media (max-height: 560px) { .hub-entry__art { opacity: .16; } .hub-entry--bright .hub-entry__art { opacity: .09; } }
+/* 旧的 .hub-entry__corner 元素已由 .hub-entry::after 取代（改按钮形制时合并），
+   这里保留一条隐藏规则，防止 HTML 里残留节点再画出第二个三角。 */
+.hub-entry__corner { display: none; }
 .hub-entry--gold .hub-entry__en { color: var(--gold); }
 .hub-entry--gold .hub-entry__icon { color: rgba(255, 198, 0, .3); }
-.hub-entry--gold .hub-entry__corner { background: linear-gradient(135deg, transparent 50%, var(--gold) 50%); }
 .hub-entry--gold:hover:not(:disabled) { border-color: var(--gold); }
 .hub-entry--bright { background: linear-gradient(160deg, var(--mint-500), #1f8f72); color: #04140f; border-color: var(--mint-400); }
 .hub-entry--bright .hub-entry__en { color: rgba(4, 20, 15, .75); }
 .hub-entry--bright .hub-entry__icon { color: rgba(4, 20, 15, .25); }
+.hub-entry--bright::after { background: linear-gradient(135deg, transparent 50%, #e8fff7 50%); }
 .hub-entry--bright .hub-entry__corner { background: linear-gradient(135deg, transparent 50%, #e8fff7 50%); }
 
 .hub-dialog-open .community-chat { visibility: hidden; }
@@ -1002,6 +1089,8 @@
 .bgset__swatch .sw-near { fill: var(--ridge-near); }
 .bgset__swatch .sw-beacon { fill: var(--beacon); }
 .bgset__swatch--custom { display: grid; place-items: center; background: #0b1110 center / cover no-repeat; outline: 1px dashed rgba(223, 230, 226, .2); outline-offset: -1px; }
+/* 官方大厅主题（始发 / 星迹）：缩略图直接裁各自的大厅整图 */
+.bgset__swatch--star { background-position: center 46%; background-repeat: no-repeat; background-size: cover; }
 .bgset__plus { font-size: calc(.34 * var(--t)); line-height: 1; color: rgba(223, 230, 226, .5); }
 .bgset__name { font-size: calc(.15 * var(--t)); font-weight: 800; white-space: nowrap; }
 .bgset__en { font: 700 .09rem/1 ui-monospace, Consolas, monospace; letter-spacing: .14em; color: var(--text-dim); white-space: nowrap; }

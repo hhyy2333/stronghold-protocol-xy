@@ -1,10 +1,11 @@
 // Player settings (BGM/SFX/voice volume, the voice dub 语音语言, mute, damage numbers, the optional 弹药数量 under an ammo
 // skill's bar — not in the official HUD, off by default, PR #552 —, the optional 作战统计 panel — off by default,
-// PR #618 —, render quality, 文字大小, the
-// shortcut keys): a tiny observable store persisted in localStorage (`sp.pref.settings`), applied to the audio manager
-// and to the document on every change, plus the settings modal — which also holds the language switch (ui/lang.js; kept
-// apart in `sp.pref.lang`; under it a note while the current language's pack is a machine translation,
-// `_meta.machineTranslated`) and the 快捷键 section that rebinds the in-match shortcuts (the key map:
+// PR #618 —, render quality, 文字大小, the shortcut keys, and 联防音乐 — 联防 plays the player's own track (《雨爱》DJ 版,
+// public/js/uniteMusic.js) instead of the manifest's `bgm.unite`, on by default; off ⇒ the official track, the owner's
+// request of 2026-10-26): a tiny observable store persisted in localStorage (`sp.pref.settings`), applied to the audio
+// manager and to the document on every change, plus the settings modal — which also holds the language switch
+// (ui/lang.js; kept apart in `sp.pref.lang`; under it a note while the current language's pack is a machine
+// translation, `_meta.machineTranslated`) and the 快捷键 section that rebinds the in-match shortcuts (the key map:
 // ui/gameLogic/shortcuts.js; the community request 「快捷键可不可以自己设置」, the owner's decision of 2026-10-07) and
 // 问题反馈, which copies the diagnostics of this page for a bug report (diag.js: the error log, this browser, optionally
 // the battle on screen; nothing is uploaded). The lobby and the room open it from a 设置 button next to 玩法说明
@@ -42,6 +43,7 @@ import { VOICE_LANG_NAMES } from '../../../shared/constants.js';
 import { data, useData } from '../data.js';
 import { dubsInstalled, dubsMissing } from '../voiceDubs.js';
 import { audio } from '../audio.js';
+import { uniteTrackFor } from '../uniteMusic.js';
 import { openGuide } from './guide.js';
 import { detectFeatures } from './device.js';
 import { LangToggle, machineTranslationNote } from './lang.js';
@@ -73,12 +75,15 @@ settingsStore.subscribe((s) => {
   audio.setVolumes(s);
   // 只传全局那一个配音：逐干员的覆盖由 main.js 注入的 voiceLangOf 在播放时读取（单一真相，见 audio.js 那一处）。
   audio.setVoiceLang(s.voiceLang);
+  // 联防音乐（默认开）：联防阶段改播玩家自己的曲子，关掉就回到清单里的 bgm.unite —— audio.js setCustomBgm 当场换曲
+  audio.setCustomBgm('unite', uniteTrackFor(s));
   applyTextSize(s.textSize);
   setAppearanceFirst(s.workshopSkins);
   setSourcesEnabled(s.workshopSources);
 });
 audio.setVolumes(settingsStore.get());
 audio.setVoiceLang(settingsStore.get().voiceLang);
+audio.setCustomBgm('unite', uniteTrackFor(settingsStore.get()));
 // before the first render (main.js boot renders after its imports ran): the stored step is on screen without a flash
 applyTextSize(settingsStore.get().textSize);
 // 同上：工坊外观的门控也要在**第一帧之前**同步好，否则首帧问的是链的默认值、下一帧才改成玩家的选择
@@ -368,6 +373,8 @@ export function SettingsModal({ open, onClose }) {
       </div>
       ${mtNote ? html`<p class="set-hint set-lang-note" data-testid="lang-mt-note">${mtNote}</p>` : null}
       <${Slider} label=${t('背景音乐')} micro="BGM" icon="play" value=${s.bgm} onInput=${(v) => updateSettings({ bgm: v })} />
+      <${Toggle} label=${t('联防音乐')} micro="UNITE MUSIC" value=${s.uniteMusic} onChange=${(v) => updateSettings({ uniteMusic: v })} />
+      <p class="set-hint">${t('联防阶段改播《雨爱》DJ 版；关掉后播放官方的联防音乐。没有这个音乐文件时仍播放官方音乐。')}</p>
       <${Slider} label=${t('干员语音')} micro="VOICE" icon="mic" value=${s.voice} onInput=${(v) => updateSettings({ voice: v })} />
       <${VoiceLangRow} value=${s.voiceLang} />
       <${Slider} label=${t('音效')} micro="SFX" icon="signal" value=${s.sfx}

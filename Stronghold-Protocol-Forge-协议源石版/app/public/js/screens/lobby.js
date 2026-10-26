@@ -48,7 +48,7 @@ import { SearchPanel, RadarScene, CreateArt, JoinArt } from '../ui/matchFlow.js'
 import { useLeave } from '../ui/transitions.js';
 import { net, identity } from '../net.js';
 import { store, useStore, shallowEqual, loadPref, savePref } from '../store.js';
-import { getMode, getStage, useData } from '../data.js';
+import { getMode, getStage, useData, localAsset } from '../data.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
 import { C2S as SERVER_C2S } from '../../../shared/protocol.js';
 
@@ -472,12 +472,44 @@ function SweepPlate({ onClick }) {
   </button>`;
 }
 
+/**
+ * 官方陆行舰剪影，作为入口卡的底纹（本机客户端提取组 `ui/outer` 的 `*_rhodes_island`，427×332）。
+ *
+ * 为什么**去色**再铺：官方这四张是按**难度**上色的（normal 橙 / hard 红 / abyss 深红 / funny 黄），
+ * 而入口卡表达的是**模式**（独立 / 同盟 / 无限火力）。彩色铺上去会让人误读成「难度」，
+ * 所以这里统一 `grayscale(1)` + 低透明度当纹理用；颜色仍由卡自己的 `tone`（mint / gold）决定。
+ *
+ * 没有本机素材时 `localAsset` 返回 null ⇒ 整层不渲染 ⇒ 卡片回到原来的玻璃砖，观感不变
+ * （`public/assets/**` 不进 git，别的机器没有这些图）。
+ */
+const HUB_ENTRY_ART = 'normal_rhodes_island';
+
+/**
+ * 入口卡右侧的大图标：官方主页「编队 / 干员」两块按钮上的**方舟字母标**
+ * （业主 2026-10-26「用被圈住的两个图标替代这两个图标」，随后「两个图标搞反了」更正）。
+ *
+ * 按**图形语义**配，不按官方按钮的原功能配：
+ *   · 三线叠层三角（`mark_coop`）= 多个人形叠在一起 → **同盟模拟**（多人）
+ *   · 单个 A 形（`mark_solo`）   = 一个人 → **独立模拟**（单人）
+ * 素材在 `ui/homeicon`，由业主截图裁切去底得到，统一成官方青 `#3abacb`。
+ * 取不到就退回原来的字形图标（`Icon`），不改布局。
+ */
+const HUB_ENTRY_GLYPH = {
+  solo: 'mark_solo',
+  coop: 'mark_coop',
+};
+
 /** One of the four big entries at the bottom right. */
-function HubEntry({ group, name, en, icon, badge, tone = 'mint', count = null, onClick, disabled = false }) {
+function HubEntry({ group, name, en, icon, badge, tone = 'mint', count = null, onClick, disabled = false, glyph = null }) {
+  const art = localAsset('ui/outer', HUB_ENTRY_ART);
+  const mark = glyph ? localAsset('ui/homeicon', HUB_ENTRY_GLYPH[glyph] || '') : null;
   return html`<div class="hub-entry-wrap">
     ${group ? html`<span class="hub-entry__group"><${Icon} name=${group.icon} />${group.label}</span>` : html`<span class="hub-entry__group hub-entry__group--blank"></span>`}
     <button type="button" class=${`hub-entry hub-entry--${tone}`} onClick=${onClick} disabled=${disabled}>
-      <span class="hub-entry__icon"><${Icon} name=${icon} /></span>
+      ${art ? html`<span class="hub-entry__art" style=${`background-image:url("${art}")`} aria-hidden="true"></span>` : null}
+      <span class="hub-entry__icon">
+        ${mark ? html`<img class="hub-entry__mark" src=${mark} alt="" draggable=${false} aria-hidden="true" />` : html`<${Icon} name=${icon} />`}
+      </span>
       <span class="hub-entry__en">${en}</span>
       <span class="hub-entry__name">${name}${badge ? html`<span class="mode-beta">${badge}</span>` : null}</span>
       ${count != null ? html`<span class="hub-entry__count"><${MatchmakingCount} count=${count} /></span>` : null}
@@ -1265,6 +1297,9 @@ export function LobbyScreen() {
   const modeCard = MODE_CARDS.find((c) => c.id === simulation) || MODE_CARDS[0];
 
   return html`<div class="screen lobby-screen lobby-hub" data-hub-theme=${backdropTheme(bg)}>
+    ${/* 大厅背景（业主 2026-10-26 最终版）：官方主页大厅整图 —— 「始发」默认，「星迹」可选；
+         程序化远景（夜巡/霜原/烬野/静默）与玩家自选图保持原样。
+         战场 3D 背景按业主要求已移除。 */ ''}
     <${HubBackdrop} bg=${bg} />
     <header class="topbar hub-topbar">
       <div class="topbar__left">
@@ -1322,8 +1357,8 @@ export function LobbyScreen() {
           </div>` : null}
         ${maint?.active ? html`<div class="hub-maint">${t('服务器即将维护，暂停开启新的模拟')}</div>` : null}
         <div class="hub-entries__row">
-          <${HubEntry} group=${{ icon: 'user', label: t('独立模拟') }} name=${t('独立模拟')} en="SOLO" icon="user" onClick=${() => openMode('solo')} />
-          <${HubEntry} group=${{ icon: 'users', label: t('同盟模拟') }} name=${t('同盟模拟')} en="ALLIANCE" icon="users" count=${matchmakingCounts?.total} onClick=${() => openMode('coop')} />
+          <${HubEntry} group=${{ icon: 'user', label: t('独立模拟') }} name=${t('独立模拟')} en="SOLO" icon="user" glyph="solo" onClick=${() => openMode('solo')} />
+          <${HubEntry} group=${{ icon: 'users', label: t('同盟模拟') }} name=${t('同盟模拟')} en="ALLIANCE" icon="users" glyph="coop" count=${matchmakingCounts?.total} onClick=${() => openMode('coop')} />
           ${CAN_FIREPOWER ? html`<${HubEntry} name=${t('无限火力')} en="FIREPOWER" icon="dice" badge="1.1" tone="gold" onClick=${() => openMode('firepower')} />` : null}
           ${CAN_TEST ? html`<${HubEntry} name=${t('测试场')} en="TEST FIELD" icon="dots" onClick=${() => openMode('test')} />` : null}
           ${CAN_QUEUE ? html`<${HubEntry} name=${t('搜寻队友')} en="FIND ALLIES" icon="search" tone="bright" onClick=${openSearch} />` : null}

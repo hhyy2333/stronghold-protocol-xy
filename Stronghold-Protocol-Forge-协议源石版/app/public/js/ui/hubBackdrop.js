@@ -6,10 +6,17 @@ import { audio } from '../audio.js';
 import { html } from './components.js';
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { loadPref, savePref } from '../store.js';
+import { localAsset } from '../data.js';
 import { toast } from './toasts.js';
 import { t, N_ } from '../../../shared/i18n.js';
 
 export const HUB_THEMES = [
+  // 官方主页大厅「始发」（业主 2026-10-26 指定，第二张截图）：雪原冰湖 + 天环。
+  // 图是从官方客户端 AB 的 bg_rogue_3.ab 抽出左右两半、用 tools/home-theme-sheet.py 预拼的整图；
+  // 素材不在时自动退回夜巡。战场 3D 主题已按业主要求移除。
+  { id: 'start', name: N_('始发'), en: 'GENESIS' },
+  // 官方主页大厅「星迹」：蓝丝绒厅堂 + 金色天文仪。保留成可选。
+  { id: 'star', name: N_('星迹'), en: 'AD ASTRA' },
   { id: 'night', name: N_('夜巡'), en: 'NIGHT WATCH' },
   { id: 'frost', name: N_('霜原'), en: 'FROSTLINE' },
   { id: 'ember', name: N_('烬野'), en: 'EMBERFIELD' },
@@ -17,6 +24,8 @@ export const HUB_THEMES = [
 ];
 const THEME_IDS = HUB_THEMES.map((x) => x.id);
 const PREF_KEY = 'hub.backdrop';
+/** 老玩家存过的偏好里没有 start；这里做**一次性**迁移，之后尊重他自己的选择。 */
+const MIGRATED_KEY = 'hub.backdrop.startDefault';
 const MAX_EDGE = 2560; // longest edge kept of a custom picture
 const MAX_FILE = 30 * 1024 * 1024;
 
@@ -27,8 +36,15 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export function loadBackdropPref() {
   const raw = loadPref(PREF_KEY, null);
   const o = raw && typeof raw === 'object' ? raw : {};
+  // 一次性迁移：旧默认（night）以及上一版的两个默认（star / battlefield）统一迁到 start（始发）；
+  // 迁移标记存下来，之后玩家再选别的就不会被改回去。
+  let theme = THEME_IDS.includes(o.theme) || o.theme === 'custom' ? o.theme : 'start';
+  if (raw && !loadPref(MIGRATED_KEY, false)) {
+    if (theme === 'night' || theme === 'star' || theme === 'battlefield') theme = 'start';
+    savePref(MIGRATED_KEY, true);
+  }
   return {
-    theme: THEME_IDS.includes(o.theme) || o.theme === 'custom' ? o.theme : 'night',
+    theme,
     dim: clamp(num(o.dim, 45), 0, 85),
     blur: clamp(num(o.blur, 0), 0, 16),
     overlay: o.overlay !== false,
@@ -292,12 +308,21 @@ function HubVideo({bg}) {
 export function HubBackdrop({ bg }) {
   const scene = sceneOf(bg);
   const { pref } = bg;
-  return html`<div class="hub-bg" data-scene=${scene} data-motion=${pref.motion ? 'on' : 'off'} aria-hidden="true">
-    ${scene === 'photo'
+  // 两个官方大厅主题都用「左右两半预拼」的整图（tools/home-theme-sheet.py）：
+  //   start → 始发（雪原冰湖 + 天环，官方 bg_rogue_3）
+  //   star  → 星迹（蓝丝绒厅堂 + 天文仪，官方 bg_p3r_1）
+  // 取不到图就退回夜巡，不留空白。
+  const artOf = { start: 'bg_start', star: 'bg_star' };
+  const art = artOf[scene] ? localAsset('ui/hometheme', artOf[scene]) : null;
+  const realScene = artOf[scene] && !art ? 'night' : scene;
+  return html`<div class="hub-bg" data-scene=${realScene} data-motion=${pref.motion ? 'on' : 'off'} aria-hidden="true">
+    ${realScene === 'photo'
       ? html`${bg.mediaKind==='video'?html`<${HubVideo} key=${bg.imageUrl} bg=${bg} />`:html`<div class="hub-bg__photo" style=${`background-image:url("${bg.imageUrl}");filter:${pref.blur ? `blur(${pref.blur}px)` : 'none'}`}></div>`}
         <div class="hub-bg__shade" style=${`opacity:${pref.dim / 100}`}></div>`
-      : scene === 'blank' ? html`<div class="hub-bg__sky"></div>` : html`<${Scene} theme=${scene} />`}
-    ${scene !== 'photo' || pref.overlay ? html`<div class="hub-bg__grid"></div><div class="hub-bg__dots"></div>` : null}
+      : realScene === 'blank' ? html`<div class="hub-bg__sky"></div>`
+        : artOf[realScene] ? html`<div class="hub-bg__star" data-art=${realScene} style=${`background-image:url("${art}")`}></div>`
+          : html`<${Scene} theme=${realScene} />`}
+    ${realScene !== 'photo' || pref.overlay ? html`<div class="hub-bg__grid"></div><div class="hub-bg__dots"></div>` : null}
     <div class="hub-bg__scan"></div>
     <div class="hub-bg__vignette"></div>
   </div>`;
@@ -323,6 +348,15 @@ export function BackdropGlyph() {
 }
 
 function Swatch({ theme }) {
+  // 星迹：直接用官方大厅图的缩略图（同一张 bg_star，cover 裁切），没有素材就退回程序化远景
+  // 始发 / 星迹：缩略图直接裁官方大厅整图（同一张 bg_start / bg_star）
+  const artName = { start: 'bg_start', star: 'bg_star' }[theme];
+  if (artName) {
+    const art = localAsset('ui/hometheme', artName);
+    if (art) {
+      return html`<span class="bgset__swatch bgset__swatch--star" data-art=${theme} style=${`background-image:url("${art}")`} aria-hidden="true"></span>`;
+    }
+  }
   return html`<span class="bgset__swatch" data-hub-theme=${theme} aria-hidden="true">
     <svg viewBox="0 0 160 90" preserveAspectRatio="none">
       <path class="sw-far" d="M0 56L18 49L34 53L56 38L76 47L98 36L122 49L142 42L160 51V90H0Z" />

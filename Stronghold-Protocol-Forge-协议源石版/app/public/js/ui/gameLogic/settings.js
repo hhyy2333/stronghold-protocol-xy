@@ -28,8 +28,12 @@ export const TEXT_SIZES = Object.freeze(['sm', 'md', 'lg', 'xl']);
  *   —— 见 `public/js/resources/sources.js`。默认 **true**：作者声明了镜像却一条都不用，比「能关掉」更让人困惑。
  *   关掉时导入路径与「没有这一格」逐字相同（走包内那条 `/workshop-resources/…` URL），也就是这一格的**一键回退**：
  *   一个包把加载源改坏了，玩家关掉这一格就回到原样（不变量由 `test/modAssetsMirrors.test.js` 钉住）。
+ * uniteMusic: 设置「联防音乐」—— 联防阶段播放玩家自己的曲子（《雨爱》DJ 版，public/js/uniteMusic.js 的
+ *   UNITE_TRACK_URL），替换清单里的 `bgm.unite`（m_bat_corrosion）。默认 **true**（业主 2026-10-26 的要求：
+ *   「联防时播放这个音乐，然后在设置界面增加开关是否播放」）；关掉时与「没有这一格」逐字相同，仍播官方联防音乐，
+ *   文件不在时也回落到官方音乐（audio.js `_startBgm`）。纯本地：不上报、不落对局。
  */
-export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, workshopSkins: true, workshopSources: true, quality: 'high', textSize: 'sm', keys: DEFAULT_HOTKEYS, voiceLang: DEFAULT_VOICE_LANG, voiceLangByChar: Object.freeze({}) });
+export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, workshopSkins: true, workshopSources: true, uniteMusic: true, quality: 'high', textSize: 'sm', keys: DEFAULT_HOTKEYS, voiceLang: DEFAULT_VOICE_LANG, voiceLangByChar: Object.freeze({}) });
 
 /**
  * The 配音语言 vocabulary (settings 语音语言) under upstream 0.2.2's name: the canonical list is shared/constants.js
@@ -95,7 +99,7 @@ export function voiceLangFor(s, charId) {
  * Sanitize persisted settings.
  * @param {any} raw
  * @returns {{ bgm: number, sfx: number, voice: number, muted: boolean, damageNumbers: boolean, officialDamageNumbers: boolean, workshopSkins: boolean,
- *   workshopSources: boolean, ammoCount: boolean,
+ *   workshopSources: boolean, ammoCount: boolean, uniteMusic: boolean,
  *   quality: 'high'|'medium'|'low',
  *   textSize: 'sm'|'md'|'lg'|'xl', keys: Record<'refresh'|'freeze'|'levelUp'|'retreat'|'sell'|'ready', string>,
  *   voiceLang: 'cn'|'jp'|'en'|'kr', voiceLangByChar: Record<string, 'cn'|'jp'|'en'|'kr'> }}
@@ -113,6 +117,7 @@ export function sanitizeSettings(raw) {
     ammoCount: typeof r.ammoCount === 'boolean' ? r.ammoCount : DEFAULT_SETTINGS.ammoCount,
     workshopSkins: typeof r.workshopSkins === 'boolean' ? r.workshopSkins : DEFAULT_SETTINGS.workshopSkins,
     workshopSources: typeof r.workshopSources === 'boolean' ? r.workshopSources : DEFAULT_SETTINGS.workshopSources,
+    uniteMusic: typeof r.uniteMusic === 'boolean' ? r.uniteMusic : DEFAULT_SETTINGS.uniteMusic,
     quality: QUALITIES.includes(r.quality) ? r.quality : DEFAULT_SETTINGS.quality,
     textSize: TEXT_SIZES.includes(r.textSize) ? r.textSize : DEFAULT_SETTINGS.textSize,
     keys: sanitizeHotkeys(r.keys),

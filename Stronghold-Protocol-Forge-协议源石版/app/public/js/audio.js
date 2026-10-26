@@ -21,6 +21,11 @@
 //   round, not drawn: 无畏者 through rounds 1–7 and 骑士之日 from round 8 on (`combatTrackFor`, the official
 //   schedule), so every client of a match hears the same one, a fight never switches track halfway through and the
 //   联防 that follows a 作战 keeps its round's track.
+// - 联防音乐 (settings 联防音乐, on by default): 联防's own track is the manifest's `bgm.unite` (m_bat_corrosion), and a
+//   player's own file may take its place — `setCustomBgm('unite', url)` (public/js/uniteMusic.js: 《雨爱》DJ 版). It
+//   rides the same crossfade / volume / mute path as every other track; the manifest's track returns the moment the
+//   switch is off, and also when the file is not there (`_startBgm` falls back), so a checkout without it still hears
+//   the official 联防 music. Nothing about it reaches the server or another player.
 // - 干员战斗语音 (`audio.voice`, user request): an operator says the official line of the moment it is in —
 //   行动出发 start, 行动开始 faceEnemy, 部署 place, 作战中1-4 skillN and the settlement's 结算 result* (battle-only),
 //   and 选中干员 select whenever the player taps an operator — in the prep, the shop and the hand too (the owner's
@@ -609,6 +614,8 @@ export class AudioManager {
     this.startVoiceDone = false; // 行动出发 of this field (the first operator deployed says it)
     this.uiVoices = 0;
     this.wantBgm = null;      // desired key (kept while locked)
+    /** key → URL of the player's own track for that key (setCustomBgm; settings 联防音乐): 联防 only, for now. */
+    this.customBgm = Object.create(null);
     this.bgm = null;          // { key, loopUrl, nodes: [{src, gain}], gain }
     this.bgmToken = 0;
     this.units = new Map();   // battle unit id → defId
@@ -870,14 +877,14 @@ export class AudioManager {
       if (!this.ctx) { this.wantBgm = key; return; }
       if (this.bgmSilent) {
         this.wantBgm = key;
-        const silentTrack = resolveBgm(this.getManifest(), key);
+        const silentTrack = this._resolveBgm(key);
         if (this.bgm && silentTrack && this.bgm.loopUrl === silentTrack.loop) { this.bgm.key = key; return; }
         ++this.bgmToken; // a start still waiting for its download stays silent too
         this._fadeOutBgm();
         return;
       }
       this.wantBgm = null;
-      const track = resolveBgm(this.getManifest(), key);
+      const track = this._resolveBgm(key);
       if (this.bgm && track && this.bgm.loopUrl === track.loop) { this.bgm.key = key; return; }
       if (!track && !this.bgm) return;
       const token = ++this.bgmToken;
@@ -895,12 +902,43 @@ export class AudioManager {
     if (this.lastBgmKey != null) this.playBgm(this.lastBgmKey);
   }
 
+  /**
+   * The player's own track for one BGM key (settings 联防音乐: 雨爱 replaces `bgm.unite` while 联防 runs), or null for
+   * the manifest's own track again. The track plays through the ordinary BGM path — crossfade, volumes, mute, the
+   * "nothing downloaded while silent" rule — and a change while that key is on air switches at once.
+   * @param {string} key see bgmKeyFor
+   * @param {string|null} url
+   */
+  setCustomBgm(key, url) {
+    if (!key) return;
+    const next = typeof url === 'string' && url ? url : null;
+    if ((this.customBgm[key] || null) === next) return;
+    if (next) this.customBgm[key] = next; else delete this.customBgm[key];
+    // on air, or waiting for the first gesture / an audible volume: switch now rather than at the next phase change
+    if (this.wantBgm === key || this.bgm?.key === key) this.playBgm(key);
+  }
+
+  /**
+   * The track a BGM key names right now: a custom track set through `setCustomBgm` wins over the manifest's entry.
+   * @param {string|null} key see bgmKeyFor
+   * @returns {{ intro: string|null, loop: string }|null}
+   */
+  _resolveBgm(key) {
+    const custom = key ? this.customBgm[key] : null;
+    return custom ? { intro: null, loop: custom } : resolveBgm(this.getManifest(), key);
+  }
+
   async _startBgm(key, track, token) {
     const [intro, loop] = await Promise.all([track.intro ? this._buffer(track.intro) : null, this._buffer(track.loop)]);
     if (token !== this.bgmToken || !this.ctx) return;
+    // the player's own 联防 track is not there (a checkout without the file): the manifest's track for that key
+    if (!loop && track.loop === this.customBgm[key]) {
+      const own = resolveBgm(this.getManifest(), key);
+      if (own && own.loop !== track.loop) { this._startBgm(key, own, token); return; }
+    }
     // a cosmetic plugin's track that would not load: the track the manifest names now (its entry fell back)
     if ((!loop && this.fellBack.has(track.loop)) || (track.intro && !intro && this.fellBack.has(track.intro))) {
-      const again = resolveBgm(this.getManifest(), key);
+      const again = this._resolveBgm(key);
       if (again && (again.loop !== track.loop || again.intro !== track.intro)) { this._startBgm(key, again, token); return; }
     }
     if (!loop) return;

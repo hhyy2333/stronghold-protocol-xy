@@ -400,7 +400,11 @@ All paths are URL paths relative to the site root, for example `/assets/char/ava
              // (rounds 1–7) — audio.js combatTrackFor / bgmKeyFor 'combat:<i>', the same on every client;
              // `unite` = 联防's own track — the official escaped_single / escaped_multi levels declare
              // `bgmEvent = corrosion` (卡西米尔 act13d5d0), so the rescue phase does not reuse the 作战's track
-             // (audio.js bgmKeyFor 'unite', falling back to `bgm.combat` for a manifest that lacks it)
+             // (audio.js bgmKeyFor 'unite', falling back to `bgm.combat` for a manifest that lacks it).
+             // 设置 →「联防音乐」(on by default) can put the player's own file in its place:
+             // public/assets/audio/bgm/unite_rainlove_dj.m4a (《雨爱》DJ 版), played through the same /media/ route by
+             // public/js/uniteMusic.js + audio.js setCustomBgm — it is NOT a manifest entry and not in the repository
+             // (public/assets is git-ignored), and a checkout without the file hears this `unite` track
     bossBgm: { [bossId]: { intro?, loop } },                   // per-boss track of its R14/R15 level
     voice:   { [charId]: { start, faceEnemy, select, place, skill1…skill4,
                            resultFour, resultThree, resultTwo, resultLose } },
