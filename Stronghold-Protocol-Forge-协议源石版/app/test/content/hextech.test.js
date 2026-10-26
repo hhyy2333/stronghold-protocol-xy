@@ -19,6 +19,7 @@ import {
 } from '../../shared/hextech.js';
 import { createRng } from '../../server/sim/rng.js';
 import { tierFor } from '../../server/match/bondsMeta.js';
+import { hasBattleEffect } from '../../server/sim/content/items/battle.js';
 
 const HEXTECH = DATA.hextech;
 const PLAYER = Object.values(HEXTECH.playerHexes);
@@ -1112,10 +1113,14 @@ test('投资天才: 投资人 needs 1 fewer member, 获得时 traits fire once m
 test('心之钢: the card and its equipment are wired end to end, and the item grant stops at three', () => {
   const rec = HEXTECH.playerHexes.hex_heartsteel;
   assert.equal(rec.rarity, 'prismatic');
+  // The four numbers stay on the card record as the documented copy; the battle reads the ITEM (items/protocol.js
+  // chess_item_9_96_e, whose data/items.json params are empty and fall back to exactly these four values).
   assert.deepEqual(rec.effect.heartsteel, { every: 3, dmgMaxHpPct: 100, maxHpGain: 150, layerGain: 2 });
-  assert.ok(BATTLE_SPEC_KEYS.includes('heartsteel'), 'ownership-only script: declared beside its install reader');
-  assert.equal(HEX_SCRIPT_KEYS.hex_heartsteel, 'heartsteel');
-  assert.ok(hasBattlePart(rec.effect), 'the ref must reach the battle');
+  // 业主 2026-10-26: the battle half is the EQUIPMENT's, so the card has no script key and its ref never has to reach a
+  // battle — every source that hands the item out (神器整备 included) gets the behaviour.
+  assert.equal(HEX_SCRIPT_KEYS.hex_heartsteel, undefined, 'no card-side battle script any more');
+  assert.equal(BATTLE_SPEC_KEYS.includes('heartsteel'), false, 'and no battle spec key either');
+  assert.equal(hasBattlePart(rec.effect), false, 'the ref is prep-only');
   assert.ok(getDefaultRegistry().get(hexEffectKey('hex_heartsteel')), 'hex:hex_heartsteel handler');
   const item = DATA.items['chess_item_9_96_e_a'];
   assert.ok(item, 'the id resolves in data/items.json');
@@ -1245,6 +1250,24 @@ test('神器整备: 按协议源石的阶位发装备 —— 1阶 on pick, 2阶 
   ctx2.round = 24;                              // pick + 4 ≥ delta 3
   h.onRoundStart(ctx2);
   assert.deepEqual(seen, [ARTIFACT_T1, ARTIFACT_T2, ARTIFACT_T3[ARTIFACT_T3.length - 1]]);
+});
+
+test('神器整备 发的七件装备都是「装备驱动」的：卡没有战斗脚本，装备自己有 BY_ITEM 行为', () => {
+  // 业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」：神器整备 发的装备不带对应协议源石，所以那件
+  // 装备的战斗效果必须是**装备自己**的。这条把两件事一起钉住：每件装备都有 BY_ITEM 行为，且发它的那张卡没有战斗脚本键
+  // （谁要是把机制搬回卡里，这条立刻红）。
+  const rec = HEXTECH.playerHexes.hex_artifactkit;
+  const ids = [rec.effect.onPick.artifactKit.ids, ...rec.effect.onRoundStart.artifactStage.rungs.map((r) => r.ids)].flat();
+  assert.equal(ids.length, 7);
+  for (const id of ids) {
+    const item = DATA.items[id];
+    assert.ok(item, `${id} resolves in data/items.json`);
+    assert.equal(hasBattleEffect(item), true, `${id}: the EQUIPMENT has the battle behaviour (items/battle.js BY_ITEM)`);
+    const card = PLAYER.find((c) => c.effect && c.effect.onPick && c.effect.onPick.item && c.effect.onPick.item.id === id);
+    assert.ok(card, `${id} is handed out by a 协议源石 card`);
+    assert.equal(HEX_SCRIPT_KEYS[card.id], undefined, `${card.id}: no card-side battle script (the equipment owns it)`);
+    assert.equal(hasBattlePart(card.effect), false, `${card.id}: the ref never has to reach a battle`);
+  }
 });
 
 test('神器整备 的三档装备各自来自「对应阶位」的协议源石（反查 data/hextech.json）', () => {

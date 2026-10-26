@@ -1090,11 +1090,14 @@ export const PLAYER_HEXES = [
     rarity: 'silver',
     effect: { heavyhitter: { maxHpPct: 10 } },
   },
-  // ---- fourteenth batch (业主 2026-10-19, 原话照抄；机制脚本在 server/sim/content/hexcards/batch15a.js / batch15b.js) ----
+  // ---- fourteenth batch (业主 2026-10-19, 原话照抄；卡级脚本在 server/sim/content/hexcards/batch15a.js / batch15b.js) ----
   // 残光 · 玻璃大炮 · 旧日之力（2 阶）· 破伞 · 万物归虚 · 尸山（3 阶）· 身负重担 · 加护（1 阶）
   //
-  // 四张卡发装备（残光 / 加护 / 万物归虚 / 尸山）：装备本身只是 MARKER（tools/build-data.mjs CUSTOM_ITEMS，
-  // 没有 BY_ITEM 行为），真正的机制在这两个脚本里，靠 `carries` 认领装备者。
+  // 四张卡发装备（残光 / 加护 / 万物归虚 / 尸山）：卡片只负责**发**那件装备（`onPick.item`），装备的效果属于装备自己 ——
+  // 战斗半边写在 server/sim/content/items/protocol.js 的 BY_ITEM 表里（与幽魂 9_90 同一个家），装上就生效，与「玩家有没有
+  // 这张协议源石」无关（业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」）。下面的 `canlight` /
+  // `warding` / `voidreturn` / `corpsehill` 字段是**卡片记录上的数值备份**，装备的 params（tools/build-data.mjs CUSTOM_ITEMS）
+  // 才是战斗读的那一份。
   {
     id: 'hex_canlight',
     name: '残光',
@@ -1181,8 +1184,10 @@ export const PLAYER_HEXES = [
   //   bondNeedBonus { bondId, n }       投资天才: that bond needs `n` fewer members to activate (read from the ref by
   //                                     server/match/hextech.js bondNeedBonusOf → bondsMeta.computeBonds; the member
   //                                     COUNT itself is untouched).
-  //   heartsteel { every, dmgMaxHpPct, maxHpGain, layerGain }   心之钢: the battle half of its equipment
-  //                                     chess_item_9_96_e_a (hexcards/heartsteel.js).
+  //   heartsteel { every, dmgMaxHpPct, maxHpGain, layerGain }   心之钢: the numbers of its equipment
+  //                                     chess_item_9_96_e_a. The battle half is the ITEM's (items/protocol.js
+  //                                     chess_item_9_96_e) and reads the item record; this card field stays as the
+  //                                     documented copy of the same four numbers.
   {
     id: 'hex_bondgain',
     name: '盟约获得',

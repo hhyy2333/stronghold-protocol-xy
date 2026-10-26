@@ -2,6 +2,8 @@
 //
 // 业主原文（逐字照抄；每张卡都在各自函数的注释里再抄一遍）：
 //   1. 残光（2阶）：获得装备“残光”：装备者伤害提升至（1+30%x）。攻击时有4x%概率受到自身攻击，触发后 x 归零，x 为攻击次数。
+//      —— 这张卡**只有发装备那一半**留在这里（effect.onPick.item）；装备的战斗效果是装备自己的事，见
+//      server/sim/content/items/protocol.js 的 chess_item_9_92_e（业主 2026-10-26：装备不该依赖对应的协议源石）。
 //   2. 玻璃大炮（2阶）：伤害提升至150%，最大生命至下降至80%。
 //   3. 身负重担（1阶）：攻击拥有负面状态的敌人伤害 +400*状态数。
 //   4. 破伞（3阶）：干员被击中时有30%的概率免受此次伤害并对攻击方造成“此次伤害值×2”的法术伤害。
@@ -9,14 +11,13 @@
 // 与 batch14a/14b 同一个 `hexHooks(battle)` 契约（见 hooks.js）：installX(hooks) 只注册 hook / 计时器，安装时不改
 // 战斗状态；每段都先用 ownersOf(<hexId>) 判断“谁拥有这张卡”，再只对拥有者的干员生效。
 //
+// 这里只剩**卡级**效果（玻璃大炮 / 身负重担 / 破伞）：它们没有装备，玩家拥有卡就生效。四张发装备的卡（残光 / 加护 /
+// 万物归虚 / 尸山）的战斗半边已经搬进 server/sim/content/items/protocol.js —— 装备效果属于装备本身。
+//
 // 确定性：随机一律走 battle.rng()，没有 Math.random / Date / Node API；计时器走 battle.every()。
 
 import { makeDamageInfo, isRetaliation, isChained, isHpLoss } from '../../damage.js';
-import { passiveBuff } from '../support/index.js';
-import { carries } from '../items/battle.js';
 
-/** 残光 的装备 key（items.json 的 chess_item_9_92_e_a strip 掉 `_a`）。 */
-export const CANLIGHT_ITEM_KEY = 'chess_item_9_92_e';
 /** 破伞 打出去的那一下的 tag。 */
 const UMBRELLA_TAG = 'hexUmbrellaBreak';
 /** 身负重担 的附加法术伤害的 tag。 */
@@ -41,62 +42,6 @@ function isOwnOp(u, owned) {
 function pos(v, fallback) {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-/**
- * 残光: 获得装备「残光」：装备者伤害提升至（1+30%x）。攻击时有 4x% 概率受到自身攻击，触发后 x 归零，x 为攻击次数。
- *
- * 业主原文（逐字）：「获得装备「残光」：装备者伤害提升至（1+30%x）。攻击时有4x%概率受到自身攻击，触发后x归零，x为攻击次数」
- *
- * 口径：x 是装备者自己本场战斗的普攻次数。每打一次：
- *   1. 先按**触发前的** x 掷一次 4x%：命中就受一次「自身攻击力」的伤害，然后把 x 归零；
- *   2. 没命中则 x += 1。
- * 伤害倍率（1 + perHitPct% × x）挂在 `hit` 钩子上改 `dmg.mul`。
- *
- * [ASSUMED: 1) 只有普攻计数，技能命中不算；2) 掷骰用触发前的 x（「触发后 x 归零」）；3) 自伤是「自身攻击力」一击，
- *   走正常减伤与闪避，不是真实伤害；4) 自伤不再触发本卡的掷骰（`canlightSelf` 标记），避免链式；5) 只对装备【残光】的干员生效。]
- *
- * @param {any} hooks the shared `hexHooks(battle)` bundle
- * @returns {number} 0 when the card is absent, else the number of carriers it installed on
- */
-export function installCanlight(hooks) {
-  const owners = ownersOfCard(hooks, 'hex_canlight');
-  if (!owners) return 0;
-  const { battle, specOf, passivePerCopy } = hooks;
-  const owned = new Set(owners);
-  const counts = new Map();   // unit → x (this battle's attack count)
-  const perHit = () => pos(specOf(owners[0], 'hex_canlight', 'canlight').perHitPct, 30);
-  const riskPer = () => pos(specOf(owners[0], 'hex_canlight', 'canlight').perHitRiskPct, 4);
-  // 只有装备【残光】的己方干员算：装备决定归属（与恶魔之契同一套口径）
-  const carrier = (u) => isOwnOp(u, owned) && carries(battle, u, CANLIGHT_ITEM_KEY);
-  // 打出伤害：装备者的伤害 ×(1 + perHit% × x)。读的是命中瞬间的 x（计数在 attack 里已经更新过）
-  battle.on('hit', (c) => {
-    if (!c || !c.dmg || c.dmg.cancel) return;
-    const src = c.source;
-    if (!carrier(src) || !c.target || c.target.side !== 'enemy') return;
-    if (c.dmg.canlightSelf) return;
-    const x = counts.get(src) || 0;
-    if (!(x > 0)) return;
-    c.dmg.mul *= 1 + (perHit() / 100) * x;
-  });
-  // 每次普攻：先按旧 x 掷骰，再决定 x 是否 +1
-  battle.on('attack', (c) => {
-    if (!c || c.isSkill) return;
-    const u = c.attacker;
-    if (!carrier(u) || !u.alive) return;
-    const x = counts.get(u) || 0;
-    const chance = Math.max(0, Math.min(100, riskPer() * x));
-    if (x > 0 && chance > 0 && battle.rng() * 100 < chance) {
-      // 触发：受一次自身攻击力的伤害，x 归零
-      const info = makeDamageInfo({ amount: u.s.atk, type: 'phys', canDodge: true });
-      info.canlightSelf = true;
-      counts.set(u, 0);
-      battle.dealDamage(u, u, info);
-      return;
-    }
-    counts.set(u, x + 1);
-  });
-  return [...new Set(owners)].reduce((n, pid) => n + ((hooks.opsOf ? hooks.opsOf(pid) : []) || []).length, 0);
 }
 
 /**
@@ -260,4 +205,3 @@ export function installUmbrellaBreak(hooks) {
   });
   return { get negated() { return negated; }, get owners() { return owners.length; } };
 }
-

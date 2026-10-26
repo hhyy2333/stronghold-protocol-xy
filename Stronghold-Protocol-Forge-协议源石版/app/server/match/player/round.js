@@ -151,13 +151,33 @@ export class PlayerRound {
         // 锻炉 (业主 2026-10-24): a fused 百变 is ONE item piece carrying `merged: [a, b]`; the battle gets the TWO
         // component ids, so both items' stats / procs / 变形同构体 pairing resolve exactly as if they were worn apart
         // (「百变的效果是两件被融合装备的效果」+「可正常被同构体识别」). The 百变 record itself has no behaviour.
+        //
+        // itemState (业主 2026-10-26): a piece may carry per-item match state (万物归虚's banked layers, see
+        // server/match/hextech.js applyVoidReturnLayers). It travels with the SAME battle input the client replays, keyed
+        // by the CONCRETE item id, so a 百变 hands each component its own state and the sim (battle/players.js) copies the
+        // map onto the unit.
         const items = [];
+        const itemState = {};
+        /** `it.state[id]` → `itemState[id]` (only for the ids this piece actually contributes). */
+        const takeState = (itemPiece, id) => {
+          const st = itemPiece.state && itemPiece.state[id];
+          if (st && typeof st === 'object') itemState[id] = st;
+        };
         for (const it of piece.items || []) {
           if (!it) continue;
-          if (Array.isArray(it.merged) && it.merged.length) items.push(...it.merged.filter((x) => typeof x === 'string' && x));
-          else if (typeof it.id === 'string' && it.id) items.push(it.id);
+          if (Array.isArray(it.merged) && it.merged.length) {
+            for (const id of it.merged) {
+              if (typeof id !== 'string' || !id) continue;
+              items.push(id);
+              takeState(it, id);
+            }
+          } else if (typeof it.id === 'string' && it.id) {
+            items.push(it.id);
+            takeState(it, it.id);
+          }
         }
         const u = { uid: piece.uid, kind: 'chess', chessId: piece.id, row: r, col: c, dir: pieceDir(piece), items };
+        if (Object.keys(itemState).length) u.itemState = itemState;
         if (resonance) {
           const own = new Set(pieceBonds(this.gd, piece));
           const lent = [];

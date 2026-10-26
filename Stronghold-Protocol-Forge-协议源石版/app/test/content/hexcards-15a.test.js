@@ -1,7 +1,8 @@
 // test/content/hexcards-15a.test.js — 第十四批前四张卡的战斗脚本（server/sim/content/hexcards/batch15a.js）。
 //
 // 覆盖的卡（业主原文见 batch15a.js 文件头）：
-//   hex_canlight       残光     —— 装备者伤害 (1 + 30% x)，每次攻击掷 4x% 自伤，触发后 x 归零
+//   hex_canlight       残光     —— 只剩「发装备」这一半；装备的战斗效果属于装备自己，见 test/content/items.test.js 的
+//                                 「残光 (9_92): the equipment alone …」（业主 2026-10-26）
 //   hex_glasscannon    玻璃大炮 —— 己方干员伤害 x1.5、最大生命 x0.8
 //   hex_heavyload      身负重担 —— 打带负面状态的敌人时额外 400 点法术伤害 x 状态数
 //   hex_umbrellabreak  破伞     —— 被击中 30% 免伤并反击 2 倍法术伤害
@@ -15,14 +16,13 @@ import { readFileSync } from 'node:fs';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
 import { hexHooks } from '../../server/sim/content/hexcards/hooks.js';
 import {
-  installCanlight, installGlassCannon, installHeavyLoad, installUmbrellaBreak, CANLIGHT_ITEM_KEY,
+  installGlassCannon, installHeavyLoad, installUmbrellaBreak,
 } from '../../server/sim/content/hexcards/batch15a.js';
 import { installArmor } from '../../server/sim/content/hexcards/armor.js';
 
 const HEXTECH = JSON.parse(readFileSync(new URL('../../data/hextech.json', import.meta.url), 'utf8'));
 const IMPL = {
-  hex_canlight: installCanlight, hex_glasscannon: installGlassCannon,
-  hex_heavyload: installHeavyLoad, hex_umbrellabreak: installUmbrellaBreak,
+  hex_glasscannon: installGlassCannon, hex_heavyload: installHeavyLoad, hex_umbrellabreak: installUmbrellaBreak,
 };
 
 const effectOf = (hexId) => {
@@ -137,11 +137,15 @@ test('身负重担 + 天马之枪: the extra TRUE damage of the item set does no
 // =====================================================================================================================
 
 test('batch15a: the four records carry the spec keys the scripts read', () => {
+  // 残光's numbers are pinned here as DATA (the card record keeps them); the battle reads the ITEM record
+  // (data/items.json params, asserted in test/content/items.test.js) — the card only hands the equipment out.
   assert.deepEqual(effectOf('hex_canlight').canlight, { perHitPct: 30, perHitRiskPct: 4 });
   assert.deepEqual(effectOf('hex_canlight').onPick, { item: { id: 'chess_item_9_92_e_a', count: 1 } });
   assert.deepEqual(effectOf('hex_glasscannon').glasscannon, { dmgPct: 150, hpPct: 80 });
   assert.deepEqual(effectOf('hex_heavyload').heavyload, { flatDamage: 400 });
-  assert.deepEqual(effectOf('hex_umbrellabreak').umbrellabreak, { chance: 30, reflectMul: 200 });
+  // 业主 2026-10-24：「破伞，数值改成40%概率反伤800%」—— 这里原先还钉着改版前的 30 / 200（数据早已是 40 / 800，
+  // 测试是旧的）。顺手改正，免得这条数据 pin 一直是红的。
+  assert.deepEqual(effectOf('hex_umbrellabreak').umbrellabreak, { chance: 40, reflectMul: 800 });
 });
 
 test('batch15a: every installer is a no-op (returns 0) without its card or with a malformed bundle', () => {
@@ -152,7 +156,6 @@ test('batch15a: every installer is a no-op (returns 0) without its card or with 
     assert.equal(install({}), 0, hexId + ': empty bundle -> 0');
     assert.equal(install({ battle: h.battle }), 0, hexId + ': bundle missing ownersOf -> 0');
   }
-  assert.equal(CANLIGHT_ITEM_KEY, 'chess_item_9_92_e', 'the item key the card matches (strip _a)');
 });
 
 // =====================================================================================================================
@@ -271,37 +274,5 @@ test('破伞: damage to an operator of a player without the card is never negate
     h.battle.dealDamage(e, u, h.battle.makeDamage({ amount: 5, type: 'phys', isAttack: true }));
     assert.ok(u.hp < hpBefore, 'without the card every hit lands');
   }
-});
-
-// =====================================================================================================================
-// 残光: 装备者伤害 (1 + 30% x)，每次攻击掷 4x% 自伤
-// =====================================================================================================================
-
-test('残光: the carrier needs the 残光 equipment — the card alone does nothing', () => {
-  const h = solo({ hexId: 'hex_canlight', units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] });
-  h.run(0.1);
-  installCanlight(hexHooks(h.battle));
-  const u = one(h);
-  const e = h.spawn('enemy_dummy', { pos: [11, 6] });
-  const info = h.battle.makeDamage({ amount: 100, type: 'phys', isAttack: true });
-  h.battle.emit('hit', { source: u, target: e, dmg: info });
-  assert.equal(info.mul, 1, 'no equipment on the carrier -> the damage bonus never applies');
-});
-
-test('残光: the equipped carrier deals (1 + 30% x) and every attack counts', () => {
-  const h = solo({ hexId: 'hex_canlight', units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_92_e_a'] }] });
-  h.run(0.1);
-  installCanlight(hexHooks(h.battle));
-  const u = one(h);
-  const e = h.spawn('enemy_dummy', { pos: [11, 6] });
-  // The self-hit roll is a 4x% chance: pin the RNG so this test measures the DAMAGE curve only (the roll has its own
-  // test below). rng() is the battle's own stream, so this is not reaching around the engine.
-  h.battle.rng = () => 0.999;
-  // burn three attacks through the real 'attack' hook: x goes 0 -> 1 -> 2 -> 3
-  for (let i = 0; i < 3; i++) h.battle.emit('attack', { attacker: u, targets: [e], isSkill: false });
-  const info = h.battle.makeDamage({ amount: 100, type: 'phys', isAttack: true });
-  h.battle.emit('hit', { source: u, target: e, dmg: info });
-  // x is 3 at this point -> 1 + 0.3 * 3 = 1.9
-  assert.ok(Math.abs(info.mul - 1.9) < 1e-9, 'three attacks -> x1.9, got ' + info.mul);
 });
 

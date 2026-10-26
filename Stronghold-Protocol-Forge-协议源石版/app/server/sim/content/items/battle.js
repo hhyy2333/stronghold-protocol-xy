@@ -48,6 +48,7 @@ import {
 } from '../support/index.js';
 import { mitigate, hasHp, periodicDamage, isHpLoss } from '../../damage.js';
 import { hypot } from '../../detmath.js';
+import { PROTOCOL_ITEMS } from './protocol.js';
 
 // =====================================================================================================================
 // data helpers
@@ -862,6 +863,11 @@ const BY_ITEM = {
     });
   },
 };
+
+// The remake's own 协议源石 equipment (data/items.json `chess_item_9_9x`) — 残光 / 加护 / 万物归虚 / 尸山 / 心之钢 /
+// 恶魔之契 live in items/protocol.js. They are ITEM behaviours like every other one here: the equipment is what runs, not
+// the 协议源石 card that hands it out (业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」).
+Object.assign(BY_ITEM, PROTOCOL_ITEMS);
 
 /** 浓缩嗅盐 "免疫晕眩、冻结等特殊状态" — research 04 §4 list (stun/freeze/sleep/levitate/palsy). 寒冷 is a debuff, not a
  * control state: it still applies, but the freeze of a second 寒冷 is itself a `freeze` status and is cancelled. */

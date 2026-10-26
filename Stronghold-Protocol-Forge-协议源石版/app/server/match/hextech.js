@@ -61,6 +61,35 @@ export function hexPoolFor(ps, gd) {
 export const FORGE_ITEM_ID = 'chess_item_9_97_e_a';
 
 /**
+ * 万物归虚's equipment (data/items.json CUSTOM_ITEMS `chess_item_9_94_e_a`): the one item whose `state` the prep side
+ * writes (the operators its equip removed) and the battle side reads. There is no golden `_b` form.
+ */
+export const VOIDRETURN_ITEM_ID = 'chess_item_9_94_e_a';
+
+/**
+ * Merge two item pieces' `state` maps (锻炉's 百变 keeps the effects — and the state — of both components). Same key on
+ * both sides: numeric fields add up (万物归虚's layers accumulate), anything else takes the second one.
+ * @param {object|null} a @param {object|null} b @returns {object|null}
+ */
+function mergeItemState(a, b) {
+  if (!a && !b) return null;
+  const out = { ...(a || {}) };
+  for (const [key, val] of Object.entries(b || {})) {
+    const prev = out[key];
+    if (!prev || !val || typeof prev !== 'object' || typeof val !== 'object') { out[key] = val; continue; }
+    const merged = { ...prev };
+    for (const [field, x] of Object.entries(val)) {
+      const y = merged[field];
+      merged[field] = Number.isFinite(Number(y)) && Number.isFinite(Number(x)) && y != null && x != null
+        ? Number(y) + Number(x)
+        : x;
+    }
+    out[key] = merged;
+  }
+  return out;
+}
+
+/**
  * 锻炉 (业主 2026-10-24): 「干员装备两件装备时融合成装备**百变**，百变的效果是两件被融合装备的效果。百变不会被融合，
  * 可正常被同构体识别。」
  *
@@ -97,7 +126,12 @@ export function applyForgeFusion(ps, piece = null) {
     const [a, b] = plain;
     const at = Math.min(c.items.indexOf(a), c.items.indexOf(b));
     c.items = c.items.filter((it) => it !== a && it !== b);
-    const fused = { uid: ps.m && typeof ps.m.nextUid === 'function' ? ps.m.nextUid() : b.uid, kind: 'item', id: itemId, merged: [a.id, b.id] };
+    // the components' own `state` rides along: 万物归虚's banked layers must not be lost when 锻炉 fuses it away
+    const state = mergeItemState(a.state, b.state);
+    const fused = {
+      uid: ps.m && typeof ps.m.nextUid === 'function' ? ps.m.nextUid() : b.uid,
+      kind: 'item', id: itemId, merged: [a.id, b.id], ...(state ? { state } : null),
+    };
     c.items.splice(Math.max(0, Math.min(at, c.items.length)), 0, fused);
     made++;
   }
@@ -141,29 +175,32 @@ export function enemyHexView(hex, drawRound = null) {
  */
 
 /**
- * 万物归虚's PREP half (业主 2026-10-19): 「获得装备「万物归虚」效果为装备时 将移除备战区所有干员，战斗开始时获得
- * 「移出干员数」层（20x%攻击力，减少30x点收到的伤害）」.
+ * 万物归虚's PREP half (业主 2026-10-19; re-homed onto the EQUIPMENT 2026-10-26): 「获得装备「万物归虚」效果为装备时 将移除
+ * 备战区所有干员，战斗开始时获得「移出干员数」层（20x%攻击力，减少30x点收到的伤害）」.
  *
  * 「备战区」 is the players' word for the 整备区 (docs/history/0.2.0.md §25.22.7) — the HAND and the overflow queue. So
  * "remove every operator in the reserve" empties this player's hand / temp of CHESS pieces (operators). Equipment and
  * summons are not 干员 and stay; the removed operators go back to the pool exactly like a sell, minus the funds — the
- * card pays no money for them. The count lands in the ref's `params.voidLayers`, which is what the battle half reads.
+ * equipment pays no money for them.
  *
- * [ASSUMED: 1) 「备战区」 = hand + overflow temp of THIS player (a team hex's other targets each run it on their own
- *   hand through their own ctx — this card is not `team`); 2) the operators are removed, not sold: no funds, and they
- *   return to the shared pool as a sell does; 3) their carried equipment returns to the hand (a sell's own rule);
- *   4) "装备时" is the moment the ITEM is equipped, but the card hands the item out on pick and nothing forces the player
- *   to equip it immediately — the card's own text says 装备时, so this runs when the item is equipped
- *   (PlayerState equip → `applyVoidReturnOnEquip`), and a later re-equip counts again. The pick-time call below covers
- *   the case where the item was granted and already equipped by the pick handler.]
+ * The count is banked on **the item piece that was just equipped** (`item.state[id].voidLayers`, additive), not on the
+ * card's ref: the card only hands the item out, and any other source hands it out too (神器整备, the workshop, the test
+ * panel) — the layers belong to the equipment (业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」).
+ * server/match/player/round.js `battleInput` carries it into the battle as `unit.itemState[id]` and
+ * server/sim/content/items/protocol.js reads it there.
+ *
+ * [ASSUMED: 1) 「备战区」 = hand + overflow temp of THIS player; 2) the operators are removed, not sold: no funds, and
+ *   they return to the shared pool as a sell does; 3) their carried equipment returns to the hand (a sell's own rule);
+ *   4) "装备时" is the moment the ITEM is equipped — the card's own text — so this runs from the equip path
+ *   (PlayerState.equip → `_voidReturnOnEquip`) and a later re-equip counts again. There is deliberately no pick-time
+ *   call any more: the card does not own the count.]
  * @param {import('./Match.js').Match} m
  * @param {import('./PlayerState.js').PlayerState} ps
- * @param {object} hex the 万物归虚 record
+ * @param {object} item the 万物归虚 item PIECE that was just equipped
+ * @returns {number} how many operators were removed
  */
-export function applyVoidReturnLayers(m, ps, hex) {
-  if (!hex || hex.id !== 'hex_voidreturn' || !ps) return 0;
-  const ref = (ps.effects || []).find((e) => e && (e.id === 'hex:hex_voidreturn' || e.key === 'hex:hex_voidreturn'));
-  if (!ref) return 0;
+export function applyVoidReturnLayers(m, ps, item) {
+  if (!ps || !item || item.kind !== 'item' || item.id !== VOIDRETURN_ITEM_ID) return 0;
   let removed = 0;
   // hand first, then the overflow queue: both are the 整备区
   for (const list of [ps.hand || [], ps.temp || []]) {
@@ -180,9 +217,11 @@ export function applyVoidReturnLayers(m, ps, hex) {
     }
   }
   try { ps.recompute(); } catch (e) { m.reportError?.('voidreturn recompute', e); }
-  const params = (ref.params ||= {});
-  const prev = Number.isFinite(Number(params.voidLayers)) ? Number(params.voidLayers) : 0;
-  params.voidLayers = prev + removed;
+  // the layers ride the equipment piece (battleInput → unit.itemState → items/protocol.js)
+  const state = (item.state ||= {});
+  const slot = (state[item.id] ||= {});
+  const prev = Number.isFinite(Number(slot.voidLayers)) ? Number(slot.voidLayers) : 0;
+  slot.voidLayers = prev + removed;
   ps.dirty?.();
   return removed;
 }
@@ -217,10 +256,9 @@ export function applyHex(m, ps, hex, opts = {}) {
   //
   // `applyBandHexCopy` is kept (exported, tested, and still the one seam a workshop pack may call) but no strategy
   // carries `band_hex_copy_once` any more, so `bandHexCopyCount()` returns 0 and it is a no-op for the shipped data.
-  // 万物归虚 (业主 2026-10-19): 「装备时 将移除备战区所有干员」 —— the prep half of the card. The battle half
-  // (server/sim/content/hexcards/batch15b.js installVoidReturn) reads the count it writes into the ref, so the two halves
-  // stay in one place each. Runs AFTER the refs exist (addHexRef above), so it can write onto them.
-  applyVoidReturnLayers(m, ps, hex);
+  // 万物归虚 (业主 2026-10-19) has NO pick-time half any more: its text says 「装备时 将移除备战区所有干员」, so the removal
+  // and the layer count belong to the EQUIPMENT and run from PlayerState.equip (→ applyVoidReturnLayers). The pick only
+  // hands the item to the hand (业主 2026-10-26).
   applyHexExtras(m, ps, hex, opts);
   // 锻炉 (业主 2026-10-24): gaining the card fuses what is ALREADY worn — an operator standing there with two items turns
   // them into 百变 the moment the card lands (equips made later go through PlayerState.equip's own call).

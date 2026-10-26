@@ -72,8 +72,6 @@ import { installNeurotoxin } from './hexcards/neurotoxin.js';
 import { installRicochet } from './hexcards/ricochet.js';
 import { installLogos } from './hexcards/logos.js';
 import { installOneBody } from './hexcards/onebody.js';
-// fifteenth batch (业主 2026-10-21): 心之钢's equipment script.
-import { installHeartsteel } from './hexcards/heartsteel.js';
 // tenth batch (the owner's list of 2026-10-15): the seven battle scripts of hexcards/batch10.js.
 import {
   installBlockwall, installSharePain, installTerraMourn, installDirectiveAtk,
@@ -88,16 +86,18 @@ import {
   installUntouchable, installPearlGlove, installPhysArts, installQuantum, installFrostGhost,
 } from './hexcards/batch14a.js';
 // fourteenth batch (业主 2026-10-19): 残光 / 玻璃大炮 / 身负重担 / 破伞 (batch15a.js) 与 加护 / 万物归虚 / 尸山 /
-// 旧日之力 (batch15b.js). Four of them grant their own equipment 残光 / 加护 / 万物归虚 / 尸山, which decides WHO the
-// battle half acts on (the `carries` rule 恶魔之契 already uses).
-import { installCanlight, installGlassCannon, installHeavyLoad, installUmbrellaBreak } from './hexcards/batch15a.js';
-import { installWarding, installVoidReturn, installCorpseHill, installOldPower } from './hexcards/batch15b.js';
+// 旧日之力 (batch15b.js). Only the CARD-level halves are installed here (玻璃大炮 / 身负重担 / 破伞 / 旧日之力): the four
+// cards that grant their own equipment (残光 / 加护 / 万物归虚 / 尸山) keep their battle half on the EQUIPMENT —
+// server/sim/content/items/protocol.js, like 幽魂 (items/battle.js) — so it runs whether or not the player owns the card
+// (业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」).
+import { installGlassCannon, installHeavyLoad, installUmbrellaBreak } from './hexcards/batch15a.js';
+import { installOldPower } from './hexcards/batch15b.js';
 // sixteenth batch (业主 2026-10-24): 自适应成长 / 亮剑 / 高压锅 / 神射法师 / 灵魂炸弹 / 惊惧 / 炼狱导管 + 回响形态's SP cut.
 import {
   installAdaptiveGrowth, installDrawBlade, installPressureCooker, installSpellArcher,
   installSoulBomb, installDread, installInfernalConduit, installEchoForm,
 } from './hexcards/batch16.js';
-import { reviveNow, carries } from './items/battle.js';
+import { reviveNow } from './items/battle.js';
 
 /** Player effect-ref key prefix (parallel to `choice:`). */
 export const HEX_KEY = 'hex:';
@@ -129,14 +129,6 @@ function passivePerCopyHex(battle, u, hexId, key, mods, extra = {}) {
   for (let i = 0; i < n; i++) passiveBuff(battle, u, i ? `${key}:${i + 1}` : key, mods, extra);
   return n;
 }
-
-/**
- * 恶魔形态's own equipment 恶魔之契 (`CUSTOM_ITEMS` `chess_item_9_91_e_a` in tools/build-data.mjs, §29.32): the card grants
- * it on pick, and the battle half buffs the operators CARRYING it instead of a random one — the owner's request
- * (「如果像幽魂形态一样给个装备来决定对谁生效就好了」). `itemKeyOf` (content/support) strips the `_a` suffix, which is
- * the key `carries` matches (an own copy or a lent grant).
- */
-export const DEMON_PACT_ITEM_KEY = 'chess_item_9_91_e';
 
 const isPos = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
 const countOf = (v, d = 1) => (Number.isInteger(v) && v > 0 ? v : d);
@@ -236,9 +228,12 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // fifth batch (2026-10-11): the four scripts of server/sim/content/hexcards/ — 精锐训练's per-round growth, 反击装甲's
   // riposte, 盾墙's adjacent-重装 split and 战争机器's 联防 aura. Each is dispatched by installHexCards() below.
   'drill', 'armor', 'shieldwall', 'warmachine',
-  // fourteenth batch (业主 2026-10-19): the eight scripts of hexcards/batch15a.js + batch15b.js. Ownership-only
+  // fourteenth batch (业主 2026-10-19): the CARD-level scripts of hexcards/batch15a.js + batch15b.js. Ownership-only
   // mechanics, so each key MUST be listed here or the ref never reaches a battle (the card would be silently inert).
-  'canlight', 'glasscannon', 'heavyload', 'umbrellabreak', 'warding', 'voidreturn', 'corpsehill', 'oldpower',
+  // canlight / warding / voidreturn / corpsehill are NOT here any more: those four cards hand out equipment whose battle
+  // half is the ITEM's (server/sim/content/items/protocol.js), so no ref has to reach a battle for them
+  // (业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」).
+  'glasscannon', 'heavyload', 'umbrellabreak', 'oldpower',
   // sixth batch (the owner's list of 2026-10-11): the other six scripts of hexcards/ — 人祭's 炎佑 on a knock-out,
   // 近大远小's distance multiplier, 雷区's mines, 破隐's reveal, 神经毒素's poison and 跳弹's ricochet. 债务 is the only
   // card of the batch with no battle part (its watcher lives in the prep phase: server/match/hextech.js `applyHexExtras`
@@ -247,9 +242,10 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // owner's list of 2026-10-12: 不灭壁垒's per-operator revive (its `battle.maxHpPct` already carries the ref, but the
   // mechanic itself has to be declared beside its `install` reader like every other one).
   'immortalRevive',
-  // eighth batch (the same day's second list, §29.23): 恶魔形态's per-second ATK growth and 群蛇形态's battle-start
-  // kills (the match writes their counts into the ref's params at battle creation).
-  'demonForm', 'serpentKills',
+  // eighth batch (the same day's second list, §29.23): 群蛇形态's battle-start kills (the match writes their counts into
+  // the ref's params at battle creation). 恶魔形态's per-second ATK growth moved to its equipment 恶魔之契
+  // (items/protocol.js) — the card's own half is the prep takeover, which never needs a battle (2026-10-26).
+  'serpentKills',
   // tenth batch (the owner's list of 2026-10-12, §29.27): 逻各斯's execution aura and 你我一体's shared pool / focus
   // fire. Both are ownership-only mechanics (no `params.battle`), so each has to be declared here beside its `install`
   // reader or `addHexRef` marks the ref prep-only and the battle never sees the card.
@@ -267,9 +263,6 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // key MUST be declared here or addHexRef marks the ref prep-only and the battle never sees the card.
   'untouchable', 'pearlglove', 'physarts', 'quantum', 'tapdance',
   'ultrefresh', 'omenpact', 'proteinshake', 'frostghost', 'heavyhitter',
-  // fifteenth batch (业主 2026-10-21): 心之钢's equipment script (hexcards/heartsteel.js). Ownership-only, so it MUST be
-  // declared here or addHexRef marks the ref prep-only and the battle never sees the card.
-  'heartsteel',
   // sixteenth batch (业主 2026-10-24): the seven new battle scripts of hexcards/batch16.js + 回响形态's SP cut. Every one
   // is ownership-only (no `effect.battle` passive), so each key MUST be listed here or addHexRef marks the ref prep-only
   // and the battle never sees the card.
@@ -1369,26 +1362,6 @@ export function install(battle) {
     }, { priority: -10 });
   }
 
-  // ---- 恶魔形态 (the battle half, owner 2026-10-12, §29.23; retargeted on the owner's report of 2026-10-13, §29.32):
-  // every own operator CARRYING 恶魔之契 gains +atkPctPerSec every second for the whole battle, stacking with no cap (the
-  // 击倒馈赠 additive-stack pattern). It used to draw ONE random own operator at battle start, which the owner could not
-  // steer; the equipment is the choice, exactly as 幽魂形态's 幽魂 is. No carrier on the field ⇒ no growth at all: the
-  // card is the player's to aim (a carrier that is knocked out pauses it until it redeploys — the old `alive` guard,
-  // kept). Dead carriers keep the stacks they earned (`persist` / `allowDead`).
-  for (const pid of ownersOf('hex_demonform')) {
-    const spec = specOf(pid, 'hex_demonform', 'demonForm');
-    const per = isPos(spec.atkPctPerSec) ? spec.atkPctPerSec : 10;
-    battle.every(1, () => {
-      for (const u of opsOf(pid)) {
-        if (!u.alive || !carries(battle, u, DEMON_PACT_ITEM_KEY)) continue;
-        battle.addBuff(u, {
-          key: 'hex:demonform', refresh: 'stack', stacks: 1, maxStacks: 100000,
-          mods: { atkPct: pct(per) }, persist: true, allowDead: true, visible: true, tags: ['hex'],
-        });
-      }
-    });
-  }
-
   // ---- 群蛇形态 (owner 2026-10-12, §29.23): the match spends the banked enemy-points into this ref's
   // `serpentKills.count` when the battle is built; here they are cashed in — that many enemies die the moment they
   // arrive, so they never walk a tile. The earliest spawns go first; a boss or a part is skipped [ASSUMED: the card
@@ -1675,12 +1648,10 @@ export const HEX_SCRIPT_KEYS = Object.freeze({
     hex_quantum: 'quantum', hex_tapdance: 'tapdance', hex_ultrefresh: 'ultrefresh',
     hex_omenpact: 'omenpact', hex_proteinshake: 'proteinshake', hex_frostghost: 'frostghost',
     hex_heavyhitter: 'heavyhitter',
-    // fourteenth batch (业主 2026-10-19)
-    hex_canlight: 'canlight', hex_glasscannon: 'glasscannon', hex_heavyload: 'heavyload',
-    hex_umbrellabreak: 'umbrellabreak', hex_warding: 'warding', hex_voidreturn: 'voidreturn',
-    hex_corpsehill: 'corpsehill', hex_oldpower: 'oldpower',
-    // fifteenth batch (业主 2026-10-21)
-    hex_heartsteel: 'heartsteel',
+    // fourteenth batch (业主 2026-10-19) — only the CARD-level scripts; 残光 / 加护 / 万物归虚 / 尸山 moved their battle
+    // half onto their equipment (server/sim/content/items/protocol.js), so they have no script key any more.
+    hex_glasscannon: 'glasscannon', hex_heavyload: 'heavyload',
+    hex_umbrellabreak: 'umbrellabreak', hex_oldpower: 'oldpower',
     // sixteenth batch (业主 2026-10-24)
     hex_adaptivegrowth: 'adaptiveGrowth', hex_drawblade: 'drawBlade', hex_pressurecooker: 'pressureCooker',
     hex_spellarcher: 'spellArcher', hex_soulbomb: 'soulBomb', hex_dread: 'dread',
@@ -1743,17 +1714,13 @@ function installHexCards(battle) {
   installPhysArts(gated);
   installQuantum(gated);
   installFrostGhost(gated);
-  // fourteenth batch (业主 2026-10-19) — same bundle, same gate
-  installCanlight(gated);
+  // fourteenth batch (业主 2026-10-19) — same bundle, same gate. 残光 / 加护 / 万物归虚 / 尸山 are NOT installed here: their
+  // battle half is the equipment's (server/sim/content/items/protocol.js), so it runs for every player who wears the item,
+  // card or no card (业主 2026-10-26).
   installGlassCannon(gated);
   installHeavyLoad(gated);
   installUmbrellaBreak(gated);
-  installWarding(gated);
-  installVoidReturn(gated);
-  installCorpseHill(gated);
   installOldPower(gated);
-  // fifteenth batch (业主 2026-10-21)
-  installHeartsteel(gated);
   // sixteenth batch (业主 2026-10-24) — same bundle, same gate
   installAdaptiveGrowth(gated);
   installDrawBlade(gated);

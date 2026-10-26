@@ -7,11 +7,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA, withoutHextech, give, giveItem, chessOfTier, legalTileFor } from './harness.js';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
-import { enemyHexMods, applyHex, applyVoidReturnLayers, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, enemyPrepLpCost, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
+import { enemyHexMods, applyHex, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, enemyPrepLpCost, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
 import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
 import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
 import { BATTLE_SPEC_KEYS, HEX_SCRIPT_KEYS, hasBattlePart } from '../../server/sim/content/hextech.js';
+import { hasBattleEffect } from '../../server/sim/content/items/battle.js';
 import { enemyHexWantedKey, bankThiefPenalty, applyThiefIncomeCut, applyBandHexCopy } from '../../server/match/hextech.js';
 import { createRng } from '../../server/sim/rng.js';
 
@@ -562,7 +563,9 @@ test('every battle-side hex reaches the battle input (a ref addHexRef marks prep
     'hex_armorbreak', 'hex_killgift', 'hex_skillflow', 'hex_northwall', 'hex_precisionpen',
     'hex_deepdevour', 'hex_indomember', 'hex_bondfission', 'hex_traitspread',     // conditional / ownership-only
     'hex_heritage',                                                              // accumulates params.battle on a sale
-    'hex_echoform', 'hex_demonform', 'hex_serpentform',                          // eighth batch: charges / ATK growth / kills
+    'hex_echoform', 'hex_serpentform',                                           // eighth batch: charges / battle-start kills
+    // 恶魔形态 is NOT here any more: its per-second ATK growth moved onto its equipment 恶魔之契 (items/protocol.js), so
+    // the card itself is prep-only now (业主 2026-10-26).
   ];
   for (const id of BATTLE_HEXES) {
     applyHex(m, ps, m.gd.hex(id));
@@ -570,7 +573,13 @@ test('every battle-side hex reaches the battle input (a ref addHexRef marks prep
     assert.ok(input.playerEffects.some((e) => e.data && e.data.hexId === id), `${id} must reach the battle`);
   }
   // …and the prep-only cards stay out (the flag still means something)
-  for (const id of ['hex_stipend', 'hex_echo', 'hex_itemrefund', 'hex_bountytriple', 'hex_fullkit', 'hex_mirror', 'hex_voidform', 'hex_heavenform', 'hex_ghostform']) {
+  // 业主 2026-10-26: the four equipment-granting cards, 心之钢 and 恶魔形态 are prep-only — their battle half is the
+  // EQUIPMENT's (server/sim/content/items/protocol.js), so no ref has to reach a battle for them.
+  for (const id of [
+    'hex_stipend', 'hex_echo', 'hex_itemrefund', 'hex_bountytriple', 'hex_fullkit', 'hex_mirror', 'hex_voidform',
+    'hex_heavenform', 'hex_ghostform',
+    'hex_canlight', 'hex_warding', 'hex_voidreturn', 'hex_corpsehill', 'hex_heartsteel', 'hex_demonform',
+  ]) {
     applyHex(m, ps, m.gd.hex(id));
     const input = ps.battleInput();
     assert.ok(!input.playerEffects.some((e) => e.data && e.data.hexId === id), `${id} must stay in prep`);
@@ -964,12 +973,15 @@ test('恶魔形态: the pick grants 恶魔之契, and the takeover never sells a
   assert.equal(rec.name, '恶魔之契');
   assert.equal(rec.shopExcluded, true, 'the shop never offers it');
   assert.equal(rec.mergeable, false, 'and it never merges');
-  // the card still carries its battle part (the carrier is what `install` buffs)
+  // 业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」: the per-second growth is the EQUIPMENT's
+  // (server/sim/content/items/protocol.js), so the card no longer needs to reach a battle at all — the item alone decides
+  // who grows, which is what makes 神器整备's / the workshop's 恶魔之契 work.
   const input = ps.battleInput();
-  const ref = input.playerEffects.find((e) => e.data && e.data.hexId === 'hex_demonform');
-  assert.ok(ref, 'the hex ref reaches the battle');
-  assert.equal(ref.params.demonForm.atkPctPerSec, 10, 'with the per-second ATK growth the sim installs');
-  assert.equal(ref.params.onPick.item.id, 'chess_item_9_91_e_a', 'and the equipment the player equips to aim it');
+  assert.equal(input.playerEffects.find((e) => e.data && e.data.hexId === 'hex_demonform'), undefined,
+    'the 恶魔形态 ref stays in prep: its battle half moved onto 恶魔之契');
+  const demon = m.gd.hex('hex_demonform');
+  assert.equal(demon.effect.onPick.item.id, 'chess_item_9_91_e_a', 'the pick hands out the equipment that fights');
+  assert.equal(demon.effect.onPrepStart.demonTakeover, true, 'and the prep takeover stays the card’s own half');
 
   // A FULL hand is what used to make the takeover shed the owner's weakest bench piece. Fill every free slot, then run
   // the takeover: nothing may be sold, and nothing may arrive either (every purchase needs a free slot, and no pair
@@ -1268,14 +1280,14 @@ test('可露希尔大降价: 三次刷新免费，且这三次刷新内的购买
 // 第十四批（业主 2026-10-19）：集成门禁 + 万物归虚的备战期半边
 // =====================================================================================================================
 
-const BATCH15 = [
-  ['hex_canlight', 'canlight'], ['hex_glasscannon', 'glasscannon'], ['hex_heavyload', 'heavyload'],
-  ['hex_umbrellabreak', 'umbrellabreak'], ['hex_warding', 'warding'], ['hex_voidreturn', 'voidreturn'],
-  ['hex_corpsehill', 'corpsehill'], ['hex_oldpower', 'oldpower'],
+/** The four cards of the batch whose battle half is a CARD-level script (no equipment involved). */
+const BATCH15_CARD = [
+  ['hex_glasscannon', 'glasscannon'], ['hex_heavyload', 'heavyload'],
+  ['hex_umbrellabreak', 'umbrellabreak'], ['hex_oldpower', 'oldpower'],
 ];
 
-test('batch15: all eight cards are wired end to end (record → BATTLE_SPEC_KEYS → HEX_SCRIPT_KEYS)', () => {
-  for (const [hexId, key] of BATCH15) {
+test('batch15: the four CARD-level scripts are wired end to end (record → BATTLE_SPEC_KEYS → HEX_SCRIPT_KEYS)', () => {
+  for (const [hexId, key] of BATCH15_CARD) {
     const rec = DATA.hextech.playerHexes[hexId];
     assert.ok(rec, hexId + ': the record exists');
     assert.ok(rec.effect[key] !== undefined, hexId + ': carries its spec key ' + key);
@@ -1285,53 +1297,86 @@ test('batch15: all eight cards are wired end to end (record → BATTLE_SPEC_KEYS
   }
 });
 
-test('batch15: the four equipment-granting cards hand out items that exist and are never sold', () => {
+test('batch15: the four equipment-granting cards fight through their EQUIPMENT, not through a card script', () => {
+  // 业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」: these four only hand an item out; the battle half is
+  // the item's (server/sim/content/items/protocol.js), so 神器整备 / 工坊 / 测试面板 can give the item without the card.
   for (const [hexId, itemId] of [
     ['hex_canlight', 'chess_item_9_92_e_a'], ['hex_warding', 'chess_item_9_93_e_a'],
     ['hex_voidreturn', 'chess_item_9_94_e_a'], ['hex_corpsehill', 'chess_item_9_95_e_a'],
   ]) {
-    const spec = DATA.hextech.playerHexes[hexId].effect.onPick;
-    assert.deepEqual(spec, { item: { id: itemId, count: 1 } }, hexId + ' grants its own equipment');
+    const rec = DATA.hextech.playerHexes[hexId];
+    assert.ok(rec, hexId + ': the record exists');
+    assert.deepEqual(rec.effect.onPick, { item: { id: itemId, count: 1 } }, hexId + ' grants its own equipment');
     const item = DATA.items[itemId];
     assert.ok(item, hexId + ': ' + itemId + ' exists in data/items.json');
     assert.equal(item.hideInShop, true, itemId + ' is not sold in the shop');
     assert.equal(item.price, 0, itemId + ' costs nothing (granted only)');
+    assert.equal(hasBattleEffect(item), true, itemId + ': the EQUIPMENT carries the battle behaviour');
+    assert.equal(HEX_SCRIPT_KEYS[hexId], undefined, hexId + ': no card-side battle script any more');
+    assert.equal(hasBattlePart(rec.effect), false, hexId + ': the ref never has to reach a battle');
   }
 });
 
-test('万物归虚: picking the card empties the reserve (备战区) and banks the count on the ref', () => {
+test('万物归虚: EQUIPPING the item empties the reserve (备战区) and banks the count on the item piece', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 31, fake: true });
   h.start();
   toPrep(h, 1);
   const m = h.m;
   const ps = h.ps('p_0');
-  // operators in the RESERVE (the hand) are what the card removes — the 备战区 of the owner's wording
+  // operators in the RESERVE (the hand) are what the item removes — the 备战区 of the owner's wording
   give(m, ps, chessOfTier(1)[0]);
   give(m, ps, chessOfTier(1)[1]);
   ps.recompute();
   const before = (ps.hand || []).filter((x) => x && x.kind === 'chess').length;
   assert.ok(before > 0, 'premise: there are operators in the reserve');
-  applyHex(m, ps, m.gd.hex('hex_voidreturn'));
-  const ref = (ps.effects || []).find((e) => e && e.id === 'hex:hex_voidreturn');
-  assert.ok(ref, 'the card ref exists');
+  // 业主 2026-10-26: no 万物归虚 card at all — the EQUIPMENT is what empties the reserve and keeps the count.
+  assert.equal(ownsHex(ps, 'hex_voidreturn'), false, 'premise: the player never picked the card');
+  const carrier = give(m, ps, chessOfTier(1)[0], 'board', [10, 5]);
+  const item = giveItem(m, ps, 'chess_item_9_94_e_a');
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: item.uid, targetUid: carrier.uid }), { ok: true });
   assert.equal((ps.hand || []).filter((x) => x && x.kind === 'chess').length, 0, 'the reserve holds no operator any more');
-  assert.equal(Number(ref.params.voidLayers), before, 'the count of removed operators is banked on the ref, got ' + ref.params.voidLayers);
+  const banked = item.state && item.state['chess_item_9_94_e_a'] && item.state['chess_item_9_94_e_a'].voidLayers;
+  assert.equal(banked, before, 'the count of removed operators is banked on the ITEM piece, got ' + banked);
+  assert.equal(ps.effects.some((e) => e && e.data && e.data.hexId === 'hex_voidreturn'), false, 'and no card ref was ever made');
+  // a SECOND equip counts again (the count is additive, as the card's 「装备时」 wording implies)
+  give(m, ps, chessOfTier(1)[1]);
+  ps.recompute();
+  const second = giveItem(m, ps, 'chess_item_9_94_e_a');
+  const carrier2 = give(m, ps, chessOfTier(1)[0], 'board', [10, 6]);
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: second.uid, targetUid: carrier2.uid }), { ok: true });
+  const banked2 = second.state && second.state['chess_item_9_94_e_a'] && second.state['chess_item_9_94_e_a'].voidLayers;
+  assert.equal(banked2, 1, 'the second equip banked the one operator it removed, got ' + banked2);
   m.dispose();
 });
 
-test('万物归虚: the equipment it grants is in the hand and the battle half reads the banked layer count', () => {
+test('万物归虚: the banked layers ride the battle input into the next battle (装备 → battleInput → 战斗)', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 32, fake: true });
   h.start();
   toPrep(h, 1);
   const m = h.m;
   const ps = h.ps('p_0');
   give(m, ps, chessOfTier(1)[0]);
+  give(m, ps, chessOfTier(1)[1]);
   ps.recompute();
-  applyHex(m, ps, m.gd.hex('hex_voidreturn'));
-  const held = (ps.hand || []).concat(ps.temp || []).find((x) => x && x.kind === 'item' && x.id === 'chess_item_9_94_e_a');
-  assert.ok(held, 'the card handed out its equipment');
-  const ref = (ps.effects || []).find((e) => e && e.id === 'hex:hex_voidreturn');
-  assert.equal(ref.params.voidLayers, 1, 'one operator was removed');
+  const before = (ps.hand || []).filter((x) => x && x.kind === 'chess').length;
+  assert.ok(before > 0, 'premise: two operators in the reserve');
+  const carrier = give(m, ps, chessOfTier(1)[0], 'board', [10, 5]);
+  const item = giveItem(m, ps, 'chess_item_9_94_e_a');
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: item.uid, targetUid: carrier.uid }), { ok: true });
+  // 1) the match layer: the count travels with the SAME input the client replays (per concrete item id)
+  const input = ps.battleInput();
+  const unit = input.units.find((u) => u.uid === carrier.uid);
+  assert.ok(unit, 'the carrier is in the battle input');
+  assert.ok(unit.items.includes('chess_item_9_94_e_a'), 'and the item is on it');
+  assert.deepEqual(unit.itemState, { chess_item_9_94_e_a: { voidLayers: before } }, 'the count rides the input');
+  // 2) the sim layer: the operator starts the battle with +20 % ATK per layer
+  const bt = makeBattle({ players: [input], enemies: [], autoFinish: false, timeLimit: 20 });
+  bt.run(0.3);
+  const u = bt.b.allyUnits.find((x) => x.uid === carrier.uid);
+  assert.ok(u, 'the operator deployed');
+  const buff = (u.buffs || []).find((b) => typeof b.key === 'string' && b.key.startsWith('item:chess_item_9_94_e_a'));
+  assert.ok(buff, 'the layer buff is installed from the equipment');
+  assert.ok(Math.abs(buff.mods.atkPct - 0.2 * before) < 1e-9, 'two layers -> +40 % ATK, got ' + buff.mods.atkPct);
   m.dispose();
 });
 

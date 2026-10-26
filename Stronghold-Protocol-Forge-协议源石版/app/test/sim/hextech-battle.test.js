@@ -1340,15 +1340,18 @@ test('回响形态 (extraCharges): a 持续技能 still runs its full duration w
 
 test('恶魔形态 (demonForm): only the operator CARRYING 恶魔之契 gains +10 % ATK every second, uncapped', () => {
   // The owner's report of 2026-10-13 (§29.32): the card used to draw ONE RANDOM own operator at battle start, which the
-  // player could not steer. The equipment now decides: no carrier ⇒ no growth at all.
-  const bare = soloBattle({ hexes: ['hex_demonform'], timeLimit: 30 });
+  // player could not steer. The equipment decides instead.
+  // 业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」: and it decides on its OWN — the growth is the
+  // EQUIPMENT's behaviour (server/sim/content/items/protocol.js chess_item_9_91_e), so these battles carry NO 恶魔形态 ref
+  // at all. That is the whole point: 神器整备 / the workshop hand 恶魔之契 out without the card.
+  const bare = soloBattle({ hexes: [], timeLimit: 30 });
   bare.run(5);
-  assert.equal(buffsOf(one(bare), 'hex:demonform').length, 0, 'no carrier on the field ⇒ nothing grows');
+  assert.equal(buffsOf(one(bare), 'item:demonpact').length, 0, 'no carrier on the field ⇒ nothing grows');
   bare.invariants();
 
   // one guard carries the pact, one does not: only the carrier grows
   const two = soloBattle({
-    hexes: ['hex_demonform'], timeLimit: 30,
+    hexes: [], timeLimit: 30,
     units: [
       { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_91_e_a'] },
       { uid: 2, kind: 'chess', chessId: 'test_guard', row: 12, col: 6 },
@@ -1357,14 +1360,14 @@ test('恶魔形态 (demonForm): only the operator CARRYING 恶魔之契 gains +1
   two.run(0.5);
   const [carrier, other] = ops(two);
   assert.ok(carrier && other, 'both operators are on the field');
-  assert.equal(buffsOf(carrier, 'hex:demonform').length, 0, 'nothing in the first half-second');
+  assert.equal(buffsOf(carrier, 'item:demonpact').length, 0, 'nothing in the first half-second');
   two.run(5);
-  const b = buffsOf(carrier, 'hex:demonform');
+  const b = buffsOf(carrier, 'item:demonpact');
   assert.equal(b.length, 1, 'one stacking entry');
   assert.ok(b[0].stacks >= 4, `about one stack a second (got ${b[0].stacks})`);
   assert.equal(b[0].stacks, Math.floor(two.b.time), 'exactly one a second');
   assert.ok(Math.abs(b[0].mods.atkPct - 0.1) < 1e-9, `+10 % ATK a stack (got ${b[0].mods && b[0].mods.atkPct})`);
-  assert.equal(buffsOf(other, 'hex:demonform').length, 0, 'the operator without the pact is untouched');
+  assert.equal(buffsOf(other, 'item:demonpact').length, 0, 'the operator without the pact is untouched');
   two.invariants();
 });
 
@@ -1744,12 +1747,14 @@ test('背水一战 (lastDitch): while the window is open every bond layer gain i
 
 
 test('心之钢 (heartsteel): a 坚守 operator procs every 3 s — 100 % max HP arts, +150 max HP and +2 坚守 layers', () => {
+  // 业主 2026-10-26: the battle half is the EQUIPMENT's (items/protocol.js chess_item_9_96_e), so this field carries NO
+  // 心之钢 ref — exactly the situation 神器整备 puts a player in (it hands the item out, never the card).
   const h = soloBattle({
     hexes: [],
     players: [{
       playerId: 'p1', seat: 0, side: 'L', colOffset: 0,
       bonds: { steadShip: { count: 1, active: false, tier: 0, layers: 0 } },
-      playerEffects: [refOf('hex_heartsteel')],
+      playerEffects: [],
       units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6, items: ['chess_item_9_96_e_a'] }],
     }],
     enemies: [{ key: 'enemy_dummy', time: 0, pos: [9, 7] }],
@@ -1759,7 +1764,7 @@ test('心之钢 (heartsteel): a 坚守 operator procs every 3 s — 100 % max HP
   const u = one(h);
   assert.ok(unitBonds(u).includes('steadShip'), 'the equipment makes its carrier a 坚守 member');
   h.run(7);
-  const stacks = buffsOf(u, 'hex:heartsteel:maxhp');
+  const stacks = buffsOf(u, 'item:heartsteel:maxhp');
   assert.ok(stacks.length === 1 && stacks[0].stacks >= 2, `at least two procs in 7 s (got ${stacks[0] && stacks[0].stacks})`);
   // the guard starts at 2000 max HP; every proc adds exactly 150 (one stack each)
   assert.equal(u.s.maxHp, 2000 + 150 * stacks[0].stacks, `+150 max HP per proc (got ${u.s.maxHp})`);

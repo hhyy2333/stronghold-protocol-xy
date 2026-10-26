@@ -172,6 +172,10 @@ export class BattlePlayers {
     if (def.raw?.isDiy && !def.diyFor) { this.log(`自选 slot ${inp.chessId} without a pick`); return null; }
     const u = this._makeAlly(ps, def, 'op', r, c, { uid: inp.uid, dir });
     u.items = [...(inp.items ?? [])];
+    // 装备的逐件对局状态（业主 2026-10-26）：`PlayerState.battleInput` 把装备 piece 上的 `state`（目前只有万物归虚的层数）
+    // 按**具体装备 id** 带进来。拷一份再挂上，内容只读 —— 客户端重放用的是同一份 battle input，所以两端看到的是同一张表。
+    // 读它的内容在 server/sim/content/items/protocol.js（chess_item_9_94_e 的 voidLayers）。
+    if (inp.itemState && typeof inp.itemState === 'object') u.itemState = { ...inp.itemState };
     // 海克斯 盟约共鸣（hex_bondresonance）：`PlayerState.battleInput` 把相邻干员借来的盟约写在 unit.bonds 上。
     // 这是**成员资格**的一条来源（与 def.bonds / 装备授予 / 特质并列），`unitBonds` 合并它 —— 从前这个字段到了
     // 这里就没人读，借来的盟约在战斗里静默消失（业主 2026-10-17：「共鸣后 7 个叙拉古，只有 3 个隐身」）。

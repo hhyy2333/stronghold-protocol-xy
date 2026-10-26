@@ -1308,22 +1308,27 @@ test('幽魂 (the remake’s own equipment): 阻挡数 0, and nothing takes more
   checkInvariants(plain.b);
 });
 
-test('恶魔之契 (the remake’s second equipment): a MARKER that is also a 变形同构体 carrier', () => {
-  // 恶魔形态 grants it so the CARD's battle half can find WHO to buff (`carries(battle, u, 'chess_item_9_91_e')`,
-  // §29.32.4 — the card owns the mechanic, the equipment owns the choice). The item must therefore stay inert.
+test('恶魔之契 (the remake’s second equipment): its own battle behaviour plus a 变形同构体 carrier', () => {
+  // 业主 2026-10-26: the per-second ATK growth belongs to the EQUIPMENT (items/protocol.js `chess_item_9_91_e`), so it
+  // works for every player who wears it — 神器整备 / the workshop / the test panel hand it out without the card.
   // 业主 2026-10-21: 「三阶恶魔形态的装备恶魔形态增加装备『同构体』效果」 — it is ALSO a morph carrier.
   const rec = DATA.items['chess_item_9_91_e_a'];
-  assert.equal(hasBattleEffect(rec), false, 'no `BY_ITEM` behaviour of its own');
-  assert.deepEqual(rec.buffs, [], 'and no stat buffs either');
+  assert.equal(hasBattleEffect(rec), true, 'the equipment carries its own battle behaviour');
+  assert.deepEqual(rec.buffs, [], 'no stat buffs (the growth is a stacked buff, not a stat line)');
   assert.equal(rec.shopExcluded, true, 'never sold (no shop / 道具补给 / pool can offer it)');
   assert.equal(rec.canGiveBond, true, 'the 变形同构体 carrier flag');
   const withIt = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: ['chess_item_9_91_e_a'] }] });
   const without = fight({ units: [{ chessId: 't_op', row: 10, col: 4 }] });
-  withIt.step(1);
-  without.step(1);
+  withIt.run(5.2);
+  without.run(5.2);
   const u = withIt.unit('t_op');
-  for (const k of ['atk', 'def', 'res', 'maxHp', 'aspd', 'blockCnt']) close(u.s[k], without.unit('t_op').s[k], `the marker changes no ${k}`);
-  assert.equal(carries(withIt.b, u, 'chess_item_9_91_e'), true, 'the id the card looks up finds its carrier');
+  const grow = u.buffs.filter((b) => b.key === 'item:demonpact')[0];
+  assert.ok(grow, 'the carrier grows every second');
+  assert.ok(grow.stacks >= 5, `about one stack a second (got ${grow.stacks})`);
+  close(grow.mods.atkPct, 0.1, '+10 % ATK a stack');
+  assert.equal(without.unit('t_op').buffs.filter((b) => b.key === 'item:demonpact').length, 0, 'no equipment -> no growth');
+  for (const k of ['def', 'res', 'maxHp', 'aspd', 'blockCnt']) close(u.s[k], without.unit('t_op').s[k], `the growth changes no ${k}`);
+  assert.equal(carries(withIt.b, u, 'chess_item_9_91_e'), true, 'the key the equipment is filed under finds its carrier');
   assert.equal(carries(without.b, without.unit('t_op'), 'chess_item_9_91_e'), false, 'and an operator without it does not');
   // as a carrier it makes the OTHER equipped item's bond count (维式重锤 → 维多利亚)
   const paired = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: ['chess_item_9_91_e_a', A('1_01')] }] });
@@ -1353,6 +1358,164 @@ test('心之钢 (the remake’s third equipment): its carrier counts as a 坚守
   assert.ok(pieceBonds(m.gd, piece).includes('steadShip'), 'the prep count sees it');
   cover('chess_item_9_96_e_a');
   checkInvariants(h.b);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// 协议源石装备的战斗效果属于装备本身 —— 业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」
+//
+// 从前这六件（残光 / 加护 / 万物归虚 / 尸山 / 心之钢 / 恶魔之契）的战斗半边写在【协议源石卡】的脚本里
+// (hexcards/batch15a.js、batch15b.js、heartsteel.js)，靠 `ownersOf('hex_xxx')` 找「拥有这张卡的人」再用 `carries()`
+// 认领装备者。于是只有拥有对应卡的人才生效，而【神器整备】/ 工坊 / 测试面板发出去的装备（没有卡）到手是死的。
+// 现在六件都是 BY_ITEM 行为（server/sim/content/items/protocol.js）。下面每一条都**不给玩家任何 playerEffects**，
+// 只把装备装在干员身上 —— 这就是那条 bug 的回归网。
+
+test('残光 (9_92): the equipment alone — no 协议源石 card — deals ×(1 + 30 % x)', () => {
+  const ITEM = 'chess_item_9_92_e_a';
+  const h = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }], foes: [[9, 4]] });
+  h.run(0.2);
+  const u = h.unit('t_op');
+  const e = foe(h);
+  forceRng(h, 0.999);   // the 4x % self-hit roll is not what this line measures
+  for (let i = 0; i < 3; i++) h.b.emit('attack', { attacker: u, targets: [e], isSkill: false });
+  const info = h.b.makeDamage({ amount: 100, type: 'phys', isAttack: true });
+  h.b.emit('hit', { source: u, target: e, dmg: info });
+  close(info.mul, 1.9, 'three attacks -> x1.9');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('加护 (9_93): the equipment alone cuts a hit of the carrier’s own damage type by 60 %', () => {
+  const ITEM = 'chess_item_9_93_e_a';
+  const h = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }], foes: [[9, 4]] });
+  h.run(0.2);
+  const u = h.unit('t_op');
+  const e = foe(h);
+  assert.equal(u.dmgType, 'phys', 'premise: a physical operator');
+  const phys = h.b.makeDamage({ amount: 100, type: 'phys' });
+  h.b.emit('hit', { source: e, target: u, dmg: phys });
+  close(phys.mul, 0.4, 'same type -> x0.4');
+  const arts = h.b.makeDamage({ amount: 100, type: 'arts' });
+  h.b.emit('hit', { source: e, target: u, dmg: arts });
+  assert.equal(arts.mul, 1, 'a different damage type is untouched');
+  // the same operator WITHOUT the equipment is not protected
+  const bare = fight({ units: [{ chessId: 't_op', row: 10, col: 4 }], foes: [[9, 4]] });
+  bare.run(0.2);
+  const bp = bare.b.makeDamage({ amount: 100, type: 'phys' });
+  bare.b.emit('hit', { source: foe(bare), target: bare.unit('t_op'), dmg: bp });
+  assert.equal(bp.mul, 1, 'no equipment -> no reduction');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('万物归虚 (9_94): the layers banked on the piece arrive as +ATK and a flat damage reduction', () => {
+  // The prep half (server/match/hextech.js applyVoidReturnLayers) writes `item.state[id].voidLayers`; battleInput carries
+  // it in as `unit.itemState` (server/match/player/round.js → server/sim/battle/players.js). Here the input is built by
+  // hand, which is exactly what the match sends.
+  const ITEM = 'chess_item_9_94_e_a';
+  const h = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM], itemState: { [ITEM]: { voidLayers: 2 } } }], foes: [[9, 4]] });
+  h.run(0.2);
+  const u = h.unit('t_op');
+  close(u.s.atk, 500 * 1.4, 'two layers -> +40 % ATK');
+  // a TRUE hit is not mitigated, so the flat cut is exactly 2 x 30 out of 500
+  const info = h.b.makeDamage({ amount: 500, type: 'true' });
+  h.b.emit('hit', { source: foe(h), target: u, dmg: info });
+  close(info.mul, 0.88, 'two layers -> a flat -60 on a 500-damage hit');
+  // no banked layers (nothing was removed): no bonus at all
+  const bare = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }], foes: [[9, 4]] });
+  bare.run(0.2);
+  const bu = bare.unit('t_op');
+  close(bu.s.atk, 500, 'no layers -> base ATK');
+  const bi = bare.b.makeDamage({ amount: 500, type: 'true' });
+  bare.b.emit('hit', { source: foe(bare), target: bu, dmg: bi });
+  assert.equal(bi.mul, 1, 'no layers -> no reduction');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('尸山 (9_95): the equipment alone executes the carrier’s other operators and adds up their base stats', () => {
+  const ITEM = 'chess_item_9_95_e_a';
+  const h = fight({
+    ops: { t_op: op('t_op'), t_mate: op('t_mate') },
+    units: [
+      { chessId: 't_op', row: 10, col: 4, items: [ITEM] },
+      { chessId: 't_mate', row: 11, col: 4 },
+    ],
+  });
+  h.run(0.3);
+  const alive = h.b.allyUnits.filter((x) => x.kind === 'op' && x.alive);
+  assert.equal(alive.length, 1, 'only the carrier is left standing');
+  const c = alive[0];
+  close(c.s.maxHp, 4000, '2000 + the mate’s 2000 (hpFlat)');
+  close(c.s.atk, 1000, '500 + the mate’s 500 (最终加算)');
+  close(c.s.spRecovery, 2, '技力回复 +1 on top of the base 1');
+  close(c.s.hpRegen, 4000 * 0.01, '1 % max HP a second');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('尸山 (9_95) 联防: only the carrier’s OWN operators are eaten — the teammate’s never are', () => {
+  // 业主 2026-10-22「协议『尸山』的装备『尸山』联防不生效」/「尸山在联防和打 boss 时会吞掉队友的干员」：联防把自己那场
+  // 已经倒下的干员按 `carryState.down` 送进来（入场即被强制退场 —— battleStart 时 `alive === false`，对象却还在
+  // `allyUnits` 里），所以属性从「所有还在场的己方干员（含已经倒下的）」累加，只对还活着的执行击杀；另一个
+  // `ownerId` 的干员（队友 / boss 场的另一半）一律不碰。口径随装备一起搬过来，一行没改。
+  const h = makeBattle({
+    kind: 'unite', content: 'full',
+    defs: { chess: { t_op: op('t_op'), t_mate: op('t_mate') }, enemies: { e_d: DUMMY() } },
+    players: [
+      { playerId: 'p_0', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [],
+        units: [
+          { uid: 1, kind: 'chess', chessId: 't_op', row: 9, col: 6, items: ['chess_item_9_95_e_a'] },
+          { uid: 2, kind: 'chess', chessId: 't_mate', row: 9, col: 7, carryState: { down: true } },
+        ] },
+      { playerId: 'p_1', seat: 1, side: 'L', colOffset: 8, bonds: {}, playerEffects: [],
+        units: [{ uid: 3, kind: 'chess', chessId: 't_mate', row: 9, col: 6, carryState: { down: true } }] },
+    ],
+    enemies: [{ key: 'e_d', pos: [10, 6] }], autoFinish: false, timeLimit: 40,
+  });
+  h.run(0.3);
+  const alive = h.b.allyUnits.filter((x) => x.kind === 'op' && x.alive);
+  assert.equal(alive.length, 1, 'only the carrier is left standing');
+  const c = alive[0];
+  close(c.s.maxHp, 4000, 'its own 2000 + its own down 2000 (the teammate’s 2000 is not eaten)');
+  close(c.s.atk, 1000, 'ATK = own 500 x 2');
+  const partner = h.b.allyUnits.find((x) => x.ownerId === 'p_1');
+  assert.notEqual(partner.removeReason, 'corpsehill', 'the teammate’s operator is not retired by 尸山');
+  checkInvariants(h.b);
+});
+
+test('心之钢 (9_96): the equipment alone procs the 坚守 extra hit, +150 max HP and +2 layers', () => {
+  const ITEM = 'chess_item_9_96_e_a';
+  const h = fight({
+    units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }],
+    foes: [[10, 5]],
+    bonds: { steadShip: { count: 1, active: false, tier: 0, layers: 0 } },
+  });
+  h.run(8);
+  const u = h.unit('t_op');
+  const stacks = u.buffs.filter((b) => b.key === 'item:heartsteel:maxhp')[0];
+  assert.ok(stacks && stacks.stacks >= 2, `at least two procs in 8 s (got ${stacks && stacks.stacks})`);
+  close(u.s.maxHp, 2000 + 150 * stacks.stacks, '+150 max HP per proc');
+  const ps = h.b.getPlayer('p1');
+  assert.ok((ps.bonds.steadShip?.layers || 0) >= 2 * stacks.stacks, 'the 坚守 layer gain follows the procs');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('神器整备 / 工坊 发出去的每一件 协议源石装备都真的能打（没有对应卡也一样）', () => {
+  // 神器整备 (hex_artifactkit) hands out 加护 on the pick, 残光 at the next round start and one random 3阶 piece three
+  // rounds later — none of them carries the 协议源石 that normally grants it. Every id it can hand out must therefore
+  // have a battle behaviour of its OWN, or the equipment is dead in the player's hands (the owner's report).
+  const kit = DATA.hextech.playerHexes.hex_artifactkit.effect;
+  const rungs = kit.onRoundStart.artifactStage.rungs;
+  const handed = [kit.onPick.artifactKit.ids, ...rungs.map((r) => r.ids)].flat();
+  assert.equal(handed.length, 7, 'one 1阶 + one 2阶 + five 3阶 = seven pieces');
+  for (const id of handed) {
+    const rec = DATA.items[id];
+    assert.ok(rec, id + ' resolves in data/items.json');
+    assert.equal(hasBattleEffect(rec), true, `${id} has a battle behaviour of its own (BY_ITEM), not the card's`);
+  }
+  // and the one piece 神器整备 does NOT hand out (百变, 锻炉's fusion product) still has none of its own
+  assert.equal(hasBattleEffect(DATA.items['chess_item_9_97_e_a']), false, '百变 has no behaviour: its components do');
 });
 
 test('协议源石自制的五件装备记录: name / effect / never-sold', () => {
