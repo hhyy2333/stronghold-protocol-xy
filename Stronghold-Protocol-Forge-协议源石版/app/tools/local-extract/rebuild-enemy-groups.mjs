@@ -96,10 +96,20 @@ export function main(argv = process.argv.slice(2), log = console) {
     return 0;
   }
   manifest.groups = manifest.groups || {};
+  // 只加不删是不够的：敌人被撤下时（2026-10-26 撤下畸变体傀儡 enemy_1130_infstr）磁盘上的模型目录没了，
+  // 但清单里那条 `spine/enemy/<id>` group 会留着，指向三个已经不存在的文件。它不会让游戏报错（客户端只在
+  // 有 spineLocal 引用时才查 group，而 data/assets.json 里那条引用也一起删了），但它是一份「指向空处」的
+  // 状态：rebuild 的语义是「让 spine/enemy 这批 group 与磁盘一致」，所以这里也要**删掉**已经没有目录的条目。
+  const dropped = [];
+  for (const g of Object.keys(manifest.groups)) {
+    if (!g.startsWith(`${SUB}/`)) continue;
+    if (!Object.hasOwn(want, g)) { delete manifest.groups[g]; dropped.push(g.slice(SUB.length + 1)); }
+  }
   for (const [g, entries] of Object.entries(want)) manifest.groups[g] = entries;
   manifest.count = Object.values(manifest.groups).reduce((n, g) => n + Object.keys(g || {}).length, 0);
   fs.writeFileSync(MFST, `${JSON.stringify(manifest, null, 1)}\n`, 'utf8');
-  log.log(`[local-assets] rebuilt ${Object.keys(want).length} enemy groups — ${before} → ${manifest.count} entries`);
+  log.log(`[local-assets] rebuilt ${Object.keys(want).length} enemy groups — ${before} → ${manifest.count} entries` +
+    (dropped.length ? ` (dropped ${dropped.length} with no model dir: ${dropped.join(', ')})` : ''));
   return 0;
 }
 
