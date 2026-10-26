@@ -112,7 +112,7 @@ test('batch 2: every mechanic key is authored in forkwave.js and NOT also listed
   }
 });
 
-test('batch 2 mechanics in a real battle: self-destruct, split, and the on-hit debuffs', async () => {
+test('batch 2 mechanics in a real battle: self-destruct and the on-hit debuffs', async () => {
   const { makeBattle, chessRec } = await import('../helpers/battleHarness.js');
   const enemiesMod = await import('../../server/sim/content/enemies.js');
   const bossesMod = await import('../../server/sim/content/bosses.js');
@@ -133,7 +133,7 @@ test('batch 2 mechanics in a real battle: self-destruct, split, and the on-hit d
     const hp0 = wall.hp;
     h.b.dealDamage(wall, e, { amount: 1e6, type: 'true', canDodge: false });
     h.run(0.4);
-    return { boom: Math.round(hp0 - h.allies()[0].hp), aspd, defFlat, leftovers: h.enemies().length, atk: E[key].stats.atk };
+    return { boom: Math.round(hp0 - h.allies()[0].hp), aspd, defFlat, atk: E[key].stats.atk };
   };
 
   // 辐能源石虫: Boom.atk_scale × ATK arts blast on death (the blackboard key really is capital-B for this enemy)
@@ -149,9 +149,6 @@ test('batch 2 mechanics in a real battle: self-destruct, split, and the on-hit d
 
   // 酸液源石虫: every hit lowers the target's DEF by 10
   assert.deepEqual(run('enemy_1004_mslime').defFlat, [-10], '酸液源石虫 lowers the target DEF');
-
-  // 畸变体傀儡: killed → two of itself (the split is silence-flagged in the handbook, so it carries sil: true)
-  assert.equal(run('enemy_1130_infstr').leftovers, 2, '畸变体傀儡 splits into two');
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -429,29 +426,13 @@ test('每个 spineLocal 的 group 都在 data/local-assets.json 里（本机有�
   assert.deepEqual(gaps, [], `local-assets groups missing: ${gaps.join('; ')}`);
 });
 
-// 业主 2026-10-26「畸变体绝对有bug会无限分裂」：分裂出来的子怪是同一个 key，于是带着同一份 kit —— 每个子怪再死又
-// 分裂两个，链式下去敌人数量无界增长（那波永远清不完）。分裂只做一代：子怪带 `forkSplit` tag，自己的 death 钩子直接返回。
-test('畸变体傀儡: the split is ONE generation — the children never split again', async () => {
-  const { makeBattle, chessRec } = await import('../helpers/battleHarness.js');
-  const enemiesMod = await import('../../server/sim/content/enemies.js');
-  const bossesMod = await import('../../server/sim/content/bosses.js');
-  const WALL = (id) => chessRec({ id, profession: 'TANK', stats: { atk: 0, maxHp: 3e4, def: 0, res: 0, blockCnt: 3 }, rangeGrid: [[0, 0]], skill: null });
-  const h = makeBattle({
-    content: 'generic', extraContent: [enemiesMod, bossesMod], seed: 5, autoFinish: false, timeLimit: 200,
-    defs: { chess: { t_wall: WALL('t_wall') } }, kits: { t_wall: () => ({ trait: { noAttack: true } }) },
-    units: [{ chessId: 't_wall', row: 10, col: 5 }],
-  });
-  h.step();
-  const parent = h.spawn('enemy_1130_infstr', { pos: [10, 5], routeIndex: 0 });
-  h.run(0.2);
-  h.b.dealDamage(null, parent, { amount: 1e9, type: 'true', canDodge: false });
-  h.run(0.4);
-  const gen1 = h.enemies().filter((e) => e.alive);
-  assert.equal(gen1.length, 2, `the parent split into two (got ${gen1.length})`);
-  // kill both children: with the bug each of them spawned two more, and so on forever
-  for (const c of gen1) h.b.dealDamage(null, c, { amount: 1e9, type: 'true', canDodge: false });
-  h.run(0.4);
-  assert.equal(h.enemies().filter((e) => e.alive).length, 0, 'the children do NOT split again');
-  for (let i = 0; i < 6; i++) h.run(0.5);
-  assert.equal(h.enemies().filter((e) => e.alive).length, 0, 'and nothing keeps spawning afterwards');
+// 畸变体傀儡（enemy_1130_infstr）已撤下（业主 2026-10-26「删除畸变体傀儡」）。它唯一的一条机制是「死亡时分裂两个」，
+// 而分裂会把它落到的那个池子的身体数翻倍 —— 业主不要这个效果，所以整个敌人一起撤：没有 kit、也不在任何一个池子里。
+// 之前那条「分裂只做一代」的回归（子怪带 forkSplit tag）随 kit 一起删掉了，它守的东西已经不存在。
+test('畸变体傀儡: out of the batch — no kit and no pool slot', async () => {
+  const mod = await import('../../server/sim/content/enemies.js');
+  assert.ok(!mod.KITS.enemy_1130_infstr, '畸变体傀儡 has no kit');
+  const wired = Object.entries(F).flatMap(([k, entry]) => ['N', 'E'].flatMap((cls) => (entry[cls] || []).filter((x) => x.key === 'enemy_1130_infstr').map(() => `${k}.${cls}`)));
+  assert.deepEqual(wired, [], '畸变体傀儡 is attached to no pool');
+  assert.ok(!RESEARCH.batches.some((b) => (b.enemies || []).some((e) => e.key === 'enemy_1130_infstr')), 'and no research row claims it');
 });

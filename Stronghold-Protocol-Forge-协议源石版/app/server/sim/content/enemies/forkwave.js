@@ -26,9 +26,6 @@ const onHitDebuff = (key, mods, dur) => ({
   },
 });
 
-/** The tag a split child carries so it does not split again (see 畸变体傀儡 below). */
-const SPLIT_TAG = 'forkSplit';
-
 /** 陶醉的“酩酊”'s 「经过自身周围」: aura radius [ASSUMED: the data names no radius]; the values are its own talent
  *  (Aura.attack_speed +50 ASPD, Aura.move_speed ×1.5, Aura.attack@damage_resistance 0.4 = phys/arts taken ×0.6). */
 const TRSPSB_AURA_RADIUS = 1.5;
@@ -165,21 +162,9 @@ export const FORK_WAVE_KITS = Object.freeze({
   // 酸液源石虫 · "每次攻击会降低击中目标的防御" (defdown.def −10, stacking by refresh)
   enemy_1004_mslime: (ab) => [onHitDebuff('mslimeDef', { defFlat: T(ab, 'defdown.def') ?? 0 }, 4)],
 
-  // 畸变体傀儡 · "死亡时分裂两个" (deathrattle.cnt 2 of the same key, offset_bounded). The handbook flags the line
-  // SILENCE, so the split is disabled while silenced (enemies.js dispatch skips a `sil` ability on a silenced unit).
-  //
-  // 业主 2026-10-26「畸变体绝对有bug会无限分裂」: the children are the SAME key, so they carry this same kit — every child
-  // that died split into two more, forever (an unbounded enemy count; the wave could never be cleared). One generation
-  // only: a child carries SPLIT_TAG and its own death hook returns at once.
-  enemy_1130_infstr: (ab, e) => [{
-    sil: true,
-    death(c, b) {
-      if (e.tag === SPLIT_TAG) return;
-      const key = e.defId;
-      const n = T(ab, 'deathrattle.cnt') ?? 2;
-      if (c.reason === 'killed' && n > 0) spawnChildren(b, e, key, n, { countInTotal: false, tag: SPLIT_TAG });
-    },
-  }],
+  // 畸变体傀儡 (enemy_1130_infstr) was in the batch and is OUT again (owner 2026-10-26「删除畸变体傀儡」): its one line was
+  // "死亡时分裂两个", and even the one-generation split (a child carried a SPLIT_TAG so it never split again) doubles the body
+  // count of whatever pool it lands in on every kill — the owner wants it gone. The key keeps no kit and no pool slot.
 
   // 「得意」· "死亡后爆炸造成法术伤害，与属性相反的同类接近时造成更强的爆炸" — the mode has no 属性 (yin/yang) system, so
   // this is the plain blast at the base scale; the stronger same/diff variants are deliberately not modelled. The

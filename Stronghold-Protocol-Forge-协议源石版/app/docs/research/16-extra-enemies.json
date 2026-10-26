@@ -16,6 +16,7 @@
       "实测（20 局 × 13 回合）：21 个里 20 个会真的刷出来；每回合人数相对官方分布的偏差 8.2 %，FLY 回合占比 9.9 %（官方约 10 %）。",
       "第二批（2026-10-23）只挑「会真的打人、机制能用引擎原语表达、模型客户端里有」的 6 个；带结晶 / 装备 / 狂欢时刻 / 摄影区域这类本模式没有的系统的敌人一律不做，避免半残机制上线。",
       "第三批：沃尔夫之影（enemy_10109_mjcgst）抽出模型并写完 kit 后按业主要求撤下（2026-10-25「去掉沃尔夫之影」），key 不再进波次池，也不再有 kit。",
+      "第二批：畸变体傀儡（enemy_1130_infstr）抽出模型并写完 kit 后按业主要求撤下（2026-10-26「删除畸变体傀儡」），key 不再进波次池，也不再有 kit —— 它唯一的一条机制就是死亡分裂，而分裂会把它落到的那个池子的身体数翻倍，业主不要这个效果。",
       "悬赏（业主 2026-10-25「搞点强怪加入悬赏」）：bounties[] 让这批强怪以「下场作战 + 击杀得资金」的悬赏卡出现；官方 effect 表没有它们的 ENEMY_GAIN 行，所以卡片由 tools/build-data.mjs 的 customBounties() 现造，R9 悬赏决策里单独一张 fork 列表（不写进官方 6 组，那 6 组是实机记录）。",
       "第四批 share：研究行带 share: 0.25 的敌人只占同类池位的 1/4（业主 2026-10-25「凶豕兽作战里少放点，冰晶射手作战里少放点」），tools/build-data.mjs 的 attachWaveEnemies 按 share 抽签。"
     ]
@@ -281,7 +282,7 @@
     },
     {
       "id": "b2",
-      "note": "第二批 6 个：带机制的小怪，全部用引擎已有的原语实现（deathBoom / spawnChildren / onHit 减益），对应 server/sim/content/enemies/forkwave.js。",
+      "note": "第二批 5 个：带机制的小怪，全部用引擎已有的原语实现（deathBoom / spawnChildren / onHit 减益），对应 server/sim/content/enemies/forkwave.js。 畸变体傀儡（enemy_1130_infstr）已收录后又撤下（业主 2026-10-26「删除畸变体傀儡」）：它只有「死亡时分裂两个」这一条，分裂会把所在池子的身体数翻倍，业主不要。",
       "enemies": [
         {
           "key": "enemy_1352_eslime",
@@ -323,20 +324,6 @@
           "attrPower": 3220,
           "kit": "server/sim/content/enemies/forkwave.js",
           "why": "酸液源石虫 · 每次攻击降低击中目标的防御（−10，可叠加刷新）",
-          "band": "wide"
-        },
-        {
-          "key": "enemy_1130_infstr",
-          "rank": "NORMAL",
-          "name": "畸变体傀儡",
-          "handbookIndex": "R1",
-          "hp": 1900,
-          "atk": 210,
-          "def": 100,
-          "res": 0,
-          "attrPower": 3250,
-          "kit": "server/sim/content/enemies/forkwave.js",
-          "why": "畸变体傀儡 · 死亡时分裂两个同类",
           "band": "wide"
         },
         {

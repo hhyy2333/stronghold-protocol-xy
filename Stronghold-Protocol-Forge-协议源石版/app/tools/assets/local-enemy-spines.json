@@ -1583,60 +1583,6 @@
         "height": 369.521
       }
     },
-    "enemy_1130_infstr": {
-      "skel": "enemy_1130_infstr.skel",
-      "atlas": "enemy_1130_infstr.atlas",
-      "textures": [
-        "enemy_1130_infstr.png"
-      ],
-      "pma": true,
-      "anims": {
-        "idle": "Idle",
-        "deploy": "Idle",
-        "attack": {
-          "begin": null,
-          "loop": "Attack",
-          "end": null
-        },
-        "attackDown": null,
-        "skill": {
-          "begin": null,
-          "loop": "Attack",
-          "end": null,
-          "via": "attack",
-          "index": 0,
-          "idle": null
-        },
-        "die": "Die",
-        "move": {
-          "begin": null,
-          "loop": "Move",
-          "end": null
-        },
-        "stun": null
-      },
-      "animations": {
-        "Attack": 1,
-        "Default": 0,
-        "Die": 1,
-        "Idle": 1,
-        "Move": 1
-      },
-      "events": [
-        "OnAttack"
-      ],
-      "hits": {
-        "Attack": [
-          0.333
-        ]
-      },
-      "bounds": {
-        "x": -105.949,
-        "y": -1.73,
-        "width": 214.563,
-        "height": 355.99
-      }
-    },
     "enemy_1135_redman": {
       "skel": "enemy_1135_redman.skel",
       "atlas": "enemy_1135_redman.atlas",

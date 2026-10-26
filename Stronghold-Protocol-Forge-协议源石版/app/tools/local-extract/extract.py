@@ -149,7 +149,8 @@ ENEMY_SPINES += [
     'enemy_5504_arcslmi',
     # batch 2 (the ones with a mechanic, server/sim/content/enemies/forkwave.js)
     'enemy_1352_eslime', 'enemy_1126_spslme', 'enemy_1138_tumor',
-    'enemy_1004_mslime', 'enemy_1130_infstr', 'enemy_1028_mocock',
+    'enemy_1004_mslime', 'enemy_1028_mocock',
+    # 畸变体傀儡 (enemy_1130_infstr) was in the batch and is OUT again (owner 2026-10-26「删除畸变体傀儡」)
     # batch 3 (2026-10-25, owner「我想要加入更多有技能的怪」): every one has a mechanic kit in forkwave.js
     'enemy_1076_bsthmr', 'enemy_1076_bsthmr_2', 'enemy_1058_traink', 'enemy_1058_traink_2', 'enemy_1111_ucommd', 'enemy_1135_redman', 'enemy_10007_trspsb_2', 'enemy_10089_hlsprt_2',
     'enemy_10004_trdiam_2', 'enemy_1184_cadkgt', 'enemy_1184_cadkgt_3', 'enemy_10038_cnvpiz', 'enemy_1163_hvymot',

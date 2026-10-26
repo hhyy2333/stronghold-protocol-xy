@@ -470,7 +470,7 @@ Each is a normal 下场作战 kill bounty (one battle, `round: 1`, the killer ta
 悬赏决策 offers them through their OWN 7th group (`custom_bounties.boss.groups`, weight 1 — the six official groups stay
 the record of what the live client showed, so no fork card is ever written into one). Measured: about 3 % of R9 drafts
 carry a fork card, and when its group is drawn the draft is made of them.
-**Batch 2 (0.19.19) — the ones with a mechanic.** Six more enemies whose handbook line needs behaviour, authored in
+**Batch 2 (0.19.19) — the ones with a mechanic.** Five more enemies whose handbook line needs behaviour, authored in
 `server/sim/content/enemies/forkwave.js` on the primitives the engine already has:
 
 | key | mechanic | primitive |
@@ -479,7 +479,7 @@ carry a fork card, and when its group is drawn the draft is made of them.
 | `enemy_1126_spslme` “得意” | death: arts blast, ATK × `boom.atk_scale` (lowercase here); the 阴阳 same/diff variants are **not** modelled (the mode has no 属性 system) | `deathBoom` |
 | `enemy_1138_tumor` 畸变恶性瘤 | the unit it attacks/blocking it loses 80 attack speed | `dealt` → `addBuff(aspd)` |
 | `enemy_1004_mslime` 酸液源石虫 | every hit lowers the target's DEF by 10 | `dealt` → `addBuff(defFlat)` |
-| `enemy_1130_infstr` 畸变体傀儡 | killed → splits into two of itself (handbook flags the line SILENCE → `sil: true`) | `spawnChildren` |
+| ~~`enemy_1130_infstr` 畸变体傀儡~~ | **back out** (owner 2026-10-26「删除畸变体傀儡」): its only line is 「死亡时分裂两个」, and a split doubles the body count of whatever pool it lands in — the owner does not want that effect, so the enemy goes with it | — |
 | `enemy_1028_mocock` 鸡尾酒投掷者 | none (plain ranged attacker; the kit exists only so it is not double-listed) | — |
 
 Their research rows carry `kit: 'server/sim/content/enemies/forkwave.js'` and `band: 'wide'`: they are all weaker than
