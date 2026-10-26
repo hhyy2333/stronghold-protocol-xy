@@ -9,6 +9,24 @@
 
 ---
 
+## 0.19.31 — 2026-10-26
+
+**联防音乐换成《雨爱》DJ 版（设置里可关）；大厅背景换成官方「始发」「星迹」整图，入口卡加官方剪影与方舟字母标。**
+
+### 改了什么
+
+- 联防音乐：设置 →「联防音乐」默认开。联防阶段改播 `public/assets/audio/bgm/unite_rainlove_dj.m4a`（《雨爱》DJ 版），走 `audio.js setCustomBgm`，与既有 crossfade / 音量 / 静音同一条路径；关掉或文件缺失时回落到清单里的官方 `bgm.unite`（m_bat_corrosion）。纯本地，不上报、不落对局。
+- 大厅素材：`hubBackdrop` 新增「始发」（官方 bg_rogue_3 整图，默认）与「星迹」（bg_p3r_1）两个主题；老玩家的 `hub.backdrop` 偏好做一次性迁移到「始发」；素材缺失时回落到夜巡。
+- 大厅入口卡：用官方陆行舰剪影作底纹（去色、低透明度），独立 / 同盟两个入口换成官方方舟字母标（`ui/homeicon` 的 `mark_solo` / `mark_coop`）；素材缺失时退回原字形图标。
+- 文案：四个语言包补「联防音乐」「始发」「星迹」与开关提示；`docs/ASSETS.md` 记下自定义联防曲的来源、响度与重编码命令。
+- 素材不在 git 里：`public/assets/**` 被忽略，`unite_rainlove_dj.m4a` 与 `ui/hometheme/*`、`ui/homeicon/*` 由本机素材包提供；没有素材的 checkout 仍播官方联防音乐、用程序化大厅背景。
+
+### 验证
+
+- `test/ui/unite-music.test.js` 8/8（设置归一化、四语言包、开关切曲、缺文件回落、只影响联防）。
+- `test/browser-syntax.test.js` 6/6、`test/client-imports.test.js` 4/4、`test/version.test.js` 6/6。
+- 本机 `node --test` 子进程受限，以上均用 `node <file>` 同进程执行。
+
 ## 0.19.30 — 2026-10-26
 
 **第 7 回合变成「盟约专属协议」抽取回合；【锻炉】获得时给薄绿、洛洛；炎 / 萨尔贡 / 谢拉格 / 拉特兰 / 阿戈尔 / 叙拉古 / 卡西米尔 各新增一张专属协议。**
