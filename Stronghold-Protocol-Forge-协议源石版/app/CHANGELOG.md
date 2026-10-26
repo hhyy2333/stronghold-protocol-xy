@@ -9,6 +9,26 @@
 
 ---
 
+## 0.19.30 — 2026-10-26
+
+**第 7 回合变成「盟约专属协议」抽取回合；【锻炉】获得时给薄绿、洛洛；炎 / 萨尔贡 / 谢拉格 / 拉特兰 / 阿戈尔 / 叙拉古 / 卡西米尔 各新增一张专属协议。**
+
+### 改了什么
+
+- 第 7 回合：`format.rounds = [1,3,6,7,11]`、`format.exclusiveRounds = [7]`。抽卡池只放当前激活核心盟约的 `requiresBond` 卡；没有激活核心盟约时回退普通池（`server/match/match/hexDraft.js _hexPoolFor`）。抽卡界面标注「盟约专属协议」。
+- 锻炉：`effect.onPick.chess.ids`，获得时立即得到【薄绿】与【洛洛】；`applySpec` 新增 `chess.ids` 指定干员形式。
+- 七张新专属协议（3 阶）：燎原（炎）、绿洲（萨尔贡）、冰雪消融（谢拉格）、圣佑（拉特兰）、协同进化（阿戈尔）、教父（叙拉古）、骑士（卡西米尔）。
+- 战斗半段在 `server/sim/content/hexcards/stone_*.js`；卡西米尔【骑士徽章】在 `server/sim/content/items/knightbadge.js`（装备驱动，不依赖卡）。
+- 备战半段：`applySpec` 新增 `deployCap` / `layerGift` / `bondPriceDiscount`；新装备【骑士徽章】`chess_item_9_98_e_a`。
+- 阿戈尔：`bonds/core.js devour()` 在持有【协同进化】时跳过 5000 物理流失，并在吞噬结束时 emit `egirDevourEnd` 给卡脚本结算属性。
+- 数据与文档：重建 `data/hextech.json`（131 张玩家卡）与 `data/items.json`；en 语言包补 8 张卡名/描述；`docs/design/match.md` 记规则与 [ASSUMED] 口径。
+
+### 验证
+
+- `test/sim/hex-stone-{yan-sargon,kjerag-laterano,egir-siracusa,kazimierz,wiring}` 全绿（5 / 21 / 3 / 4 / 2）。
+- `test/match/hex-exclusive` 5/5、`test/content/hextech` 59/59、`test/content/items` 71/71、`test/match/hextech` 71/71。
+- 本机 `node --test` 子进程受限，以上用例均用 `node <file>` 同进程执行。
+
 ## 0.19.29 — 2026-10-26
 
 **撤下「畸变体傀儡」（`enemy_1130_infstr`）（业主 2026-10-26「把删除畸变体傀儡 enemy_1130_infstr 改动发布了」）。**
