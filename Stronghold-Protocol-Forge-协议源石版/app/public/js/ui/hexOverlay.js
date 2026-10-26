@@ -261,11 +261,36 @@ export function hexOverlayRerollGates(hex, busyIdx = null) {
   };
 }
 
+/**
+ * 这一批 offer 的身份（卡 id + 槽位）。管理员 (业主 2026-10-26) 的第二次三选一换的是**另一批**牌，签名因此不同。
+ * @param {any[]} offer
+ * @returns {string}
+ */
+export function offerSignature(offer) {
+  return (Array.isArray(offer) ? offer : []).map((c) => `${c && c.id != null ? c.id : ''}:${c && c.idx != null ? c.idx : ''}`).join('|');
+}
+
+/**
+ * 仍在放「吸入屏幕中心」动画的那张卡，或 null。
+ *
+ * 业主 2026-10-26「策略『管理员』第一回合第二次三选一不给刷新不能选」: the confirm animation state used to be a bare idx.
+ * 管理员选完第一张后服务端立刻换一批三张，动画还挂着（620 ms 动画 + 1.5 s 兜底），新一批的卡在这段时间里点不动 ——
+ * 玩家看到的就是「不能选」。动画记下它属于哪一批（`key`），批次一换就失效，新卡立刻可点。
+ * @param {{ idx: number, key: string }|null} vanishing
+ * @param {string} offerKey the CURRENT offer's `offerSignature`
+ * @returns {number|null} the vanishing card's idx, or null
+ */
+export function vanishActive(vanishing, offerKey) {
+  return vanishing && vanishing.key === offerKey ? vanishing.idx : null;
+}
+
 export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }) {
   const [armed, setArmed] = useState(null);
-  /** 确认动画进行中的卡（idx）：动画放完才 onPick；期间不再接受点选。 */
+  /** 确认动画进行中的卡：{ idx, key } —— key 是这一手所在那一批 offer 的签名（见 vanishActive）。 */
   const [vanishing, setVanishing] = useState(null);
   const vanishTimer = useRef(null);
+  const offerKey = offerSignature(hex && hex.myOffer);
+  const vanishIdx = vanishActive(vanishing, offerKey);
   useEffect(() => () => { if (vanishTimer.current != null) clearTimeout(vanishTimer.current); }, []);
   // a selection is dropped with Esc, like the 机变 screen (ui/choiceOverlay.js)
   useEffect(() => {
@@ -276,8 +301,8 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   }, [armed]);
   // 已选状态回来（服务器确认了这一手）：确认动画的状态必须收掉，卡牌重新按「已选」显示。
   useEffect(() => {
-    if (hex && hex.myPick != null && vanishing != null) setVanishing(null);
-  }, [hex && hex.myPick, vanishing]);
+    if (hex && hex.myPick != null && vanishIdx != null) setVanishing(null);
+  }, [hex && hex.myPick, vanishIdx]);
   if (!hex || !hex.myOffer.length) return null;
   const enemyHexes = normalizeEnemyHexes(enemy);
   const picked = hex.myPick;
@@ -294,7 +319,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
    * 动画结束才真正 onPick —— 否则服务器的回包会把卡牌提前换成已选状态，动画只播一个开头。
    */
   const commit = (idx) => {
-    if (vanishing != null || !waiting || busyIdx != null) return;
+    if (vanishIdx != null || !waiting || busyIdx != null) return;
     // 最后一秒才点确认：动画会跨过截止时间，服务器可能已经替玩家随机选了。这种情况下直接发请求，
     // 让「按时交卷」优先于演出（动画只在时间还够时播）。
     if (!hex.untimed && Number.isFinite(hex.turnDeadline) && hex.turnDeadline - Date.now() < CONFIRM_ANIM_MS + 300) {
@@ -302,7 +327,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
       return;
     }
     setArmed(null);
-    setVanishing(idx);
+    setVanishing({ idx, key: offerKey });
     vanishTimer.current = setTimeout(() => {
       onPick(idx);
       // 服务器的回包（hex.myPick）通常几十毫秒就到，effect 会清掉；这一手只是兜底：动画结束后卡牌不能一直隐身。
@@ -310,13 +335,13 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
     }, CONFIRM_ANIM_MS);
   };
   const tap = (card) => {
-    if (!waiting || busyIdx != null || vanishing != null) return;
+    if (!waiting || busyIdx != null || vanishIdx != null) return;
     if (armed === card.idx) { commit(card.idx); return; }
     setArmed(card.idx);
   };
   // a press anywhere but a card, the reroll button or the confirm button drops the selection (keepsArmed)
   const onDown = (e) => {
-    if (vanishing != null || armed == null || keepsArmed(e.target)) return;
+    if (vanishIdx != null || armed == null || keepsArmed(e.target)) return;
     setArmed(null);
   };
   // the game's own 刷新 button (ui/shopBar.js): the official shopPanel/refresh_icon sprite, the label and a badge — here
@@ -328,7 +353,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
   const rerollLabel = t('刷新（剩余 {n} 次）', { n: hex.myRerolls });
   const cardReroll = (idx) => { if (!canRerollSlot(idx)) return; setArmed(null); onReroll(idx); };
   const armedName = armed != null ? (hex.myOffer.find((c) => c && c.idx === armed)?.name || null) : null;
-  return html`<div class=${cx('spov', 'hxov', armed != null && 'has-armed', vanishing != null && 'is-vanishing')} role="dialog" aria-label=${t('协议源石')} onPointerDown=${onDown}>
+  return html`<div class=${cx('spov', 'hxov', armed != null && 'has-armed', vanishIdx != null && 'is-vanishing')} role="dialog" aria-label=${t('协议源石')} onPointerDown=${onDown}>
     <div class="spov__veil" aria-hidden="true"></div>
     <div class="hxov__ambient" aria-hidden="true"></div>
     <div class="spov__inner">
@@ -356,7 +381,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
       <div class="spov__grid spov__grid--3">
         ${hex.myOffer.map((c) => html`<${HexCard} key=${`${c.id}:${c.idx}`} hex=${c}
           armed=${armed === c.idx} picked=${picked === c.idx} faded=${picked != null && picked !== c.idx}
-          busy=${busyIdx === c.idx} vanishing=${vanishing === c.idx} vanishDir=${c.idx} onClick=${() => tap(c)}
+          busy=${busyIdx === c.idx} vanishing=${vanishIdx === c.idx} vanishDir=${c.idx} onClick=${() => tap(c)}
           onReroll=${canRerollSlot(c.idx) ? () => cardReroll(c.idx) : null}
           rerollTitle=${t('只刷新这一张')} />`)}
       </div>

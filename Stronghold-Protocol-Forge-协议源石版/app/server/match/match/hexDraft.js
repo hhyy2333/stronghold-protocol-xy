@@ -162,7 +162,11 @@ export class MatchHexDraft {
   rerollHex(ps, idx = undefined) {
     if (this.phase !== PHASE.HEX_DRAFT || !this.hex) return fail(ERR.WRONG_PHASE);
     if (!ps.alive) return fail(ERR.ELIMINATED);
-    if (this.hex.picks[ps.playerId] != null) return fail(ERR.ALREADY);
+    // 管理员 (业主 2026-10-26「策略『管理员』第一回合第二次三选一不给刷新不能选」): the old gate was "a pick is recorded
+    // ⇒ refuse", but the strategy's owner records the BASE pick and still owes the extra one — their freshly dealt
+    // second 三选一 therefore had both reroll buttons refused with ALREADY. "Done" is `_hexPicksLeft`, the same test
+    // `pickHex` uses; a player with nothing owed is refused exactly as before.
+    if (this._hexPicksLeft(ps.playerId) <= 0) return fail(ERR.ALREADY);
     const slot = Number.isInteger(idx) ? (this.hex.slotRerolls[ps.playerId] || []) : null;
     if (Number.isInteger(idx)) {
       // the slot is checked BEFORE anything is spent: a bad index must never cost the player a reroll
@@ -228,6 +232,18 @@ export class MatchHexDraft {
       // the re-dealt batch gets its own per-card reroll budget, like the first one
       s.slotRerolls[ps.playerId] = s.offers[ps.playerId].map(() => 1);
       s.rerolls[ps.playerId] = this.gd.hexRerolls();
+      // 业主 2026-10-26「…第二次三选一…不能选」: the second 三选一 is a NEW choice and gets a full turn. The draft arms ONE
+      // deadline at `enterHexDraft`; a player who spent the base pick near it had the re-dealt offer auto-picked by that
+      // very timer (the timeout resolves every owed pick), so the screen was there and gone. Re-arming extends the
+      // phase only for the seats still deciding — everyone who already picked is unaffected — and the new
+      // `turnDeadline` is what the client's countdown reads.
+      if (!s.untimed) {
+        const secs = this.gd.hexTimer();
+        if (secs) {
+          this.setDeadline(secs, () => this._timeoutHexDraft());
+          s.turnDeadline = this.deadline;
+        }
+      }
       // a BOT that owes this second pick has to be scheduled for it: `scheduleHexBot` fires once per draft start, so
       // without this the seat would sit on its owed pick until the timer (solo is untimed → the draft would wedge)
       if (ps.botControlled) this.scheduleHexBot(ps);

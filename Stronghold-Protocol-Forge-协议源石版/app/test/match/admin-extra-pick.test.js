@@ -105,3 +105,57 @@ test('管理员: a bot seat takes BOTH picks without waiting for a timer', () =>
   assert.equal(m.hexDraftDone(), true, 'the draft is complete, not waiting on a timer');
   m.dispose();
 });
+
+// 业主 2026-10-26「策略『管理员』第一回合第二次三选一不给刷新不能选」: the re-dealt offer kept its OWN reroll budgets
+// (the server resets them when it re-deals), but `rerollHex` still refused on "a pick is recorded" — the base pick is
+// recorded by definition, so both the whole-batch and the per-card buttons answered ALREADY.
+test('管理员: the second 三选一 can be rerolled (both budgets) and then picked', () => {
+  const { m } = atRound1Draft('band_admin');
+  if (m.phase !== PHASE.HEX_DRAFT) { m.dispose(); return; }
+  assert.deepEqual(m.handle('p_0', { t: 'g.hex', idx: 0 }), { ok: true });
+  const firstOffer = m.hexOfferOf('p_0').slice();
+  assert.equal(m.hex.extraPicks.p_0, 1, 'the extra pick is still owed');
+  assert.equal(m.hex.rerolls.p_0, 1, 'the re-dealt batch carries its own budget');
+  assert.deepEqual(m.hex.slotRerolls.p_0, [1, 1, 1], 'and every card its own one');
+
+  // 整批刷新
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll' }), { ok: true });
+  assert.equal(m.hex.rerolls.p_0, 0, 'the batch budget is spent');
+  assert.notDeepEqual(m.hexOfferOf('p_0'), firstOffer, 'the batch was replaced');
+
+  // 单张刷新
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll', idx: 1 }), { ok: true });
+  assert.equal(m.hex.slotRerolls.p_0[1], 0, 'that card spent its own budget');
+
+  // 第二张照常可选，选完就真的结束了
+  assert.deepEqual(m.handle('p_0', { t: 'g.hex', idx: 2 }), { ok: true });
+  assert.equal(m.hex.extraPicks.p_0, 0);
+  assert.equal(m.hexDraftDone(), true);
+  // 选完之后再刷新仍然是 ALREADY（旧行为不变）
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexReroll' }), { error: 'ALREADY' });
+  m.dispose();
+});
+
+// 同一个 bug 的另一半：第二次三选一必须是一个**真正能选**的选择。草稿只有一条 deadline（enterHexDraft 时上表），
+// 旧实现换牌时不续时，于是第一次选得晚的玩家会看到新一批牌被同一个定时器立刻自动选掉 —— 屏幕上「一闪而过」。
+test('管理员: the re-dealt offer re-arms the draft deadline (the second pick is not auto-made by the first timer)', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 5150, fake: true, captureFrames: false }).start();
+  const m = h.m;
+  h.drive(() => m.phase === PHASE.HEX_DRAFT, { band: 'band_admin' });
+  if (m.phase !== PHASE.HEX_DRAFT) { m.dispose(); return; }
+  assert.ok(m.deadline > 0, 'a multiplayer draft is timed');
+  // spend a little of the first turn, so the re-armed deadline is strictly later (in virtual time a pick made at the
+  // same instant would re-arm to the very same timestamp)
+  h.sched.advance(5000);
+  const before = m.deadline;
+  assert.deepEqual(m.handle('p_0', { t: 'g.hex', idx: 0 }), { ok: true });
+  assert.ok(m.deadline > before, 'the second 三选一 gets a fresh deadline');
+  assert.equal(m.hex.turnDeadline, m.deadline, 'the published countdown is the new one');
+  // 旧 deadline 到点时不再替玩家做掉第二张
+  h.sched.advance(Math.max(0, before - h.sched.now()) + 1);
+  assert.equal(m.hex.extraPicks.p_0, 1, 'the old deadline no longer auto-picks the owed card');
+  // 新 deadline 到点才走超时补选，草稿正常收尾
+  h.sched.advance(Math.max(0, m.deadline - h.sched.now()) + 1);
+  assert.equal(m.hex ? m.hex.extraPicks.p_0 : 0, 0, 'the new deadline resolved the owed pick');
+  m.dispose();
+});

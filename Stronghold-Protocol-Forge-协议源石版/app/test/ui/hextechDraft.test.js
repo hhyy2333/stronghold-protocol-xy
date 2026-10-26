@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeHex, normalizeEnemyHexes } from '../../public/js/ui/gameLogic.js';
-import { HexCard, EnemyHexRow, EnemyHexStrip, EnemyHexList, keepsArmed, rarityName, rarityTierArt, refreshIconUrl, hexSfxUrl, hexOverlayRerollGates } from '../../public/js/ui/hexOverlay.js';
+import { HexCard, EnemyHexRow, EnemyHexStrip, EnemyHexList, keepsArmed, rarityName, rarityTierArt, refreshIconUrl, hexSfxUrl, hexOverlayRerollGates, offerSignature, vanishActive } from '../../public/js/ui/hexOverlay.js';
 import { Tooltip } from '../../public/js/ui/components.js';
 
 const HEX_VIEW = {
@@ -257,4 +257,38 @@ test('normalizeEnemyHexes keeps the accumulated enemy list and drops junk', () =
   assert.equal(list.length, 1);
   assert.equal(list[0].id, 'ehex_fury');
   assert.deepEqual(normalizeEnemyHexes(null), []);
+});
+
+test('管理员第二次三选一：新一批卡立刻可点、刷新闸门放开（业主 2026-10-26「第二次三选一不给刷新不能选」）', () => {
+  // 第一批（选完第一张之后已经不属于自己了）与第二批（服务端重发的三张）
+  const first = [{ id: 'hex_stipend', idx: 0 }, { id: 'hex_armor', idx: 1 }, { id: 'hex_immortal', idx: 2 }];
+  const second = [{ id: 'hex_echo', idx: 0 }, { id: 'hex_drill', idx: 1 }, { id: 'hex_refresh', idx: 2 }];
+  assert.notEqual(offerSignature(first), offerSignature(second), 'a re-dealt batch has its own signature');
+  assert.equal(offerSignature(null), '');
+  // 确认动画只属于它那一批：批次一换，旧动画不再锁住新卡（旧实现只记 idx，新卡在 620ms+1.5s 里点不动 = 「不能选」）
+  const vanishing = { idx: 2, key: offerSignature(first) };
+  assert.equal(vanishActive(vanishing, offerSignature(first)), 2);
+  assert.equal(vanishActive(vanishing, offerSignature(second)), null, 'the fresh batch is tappable at once');
+  assert.equal(vanishActive(null, offerSignature(second)), null);
+
+  // 第二次三选一的帧：picks 里已经有第一张，但 extraPicksLeft 说还欠一张 ⇒ 不是「已选择」，
+  // 三张卡可点、两本刷新次数（整批 1 / 每张各 1）也都可用 —— 服务端现在同样放行（hexDraft.js rerollHex）。
+  const view = {
+    ...HEX_VIEW,
+    picks: { p_0: 0 },
+    extraPicksLeft: { p_0: 1 },
+    rerollsLeft: { p_0: 1 },
+    slotRerollsLeft: { p_0: [1, 1, 1] },
+  };
+  const hex = normalizeHex(view, 'p_0', []);
+  assert.equal(hex.myPick, null, 'a pick is still owed: the overlay re-opens instead of showing 已选择');
+  assert.equal(hex.myExtraLeft, 1);
+  assert.equal(hex.decided, false);
+  const gates = hexOverlayRerollGates(hex, null);
+  assert.equal(gates.canReroll, true, 'the whole-batch reroll is live on the second offer');
+  assert.deepEqual([0, 1, 2].map((i) => gates.canRerollSlot(i)), [true, true, true], 'every card may reroll once');
+  // once the extra pick is spent the frame is the ordinary "已选择" one again
+  const done = normalizeHex({ ...view, picks: { p_0: 1 }, extraPicksLeft: {} }, 'p_0', []);
+  assert.equal(done.myPick, 1);
+  assert.equal(hexOverlayRerollGates(done, null).canReroll, false);
 });
