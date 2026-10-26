@@ -28,7 +28,9 @@
 //   shop    机密商店  at the rounds of choices.json `shopDraft` (R11: the 4 official 机密商店; the user: "机密商店按官方改
 //                     成可以重复吧"): six slots, each drawn on its own — with replacement, so the same item can be
 //                     offered twice (official: 盟约之币 ×2, 变形同构体 ×2): VI, VI, V, 盟约之币 and twice V / IV / III /
-//                     盟约之币, an item within its tier by `itemWeights` (solo: 3 of the 6 slots [ASSUMED]); other rounds
+//                     盟约之币, an item within its tier by `itemWeights` (solo: 3 of the 6 slots [ASSUMED]); more players
+//                     than slots (7+): the official slots keep cycling in their order until every player has one (the
+//                     user, 2026-10-26: "多人的时候如果出选装备的惊变，装备不够选"); other rounds
 //                     (标准 / 险境, no screenshot) and without `shopDraft`: random normal EQUIP shop items of any tier I–VI,
 //                     each card on its own (duplicates allowed) [ASSUMED]. FREE — the official card text is "无需消耗资金，获得装备
 //                     补给" (research 01 A4/04 addendum), so the price is 0. Two identical cards are two cards: picks,
@@ -342,7 +344,10 @@ function bountyDraftCards(gd, rng, n, sch, round) {
  * The 机密商店 cards (choices.json `shopDraft`, module header): every slot drawn on its own — a tier (or `coin`, the
  * 盟约之币) by the slot's weights, then an item of that tier by `itemWeights` (1 when unlisted; an empty tier falls back to
  * the nearest lower one, then any) — so one item can fill two slots. Positions shuffled; `n` < the slots (solo) keeps
- * `n` of them. Null without a usable `shopDraft` or at a round its `rounds` (when given) does not list.
+ * `n` of the official six, `n` > the slots (7 players and up) keeps cycling them in the same order until `n` cards are
+ * dealt — one card per player is what the draft promises (`generateDraft` max(6, alive)), and stopping at the six
+ * official slots left the 7th player onward with nothing to take ("多人的时候如果出选装备的惊变，装备不够选", 2026-10-26).
+ * Null without a usable `shopDraft` or at a round its `rounds` (when given) does not list.
  */
 export function shopDraftCards(gd, rng, n, round = null, itemAvailable = null) {
   const spec = gd.choices.shopDraft;
@@ -356,16 +361,32 @@ export function shopDraftCards(gd, rng, n, round = null, itemAvailable = null) {
     for (let k = t; k >= 1; k--) { const list = free(gd.shopItemsByTier[k] || []); if (list.length) return list; }
     return free(eligibleItems(gd, 1, 6));
   };
-  const out = [];
-  for (const slot of slots) {
+  const draw = (slot) => {
     const kinds = Object.entries(slot).filter(([k]) => k === 'coin' ? !!coin : Number.isInteger(Number(k)));
     const kind = weightedPick(rng, kinds);
-    if (kind == null) continue;
+    if (kind == null) return null;
     const list = kind === 'coin' ? [coin] : ofTier(Number(kind));
     const id = weightedPick(rng, list.map((x) => [x, Object.hasOwn(w, x) ? w[x] : 1]));
-    if (id) out.push(itemCard(gd, id));
+    return id ? itemCard(gd, id) : null;
+  };
+  const want = Math.max(0, Math.floor(n) || 0);
+  // One pass over the official slots draws exactly the six cards this always drew (the old code drew all six, then cut to
+  // n), so a room of 6 or fewer is unchanged.
+  const out = [];
+  for (const slot of slots) { const c = draw(slot); if (c) out.push(c); }
+  // 7 players and up (业主 2026-10-26「多人的时候如果出选装备的惊变，装备不够选」): the official slots keep cycling in the
+  // same order until n cards are dealt. One card per player is what the draft promises (generateDraft max(6, alive)); the
+  // six official slots alone left the 7th player onward with no card to take, and startSpTurn ends the draft right there.
+  for (let pass = 0; out.length < want && pass < want; pass++) { // loop-cap: want passes, every productive pass adds >= 1
+    let added = 0;
+    for (const slot of slots) {
+      if (out.length >= want) break;
+      const c = draw(slot);
+      if (c) { out.push(c); added++; }
+    }
+    if (!added) break;
   }
-  return rng.shuffle(out).slice(0, Math.max(0, n));
+  return rng.shuffle(out).slice(0, want);
 }
 
 /** The draft card of a cards.tactic entry. */

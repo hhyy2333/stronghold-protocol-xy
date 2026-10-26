@@ -8,7 +8,9 @@ import { makeMatch, give, giveItem, chessOfTier, legalTileFor, checkInvariants a
 import { FakeBattle } from '../match/fakeBattle.js';
 import { makeBattle, chessRec, enemyRec, checkInvariants } from '../helpers/battleHarness.js';
 import { createRegistry } from '../../server/match/effectsMeta.js';
-import { applyCard, generateDraft, tacticCard } from '../../server/match/choices.js';
+import { applyCard, generateDraft, shopDraftCards, tacticCard } from '../../server/match/choices.js';
+import { GameData } from '../../server/match/gamedata.js';
+import { createRng } from '../../server/sim/rng.js';
 import { withBounties } from '../../server/match/waves.js';
 import { Battle } from '../../server/sim/Battle.js';
 import { bountyOf, battlePlanOf, choiceCardIds, gateOf, hasBattlePart, mapAliases, BUILTIN_REFS } from '../../server/sim/content/choices.js';
@@ -417,6 +419,80 @@ test('机密商店 draws the official composition with duplicates allowed (gener
   h.m.dispose();
   assert.deepEqual([...tiers].sort(), [1, 3, 4, 5, 6], 'tiers III–VI and the tier-I 盟约之币');
   assert.ok(dupes > 0, 'duplicates allowed');
+});
+
+test('机密商店 的卡数也铺得满：7 人以上按官方槽序循环取槽（业主 2026-10-26「多人的时候如果出选装备的惊变，装备不够选」）', () => {
+  // 修复前：shopDraftCards 只按 choices.json shopDraft.slots（官方 6 槽）逐槽出牌，out 最多 6 张，最后 slice(0, n) ——
+  // 所以 n = 7..20 一律只有 6 张；startSpTurn 在 available 空时直接 finishSpDraft，第 7 人起一张都拿不到。
+  const h = makeMatch({ mode: 'coop', difficulty: 'HARD', humans: 1, seed: 5, data: dataWith('mode_multi_hard', 11, 'shop'), registry: REG, fake: true });
+  const gd = h.m.gd;
+  const pool = (id) => h.m.itemPool.canGain(id);
+  // 6 人及以下与官方逐字节一致：仍是那 6 张（solo 取其中 3 张），一张不多
+  assert.equal(shopDraftCards(gd, createRng(7), 6, 11).length, 6);
+  assert.equal(shopDraftCards(gd, createRng(7), 3, 11).length, 3);
+  const official = shopDraftCards(gd, createRng(7), 6, 11).map((c) => c.id);
+  assert.deepEqual(shopDraftCards(gd, createRng(7), 3, 11).map((c) => c.id), official.slice(0, 3),
+    'solo 仍是官方那 6 张里的前 3 张（先铺满 6 槽再切，别改成只抽 3 槽）');
+  for (const n of [7, 8, 10, 20]) {
+    for (let s = 1; s <= 10; s++) {
+      const cards = shopDraftCards(gd, createRng(s * 31 + n), n, 11, pool);
+      assert.equal(cards.length, n, `n=${n}：铺了 ${cards.length} 张 —— 人数几张就几张`);
+      for (const c of cards) assert.ok(DATA.items[c.id] && !DATA.items[c.id].isGolden && DATA.items[c.id].itemType === 'EQUIP', `${c.id} 仍是免费普通装备`);
+    }
+  }
+  // 多出来的卡接着官方槽序循环取：官方第 1、2 槽是两张 VI，所以 8 人房 4 张 VI —— 不是随手抓一件凑数
+  const eight = shopDraftCards(gd, createRng(1234), 8, 11);
+  assert.equal(eight.filter((c) => DATA.items[c.id].tier === 6).length, 4, '第 2 轮的头两槽仍是 VI, VI');
+  h.m.dispose();
+});
+
+test('机变 的每个 family 都铺得满：8 / 20 人房铺满人数（从前只有 机密商店 会停在官方 6 槽）', () => {
+  // 同一个承诺（generateDraft 的 max(6, 存活人数)）对四个 family 都必须成立，否则又有人一张都拿不到。
+  for (const mode of ['mode_multi_normal', 'mode_multi_hard', 'mode_multi_abyss']) {
+    const rounds = [...new Set([...new GameData(DATA, mode).spRounds(), 11])];
+    for (const round of rounds) {
+      for (const family of ['bounty', 'shop', 'supply', 'tactic']) {
+        const gd = new GameData(dataWith(mode, round, family), mode);
+        for (const players of [8, 20]) {
+          for (const seed of [1, 2, 3]) {
+            const d = generateDraft(gd, createRng(seed * 13 + round), round, { stageId: 'act2autochess_m01', players });
+            assert.ok(d, `${mode} R${round} ${family}：没有草稿`);
+            assert.ok(d.cards.length >= players, `${mode} R${round} ${family} ${players} 人：只铺了 ${d.cards.length} 张`);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('机密商店 E2E (co-op HARD R11, 8 人): 8 张卡、8 个座位各选一张、都拿到装备（业主 2026-10-26）', () => {
+  const data = dataWith('mode_multi_hard', 11, 'shop');
+  const h = makeMatch({ mode: 'coop', difficulty: 'HARD', humans: 8, seed: 47, data, registry: REG, fake: true });
+  const m = h.m;
+  h.start();
+  const sp = toDraft(h, 11);
+  assert.equal(sp.family, 'shop');
+  assert.equal(m.alivePlayers().length, 8, '8 个座位都还在（否则这条钉不住「第 7、8 人也能选」）');
+  assert.equal(sp.cards.length, 8, '8 人房铺 8 张（修复前是 6 张）');
+  const picked = [];
+  for (let guard = 0; guard < 100 && m.phase === 'SP_DRAFT'; guard++) {
+    const pid = m.spTurn();
+    if (!pid) { h.sched.runNext(); continue; } // 8 张都取走了：finishSpDraft 排在下一个 tick
+    const card = sp.cards.find((c) => sp.taken[c.idx] == null);
+    assert.ok(card, `${pid} 还有牌可选（修复前第 7 个人开始 available 就是空的）`);
+    assert.deepEqual(m.handle(pid, { t: 'g.choice', idx: card.idx }), { ok: true }, `${pid} 选了第 ${card.idx + 1} 张`);
+    picked.push({ pid, idx: card.idx, id: card.id });
+  }
+  assert.equal(m.phase, 'PREP', '机变 正常收摊（不是「牌拿光了」提前结束）');
+  assert.equal(picked.length, 8, '8 个座位各取走一张');
+  assert.deepEqual(picked.map((p) => p.idx).sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7], '第 7、8 张（idx 6 / 7）真的被取走');
+  for (const { pid, id } of picked) {
+    const ps = h.ps(pid);
+    const golden = DATA.items[id] && DATA.items[id].goldenId;
+    assert.ok([...ps.hand, ...ps.temp].some((p) => p && (p.id === id || p.id === golden)), `${pid} 拿到了 ${DATA.items[id].name}`);
+  }
+  matchInvariants(m);
+  m.dispose();
 });
 
 test('机密商店 E2E (co-op): two identical cards are two cards — both can be taken, by index, and each picker gets the item', () => {
