@@ -267,6 +267,11 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // is ownership-only (no `effect.battle` passive), so each key MUST be listed here or addHexRef marks the ref prep-only
   // and the battle never sees the card.
   'adaptiveGrowth', 'drawBlade', 'pressureCooker', 'spellArcher', 'soulBomb', 'dread', 'infernalConduit', 'echoForm',
+  // 业主 2026-10-26：「悬赏倍增，加个对悬赏怪增加30%伤害的效果」. `hex_bountytriple` used to be prep-only (its
+  // `bountyMul` is settled by the match), so its ref was stored with `battle: false` and dropped by battleInput.
+  // The new `bountyDamage` half acts INSIDE a battle (the `hit` handler in install()), hence its declaration here
+  // — without it the card would draft, show in the effects column and never multiply anything.
+  'bountyDamage',
 ]);
 
 /**
@@ -1603,6 +1608,34 @@ export function install(battle) {
       });
     }
   }
+
+  // ---- 悬赏倍增 (业主 2026-10-26): 「悬赏倍增，加个对悬赏怪增加30%伤害的效果」 -----------------------------------
+  // The card's money half (`bountyMul` ×3) is settled by the MATCH (server/match/hextech.js bountyMultiplier) and never
+  // enters a battle — which is exactly why its ref used to be prep-only. This new half is a pure DAMAGE multiplier on
+  // the `hit` hook, the engine's only slot to change an instance before it resolves (damage.js: hit → dodge →
+  // mitigation → × dmg.mul).
+  //   * `source` is an ally UNIT of that player — operators AND summons alike (`source.side === 'ally' &&
+  //     source.ownerId === pid`). [ASSUMED: the card says 「你的单位」 and a summon fights for its owner, so it counts;
+  //     the same ownership test 击倒馈赠 uses, minus its `kind === 'op'` (that card pays a 干员, this one buffs a 单位).]
+  //   * `target.tag === 'bounty'` is the exact tag the match writes on every bounty spawn (server/match/waves.js
+  //     `bountyPlan`; spawns.js copies it onto the enemy with `e.tag = opts.tag`). Normal / boss / 联防 bounties all ride
+  //     that one spec field, so the check covers the three paths without a fourth: a bounty that leaks and re-enters
+  //     联防 keeps its tag (unite.js → leaked[].tag → waves.js buildUniteWave).
+  //   * A cancelled instance is skipped (`c.dmg.cancel` — something already negated the whole blow, and a multiplier
+  //     must not resurrect it), and `mul` is a pure multiplication, so a hit can never re-enter this handler.
+  for (const pid of ownersOf('hex_bountytriple')) {
+    const s = specOf(pid, 'hex_bountytriple', 'bountyDamage');
+    const pct = Number(s.pct) > 0 ? Number(s.pct) : 30;
+    if (!(pct > 0)) continue;
+    battle.on('hit', (c) => {
+      if (!c || !c.dmg || c.dmg.cancel) return;
+      const src = c.source;
+      if (!src || src.side !== 'ally' || src.ownerId !== pid) return;
+      const tgt = c.target;
+      if (!tgt || tgt.side !== 'enemy' || tgt.tag !== 'bounty') return;
+      c.dmg.mul *= 1 + pct / 100;
+    });
+  }
 }
 
 /**
@@ -1826,7 +1859,9 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
    * reached the goal escaped, it did not blow up. Without the gate a leaked enemy damaged the operators it walked past.
    */
   deathrattle(battle, p) {
-    const ratio = pnum(p.ratio, 1.2);
+    // 业主 2026-10-26：「敌方协议亡语，120%的数值降低到50%」。缺省值跟卡面一致（铁壁 ratio 改 10% 那次的做法），
+    // 这样一个手写的 ref（不带 params）也不会按旧数值跑。
+    const ratio = pnum(p.ratio, 0.5);
     const radius = pnum(p.radius, 1);
     const shape = p.shape === 'box' ? 'box' : 'plus';
     battle.on('death', ({ unit, reason }) => {

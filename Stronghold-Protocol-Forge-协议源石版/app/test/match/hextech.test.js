@@ -564,6 +564,9 @@ test('every battle-side hex reaches the battle input (a ref addHexRef marks prep
     'hex_deepdevour', 'hex_indomember', 'hex_bondfission', 'hex_traitspread',     // conditional / ownership-only
     'hex_heritage',                                                              // accumulates params.battle on a sale
     'hex_echoform', 'hex_serpentform',                                           // eighth batch: charges / battle-start kills
+    // 业主 2026-10-26: 悬赏倍增 grew a battle half (对悬赏怪 +30% 伤害) — its `bountyDamage` spec key is in
+    // BATTLE_SPEC_KEYS, so the ref has to reach the battle (before this it was prep-only: only `bountyMul`, settled).
+    'hex_bountytriple',
     // 恶魔形态 is NOT here any more: its per-second ATK growth moved onto its equipment 恶魔之契 (items/protocol.js), so
     // the card itself is prep-only now (业主 2026-10-26).
   ];
@@ -576,7 +579,7 @@ test('every battle-side hex reaches the battle input (a ref addHexRef marks prep
   // 业主 2026-10-26: the four equipment-granting cards, 心之钢 and 恶魔形态 are prep-only — their battle half is the
   // EQUIPMENT's (server/sim/content/items/protocol.js), so no ref has to reach a battle for them.
   for (const id of [
-    'hex_stipend', 'hex_echo', 'hex_itemrefund', 'hex_bountytriple', 'hex_fullkit', 'hex_mirror', 'hex_voidform',
+    'hex_stipend', 'hex_echo', 'hex_itemrefund', 'hex_fullkit', 'hex_mirror', 'hex_voidform',
     'hex_heavenform', 'hex_ghostform',
     'hex_canlight', 'hex_warding', 'hex_voidreturn', 'hex_corpsehill', 'hex_heartsteel', 'hex_demonform',
   ]) {

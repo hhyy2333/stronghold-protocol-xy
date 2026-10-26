@@ -736,6 +736,29 @@ test('every tenth-batch card that acts in battle declares a BATTLE_SPEC_KEYS key
   assert.deepEqual(HEXTECH.playerHexes.hex_onebody.effect.oneBody, { dmgPct: 150, atkPerCopyPct: 50 });
 });
 
+// 业主 2026-10-26：「敌方协议亡语，120%的数值降低到50%。悬赏倍增，加个对悬赏怪增加30%伤害的效果。」 The two records plus
+// the battle-side declaration each of them needs (a spec key missing from BATTLE_SPEC_KEYS makes the ref prep-only and
+// the card silently inert).
+test('2026-10-26 rebalance: 亡语 120 % → 50 %, and 悬赏倍增 grows the 对悬赏怪 +30 % damage half', () => {
+  // 亡语: the record is what the script reads (`pnum(p.ratio…)`), and the card face says the same number
+  const rattle = HEXTECH.enemyHexes.ehex_deathrattle;
+  assert.equal(rattle.params.ratio, 0.5, 'the blast is 50 % of the enemy ATK now');
+  assert.equal(rattle.params.shape, 'plus', 'the four surrounding tiles are unchanged');
+  assert.equal(rattle.params.radius, 1);
+  assert.ok(!rattle.desc.includes('120'), `the card text no longer says 120 %: ${rattle.desc}`);
+  assert.match(rattle.desc, /50%/, 'and it states 50 % instead');
+  // 悬赏倍增: the money half stays, the new damage half is a battle mechanic
+  const bounty = HEXTECH.playerHexes.hex_bountytriple;
+  assert.equal(bounty.effect.bountyMul, 3, 'the bounty income is still ×3');
+  assert.deepEqual(bounty.effect.bountyDamage, { pct: 30 }, 'the new half: +30 % to a bounty enemy');
+  assert.match(bounty.desc, /悬赏资金 ×3/, 'the text keeps the money half');
+  assert.match(bounty.desc, /30%/, 'and states the new damage half');
+  // without the declaration the ref is stored with `battle: false` and battleInput drops it — the §29.8 trap
+  assert.ok(BATTLE_SPEC_KEYS.includes('bountyDamage'), 'bountyDamage must be in BATTLE_SPEC_KEYS');
+  assert.equal(hasBattlePart(bounty.effect), true, 'the card is battle-visible now');
+  assert.ok(getDefaultRegistry().get(hexEffectKey('hex_bountytriple')), 'hex:hex_bountytriple handler');
+});
+
 // =====================================================================================================================
 // §29.34 — the eleventh batch (the owner's own list of 2026-10-13): 13 cards, driven here through their REAL handlers
 // with the ctx stub (the fast half; the match-level behaviour is in test/match/hextech.test.js).

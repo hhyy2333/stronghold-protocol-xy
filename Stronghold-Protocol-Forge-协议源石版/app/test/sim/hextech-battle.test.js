@@ -93,6 +93,57 @@ const buffsOf = (u, key) => (u.buffs || []).filter((b) => b.key === key);
 
 // =====================================================================================================================
 
+// 悬赏倍增 (业主 2026-10-26):「悬赏倍增，加个对悬赏怪增加30%伤害的效果」. The money half is settled by the match; this is
+// the BATTLE half, so it is pinned on the real sim: the card's ref (as addHexRef writes it) → install → the `hit`
+// multiplier, keyed on `target.tag === 'bounty'` — the tag server/match/waves.js bountyPlan writes on every bounty
+// spawn and spawns.js copies with `e.tag = opts.tag`.
+//
+// Damage is measured with a TRUE instance (no DEF / RES mitigation), so the number is exactly `amount × dmg.mul`: the
+// multiplier is the one thing under test, not the mitigation curve. Two players on one field: p1 owns the card, p2 does
+// not — the ownership axis — and each hits a bounty-tagged enemy and an ordinary one.
+test('悬赏倍增 (bountyDamage): own units deal ×1.3 to a tag:bounty enemy — not to an ordinary one, and not without the card', () => {
+  const h = makeBattle({
+    defs: { chess: { test_guard: guard() }, enemies: { enemy_dummy: dummy() } },
+    players: [
+      { playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [refOf('hex_bountytriple')], units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] },
+      { playerId: 'p2', seat: 1, side: 'R', colOffset: 8, bonds: {}, playerEffects: [], units: [{ uid: 2, kind: 'chess', chessId: 'test_guard', row: 9, col: 14 }] },
+    ],
+    enemies: [{ key: 'enemy_dummy', time: 0, route: 0, tag: 'bounty', pos: [12, 6] }, { key: 'enemy_dummy', time: 0, route: 0, pos: [12, 8] }],
+    autoFinish: false, timeLimit: 10, hooks: ['hit'],
+  });
+  h.run(0.5);
+  const [a, b] = h.battle.allyUnits.filter((u) => u && u.kind === 'op' && u.side === 'ally');
+  assert.ok(a && b, 'both operators are on the field (premise)');
+  const owner = a.ownerId === 'p1' ? a : b;
+  const other = owner === a ? b : a;
+  assert.equal(owner.ownerId, 'p1', 'the card owner (premise)');
+  const enemies = h.enemies();
+  assert.equal(enemies.length, 2, 'both enemies are alive (premise)');
+  const bounty = enemies.find((e) => e.tag === 'bounty');
+  const plain = enemies.find((e) => e.tag !== 'bounty');
+  assert.ok(bounty && plain, 'one bounty, one ordinary (premise)');
+  // `guard`'s ATK is irrelevant here: a TRUE instance of 1000 is exact (`amount × dmg.mul`, no mitigation)
+  const hit = (src, tgt) => {
+    const before = tgt.hp;
+    h.battle.dealDamage(src, tgt, { amount: 1000, type: 'true', ignoreSleep: true });
+    const lost = before - tgt.hp;
+    assert.ok(lost > 0, 'the instance landed (premise)');
+    return lost;
+  };
+  const onBounty = hit(owner, bounty);
+  const onPlain = hit(owner, plain);
+  const noCard = hit(other, bounty);
+  assert.ok(Math.abs(onBounty - 1300) < 1e-6, `the owner's hit on a bounty enemy ×1.3 (got ${onBounty})`);
+  assert.ok(Math.abs(onPlain - 1000) < 1e-6, `and an ordinary enemy is NOT multiplied (got ${onPlain})`);
+  assert.ok(Math.abs(noCard - 1000) < 1e-6, `a player without the card gets no bonus (got ${noCard})`);
+  // the card's own `hit` handler leaves a cancelled instance alone (something negated the whole blow; a multiplier
+  // must not resurrect it) — read through the real emit, not through a damage call
+  const cancelled = { source: owner, target: bounty, dmg: { cancel: true, mul: 1 } };
+  h.battle.emit('hit', cancelled);
+  assert.equal(cancelled.dmg.mul, 1, 'a cancelled instance is left alone');
+  h.invariants();
+});
+
 test('击倒馈赠 (killGift): the operator that lands the knock-out stacks +atkPct, and only it', () => {
   const h = soloBattle({ hexes: ['hex_killgift'], enemies: [{ key: 'enemy_walker', time: 0, route: 0 }], timeLimit: 30 });
   h.run(1);
@@ -944,6 +995,43 @@ test('亡语 (deathrattle): a knock-out damages the operators around the corpse'
   h.battle.kill(e, u);
   assert.ok(u.hp < hp0, `the operator took the deathrattle (hp ${Math.round(hp0)} → ${Math.round(u.hp)})`);
   h.invariants();
+});
+
+// 业主 2026-10-26：「敌方协议亡语，120%的数值降低到50%」。The record is the authority the script reads (params.ratio) AND
+// the script's own fallback was moved with it (a hand-built ref without params must not run the old number), so this
+// pins the NUMBER the blast lands: 攻击力 × 0.5, then the ordinary 法术减伤 (arts mitigation reads the target's RES).
+test('亡语 (deathrattle): the blast is the enemy ATK × 0.5, mitigated as arts (业主 2026-10-26)', () => {
+  assert.equal(hex('ehex_deathrattle').params.ratio, 0.5, 'the record carries 50 % (it was 1.2)');
+  const ATK = 600;
+  const RATIO = 0.5;
+  /** The HP the operator loses to one corpse at `res` (arts RES% mitigation: max(A × (1 − res/100), 5 %·A)). */
+  const blast = (res) => {
+    const h = makeBattle({
+      defs: {
+        chess: { test_guard: chessRec({ id: 'test_guard', stats: { maxHp: 100000, atk: 10, def: 0, res, blockCnt: 1, bat: 2, respawnTime: 20 }, skill: null }) },
+        enemies: { enemy_beast: enemyRec({ key: 'enemy_beast', hp: 1000, atk: ATK, def: 0, res: 0, speed: 0, bat: 3 }) },
+      },
+      players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: [], units: [{ uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 }] }],
+      enemies: [{ key: 'enemy_beast', time: 0, route: 0 }],
+      autoFinish: false, timeLimit: 20, captureNoisy: true, hooks: ['damaged'],
+      flags: { enemyHexIds: ['ehex_deathrattle'] },
+    });
+    h.run(0.5);
+    const u = h.allies()[0];
+    const e = h.enemies()[0];
+    assert.ok(u && e, 'operator and enemy on the field (premise)');
+    assert.equal(u.hp, u.s.maxHp, 'nothing touched the operator before the blast (premise)');
+    // the corpse goes off on the operator's own tile (the 'plus' shape, radius 1)
+    e.x = u.x; e.y = u.y;
+    const hp0 = u.hp;
+    h.battle.kill(e, u);
+    const lost = hp0 - u.hp;
+    h.invariants();
+    return lost;
+  };
+  // 600 × 0.5 = 300; RES 0 leaves it whole, RES 50 halves it (300 → 150), never the 120 % of before (720 / 360)
+  assert.ok(Math.abs(blast(0) - ATK * RATIO) < 1e-6, `RES 0: ${ATK * RATIO} arts (got ${blast(0)})`);
+  assert.ok(Math.abs(blast(50) - ATK * RATIO * 0.5) < 1e-6, `RES 50: ${ATK * RATIO * 0.5} arts (got ${blast(50)})`);
 });
 
 test('回响 (echo): a knock-out splits the enemy into weaker copies', () => {

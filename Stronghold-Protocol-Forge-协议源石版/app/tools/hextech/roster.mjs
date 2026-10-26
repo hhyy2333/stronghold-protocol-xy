@@ -69,6 +69,7 @@
 //   killGift { atkPct }             — ownership: every knock-out in battle adds atkPct
 //   skillFlow { layers }            — ownership: every skill a member opens adds `layers` to its own active bonds
 //   bountyMul N                     — ownership: bounty income at settlement ×N
+//   bountyDamage { pct }            — ownership: battle, the own units' damage to a `tag: 'bounty'` enemy ×(1 + pct%)
 //   equipSlots N                    — ownership: an operator carries N equipment (the data's equipPerChess when absent)
 //   northWall { shieldPct, stepPct, capPct } — ownership: the operators of the rightmost own column start with a
 //                                     `shieldPct`% max-HP shield that gains `stepPct`% a second up to `capPct`%
@@ -380,9 +381,12 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_bountytriple',
     name: '悬赏倍增',
-    desc: '本局中，你获得的悬赏资金 ×3。',
+    // 业主 2026-10-26：「悬赏倍增，加个对悬赏怪增加30%伤害的效果」。钱那一半不动（settlement 的 bountyMultiplier）；
+    // 新增的 `bountyDamage` 是**战斗内**的乘区（server/sim/content/hextech.js install 的 battle.on('hit')），
+    // 所以它必须同时进 BATTLE_SPEC_KEYS，否则 addHexRef 会把 ref 标成 prep-only、战斗里永远看不到这张卡。
+    desc: '本局中，你获得的悬赏资金 ×3；作战中，你的单位对悬赏敌人造成的伤害 +30%。',
     rarity: 'gold',
-    effect: { bountyMul: 3 },
+    effect: { bountyMul: 3, bountyDamage: { pct: 30 } },
   },
   {
     id: 'hex_shopcontract',
@@ -1512,10 +1516,12 @@ export const ENEMY_HEXES = [
   {
     id: 'ehex_deathrattle',
     name: '亡语',
-    desc: '敌人被击倒时，对周围四格内的我方干员造成其攻击力 120% 的法术伤害。',
+    // 业主 2026-10-26：「敌方协议亡语，120%的数值降低到50%」。sim 侧 content/hextech.js 的 deathrattle() 缺省值同步改
+    // （与铁壁 ratio 改 10% 那次同一个做法：代码缺省值要跟卡面一致，手写 ref 也不会跑偏）。
+    desc: '敌人被击倒时，对周围四格内的我方干员造成其攻击力 50% 的法术伤害。',
     rarity: 'silver',
     verb: 'deathrattle',
-    params: { ratio: 1.2, shape: 'plus', radius: 1 },
+    params: { ratio: 0.5, shape: 'plus', radius: 1 },
   },
   {
     id: 'ehex_armorbreak',
