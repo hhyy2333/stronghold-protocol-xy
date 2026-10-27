@@ -36,7 +36,7 @@ test('骑士徽章: a 卡西米尔 operator’s HP damage is taken by the knight
   assert.equal(knight.hp, kh - 1000, 'the knight takes it as true damage');
 });
 
-test('骑士徽章: 卡西米尔 true damage is ×3, other damage is not', () => {
+test('骑士徽章: 卡西米尔 true damage is ×2, other damage is not', () => {
   const h = field({ units: [
     { uid: 1, kind: 'chess', chessId: 'knight', row: 9, col: 4, items: [ITEM] },
     { uid: 2, kind: 'chess', chessId: 'kaz', row: 10, col: 4 },
@@ -48,7 +48,7 @@ test('骑士徽章: 卡西米尔 true damage is ×3, other damage is not', () =>
   const e = enemyOf(h);
   let hp = e.hp;
   h.b.dealDamage(kaz, e, { amount: 100, type: 'true', canDodge: false });
-  assert.equal(hp - e.hp, 300, 'true damage ×3');
+  assert.equal(hp - e.hp, 200, 'true damage ×2');
   hp = e.hp;
   h.b.dealDamage(plain, e, { amount: 100, type: 'true', canDodge: false });
   assert.equal(hp - e.hp, 100, 'non-卡西米尔 not scaled');
@@ -71,6 +71,26 @@ test('骑士徽章: a fatal hit on a 卡西米尔 operator is banked by the knig
   assert.equal(kaz.alive, true, 'the redirected fatal does not kill the 卡西米尔 operator');
   assert.equal(knight.alive, true, 'the knight is saved by the badge');
   assert.ok((h.b.getPlayer('p1').bonds.indomShip.layers || 0) >= 5, '+5 不屈 layers');
+});
+
+test('骑士徽章: 锁血只有 5 秒 —— 窗口结束后骑士会正常阵亡，且不再加不屈', () => {
+  const h = field({ units: [
+    { uid: 1, kind: 'chess', chessId: 'knight', row: 9, col: 4, items: [ITEM] },
+    { uid: 2, kind: 'chess', chessId: 'kaz', row: 10, col: 4 },
+  ] });
+  h.run(0.2);
+  installKnightBadge(h.b);
+  const knight = opOf(h, 'knight');
+  const kaz = opOf(h, 'kaz');
+  const e = enemyOf(h);
+  h.b.dealDamage(e, kaz, { amount: 99999, type: 'true', canDodge: false });
+  assert.equal(knight.alive, true, 'premise: the first fatal is saved');
+  const layers = h.b.getPlayer('p1').bonds.indomShip.layers || 0;
+  assert.ok(layers >= 5);
+  h.run(6);                                   // 越过 5 秒锁血窗口
+  h.b.dealDamage(e, knight, { amount: 99999, type: 'true', canDodge: false });
+  assert.equal(knight.alive, false, '窗口结束后不再免死');
+  assert.equal((h.b.getPlayer('p1').bonds.indomShip.layers || 0), layers, '不再加不屈（每场只开一次窗口）');
 });
 
 test('骑士徽章: without the equipment none of it happens (the 卡西米尔 operator dies)', () => {

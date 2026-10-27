@@ -1973,8 +1973,8 @@ const CUSTOM_EFFECTS = Object.freeze({
   // server/sim/content/items/knightbadge.js (BY_ITEM['chess_item_9_98_e']); numbers live on the item record's params.
   eff_item_knightbadge: {
     name: '骑士徽章',
-    desc: '装备者成为【卡西米尔】的「骑士」：己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×3；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒',
-    descRaw: '装备者成为<@ba.vup>【卡西米尔】</>的「骑士」：己方【卡西米尔】干员受到的伤害<@ba.vup>转移给装备者</>；己方【卡西米尔】干员造成的真实伤害<@ba.vup>×3</>；装备者受到致命伤害时<@ba.vup>+5 层【不屈】</>，并<@ba.vup>锁血 5 秒</>',
+    desc: '装备者成为【卡西米尔】的「骑士」：己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×2；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒',
+    descRaw: '装备者成为<@ba.vup>【卡西米尔】</>的「骑士」：己方【卡西米尔】干员受到的伤害<@ba.vup>转移给装备者</>；己方【卡西米尔】干员造成的真实伤害<@ba.vup>×2</>；装备者受到致命伤害时<@ba.vup>+5 层【不屈】</>，并<@ba.vup>锁血 5 秒</>',
     buffs: [],
   },
 });
@@ -2423,7 +2423,7 @@ const CUSTOM_ITEMS = Object.freeze({
     note: '本作自制装备：只由协议源石【锻炉】合成，商店不出售、不可合并、不可再融合',
   },
   // 骑士徽章 (业主 2026-10-26): 协议源石【骑士】发放的装备。装备者=「骑士」：同 owner 的卡西米尔干员受伤时伤害转移给他，
-  // 卡西米尔造成的真实伤害 ×3，致命伤害时 +5 不屈并锁血 5 秒。数值全部走 params，行为在
+  // 卡西米尔造成的真实伤害 ×2，致命伤害时 +5 不屈并锁血 5 秒。数值全部走 params，行为在
   // server/sim/content/items/knightbadge.js（BY_ITEM['chess_item_9_98_e']），装备本身生效、不依赖卡是否还在。
   chess_item_9_98_e_a: {
     name: '骑士徽章',
@@ -2432,12 +2432,12 @@ const CUSTOM_ITEMS = Object.freeze({
     shopSortId: 998,
     identifier: 9009,
     iconId: 'trap_1073_acarm073',
-    desc: '装备者成为【卡西米尔】的「骑士」：己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×3；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒',
-    descRaw: '装备者成为<@ba.vup>【卡西米尔】</>的「骑士」：己方【卡西米尔】干员受到的伤害<@ba.vup>转移给装备者</>；己方【卡西米尔】干员造成的真实伤害<@ba.vup>×3</>；装备者受到致命伤害时<@ba.vup>+5 层【不屈】</>，并<@ba.vup>锁血 5 秒</>',
+    desc: '装备者成为【卡西米尔】的「骑士」：己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×2；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒',
+    descRaw: '装备者成为<@ba.vup>【卡西米尔】</>的「骑士」：己方【卡西米尔】干员受到的伤害<@ba.vup>转移给装备者</>；己方【卡西米尔】干员造成的真实伤害<@ba.vup>×2</>；装备者受到致命伤害时<@ba.vup>+5 层【不屈】</>，并<@ba.vup>锁血 5 秒</>',
     effectId: 'eff_item_knightbadge',
     effectName: '骑士徽章',
     buffs: [],
-    params: { transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 },
+    params: { transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 },
     note: '本作自制装备：只由协议源石【骑士】发放，商店不出售、不可合并',
   },
 });

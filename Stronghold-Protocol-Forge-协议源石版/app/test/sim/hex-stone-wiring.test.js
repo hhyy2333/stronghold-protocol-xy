@@ -33,7 +33,7 @@ test('a real battle with all eight cards installed runs without engine errors', 
     enemies: { e_d: enemyRec({ key: 'e_d', hp: 1e7, atk: 0, def: 0, res: 0, speed: 0 }) },
   };
   const effects = Object.entries(CARDS).map(([id, key]) => refOf(id, key));
-  effects.push({ id: 'hex:hex_kazimierz_knight', key: 'hex:hex_kazimierz_knight', name: '骑士', desc: '', iconKind: 'hex', counter: null, battle: true, params: { kazimierzKnight: { transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 }, hexId: 'hex_kazimierz_knight' }, data: { hexId: 'hex_kazimierz_knight' } });
+  effects.push({ id: 'hex:hex_kazimierz_knight', key: 'hex:hex_kazimierz_knight', name: '骑士', desc: '', iconKind: 'hex', counter: null, battle: true, params: { kazimierzKnight: { transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 }, hexId: 'hex_kazimierz_knight' }, data: { hexId: 'hex_kazimierz_knight' } });
   const h = makeBattle({
     defs,
     players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: {}, playerEffects: effects, units: [

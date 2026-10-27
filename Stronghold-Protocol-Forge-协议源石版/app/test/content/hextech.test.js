@@ -1398,7 +1398,7 @@ test('第十九批：7 张盟约专属协议 —— 名称/阶位/requiresBond/�
   assert.equal(badge.mergeable, false);
   assert.equal(badge.shopExcluded, true);
   assert.ok(DATA.effects[badge.effectId], '骑士徽章 的 effect 记录能解析');
-  assert.deepEqual(badge.params, { transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 });
+  assert.deepEqual(badge.params, { transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 });
   // 锻炉：获得时给薄绿 + 洛洛
   assert.deepEqual(HEXTECH.playerHexes.hex_forge.effect.onPick.chess.ids, ['chess_char_3_08_a', 'chess_char_2_10_a']);
   // 绿洲 / 冰雪消融 的备战侧 spec 挂在会被注册的钩子名下

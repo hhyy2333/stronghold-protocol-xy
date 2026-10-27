@@ -2,10 +2,10 @@
 // CUSTOM_ITEMS): the equipment 协议源石【骑士】(`hex_kazimierz_knight`, tools/hextech/roster.mjs) hands out.
 //
 // 业主原文（04-文档/协议源石-盟约专属协议-第7回合-设计稿-20261026.md §3.7）：「【骑士徽章】：装备者（下称「骑士」）获得：
-// 【卡西米尔】干员受到伤害时，伤害转移给骑士（100%）；【卡西米尔】干员造成的真实伤害 ×3；【卡西米尔】干员受到致命伤害时，
+// 【卡西米尔】干员受到伤害时，伤害转移给骑士（100%）；【卡西米尔】干员造成的真实伤害 ×2；装备者受到致命伤害时，
 // +5 层【不屈】，并锁血 5 秒（期间不会死亡）」。
 //
-// 三条都读**装备自己的 params**（data/items.json：{ transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 }），
+// 三条都读**装备自己的 params**（data/items.json：{ transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 }），
 // 所以调数只改数据、不改这里；记录缺字段时用同一组值兜底（协议源石那批装备的惯例，见 items/protocol.js）。
 //
 // 这是一件 **ITEM 行为**，不是卡的行为：装备在谁身上就在谁身上生效，与「玩家有没有那张协议源石」无关
@@ -15,12 +15,12 @@
 // 口径（逐条 [ASSUMED]，官方文本没写死的地方）：
 //   * 「己方」= **同一玩家**（`ownerId` 相同）的干员。联防 / boss 双人场上队友的卡西米尔干员不享受（与 尸山 同一条口径）；
 //   * 「骑士」= 装着这件装备的干员本身，不需要是卡西米尔干员；一名玩家同时有两枚徽章时，**转移**由「场上第一个」骑士承担
-//     （第一个倒下后由下一名接手），×3 与锁血按「有这件装备」计一次（两条都用 DamageInfo 标记 / 每单位一个窗口去重，
-//     不会 3×3 或 +5+5 叠加）；
+//     （第一个倒下后由下一名接手），×2 与锁血按「有这件装备」计一次（两条都用 DamageInfo 标记 / 每单位一个窗口去重，
+//     不会 2×2 或 +5+5 叠加）；
 //   * 转移：100% ⇒ 被转移者**一点血都不掉**，那一份走**真实伤害**落在骑士身上（与被转移者自己的护盾结算顺序：
-//     先由被转移者吃护盾，护盾之后的 HP 伤害才转移 [ASSUMED]）。转移伤害带 `transfer` 标记，因此不被 ×3 再放大、
+//     先由被转移者吃护盾，护盾之后的 HP 伤害才转移 [ASSUMED]）。转移伤害带 `transfer` 标记，因此不被 ×2 再放大、
 //     也不会被别的转移内容（坚守 / 浊心斯卡蒂 S1）二次转移；
-//   * 真实伤害 ×3 只放大**对敌**的真伤实例（对友军的真伤不放大 [ASSUMED]），且**不**放大转移过来的那一份；
+//   * 真实伤害 ×2 只放大**对敌**的真伤实例（对友军的真伤不放大 [ASSUMED]），且**不**放大转移过来的那一份；
 //   * 致命伤害：**锁血窗口内**再次致命只免死、不重复加层（否则骑士在 1 点血上会被每一击续成几十层）；
 //     锁血期间 HP 由引擎留在 1 点（damage.js applyHpLoss：`c.prevented` ⇒ hp = min(1, maxHp)）；
 //   * 转移与锁血都要求骑士**在场**（`alive && deployed && !hidden`）：骑士倒下时转移不生效，被转移者自己吃伤害
@@ -43,7 +43,7 @@ export const KNIGHTBADGE_BOND = 'kazimierzShip';
 /** The bond a fatal hit banks (+N 层). */
 export const KNIGHTBADGE_INDOM_BOND = 'indomShip';
 /** The numbers this behaviour falls back to when the record carries none (the card spec's own values). */
-export const KNIGHTBADGE_DEFAULTS = Object.freeze({ transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 });
+export const KNIGHTBADGE_DEFAULTS = Object.freeze({ transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 });
 
 /** Positive number, else the documented default (a 0 / a missing field means "not configured"). */
 const pos = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -81,8 +81,9 @@ function installOn(battle, u, rec) {
   const trueMul = pos(p.trueMul, KNIGHTBADGE_DEFAULTS.trueMul);
   const indomLayers = Math.max(1, Math.floor(pos(p.indomLayers, KNIGHTBADGE_DEFAULTS.indomLayers)));
   const lockSec = pos(p.lockSec, KNIGHTBADGE_DEFAULTS.lockSec);
-  /** End of the running 锁血 window (battle time). One window per knight. */
+  /** End of the running 锁血 window (battle time); `lockUsed` = this badge already spent its ONE window. */
   let lockUntil = -Infinity;
+  let lockUsed = false;
   const hooks = [];
   const on = (name, fn, priority = 0) => { const h = battle.on(name, fn, { owner: u, priority }); if (h) hooks.push(h); return h; };
   rt.units.push(u);
@@ -103,11 +104,11 @@ function installOn(battle, u, rec) {
     if (c.dmg) c.dmg.knightShare = true;
     c.amount = Math.max(0, c.amount - share);
     const info = battle.makeDamage({ amount: share, type: 'true', canDodge: false, tags: [...PROC_TAGS] });
-    info.knightTransfer = true;   // never scaled by the ×3 below, never redirected again
+    info.knightTransfer = true;   // never scaled by the ×2 below, never redirected again
     battle.dealDamage(c.source ?? null, u, info);
   });
 
-  // 2) 【卡西米尔】干员造成的真实伤害 ×3 — a multiplier on the instance itself, marked so two badges never multiply twice.
+  // 2) 【卡西米尔】干员造成的真实伤害 ×2 — a multiplier on the instance itself, marked so two badges never multiply twice.
   on('hit', (c) => {
     const d = c && c.dmg;
     if (!d || d.cancel || d.knightTransfer) return;
@@ -122,17 +123,18 @@ function installOn(battle, u, rec) {
     d.mul = (Number.isFinite(Number(d.mul)) ? Number(d.mul) : 1) * trueMul;
   });
 
-  // 3) 致命伤害: +N 层【不屈】and a lockSec 锁血 window. A fatal inside a running window only prevents the death (see header).
+  // 3) 致命伤害: +N 层【不屈】and ONE lockSec 锁血 window per battle. A fatal INSIDE the running window only prevents the
+  //    death (it never extends the window); once the window is over the knight dies normally — the first version kept
+  //    preventing every fatal, i.e. an infinite 锁血 (业主 2026-10-27「锁血时间没正确生效，无限时间锁血了」).
   on('fatal', (c) => {
     if (!c || c.prevented) return;
     const t = c.unit;
-    if (!t) return;
-    const mine = t === u || ownKazimierz(battle, t, u.ownerId);
-    if (!mine) return;
-    if (battle.time >= lockUntil) {
-      lockUntil = battle.time + lockSec;
-      battle.addLayers(u.ownerId, KNIGHTBADGE_INDOM_BOND, indomLayers, 'item', { source: u });
-    }
+    if (!t || t !== u) return;                 // 「装备者受到致命伤害时」——不是队友，也不是替队友挡死
+    if (battle.time < lockUntil) { c.prevented = true; return; }
+    if (lockUsed) return;                      // 窗口已过：正常阵亡，不再开第二个窗口
+    lockUsed = true;
+    lockUntil = battle.time + lockSec;
+    battle.addLayers(u.ownerId, KNIGHTBADGE_INDOM_BOND, indomLayers, 'item', { source: u });
     c.prevented = true;
   });
 

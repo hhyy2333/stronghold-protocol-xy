@@ -1469,12 +1469,12 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_kazimierz_knight',
     name: '骑士',
-    desc: '仅【卡西米尔】盟约激活时才会出现。获得时立即获得装备【骑士徽章】：装备者成为【卡西米尔】的「骑士」，己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×3；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒。',
+    desc: '仅【卡西米尔】盟约激活时才会出现。获得时立即获得装备【骑士徽章】：装备者成为【卡西米尔】的「骑士」，己方【卡西米尔】干员受到的伤害转移给装备者；己方【卡西米尔】干员造成的真实伤害 ×2；装备者受到致命伤害时 +5 层【不屈】，并锁血 5 秒。',
     rarity: 'prismatic',
     requiresBond: 'kazimierzShip',
     effect: {
       onPick: { item: { id: 'chess_item_9_98_e_a', count: 1 } },
-      kazimierzKnight: { transferPct: 100, trueMul: 3, indomLayers: 5, lockSec: 5 },
+      kazimierzKnight: { transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 },
     },
   },
 ];
