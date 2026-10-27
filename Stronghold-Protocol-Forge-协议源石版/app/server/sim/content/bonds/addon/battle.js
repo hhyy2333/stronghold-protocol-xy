@@ -116,6 +116,21 @@ const prob = procChance;
 // =====================================================================================================================
 // per-player state
 
+/**
+ * 燎原（hex_yan_ember）300 层：「炎干员视为坚守干员」（业主 2026-10-27「燎原的坚守没正确触发」）。
+ * 把炎干员并进坚守的成员名单，于是坚守的 40% 分担 / 反伤 / 脆弱都按同一份名单结算；燎原模块在坚守
+ * tier ≥ 2 时不再自己结算，避免双份。
+ */
+function yanSteadMembers(battle, p, ops) {
+  const refs = p && Array.isArray(p.playerEffects) ? p.playerEffects : [];
+  const ref = refs.find((r) => r && (r.data?.hexId === 'hex_yan_ember' || r.key === 'hex:hex_yan_ember'));
+  if (!ref) return [];
+  const need = Number(ref.params?.yanEmber?.steadLayer ?? 300);
+  const layers = Number(p.bonds?.yanShip?.layers ?? 0);
+  if (!(layers >= need)) return [];
+  return ops.filter((u) => isMember(battle, u, 'yanShip'));
+}
+
 function makeState(battle, p) {
   const pid = p.playerId;
   const ops = playerOps(battle, pid);
@@ -126,6 +141,10 @@ function makeState(battle, p) {
     st.tiers[id] = t;
     st.bb[id] = bondBb(id);
     st.members[id] = new Set(ops.filter((u) => isMember(battle, u, id)));
+  }
+  // 燎原 300 层：炎干员并入坚守成员名单（只在坚守本身有 tier 时；否则坚守没装，燎原模块自己兜底）。
+  if (st.members[ID.stead]) {
+    for (const u of yanSteadMembers(battle, p, ops)) st.members[ID.stead].add(u);
   }
   return st;
 }

@@ -20,7 +20,7 @@ const dummy = () => enemyRec({ key: 'enemy_dummy', hp: 100000, atk: 0, speed: 0 
 
 function battleOf({ hexes = [], units, bonds = {}, enemyPos = [12, 2] } = {}) {
   return makeBattle({
-    defs: { chess: { test_guard: guard(), test_yan: yanOp(), test_sargon: sargonOp() }, enemies: { enemy_dummy: dummy() } },
+    defs: { chess: { test_guard: guard(), test_yan: yanOp(), test_sargon: sargonOp(), test_stead: chessRec({ id: 'test_stead', bonds: ['steadShip'], stats: { maxHp: 5000, atk: 500, def: 0, res: 0, blockCnt: 1 }, skill: null }) }, enemies: { enemy_dummy: dummy() } },
     players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds, playerEffects: hexes.map((h) => refOf(...h)), units }],
     enemies: [{ key: 'enemy_dummy', time: 0, pos: enemyPos }],
     autoFinish: false, timeLimit: 30,
@@ -89,4 +89,32 @@ test('绿洲: a skill grants a 100% ATK shield and the next attack adds equal ar
   const hp0 = e.hp;
   h.b.emit('attack', { attacker: u, targets: [e], isSkill: false });
   assert.ok(hp0 - e.hp >= 390, 'next attack bonus: ' + (hp0 - e.hp));
+});
+
+test('燎原: 300 层且真【坚守】tier 2 在场时，炎干员并入坚守分担（4 人各 100）', () => {
+  const h = battleOf({
+    hexes: [['hex_yan_ember', 'yanEmber', YAN]],
+    bonds: {
+      yanShip: { active: true, count: 3, layers: 300 },
+      steadShip: { active: true, count: 3, tier: 2, layers: 10 },
+    },
+    units: [
+      { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 },
+      { uid: 2, kind: 'chess', chessId: 'test_yan', row: 9, col: 7 },
+      { uid: 3, kind: 'chess', chessId: 'test_stead', row: 10, col: 6 },
+      { uid: 4, kind: 'chess', chessId: 'test_stead', row: 10, col: 7 },
+      { uid: 5, kind: 'chess', chessId: 'test_stead', row: 10, col: 8 },
+    ],
+  });
+  h.run(0.2);
+  const guard = opOf(h, 'test_guard');
+  const yan = opOf(h, 'test_yan');
+  const steads = h.b.allyUnits.filter((u) => u.kind === 'op' && u.defId === 'test_stead');
+  const e = h.enemies()[0];
+  const g0 = guard.hp, y0 = yan.hp;
+  const s0 = steads.map((u) => u.hp);
+  h.b.dealDamage(e, guard, makeDamageInfo({ amount: 1000, type: 'true', canDodge: false }));
+  assert.equal(g0 - guard.hp, 600, '非坚守干员自己承担 60%');
+  assert.equal(y0 - yan.hp, 100, '炎干员作为坚守成员分到 1/4');
+  steads.forEach((u, i) => assert.equal(s0[i] - u.hp, 100, '真坚守成员也各分到 1/4'));
 });

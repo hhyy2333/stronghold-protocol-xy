@@ -6,7 +6,7 @@
 //
 // 确定性：无 Math.random / Date / Node API；本模块不需要随机。
 
-import { isMember, bondLayers } from '../support/index.js';
+import { isMember, bondLayers, bondTier } from '../support/index.js';
 import { applyRedirectCut, redirectShare, isChained, isHpLoss, isRetaliation } from '../../damage.js';
 
 const CARD_YAN = 'hex_yan_ember';
@@ -100,6 +100,8 @@ export function installYanEmber(hooks) {
     const pid = tgt.ownerId;
     const p = plan.get(pid);
     if (!p || bondLayers(battle, pid, BOND_YAN) < p.steadLayer) return;
+    // 真【坚守】tier ≥ 2 在场时，由坚守模块统一结算（炎干员已被它并入成员名单），这里不再重复分担。
+    if (bondTier(battle, pid, 'steadShip') >= 2) return;
     if (isMember(battle, tgt, BOND_YAN)) return;
     const any = battle.allyUnits.some((u) => isYan(u) && onField(u));
     if (!any || !(p.steadRatio > 0)) return;
@@ -131,6 +133,8 @@ export function installYanEmber(hooks) {
     const pid = tgt.ownerId;
     const p = plan.get(pid);
     if (!p || bondLayers(battle, pid, BOND_YAN) < p.steadLayer) return;
+    // 同上：真坚守 tier ≥ 2 时，炎干员已经在它的成员名单里，反伤 / 脆弱由它结算。
+    if (bondTier(battle, pid, 'steadShip') >= 2) return;
     const last = tgt.mem.yanEmberThornCd ?? -Infinity;
     if (battle.time - last < p.cd - 1e-9) return;
     tgt.mem.yanEmberThornCd = battle.time;
