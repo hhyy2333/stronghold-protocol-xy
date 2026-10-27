@@ -928,11 +928,11 @@ function applySpec(ctx, spec, hex = null, hook = '') {
     const k = `${HEX_KEY}${id}:eliteGrant:${ctx.round}`;
     if (ctx.counter(k) < 1) {
       const top = typeof ctx.topMemberBond === 'function' ? ctx.topMemberBond() : null;
-      // NOT ignoreCounts: that let the roll pick an operator whose pool copies were all gone, and grantChess then
-      // refused it — the card randomly did nothing (业主 2026-10-27「三连透支有概率不生效」). Rolling only stocked
-      // entries is the same pool the grant enforces.
-      const cid = top ? ctx.rollChess({ bond: top }) : null;
-      const got = cid ? ctx.grantChess(cid, { golden: true, source: 'hex' }) : null;
+      // 不按库存校验（业主 2026-10-27「不按库存校验」）：抽卡忽略剩余张数，授予也不看库存、不从池子里扣
+      // （池子空了照样给，且不会把 left 扣成负数）。之前 ignoreCounts 抽到已抽空的干员、grantChess 又按库存
+      // 拒绝，表现就是「有概率不生效」。
+      const cid = top ? ctx.rollChess({ bond: top, ignoreCounts: true }) : null;
+      const got = cid ? ctx.grantChess(cid, { golden: true, source: 'hex', requirePool: false, fromPool: false }) : null;
       if (got) { ctx.setCounter(k, 1); did = true; }
     }
   }

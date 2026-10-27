@@ -1006,10 +1006,15 @@ test('三连透支: an elite merge grants an elite of the board’s most numerou
     topMemberBond: () => 'preciShip',
     rollChess: (o) => {
       assert.equal(o.bond, 'preciShip', 'rolled from the top bond');
-      assert.notEqual(o.ignoreCounts, true, 'only operators with a spare pool copy are rolled (the grant enforces stock)');
+      assert.equal(o.ignoreCounts, true, '库存为 0 也照样抽（不按库存校验）');
       return 'chess_char_1_01';
     },
-    grantChess: (id, o) => { got.push([id, o && o.golden]); return { id }; },
+    grantChess: (id, o) => {
+      got.push([id, o && o.golden]);
+      assert.equal(o && o.requirePool, false, 'grant 不看库存');
+      assert.equal(o && o.fromPool, false, 'grant 不从池子扣（不会把 left 扣成负数）');
+      return { id };
+    },
     ev: { kind: 'chess', piece: { kind: 'chess', id: 'chess_char_1_01_b' }, baseId: 'chess_char_1_01' },
   });
   const h = reg.get(hexEffectKey('hex_tripleoverdraft'));
