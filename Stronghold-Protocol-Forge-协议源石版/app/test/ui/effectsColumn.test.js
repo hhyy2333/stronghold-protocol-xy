@@ -80,6 +80,14 @@ describe('effects column: a 协议源石 shows its 阶位 art', () => {
     assert.ok(!cls.includes('hextier'), 'no tier styling on the others');
   });
 
+  test('every effect renders — the column scrolls instead of dropping the 11th+ (业主 2026-10-27)', () => {
+    // 业主 2026-10-27「状态栏显示有上限怎么回事」：这一列原来 `slice(0, 10)`，第 11 个以后直接不画（而且没有任何提示）。
+    const effects = Array.from({ length: 14 }, (_, i) => ({ id: `e${i}`, name: `效果 ${i}`, desc: 'd', iconKind: 'choice', iconId: 'icon_player_buff' }));
+    const tree = EffectsList({ effects });
+    const tiles = classes(tree).filter((c) => c.split(' ').includes('effect'));
+    assert.equal(tiles.length, 14, `all 14 tiles render (got ${tiles.length})`);
+  });
+
   test('no effects ⇒ nothing rendered', () => {
     assert.equal(EffectsList({ effects: [] }), null);
     assert.equal(EffectsList({ effects: null }), null);

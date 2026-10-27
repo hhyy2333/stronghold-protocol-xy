@@ -44,6 +44,10 @@ export function effectDesc(e) {
   return desc;
 }
 
+// 业主 2026-10-27「状态栏显示有上限怎么回事」: the list used to be `list.slice(0, 10)` — the 11th effect and everything after
+// it were silently DROPPED, even though `.gm__effects` has its own scrollbar since 2026-10-23 (业主「状态栏增加滚动条」).
+// A real game now reaches 10+ entries (the column carries 策略 / 机变 / 道具 / 特质 / 悬赏 on top of the 协议源石 cards), so
+// that cap only hid effects: the column renders EVERY entry and scrolls.
 /** @param {{ effects: any[] }} props */
 export function EffectsList({ effects }) {
   const list = (Array.isArray(effects) ? effects : []).filter((e) => e && (e.name || e.desc));
@@ -54,7 +58,7 @@ export function EffectsList({ effects }) {
   const local = data.get('local');
   return html`<div class="effects" aria-label=${t('生效中的效果')}>
     <${MicroLabel}>EFFECTS</${MicroLabel}>
-    ${list.slice(0, 10).map((e, i) => {
+    ${list.map((e, i) => {
       const src = effectIconUrl(m, e, local);
       // the tier image IS the tile when it resolved: no inner padding, `cover` (its numeral is centred and large);
       // with only the mod's rune (or nothing) the tile keeps its usual padded, `contain` look. `src` must be a real
