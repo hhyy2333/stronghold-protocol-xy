@@ -34,6 +34,34 @@ test('BOARD: distinct base chess on the board; normal + elite of one operator co
   assert.deepEqual(thresholdsOf(DATA.bonds.yanShip), [3, 6, 9]);
 });
 
+// 燎原 (业主 2026-10-27「改备战侧的坚守人数/激活」): 「【炎】达到 300 层时，【炎】干员视为【坚守】干员」 —— 激活是人数，
+// 所以人数 / 激活 / 阶 都跟着走（战斗输入随后带着这个 tier，坚守自己的模块用炎干员当成员结算 40%）。
+test('燎原: 300 层时炎干员算进【坚守】的人数（激活与阶跟着走）', () => {
+  const yan = members('yanShip', 3, (c) => !c.bonds.includes('steadShip'));
+  assert.equal(yan.length, 3, 'premise: three visible 炎-only chess');
+  const card = { id: 'hex:hex_yan_ember', key: 'hex:hex_yan_ember', data: { hexId: 'hex_yan_ember' }, params: { hexId: 'hex_yan_ember', yanEmber: { steadLayer: 300 } } };
+  const st = (layers, n, extra = {}) => ({ ...state({ board: yan.slice(0, n).map((x) => piece(x)), layers: { yanShip: layers } }), ...extra });
+  let s = computeBonds(gd, st(300, 3));
+  assert.equal(s.steadShip.count, 0, '没有燎原：炎干员不算坚守');
+  s = computeBonds(gd, st(299, 3, { effects: [card] }));
+  assert.equal(s.steadShip.count, 0, '299 层还不够');
+  assert.equal(s.steadShip.active, false);
+  s = computeBonds(gd, st(300, 3, { effects: [card] }));
+  assert.equal(s.steadShip.count, 3, '3 名炎干员 = 3 名坚守成员');
+  assert.equal(s.steadShip.active, true, '坚守因此真的激活');
+  assert.equal(s.steadShip.tier, 2, '3 名 ⇒ 2 阶（坚守门槛 [2,3]）');
+  s = computeBonds(gd, st(300, 2, { effects: [card] }));
+  assert.equal(s.steadShip.count, 2);
+  assert.equal(s.steadShip.tier, 1);
+  const cheap = { ...card, params: { ...card.params, yanEmber: { steadLayer: 200 } } };
+  s = computeBonds(gd, st(200, 3, { effects: [cheap] }));
+  assert.equal(s.steadShip.tier, 2, '门槛来自卡参数 yanEmber.steadLayer');
+  const stead = members('steadShip', 1)[0];
+  assert.ok(stead, 'premise: a visible 坚守 chess exists');
+  s = computeBonds(gd, { ...state({ board: [piece(stead), ...yan.slice(0, 2).map((x) => piece(x))], layers: { yanShip: 300 } }), effects: [card] });
+  assert.equal(s.steadShip.count, 3, '真坚守 1 名 + 炎 2 名 = 3');
+  assert.equal(s.steadShip.tier, 2);
+});
 test('BOARD_AND_DECK (远见/奇迹/投资人) also counts the hand', () => {
   const [a, b] = members('visiShip', 2);
   const s = computeBonds(gd, state({ board: [piece(a)], hand: [piece(b)] }));

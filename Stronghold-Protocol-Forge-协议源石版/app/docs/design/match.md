@@ -266,7 +266,7 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 
 | 盟约 | 卡 | 作战中 | 获得时 / 里程碑 |
 |---|---|---|---|
-| 炎 | 燎原 | 己方伤害附加 2% 攻击力灼燃损伤（每干员 1s 一次）；炎≥200 层灼燃爆发伤害×2；炎≥300 层炎干员视为坚守成员（并入坚守的 40% 分担 / 反伤） | 部署位 +2 |
+| 炎 | 燎原 | 己方伤害附加 2% 攻击力灼燃损伤（每干员 1s 一次）；炎≥200 层灼燃爆发伤害×2；炎≥300 层炎干员**视为坚守干员**：备战侧算进坚守人数（激活 / 阶跟着走），作战中并入坚守的 40% 分担 / 反伤 | 部署位 +2 |
 | 萨尔贡 | 绿洲 | 萨尔贡开技能获得 100% 攻击力护盾，下次攻击附加等额法术伤害 | 60 层给缇缇；325 层给黄沙罗盘 |
 | 谢拉格 | 冰雪消融 | 谢拉格攻击寒冷/冻结敌人时解除状态、+1 层、伤害 130%/260%、40% 减速 6s；≥75 层谢拉格 +50% 攻/血 | 给耶拉；谢拉格价格 −1（最低 1） |
 | 拉特兰 | 圣佑 | 每消耗 1 弹药治疗所有拉特兰 5% 最大生命；致命时若有弹药则清空弹药、免死、得 1 层次数盾 | — |
@@ -274,6 +274,10 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 | 叙拉古 | 教父 | 己方伤害使敌人 +10% 易伤，最高 +200% | 给安洁莉娜 |
 | 卡西米尔 | 骑士 | 装备【骑士徽章】：卡西米尔受伤转移给骑士、卡西米尔真伤×2、致命时 +5 不屈并锁血 5s（每场一次，再部署刷新） | 给骑士徽章 |
 
+- 「视为坚守」的判据只有一处：`server/match/bondsMeta.js yanSteadLayerGate`（门槛读卡的 `yanEmber.steadLayer`，缺省 300；
+  层数读 `ps.layers`，**圣约回响的显示倍率不算**）把**场上**的炎干员加进 `steadShip` 的成员集合 ⇒ 坚守真的激活 / 升阶，
+  盟约条与弹窗的在场数跟着变。战斗输入随后带着这个 `tier`，`bonds/addon/battle.js` 再把炎干员并进坚守的成员名单
+  （战斗中才到 300 层时由 `layerGain` 重建名单）；客户端 `gameLogic/bonds.js bondMembers` 只镜像弹窗的成员行。
 - 战斗半段：`server/sim/content/hexcards/stone_*.js`（各自由 `specOf` 的参数门控）；卡西米尔那件走
   `server/sim/content/items/knightbadge.js`（装备驱动，与卡无关）。
 - 备战半段：`applySpec` 新增 `chess.ids`（指定干员，锻炉给薄绿+洛洛）、`deployCap`（部署位）、

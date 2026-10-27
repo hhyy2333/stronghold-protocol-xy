@@ -57,6 +57,27 @@ export function pieceBonds(gd, piece) {
 }
 
 /**
+ * 燎原 (hex_yan_ember, 业主 2026-10-27「改备战侧的坚守人数/激活」): 「【炎】达到 300 层时，【炎】干员视为【坚守】干员」.
+ *
+ * WHY THE PREP SIDE: activation is a MEMBER COUNT (bonds.json `activeCount` / thresholds), so with only the battle half
+ * the card could never switch 坚守 on — the strip said 未激活 and 坚守's own tier-1 HP passive never ran for a 炎 board
+ * (the battle half, server/sim/content/hexcards/stone_yan_sargon.js, only made 炎 operators share damage). Now the 炎
+ * operators count as 坚守 members here, which is what activates / levels the bond — the battle input then carries the
+ * real tier and the bond's own module settles the 40% share with 炎 operators in its member list.
+ *
+ * Layers are the STORED ones (`ps.layers`): 圣约回响's view multiplier is not a gain and must not open the gate.
+ * @param {any} ps
+ * @returns {number} the layer count the gate needs, 0 when the player does not own the card
+ */
+function yanSteadLayerGate(ps) {
+  const ref = (ps && Array.isArray(ps.effects) ? ps.effects : []).find((e) => e && e.data && e.data.hexId === 'hex_yan_ember');
+  if (!ref) return 0;
+  const spec = ref.params && ref.params.yanEmber ? ref.params.yanEmber : null;
+  const need = Number(spec && spec.steadLayer);
+  return Number.isFinite(need) && need > 0 ? need : 300;
+}
+
+/**
  * Who carries which bond (computeBonds' and offBondCounts' shared first step): bondId → Set(baseId) on the board / in
  * the hand (the 5 temporary slots never count), bondId → Set(baseId|golden) on the board, and the elite chess on the board.
  *
@@ -77,6 +98,9 @@ function membership(gd, ps) {
   const inHand = new Map();
   const add = (m, bond, key) => { let s = m.get(bond); if (!s) m.set(bond, (s = new Set())); s.add(key); };
   const resonance = ownsHex(ps, 'hex_bondresonance');
+  // 燎原: 炎干员视为坚守干员（层数到门槛时）—— 备战侧的人数与激活也按这个算（见 yanSteadLayerGate）
+  const yanSteadNeed = yanSteadLayerGate(ps);
+  const yanStead = yanSteadNeed > 0 && (Number(ps.layers && ps.layers.yanShip) || 0) >= yanSteadNeed;
   // 你我一体 (业主 2026-10-24): 「相同干员均可增加盟约人数（原来只算一个）」 — while the player owns the card the member key is
   // the PIECE (uid), not its base id, so two copies of one operator really are two members. Everything downstream
   // (activation thresholds, 助力's variant tiers, the strip's count) reads the same `count`, so nothing else changes.
@@ -92,7 +116,10 @@ function membership(gd, ps) {
     const base = gd.baseIdOf(p.id);
     const golden = gd.isGolden(p.id);
     const mk = memberKey(p, base);
-    for (const b of pieceBonds(gd, p)) { add(onBoard, b, mk); add(onBoardVariant, b, `${base}|${golden ? 1 : 0}`); }
+    const bonds = pieceBonds(gd, p);
+    for (const b of bonds) { add(onBoard, b, mk); add(onBoardVariant, b, `${base}|${golden ? 1 : 0}`); }
+    // 燎原: a 【炎】 operator is a 【坚守】 member too once the card's gate is open
+    if (yanStead && bonds.includes('yanShip')) { add(onBoard, 'steadShip', mk); add(onBoardVariant, 'steadShip', `${base}|${golden ? 1 : 0}`); }
     if (drawBlade) {
       const rec = gd.chess(p.id);
       if (rec && rec.position === 'RANGED') { add(onBoard, 'raidShip', mk); add(onBoardVariant, 'raidShip', `${base}|${golden ? 1 : 0}`); }

@@ -1755,6 +1755,33 @@ test('锻炉: 百变回到整备区后，道具卡仍写得出是哪两件（业
   m.dispose();
 });
 
+// 业主 2026-10-27「改备战侧的坚守人数/激活」：燎原 300 层后炎干员算进坚守人数 ⇒ 坚守真的激活，战斗输入带着这个 tier
+// （坚守模块只在 tier ≥ 2 时装上，炎干员由 bonds/addon/battle.js 并进它的成员名单，40% 分担 / 反伤因此生效）。
+test('燎原: 300 层后坚守真的激活，战斗输入带着这个 tier（业主 2026-10-27）', () => {
+  const { h, m, ps } = solo1(163);
+  applyHex(m, ps, m.gd.hex('hex_yan_ember'));
+  for (const chessId of ['chess_char_1_03_a', 'chess_char_2_04_a', 'chess_char_3_03_a']) {
+    const tile = legalTileFor(m, ps, chessId);
+    assert.ok(tile, `a legal tile for ${chessId}`);
+    give(m, ps, chessId, 'board', tile);
+  }
+  ps.layers.yanShip = 299;
+  ps.recompute();
+  assert.equal(ps.bonds.steadShip?.active ?? false, false, '299 层还不够');
+  ps.layers.yanShip = 300;
+  ps.recompute();
+  assert.equal(ps.bonds.steadShip.count, 3, '3 名炎干员算进坚守人数');
+  assert.equal(ps.bonds.steadShip.active, true, '坚守因此激活');
+  assert.equal(ps.bonds.steadShip.tier, 2, '3 名 ⇒ 2 阶');
+  // 客户端画的那条（m.private.bonds）跟着变
+  const strip = ps.privateView().bonds.find((b) => b.bondId === 'steadShip');
+  assert.equal(strip.active, true);
+  assert.equal(strip.count, 3);
+  // 战斗输入：坚守模块只在 tier ≥ 2 装上
+  assert.equal(ps.battleInput({ side: 'L', colOffset: 0 }).bonds.steadShip.tier, 2);
+  h.invariants();
+  m.dispose();
+});
 // ---- 记录部抑制 (enemy hex `ehex_records`): the prep-phase LP charge and the line the player sees ---------------
 
 test('记录部抑制: a prep deploy costs LP and the seat is TOLD (业主 2026-10-24「触发时给个明显提示」)', () => {

@@ -147,6 +147,21 @@ export function pieceBondIds(chess, items, getItem = () => null, hasBond = null)
 }
 
 /**
+ * 燎原 (hex_yan_ember, 业主 2026-10-27): 「【炎】达到 300 层时，【炎】干员视为【坚守】干员」 — 这是**显示侧的镜像**：
+ * 在场 / 激活 / 阶 三个数字由服务端算（server/match/bondsMeta.js `yanSteadLayerGate`，它把炎干员算进坚守的人数），
+ * 这里只让坚守弹窗的**成员行**把炎干员列出来。`m.private` 里已经有两样东西：`effects`（ref id `hex:hex_yan_ember[#n]`）
+ * 与 `bonds[]`（盟约条的层数），所以不用再加字段。
+ * 门槛 300 是卡的参数 `yanEmber.steadLayer` 的缺省值（客户端读不到 ref 的 params；数字以服务端为准）。
+ */
+const YAN_STEAD_LAYERS = 300;
+function yanSteadOpen(priv) {
+  const refs = Array.isArray(priv?.effects) ? priv.effects : [];
+  if (!refs.some((e) => e && typeof e.id === 'string' && e.id.startsWith('hex:hex_yan_ember'))) return false;
+  const yan = (Array.isArray(priv?.bonds) ? priv.bonds : []).find((b) => b && b.bondId === 'yanShip');
+  return (Number(yan && yan.layers) || 0) >= YAN_STEAD_LAYERS;
+}
+
+/**
  * The 变形同构体 pairings — the list its 天赋栏 shows (the item text: "具体对应关系可在模拟中查看本装备天赋栏"; character_table
  * trap_1073_acarm073 "“炎国短刀”→【炎】盟约 …", 14 bonds; GitHub issue #1: without it the item read as doing nothing).
  * Built from the same `giveBondId` the server counts with (server/match/bondsMeta.js pieceBonds, grantedBonds here): every
@@ -302,6 +317,17 @@ export function bondMembers(bond, priv, banned = [], getChess = () => null, getI
     const rec = recOf({ kind: 'chess', id: slotId });
     if (diyOfBond(rec) && rec.diyFor === slotId) diy.set(slotId, { on: false, hand: false, owned: false, rec, pick: null });
   }
+  // 燎原: 炎干员视为坚守干员 —— 层数到门槛时，坚守的成员行里也要有它们（服务端的 count 早就算进去了）
+  const viaHex = new Map();
+  if (bond?.bondId === 'steadShip' && yanSteadOpen(priv)) {
+    for (const p of Array.isArray(priv?.board) ? priv.board : []) {
+      if (p?.kind !== 'chess') continue;
+      const base = baseOf(p.id);
+      if (memberSet.has(base) || granted.has(base) || diy.has(base) || viaHex.has(base)) continue;
+      if (!pieceBondIds(recOf(p), p.items, getItem, hasBond).includes('yanShip')) continue;
+      viaHex.set(base, true);
+    }
+  }
   const diyBanned = new Set(Array.isArray(priv?.diyBanned) ? priv.diyBanned : []);
   const rows = members.map((id) => {
     const c = getChess(id);
@@ -313,6 +339,11 @@ export function bondMembers(bond, priv, banned = [], getChess = () => null, getI
   }
   for (const [id, g] of diy) {
     rows.push({ id, tier: g.rec.tier ?? 0, name: g.rec.name ?? id, onBoard: g.on, owned: g.owned, inHand: g.hand, banned: bannedSet.has(id) || diyBanned.has(id), diy: true, rec: g.rec, ...(g.pick ? { pick: g.pick } : {}) });
+  }
+  // 燎原: 炎干员作为坚守成员的成员行（`viaHex` 标记，弹窗按普通成员行画；它们不是变形同构体那种「授予」）
+  for (const id of viaHex.keys()) {
+    const c = getChess(id);
+    rows.push({ id, tier: c?.tier ?? 0, name: c?.name ?? id, onBoard: true, owned: true, inHand: false, banned: bannedSet.has(id), viaHex: 'hex_yan_ember' });
   }
   return rows.sort((a, b) => (b.onBoard - a.onBoard) || (b.owned - a.owned) || (a.tier - b.tier) || (a.id < b.id ? -1 : 1));
 }
