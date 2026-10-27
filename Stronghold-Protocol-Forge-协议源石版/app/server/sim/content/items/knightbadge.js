@@ -138,6 +138,15 @@ function installOn(battle, u, rec) {
     c.prevented = true;
   });
 
+  // 4) 再部署刷新锁血: a REAL redeployment of the wearer (not the opening deployment, not a 【移动】) re-arms the one
+  //    window — 「再部署可以刷新锁血」(业主 2026-10-27). It does NOT grant 5 s of immunity by itself: the next fatal opens
+  //    a fresh window, exactly like the first one.
+  on('deploy', (c) => {
+    if (!c || c.unit !== u || c.initial || c.move) return;
+    lockUsed = false;
+    lockUntil = -Infinity;
+  });
+
   return {
     unit: u,
     dispose() {

@@ -103,3 +103,43 @@ test('骑士徽章: without the equipment none of it happens (the 卡西米尔 o
   assert.equal(kaz.alive, false, 'no badge, no death ward');
   assert.equal((h.b.getPlayer('p1').bonds.indomShip.layers || 0), 0, 'no 不屈 layers');
 });
+
+test('骑士徽章: 再部署会刷新锁血窗口（下一次致命重新开 5 秒）', () => {
+  const h = field({ units: [
+    { uid: 1, kind: 'chess', chessId: 'knight', row: 9, col: 4, items: [ITEM] },
+    { uid: 2, kind: 'chess', chessId: 'kaz', row: 10, col: 4 },
+  ] });
+  h.run(0.2);
+  installKnightBadge(h.b);
+  const knight = opOf(h, 'knight');
+  const kaz = opOf(h, 'kaz');
+  const e = enemyOf(h);
+  h.b.dealDamage(e, kaz, { amount: 99999, type: 'true', canDodge: false });
+  assert.equal(knight.alive, true, 'premise: 第一次致命被锁血救下');
+  const layers = h.b.getPlayer('p1').bonds.indomShip.layers || 0;
+  h.run(6);                                   // 第一个窗口结束
+  h.b.emit('deploy', { unit: knight, initial: false });   // 再部署
+  h.b.dealDamage(e, knight, { amount: 99999, type: 'true', canDodge: false });
+  assert.equal(knight.alive, true, '再部署后锁血重新可用');
+  assert.ok((h.b.getPlayer('p1').bonds.indomShip.layers || 0) > layers, '再部署后的致命再加 5 层不屈');
+  h.run(6);                                   // 第二个窗口也结束
+  h.b.dealDamage(e, knight, { amount: 99999, type: 'true', canDodge: false });
+  assert.equal(knight.alive, false, '第二个窗口结束后仍会正常阵亡');
+});
+
+test('骑士徽章: 开局部署与【移动】不刷新锁血（只有真正的再部署才刷新）', () => {
+  const h = field({ units: [
+    { uid: 1, kind: 'chess', chessId: 'knight', row: 9, col: 4, items: [ITEM] },
+    { uid: 2, kind: 'chess', chessId: 'kaz', row: 10, col: 4 },
+  ] });
+  h.run(0.2);
+  installKnightBadge(h.b);
+  const knight = opOf(h, 'knight');
+  const kaz = opOf(h, 'kaz');
+  const e = enemyOf(h);
+  h.b.dealDamage(e, kaz, { amount: 99999, type: 'true', canDodge: false });
+  h.run(6);
+  h.b.emit('deploy', { unit: knight, initial: false, move: true });   // 【移动】不是再部署
+  h.b.dealDamage(e, knight, { amount: 99999, type: 'true', canDodge: false });
+  assert.equal(knight.alive, false, '【移动】不刷新锁血');
+});
