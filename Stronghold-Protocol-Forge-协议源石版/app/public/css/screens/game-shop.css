@@ -243,29 +243,45 @@
 .lvcard.is-armed .lvcard__label { letter-spacing: .12em; padding-left: .12em; }
 
 /* ==========================================================================================
- * 矮屏 / 手机横屏（业主 2026-10-25「商店和交易所 ui 有问题，手机网页的」）
+ * 矮屏 / 手机横屏（业主 2026-10-25「商店和交易所 ui 有问题，手机网页的」→ 2026-10-26「手机网页商店 ui 小了」）
  *
- * 根字号是 `clamp(40px, min(100vw/19.2, 100vh/10.8), 240px)`（theme.css:121）：横屏手机的 100vh 通常只有
- * 300–400 CSS px，`100vh/10.8` 只有 30–37px，于是**被 40px 的下限兜住** —— 1rem 反而变成 40px，
- * 比按高度算出来的大得多。而这一行的尺寸全是 rem：
- *   工具行 .48rem（19px）+ 卡行 2.24rem（90px）+ 间距 ≈ 115px，再加 .shopbar 的 bottom .2rem（8px），
- *   一屏 315px 高时虽然塞得下，但只要「剩余可放置角色」那行也在（再 +.28rem ≈ 11px）、或者多一张卡换行，
- *   就会把卡行顶出屏幕底边 —— 截图里卡牌和等级框被裁在窗口下沿之外就是这个。
+ * 根字号是 `clamp(40px, min(100vw/19.2, 100svh/10.8), 240px)`（theme.css:121）：横屏手机的 100vh 只有
+ * 300–430px，`100vh/10.8` 只有 28–40px，于是**被 40px 的下限兜住** —— 这一档 1rem 恒为 40px，
+ * 而这一行的尺寸全是 rem（.15rem 只有 6px、.12rem 只有 4.8px、.09rem 只有 3.6px）。
  *
- * 修法：按**可用高度**而不是按宽度收尺寸。`--shop-card-h` 一处定义，.scard / .lvcard 都读它，
- * 矮屏时整体压到 1.5rem（60px）并同步缩字号 —— 卡牌仍然可点（>=--tap-min 的 44px）。
+ * 0.19.25 那一版把这一档的卡面从 2.24rem 压到 1.5rem（90 → 60px），好让整条在 355px 高的屏上塞下。
+ * 但 ui/fieldHost.js 的 HUD_REM.shopBarTop 仍然是「bottom .2rem + 行内边距 .1rem×2 + **设计卡高 2.24rem**」
+ * = 2.64rem，备战相机照旧把 2.64rem（106px）让给商店栏 —— 卡面缩小之后，那 1.14rem（46px）的让位就空着
+ * 没人用，商店栏比它自己的让位还矮一截，玩家看到的就是「小」。
+ *
+ * 修法：卡面按**屏幕高度**给，而不是按一个固定值。设计的比例是 2.24rem 卡 / 10.8rem 画布高 ≈ 21vh，
+ * 上限仍是设计尺寸 2.24rem、下限 1.5rem（0.19.25 那一版的值，分屏也够）。卡面永远不超过相机让出的
+ * 2.64rem，所以**棋盘一像素都不动**（test/ui/playtest5-ui.test.js 的 bench 断言照旧成立）；卡面上的字号
+ * 按卡高派生（`--shop-card-h` × 设计比例）并带 px 底线，最小那一档也不会缩回「跟蚂蚁似的」。
+ * 宽度另设一道 100vw 上限：卡行 7 张卡，窄屏上再宽就会推到左下角的 ⚙ / 📖 / ⛶ 上。
  * ========================================================================================== */
 :root { --shop-card-h: 2.24rem; --shop-card-w: 1.56rem; }
 .scard { width: var(--shop-card-w); height: var(--shop-card-h); }
 .lvcard { width: var(--shop-card-w); height: var(--shop-card-h); }
 
-/* 手机横屏：视口高度不足 420px（截图 2800x1260 ≈ 700x315 CSS px 就在这一档）。
- *
- * 字号一律写成 `max(<rem 值>, <px 下限>)`：1rem 在横屏恒为 40px，`.15rem` 只有 6px、`.12rem` 只有 4.8px、
- * `.09rem` 只有 3.6px —— 业主说的「缩得跟蚂蚁似的看不清」就是这个。px 下限只在矮屏这一档生效，
- * 桌面档（1rem 40–240px）的 rem 值更大，max() 永远取 rem，逐像素不变。 */
+/* 手机横屏：视口高度不足 420px（20:9 手机 ≈ 933×420 / 844×390；浏览器工具栏还占着时是 700×315 左右）。
+ * 游戏只在横屏玩（devices.css 的 .rotate-hint 盖住竖屏），手机上的商店栏就是这一档；文件末尾那条 ≤520px 宽的
+ * 竖屏规则只兜底极窄的窗口，不影响横屏。 */
 @media (max-height: 420px) {
-  :root { --shop-card-h: 1.5rem; --shop-card-w: 1.04rem; }
+  :root {
+    /* 21vh = 设计的比例（2.24rem 卡 / 10.8rem 画布高）；1.5rem（60px）下限：再矮的屏也不把卡压到点不动。 */
+    --shop-card-h: clamp(1.5rem, 21vh, 2.24rem);
+    /* .696 = 1.56 / 2.24（设计的卡形）。第二项是宽度上限：卡行是 7 张卡（等级 + 5 张干员 + 1 张装备），
+       加资金卡、内边距与间距共 ≈ 2rem，右边距 .26rem，左边缘还要给 .gm__corner 的 ⚙ / 📖 / ⛶ 留 96px
+       （devices.css 在窄屏把它们折成两行），再扣掉左右安全区（异形屏横屏时那一侧有 40px 以上的黑边）。
+       568px 宽以上通常取不到这一项，只有 480px 级别的老横屏手机才靠它把商店栏收回左下角之外。 */
+    --shop-card-w: min(calc(var(--shop-card-h) * .696), calc((100vw - var(--sa-l, 0px) - var(--sa-r, 0px) - 4.9rem) / 7));
+  }
+  /* svh = 手机浏览器工具栏还在时的可视高度（theme.css 的根字号同一个理由）。自定义属性没有「后一条无效就退回前一条」
+   * 这回事，所以必须用 @supports 包起来，不能像普通 font-size 那样写两行。 */
+  @supports (height: 100svh) {
+    :root { --shop-card-h: clamp(1.5rem, 21svh, 2.24rem); }
+  }
   /* 卡行整体上移一点，别贴着安全区；工具行也压薄 */
   .shopbar { bottom: calc(.1rem + var(--sa-b)); gap: .06rem; }
   .toolbtn { height: .38rem; font-size: max(.15rem, 11px); padding: 0 .1rem 0 .06rem; }
@@ -274,25 +290,34 @@
   .toolbtn .icon { width: .18rem; height: .18rem; }
   .shopbar__remain { font-size: max(.13rem, 10px); padding: .02rem .1rem; }
   .shopbar__remain b { font-size: max(.16rem, 12px); }
-  /* 卡面上的字随之缩小，否则 60px 高的卡里塞不下名字；但 9px / 8px 是底线，再小就不是字了 */
-  .scard__name { font-size: max(.12rem, 9px); }
-  .scard__idesc { font-size: max(.1rem, 8px); }
-  .scard__price { font-size: max(.1rem, 9px); }
-  .scard__bond { font-size: max(.13rem, 8px); }
-  .scard__bond .bglyph { width: 10px; height: 10px; }
-  .scard__class { font-size: max(.13rem, 8px); }
-  .scard__prof { width: 10px; height: 10px; }
-  .scard__confirm b { font-size: max(.18rem, 10px); letter-spacing: .12em; padding-left: .12em; }
-  .scard__confirm small { font-size: max(.11rem, 8px); }
-  .lvcard__num { font-size: max(.46rem, 18px); }
-  .lvcard__label { font-size: max(.09rem, 7px); }
-  .funds__label { font-size: max(.14rem, 9px); }
-  .funds__collapse { font-size: max(.15rem, 10px); }
+  /* 卡面上的字：按卡高派生（.135 / .112 / .09 … 是设计里字号与卡高的比），px 底线保证最小那一档还是字。
+     以前这些是死值（卡压到 60px 时卡名 9px、盟约行 8px、LEVEL 标签 7px），卡一大就跟着大。 */
+  .scard__name { font-size: max(calc(var(--shop-card-h) * .135), 9px); }
+  .scard__idesc { font-size: max(calc(var(--shop-card-h) * .1), 8px); }
+  .scard__price { font-size: max(calc(var(--shop-card-h) * .112), 9px); }
+  .scard__bond, .scard__class { font-size: max(calc(var(--shop-card-h) * .112), 8px); }
+  .scard__bond .bglyph, .scard__prof { width: max(calc(var(--shop-card-h) * .2), 10px); height: max(calc(var(--shop-card-h) * .2), 10px); }
+  .scard__soldtxt { font-size: max(calc(var(--shop-card-h) * .122), 10px); }
+  .scard__free { font-size: max(calc(var(--shop-card-h) * .11), 9px); }
+  .scard__diy, .scard__mergetag, .scard__sglyph { font-size: max(calc(var(--shop-card-h) * .1), 8px); }
+  .scard__confirm b { font-size: max(calc(var(--shop-card-h) * .14), 10px); letter-spacing: .12em; padding-left: .12em; }
+  .scard__confirm small { font-size: max(calc(var(--shop-card-h) * .09), 8px); }
+  .lvcard__micro { font-size: max(calc(var(--shop-card-h) * .078), 7px); }
+  .lvcard__num { font-size: max(calc(var(--shop-card-h) * .27), 18px); }
+  .lvcard__label { font-size: max(calc(var(--shop-card-h) * .09), 7px); }
+  .funds__num { font-size: max(calc(var(--shop-card-h) * .18), 14px); }
+  .funds__label { font-size: max(calc(var(--shop-card-h) * .11), 9px); }
+  .funds__collapse { font-size: max(calc(var(--shop-card-h) * .12), 10px); }
+  /* 收起的商店栏（.shopbar-tab）同样是手机上看得最多的一块，字别掉回 6.8px */
+  .shopbar-tab__funds b { font-size: max(.28rem, 16px); }
+  .shopbar-tab__btn { font-size: max(.17rem, 11px); }
+  /* 奖励胶囊挂在商店栏上方：跟着卡高走，否则新卡高会把它压进卡行 */
+  .rewardpill { bottom: calc(var(--shop-card-h) + 1.6rem); }
 }
 
-/* 只有比「手机横屏」还矮得多（< 280px，比如分屏 / 小窗）时才再收一档卡面。
- * 340px 那一档已经撤掉：上一版把卡压到 1.28rem×.92rem（51×37px），配上 9px 的字，卡里的名字和盟约行
- * 直接被裁掉半截，比裁到屏幕外还难看；而 420px 档的 60px 卡在 315px 高的屏上本来就装得下（条高 145px）。 */
+/* 只有比「手机横屏」还矮得多（< 280px，比如分屏 / 小窗）时才再收一档卡面，第一行让位给卡牌。
+ * 卡面上的字号跟着 --shop-card-h 一起缩，px 底线兜住（旧版这一档把卡压到 51×37px 却留着 26px 的 LEVEL 数字，
+ * 卡里的名字和盟约行直接被裁掉半截）。 */
 @media (max-height: 280px) {
   :root { --shop-card-h: 1.28rem; --shop-card-w: .92rem; }
   .shopbar__remain { display: none; }   /* 第一行让位：卡牌优先 */

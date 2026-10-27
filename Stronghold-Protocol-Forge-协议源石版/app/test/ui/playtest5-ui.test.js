@@ -128,6 +128,15 @@ describe('9: the prep camera keeps the bench clear of the shop bar on phones in 
     assert.match(shop, /\.scard \{\n {2}--tc: var\(--tier-1\);\n {2}position: relative; width: 1\.56rem; height: 2\.24rem;/);
     assert.equal(HUD_REM.shopBarTop, 0.2 + 0.1 * 2 + 2.24);
     assert.equal(HUD_REM.shopBarBorderPx, 3);
+    // The phone tier grows the card with the viewport height (owner 2026-10-26「手机网页商店 ui 小了」), but its
+    // ceiling is the design's own card height — the band above is exactly that, so a taller card would start covering
+    // the bench. The svh line sits in its own @supports block (a custom property has no "fall back to the last one").
+    const phoneTier = shop.slice(shop.indexOf('@media (max-height: 420px)'));
+    assert.match(phoneTier, /--shop-card-h: clamp\(1\.5rem, 21vh, ([\d.]+)rem\);/, 'the card follows the viewport height');
+    assert.match(phoneTier, /@supports \(height: 100svh\) \{\n {4}:root \{ --shop-card-h: clamp\(1\.5rem, 21svh, 2\.24rem\); \}/,
+      'svh (the height visible under the browser toolbars) in its own @supports block');
+    assert.equal(0.2 + 0.1 * 2 + Number(phoneTier.match(/21vh, ([\d.]+)rem/)[1]), HUD_REM.shopBarTop,
+      'the card never outgrows the band the camera reserves');
     // the bar stays on the viewport's bottom edge on a notched phone (DESIGN §18.1): no bottom inset to add
     assert.match(read('public/css/devices.css'), /\.gm__hud > \.shopbar \{ bottom: calc\(\.2rem - var\(--sa-b\)\); \}/);
   });
