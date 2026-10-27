@@ -1212,6 +1212,57 @@ test('盟约寄生 (rework): the picker gets an even share of the teammate’s N
   m.dispose();
 });
 
+// 业主 2026-10-27「多个盟约寄生有bug，好像是只会寄生最后一个人」：一份百变式的第二份 ref（策略「管理员」/ 复制）本该
+// 各记各的寄生对象与基准线，但两侧都按**基础 id** 找 ref ——
+//   · 备战侧（server/match/hextech.js applyHexExtras `pickTeammate`）：`find(e.id === 'hex:<id>' || e.key === …)`
+//     命中的永远是第一份 ⇒ 第二份的寄生对象被写进第一份（后选的那位才是唯一被寄生的）；
+//   · 回合侧（server/sim/content/hextech.js `parasiteShare`）：`ctx.effect('hex:<id>')` 同样只认基础 id ⇒ 第二份
+//     读的是第一份的 partner/baseline，而第一份刚把基准线推上去，增量恒为 0 ⇒ 两份只当一份用。
+// 现在两边都用「这一次派发自己的 ref」（ctx.selfRef()），于是两份各自寄生、各自结算。
+test('盟约寄生: a second copy keeps its OWN partner and drains on its own (业主 2026-10-27)', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 3, bots: 0, seed: 91, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const a = h.ps('p_0');
+  // the picker owns one ACTIVE stackable bond (炎, three operators), so every ref pays out in full
+  for (const chessId of ['chess_char_1_03_a', 'chess_char_2_04_a', 'chess_char_3_03_a']) {
+    const tile = legalTileFor(m, a, chessId);
+    assert.ok(tile, `a legal tile for ${chessId}`);
+    give(m, a, chessId, 'board', tile);
+  }
+  a.recompute();
+  assert.equal(a.bonds.yanShip?.active, true, 'premise: 炎 is active');
+  // the copy seam (a workshop pack / 复制 still calls it): the player's band is armed for one copy
+  const realBand = m.gd.band(a.bandId);
+  m.gd.band = (id) => (id === a.bandId ? { ...(realBand || {}), bandId: a.bandId, buffs: [{ key: 'band_hex_copy_once', bb: { count: 1 }, bbStr: {} }] } : realBand);
+  applyHex(m, a, m.gd.hex('hex_bondparasite'));
+  applyBandHexCopy(m, a, m.gd.hex('hex_bondparasite'));
+  const refs = a.effects.filter((e) => e && e.key === 'hex:hex_bondparasite');
+  assert.deepEqual(refs.map((r) => r.id).sort(), ['hex:hex_bondparasite', 'hex:hex_bondparasite#2'], 'two refs: the card and its copy');
+  for (const r of refs) {
+    assert.ok(r.params && r.params.parasite, `${r.id} carries its own parasite slot`);
+    assert.equal(typeof r.params.parasite.partnerId, 'string', `${r.id} picked a partner of its own`);
+  }
+  // the effects column names the pairing per ref: one row per DISTINCT 寄生对象 (identical pairings still merge into ×2)
+  const rows = a.effectsView().filter((e) => e.iconKind === 'hex' && e.name === '盟约寄生');
+  const distinct = new Set(refs.map((r) => r.params.parasite.partnerId));
+  assert.equal(rows.length, distinct.size, `one row per distinct 寄生对象 (got ${rows.length}, distinct ${distinct.size})`);
+  // every partner gains 7 layers; each ref pays its own partner's delta in full (7 per ref)
+  const partners = [...new Set(refs.map((r) => r.params.parasite.partnerId))].map((id) => m.players.get(id));
+  for (const p of partners) { p.layers.yanShip = (p.layers.yanShip || 0) + 7; p.recompute(); }
+  const before = a.layers.yanShip || 0;
+  m.dispatch(a, 'onRoundStart', { round: 2 });
+  const gained = (a.layers.yanShip || 0) - before;
+  assert.equal(gained, refs.length * 7, `both refs paid out (got ${gained})`);
+  for (const r of refs) assert.equal(Number(r.params.parasite.baseline), 7, `${r.id} re-baselined on its own`);
+  // …and a round with no new layers pays nothing, again per ref
+  m.dispatch(a, 'onRoundStart', { round: 3 });
+  assert.equal(a.layers.yanShip || 0, before + refs.length * 7, 'no new layers ⇒ no share');
+  h.invariants();
+  m.dispose();
+});
+
 test('room.hexBans: each player’s own draft offer and reroll skip their ≤ 3 bans', () => {
   const seats = [
     { seat: 0, playerId: 'p_0', name: 'P0', isBot: false, connected: true, hexBans: ['hex_stipend', 'hex_echo'] },
@@ -1671,6 +1722,35 @@ test('锻炉: two worn items fuse into 百变 — one item, both effects, never 
   assert.ok(piece.items.length <= 2, 'the carrier never exceeds its slots');
   assert.ok(piece.items.some((it) => it.merged), 'the 百变 survived a later equip');
   void before;
+  h.invariants();
+  m.dispose();
+});
+
+test('锻炉: 百变回到整备区后，道具卡仍写得出是哪两件（业主 2026-10-27）', () => {
+  const { h, m, ps } = solo1(157);
+  applyHex(m, ps, m.gd.hex('hex_forge'));
+  const chessId = chessOfTier(1)[0];
+  const tile = legalTileFor(m, ps, chessId);
+  assert.ok(tile, 'a legal tile (premise)');
+  const piece = give(m, ps, chessId, 'board', tile);
+  assert.deepEqual(ps.equip(giveItem(m, ps, 'chess_item_1_01_e_a').uid, piece.uid), { ok: true });   // 维式重锤
+  assert.deepEqual(ps.equip(giveItem(m, ps, 'chess_item_1_02_e_a').uid, piece.uid), { ok: true });   // 坚守盾牌
+  const fused = piece.items[0];
+  assert.deepEqual(fused.merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'premise: a fused 百变');
+  // 「取下来」: selling the carrier returns its equipment to the 整备区 — as ONE piece (the 百变), not as its two components
+  assert.deepEqual(ps.sell(piece.uid), { ok: true });
+  const back = [...(ps.hand || []), ...(ps.temp || [])].filter(Boolean).find((p) => p && p.uid === fused.uid);
+  assert.ok(back && back.kind === 'item' && back.id === FORGE_ITEM_ID, 'the 百变 is in the reserve, still one item');
+  // the card the player opens reads the PIECE VIEW (detailPanel ItemDetail → FusedFrom ← piece.merged): without `merged`
+  // here the card showed the generic 百变 text and named no component (业主 2026-10-27 的截图)
+  const view = ps.pieceView(back);
+  assert.deepEqual(view.merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'the client is told which two it fused');
+  const priv = ps.privateView();
+  const inFrame = [...(priv.hand || []), ...(priv.temp || [])].filter(Boolean).find((p) => p && p.uid === fused.uid);
+  assert.deepEqual(inFrame.merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'and the frame it receives carries it');
+  // every other piece is unchanged: an ordinary item has no `merged` key at all (an older client reads it as before)
+  const plain = giveItem(m, ps, 'chess_item_1_01_e_a');
+  assert.equal('merged' in ps.pieceView(plain), false, 'an ordinary item view is byte-identical');
   h.invariants();
   m.dispose();
 });

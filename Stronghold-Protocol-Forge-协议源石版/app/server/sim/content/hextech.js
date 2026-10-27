@@ -123,6 +123,21 @@ function hexCopiesOf(battle, pid, hexId) {
 }
 
 /**
+ * The EffectRef **this dispatch runs for**. 策略「管理员」/ 复制 own a SECOND ref of the same card — same `key`, its own
+ * id (`hex:<id>#<copySeq>`, server/match/hextech.js addHexRef) — and the dispatcher hands that ref over as
+ * `ctx.selfRef()`. A card that keeps state ON ITS OWN REF must read and write THAT one: `ctx.effect('hex:<id>')` looks
+ * up the base id and therefore always answers with the FIRST ref, so two copies shared one slot.
+ * 业主 2026-10-27「多个盟约寄生有bug，好像是只会寄生最后一个人」: both copies stamped their partner onto the first ref, so
+ * only the last pick's partner was ever shared from — and the second copy's own baseline never moved.
+ * Falls back to the base id for a handler with no ref of its own (a bond / item / band hook) and for a plain test ctx.
+ */
+function refOf(ctx, id) {
+  const self = ctx && typeof ctx.selfRef === 'function' ? ctx.selfRef() : null;
+  if (self && typeof self.id === 'string' && (self.id === `${HEX_KEY}${id}` || self.id.startsWith(`${HEX_KEY}${id}#`))) return self;
+  return ctx && typeof ctx.effect === 'function' ? ctx.effect(`${HEX_KEY}${id}`) : null;
+}
+
+/**
  * A card's match-long passive, installed ONCE PER COPY (策略「管理员」copies are a second ref of the same card).
  * `passiveBuff` replaces by key, so a fixed key would make two copies worth one card; the 2nd..nth copies get a `:n`
  * suffix so the additive mods add up (业主 2026-10-24「全改掉」).
@@ -872,7 +887,8 @@ function applySpec(ctx, spec, hex = null, hook = '') {
   // compared with the stored baseline and the DELTA is split evenly (向上取整) over the owner's ACTIVE stackable bonds.
   // The new total becomes the next baseline. No teammate / an eliminated teammate ⇒ the delta is 0.
   if (spec.parasiteShare) {
-    const ref = typeof ctx.effect === 'function' ? ctx.effect(`hex:${id}`) : null;
+    // THIS ref, not the card's first one: a copied 盟约寄生 keeps its own partner + baseline (refOf, 业主 2026-10-27)
+    const ref = refOf(ctx, id);
     const p = ref && ref.params && ref.params.parasite ? ref.params.parasite : null;
     const partner = p && p.partnerId && typeof ctx.player === 'function' ? ctx.player(p.partnerId) : null;
     if (partner && typeof partner.rawLayers === 'function') {
@@ -893,7 +909,7 @@ function applySpec(ctx, spec, hex = null, hook = '') {
       }
       if (total !== prev) {
         const next = { ...(ref.params || {}), parasite: { ...p, baseline: total } };
-        ctx.addEffect({ id: `hex:${id}`, params: next });
+        ctx.addEffect({ id: ref.id, params: next });
       }
     }
   }

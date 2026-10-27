@@ -229,13 +229,19 @@ export function applyVoidReturnLayers(m, ps, item) {
 export function applyHex(m, ps, hex, opts = {}) {
   const team = !!(hex.effect && hex.effect.team);
   const targets = team ? [ps, ...m.alivePlayers().filter((p) => p !== ps)] : [ps];
+  // the picker's OWN EffectRef for this gain: 策略「管理员」/ 复制 add a SECOND ref of the same card, and the extras below
+  // stamp per-ref state (盟约寄生's partner, 背水一战's window) onto it — looking the card up by its base id instead always
+  // answered with the FIRST ref, so two 盟约寄生 shared one slot and only the last partner was ever drained
+  // (业主 2026-10-27「多个盟约寄生有bug，好像是只会寄生最后一个人」).
+  let pickerRef = null;
   for (const p of targets) {
     const ev = { hex: { ...hex }, picker: ps.playerId, forTeammate: p !== ps };
     // 潘多拉魔盒 (owner bug report 2026-10-17): the card has to OWN ITSELF while its own onPick runs.
     // replaceHexes() drops every `hex:` ref — the running card included — and re-grants one card per owned ref, so the
     // ref must be added BEFORE the handler. With the old order (add after) the card replaced the others and was then
     // added back on top (「潘多拉不变自己」), and a player who owned nothing but the card got nothing at all.
-    addHexRef(m, p, hex);
+    const gainedRef = addHexRef(m, p, hex);
+    if (p === ps) pickerRef = gainedRef;
     try { m.dispatcher.runKey(p, `hex:${hex.id}`, 'onHexPick', { kind: 'hex', hex }, ev); } catch (e) { m.reportError(`hex ${hex.id}`, e); }
     // `effect.onPick.lp` reaches EVERY target, not just the picker: a team hex's whole point is that each teammate gets
     // the same thing (DESIGN §29.1 "each target runs the handler through its own ctx"). This used to be gated by
@@ -259,7 +265,7 @@ export function applyHex(m, ps, hex, opts = {}) {
   // 万物归虚 (业主 2026-10-19) has NO pick-time half any more: its text says 「装备时 将移除备战区所有干员」, so the removal
   // and the layer count belong to the EQUIPMENT and run from PlayerState.equip (→ applyVoidReturnLayers). The pick only
   // hands the item to the hand (业主 2026-10-26).
-  applyHexExtras(m, ps, hex, opts);
+  applyHexExtras(m, ps, hex, { ...opts, ref: pickerRef });
   // 锻炉 (业主 2026-10-24): gaining the card fuses what is ALREADY worn — an operator standing there with two items turns
   // them into 百变 the moment the card lands (equips made later go through PlayerState.equip's own call).
   if (hex && hex.id === 'hex_forge') applyForgeFusion(ps);
@@ -338,7 +344,7 @@ export function applyBandHexCopy(m, ps, hex, { depth = 0, gift = false } = {}) {
       // card handler, so without this line a copied 二次抽取 granted two random cards instead of four — the owner's
       // 「为什么二次抽取只生效了一个」 (2026-10-24). `depth: 1` is the same slot the picker's own gain uses; the
       // helper's `depth >= 2` guard still stops a card that re-enters itself.
-      applyHexExtras(m, ps, hex, { depth: 1 });
+      applyHexExtras(m, ps, hex, { depth: 1, ref });
       m.dispatch(ps, 'onHexPick', ev, { skipKey: ref.key });
       ps.recompute();
       n++;
@@ -390,7 +396,7 @@ function drainPendingHexCopies(m, ps, hex) {
           const ev = { hex: { ...target }, picker: ps.playerId, forTeammate: false, copySeq, copiedBy: srcId };
           m.dispatcher.runKey(ps, ref.key, 'onHexPick', { kind: 'hex', hex: target, ref, copySeq }, ev);
           applyHexLp(m, ps, target);
-          applyHexExtras(m, ps, target, { depth: 1 });
+          applyHexExtras(m, ps, target, { depth: 1, ref });
           m.dispatch(ps, 'onHexPick', ev, { skipKey: ref.key });
         } catch (e) { m.reportError(`hex ${pickId} (复制)`, e); }
       }
@@ -510,7 +516,7 @@ function mirrorCandidate(m, picker, pend) {
  * Both re-enter applyHex with `depth` guard so they can never chain forever. The enemy's rarity draw stays based on the
  * drafted pick only (these extra gains are free and do not feed 强敌).
  */
-function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
+function applyHexExtras(m, ps, hex, { depth = 0, ref: gainRef = null } = {}) {
   const spec = hex.effect && hex.effect.onPick;
   if (!spec || depth >= 2) return;
   if (spec.copyAllyHex) armMirrorCopy(m, ps, hex);
@@ -531,7 +537,8 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
   if (spec.pickTeammate === 'parasite') {
     const mates = m.alivePlayers().filter((p) => p !== ps);
     const partner = mates.length ? mates[Math.min(mates.length - 1, Math.floor(m.rngHex() * mates.length))] : null;
-    const ref = (ps.effects || []).find((e) => e && (e.id === `hex:${hex.id}` || e.key === `hex:${hex.id}`));
+    // the ref of THIS gain (a 管理员 / 复制 second ref has its own id): `gainRef`, else the first ref of the card
+    const ref = gainRef || (ps.effects || []).find((e) => e && (e.id === `hex:${hex.id}` || e.key === `hex:${hex.id}`));
     if (ref) {
       let baseline = 0;
       if (partner) {
@@ -573,7 +580,7 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
     const ld = hex.effect && hex.effect.lastDitch;
     const lockRounds = ld && Number(ld.lockRounds);
     if (Number.isFinite(lockRounds) && lockRounds > 0) {
-      const ref = (ps.effects || []).find((e) => e && (e.id === `hex:${hex.id}` || e.key === `hex:${hex.id}`));
+      const ref = gainRef || (ps.effects || []).find((e) => e && (e.id === `hex:${hex.id}` || e.key === `hex:${hex.id}`));
       if (ref) {
         const window = Math.max(1, Math.trunc(Number(m.round) || 1)) + Math.max(1, Math.trunc(lockRounds)) - 1;
         ref.params = { ...(ref.params || {}), lastDitch: { ...((ref.params || {}).lastDitch || {}), ...ld, window } };

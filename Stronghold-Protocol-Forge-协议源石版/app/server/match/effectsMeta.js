@@ -1026,6 +1026,14 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     },
     removeEffect: (id) => { const i = ps.effects.findIndex((e) => e.id === id); if (i < 0) return false; ps.effects.splice(i, 1); ps.dirty(); return true; },
     effect: (id) => ps.effects.find((e) => e.id === id) ?? null,
+    /**
+     * The EffectRef **this handler call runs for** (`source.ref`) — null for a bond / item / band / global handler.
+     * Use it, not `effect('hex:<id>')`, for state that belongs to ONE ref: 策略「管理员」/ 复制 own a SECOND ref of the
+     * same card with its own id (`hex:<id>#<copySeq>`, server/match/hextech.js addHexRef), and a lookup by the base id
+     * always answers with the FIRST one. 业主 2026-10-27「多个盟约寄生有bug，好像是只会寄生最后一个人」: both copies
+     * wrote and read the first ref, so only the last pick's partner was ever drained from.
+     */
+    selfRef: () => (source && source.ref ? source.ref : null),
     setEffectCounter: (id, v) => { const e = ps.effects.find((x) => x.id === id); if (!e) return false; e.counter = v; ps.dirty(); return true; },
 
     // ---- bounties / choices

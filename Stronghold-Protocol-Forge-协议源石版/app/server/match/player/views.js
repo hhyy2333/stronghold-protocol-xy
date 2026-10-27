@@ -20,6 +20,12 @@ export class PlayerViews {
       // 锻炉 (业主 2026-10-24): a fused 百变 rides `merged: [idA, idB]` — the client draws the ONE item (百变) and can name
       // what it swallowed without a second lookup.
       items: p.kind === 'chess' ? (p.items || []).map((it) => ({ uid: it.uid, id: it.id, ...(Array.isArray(it.merged) ? { merged: it.merged.slice() } : null) })) : [],
+      // 锻炉 (业主 2026-10-27「百变取下来后看不到是哪两个装备」): a fused 百变 is ONE item PIECE, and it does not only live in
+      // an operator's row — a sold carrier returns its equipment to the 整备区 (economy.js sell → stow) and a room with the
+      // 卸下 switch takes it off by hand, so the piece travels on its own. The same `merged` has to ride THAT view too:
+      // the standalone item card reads `piece.merged` (detailPanel.js ItemDetail → FusedFrom), and without it the card
+      // showed the generic 百变 text with no components. Absent for every other piece ⇒ those views are byte-identical.
+      ...(p.kind === 'item' && Array.isArray(p.merged) && p.merged.length ? { merged: p.merged.slice() } : null),
       count: p.kind === 'token' ? (p.count || 1) : 1,
       ownerUid: p.kind === 'token' ? p.ownerUid ?? null : null,
     };
@@ -34,22 +40,29 @@ export class PlayerViews {
     // 策略「管理员」的复制是**同一张卡的第二份 ref**（server/match/hextech.js addHexRef copySeq），效果栏如果照 ref
     // 逐个列出来就是两行一样的图标 —— 业主 2026-10-24「UI 上多个该合并成一行显示『名字 × 几』」。所以按 hexId 归并：
     // 一份 entry、`count: n`，客户端把 `count > 1` 画成 ×n。别的 kind（机变 / 道具 / 特质）本来就不会重复，不动。
+    //
+    // 归并的键是 **hexId + desc**，不是 hexId：盟约寄生把「寄生对象：X」写在 ref 的 desc 上，两份寄生对象不同时
+    // 合成一行就只剩先列出的那一位（业主 2026-10-27「只会寄生最后一个人」的另一半——玩家看不见第二个对象）。
+    // 完全一样的两份（复制出来的同一张卡）仍然照旧合成 ×2。
+    const mergeKey = (e) => (e.iconKind === 'hex' && e.data && e.data.hexId ? `${e.data.hexId}\u0000${e.desc || ''}` : null);
     const hexCount = new Map();
     for (const e of this.effects) {
-      if (e.hidden || e.iconKind !== 'hex' || !e.data || !e.data.hexId) continue;
-      hexCount.set(e.data.hexId, (hexCount.get(e.data.hexId) || 0) + 1);
+      if (e.hidden) continue;
+      const k = mergeKey(e);
+      if (k == null) continue;
+      hexCount.set(k, (hexCount.get(k) || 0) + 1);
     }
     const seenHex = new Set();
     for (const e of this.effects) {
       if (e.hidden) continue;
-      const copyId = e.iconKind === 'hex' && e.data ? e.data.hexId : null;
-      if (copyId) {
-        if (seenHex.has(copyId)) continue;   // a 管理员 copy of a card already listed
-        seenHex.add(copyId);
+      const copyKey = mergeKey(e);
+      if (copyKey != null) {
+        if (seenHex.has(copyKey)) continue;   // a 管理员 copy of a card already listed
+        seenHex.add(copyKey);
       }
       const v = { id: e.id, name: e.name || e.id, desc: e.desc || '', iconKind: e.iconKind || 'choice', iconId: e.iconId || e.id };
       if (e.counter != null) v.counter = e.counter;
-      if (copyId && hexCount.get(copyId) > 1) v.count = hexCount.get(copyId);
+      if (copyKey != null && hexCount.get(copyKey) > 1) v.count = hexCount.get(copyKey);
       // 协议源石 (DESIGN §29): the effect column shows the card's 阶位 art, so the rarity's tier rides along (the ref's
       // data carries the rarity; the tier itself is data/hextech.json `rarities[].tier`). Without it the client's
       // hexTierArtUrl() has no tier to look up and the tile falls back to the bolt glyph.
