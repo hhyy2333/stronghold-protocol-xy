@@ -9,6 +9,24 @@
 
 ---
 
+## 0.19.33 — 2026-10-27
+
+**修：百变离开干员后卡片写不出是哪两件装备；多份【盟约寄生】只生效一个（效果栏也只剩一个寄生对象）。**
+
+### 改了什么
+
+- 百变（锻炉）：`merged` 原来只随**干员装备行**发出去（`player/views.js pieceView` 的 `items[]`）。百变作为**一件道具片**回到整备区（卖掉带它的干员、或开了「卸下」的房间把它取下）时，它自己的 view 里没有 `merged`，而道具卡读的正是 `piece.merged`（`detailPanel ItemDetail → FusedFrom`）⇒ 卡片只剩通用文本、说不出是哪两件。现在道具片的 view 也带上 `merged`（其它任何 piece 的 view 逐字节不变）。
+- 盟约寄生：第二份 ref（策略「管理员」/ 复制出来的 `hex:<id>#2`）本该各记各的寄生对象与基准线，但两侧都按**基础 id** 找 ref —— 备战侧 `applyHexExtras` 的 `find` 命中的永远是第一份（后选的队友把前一位覆盖掉），回合侧 `ctx.effect('hex:<id>')` 也读第一份（第一份刚把基准线推上去，第二份的增量恒为 0）⇒ 两份只当一份用、只有最后一次选中的队友被寄生。现在备战侧写**这次获得的那份 ref**，回合侧用新的 ctx 原语 `ctx.selfRef()` 读自己那份。
+- 效果栏：同卡多份的合并键从 `hexId` 改为 `hexId + desc` —— 寄生对象不同就各占一行（玩家看得见两个对象），完全一样的两份（复制出来的同一张卡）仍合并成「×2」。
+- 文档与用例：`docs/META.md` 的 ctx 表补 `effect(id)` / `selfRef()` 一行；`test/match/effects-view-copy` 的前提（管理员获得时复制）已在 0.19.32 移除，改为直接走 `applyBandHexCopy` 那条缝，钉的仍是效果栏的合并规则。
+
+### 验证
+
+- `test/match/hextech` 73/73（新增「百变回到整备区」「第二份寄生各寄生各的」两条；把任一侧的修复回退，对应用例实测变红）。
+- `test/ui/fused-item-view` 2/2（真一局 → 融合 → 卖干员 → 整备区 → resolveDetail → 道具卡）、`ui/fused-item-card` 5/5、`ui/fused-bonds` 6/6。
+- `test/match/effects-view-copy` 1/1、`content/hextech` 60/60、`match/meta` 9/9、`match/bonds` 7/7、`match/draft` 10/10、`match/admin-extra-pick` 7/7、`match/admin-copy-own-pick` 3/3。
+- 本机 `node --test` 子进程受限，以上均用 `node <file>` 同进程执行。
+
 ## 0.19.32 — 2026-10-27
 
 **修：骑士徽章锁血无限（再部署刷新）＋ 真实伤害 ×2；燎原 300 层坚守并入真坚守；三连透支不按库存校验；冰雪消融数值下调。**
