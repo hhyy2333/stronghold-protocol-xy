@@ -131,10 +131,29 @@ function yanSteadMembers(battle, p, ops) {
   return ops.filter((u) => isMember(battle, u, 'yanShip'));
 }
 
+/** 燎原's 炎 bond id (its layers are what the 300-layer gate reads). */
+const YAN_BOND = 'yanShip';
+
+/**
+ * 燎原 300 层：重建坚守的成员名单 = 真坚守成员 ∪ 炎干员（层数够时）。
+ *
+ * MUST RUN AGAIN whenever the 炎 layers move: the set is built ONCE at install, so a player whose 300th 层 lands in
+ * the battle (an in-battle gain, a workshop pack, 圣约回响 …) never joined the pool — and because 燎原's own module
+ * defers to this one at tier ≥ 2, the card then did NOTHING: the 炎 operators were treated as ordinary non-坚守 allies
+ * and their damage was redirected to the real 坚守 members instead (业主 2026-10-27「有燎原时 300 层炎没有触发视为坚守」).
+ */
+function refreshSteadMembers(battle, st, p) {
+  if (!st || !st.tiers[ID.stead]) return;
+  const set = new Set(st.ops.filter((u) => isMember(battle, u, ID.stead)));
+  for (const u of yanSteadMembers(battle, p || st.input, st.ops)) set.add(u);
+  st.members[ID.stead] = set;
+}
+
 function makeState(battle, p) {
   const pid = p.playerId;
   const ops = playerOps(battle, pid);
-  const st = { pid, ops, tiers: {}, bb: {}, members: {} };
+  // `input` = the player's battle input (playerEffects + live bonds): 燎原's gate reads both, on every refresh
+  const st = { pid, ops, input: p, tiers: {}, bb: {}, members: {} };
   for (const id of Object.values(ID)) {
     const t = bondTier(battle, pid, id);
     if (t <= 0) continue;
@@ -143,9 +162,7 @@ function makeState(battle, p) {
     st.members[id] = new Set(ops.filter((u) => isMember(battle, u, id)));
   }
   // 燎原 300 层：炎干员并入坚守成员名单（只在坚守本身有 tier 时；否则坚守没装，燎原模块自己兜底）。
-  if (st.members[ID.stead]) {
-    for (const u of yanSteadMembers(battle, p, ops)) st.members[ID.stead].add(u);
-  }
+  refreshSteadMembers(battle, st, p);
   return st;
 }
 const L = (battle, st, id) => bondLayers(battle, st.pid, id);
@@ -534,6 +551,18 @@ export function install(battle) {
         applyPassives(battle, st);
         if (st.tiers[ID.skillful]) updateAura(battle, st);
       });
+    });
+  }
+
+  // 燎原: the 炎 layers move ⇒ 坚守's member pool is rebuilt (a player crossing 300 IN battle joins it here; the set
+  // built at install would keep treating its 炎 operators as ordinary allies — see refreshSteadMembers).
+  if (states.some((st) => st.tiers[ID.stead])) {
+    battle.on('layerGain', (c) => {
+      const st = byPid[c.playerId];
+      if (!st || !st.tiers[ID.stead] || (c.bondId !== ID.stead && c.bondId !== YAN_BOND)) return;
+      // the hook fires BEFORE the layers are written (engine economy.js), so read them one tick later — the same
+      // deferral the passive recompute above uses
+      battle.after(0, () => refreshSteadMembers(battle, st));
     });
   }
 

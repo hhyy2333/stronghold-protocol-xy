@@ -118,3 +118,39 @@ test('燎原: 300 层且真【坚守】tier 2 在场时，炎干员并入坚守�
   assert.equal(y0 - yan.hp, 100, '炎干员作为坚守成员分到 1/4');
   steads.forEach((u, i) => assert.equal(s0[i] - u.hp, 100, '真坚守成员也各分到 1/4'));
 });
+
+// 业主 2026-10-27 第二次报「有燎原时 300 层炎没有触发视为坚守」：这一次的根因不在卡上 —— 坚守的成员名单是
+// `install` 那一刻建的，只有**开战时就已经 300 层**的炎干员才会被并进去。层数是战斗中才到 300 的时候，炎干员
+// 始终留在名单外，而燎原自己的分担在「真坚守 tier ≥ 2」时按约定让给坚守结算 ⇒ 两边都不动，看起来就是「没触发」。
+// 现在 `refreshSteadMembers` 在炎 / 坚守的 `layerGain` 上重建名单（延后一帧：引擎的 layerGain 钩子早于写层数）。
+test('燎原: 300 层是战斗中才到的，炎干员同样并入坚守（业主 2026-10-27 复发）', () => {
+  const mk = (crossInBattle) => {
+    const h = battleOf({
+      hexes: [['hex_yan_ember', 'yanEmber', YAN]],
+      bonds: {
+        yanShip: { active: true, count: 3, layers: crossInBattle ? 250 : 300 },
+        steadShip: { active: true, count: 3, tier: 2, layers: 10 },
+      },
+      units: [
+        { uid: 1, kind: 'chess', chessId: 'test_guard', row: 9, col: 6 },
+        { uid: 2, kind: 'chess', chessId: 'test_yan', row: 9, col: 7 },
+        { uid: 3, kind: 'chess', chessId: 'test_stead', row: 10, col: 6 },
+        { uid: 4, kind: 'chess', chessId: 'test_stead', row: 10, col: 7 },
+        { uid: 5, kind: 'chess', chessId: 'test_stead', row: 10, col: 8 },
+      ],
+    });
+    h.run(0.2);
+    if (crossInBattle) { h.b.addLayers('p1', 'yanShip', 60, 'hex', {}); h.run(0.5); }
+    const guard = opOf(h, 'test_guard');
+    const yan = opOf(h, 'test_yan');
+    const g0 = guard.hp, y0 = yan.hp;
+    h.b.dealDamage(h.enemies()[0], guard, makeDamageInfo({ amount: 1000, type: 'true', canDodge: false }));
+    return { guard: g0 - guard.hp, yan: y0 - yan.hp };
+  };
+  const atStart = mk(false);
+  assert.equal(atStart.yan, 100, 'premise: 开战就 300 层时炎干员是坚守成员，分到 1/4');
+  assert.equal(atStart.guard, 600, 'premise: 非坚守干员自己承担 60%');
+  const inBattle = mk(true);
+  assert.equal(inBattle.yan, 100, '战斗中才到 300 层也并入（修复前是 0）');
+  assert.equal(inBattle.guard, 600, '而且分担仍是 40%，不会因为并名单多扣一次');
+});
