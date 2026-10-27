@@ -385,6 +385,54 @@ test('镜像协议: 不复制自己 ban 掉的协议源石（业主 2026-10-27�
   m.dispose();
 });
 
+// 同一条缝的另一半：`hexPoolFor` 过滤的是**两**件事 —— 我禁用的 + 我盟约没激活的专属卡。上面那条钉住了前者，
+// 这条钉后者：第 7 回合的专属协议只在对应核心盟约激活时才会刷出，队友激活了而我没有，它就不是我的牌。
+// 旧实现只比 bans，于是镜像能把一张「我自己的抽卡池里永远不会出现」的专属卡从队友那儿带回来。
+test('镜像协议: 不复制我盟约没激活的专属协议（必须与 hexPoolFor 同一个判据）', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 43, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const p0 = h.ps('p_0');
+  const p1 = h.ps('p_1');
+  clearHexes(p0);
+  clearHexes(p1);
+  // 前提：我的【谢拉格】没激活，所以 hex_kjerag_thaw（requiresBond: kjeragShip）不在我的池子里
+  assert.ok(!(p0.bonds && p0.bonds.kjeragShip && p0.bonds.kjeragShip.active), 'premise: 我没有激活【谢拉格】');
+  assert.ok(!hexPoolFor(p0, m.gd).some((x) => x.id === 'hex_kjerag_thaw'), 'premise: 我的池子里没有这张专属卡');
+  applyHex(m, p0, m.gd.hex('hex_mirror'));
+  assert.equal(m.pendingMirror.length, 1, 'premise: 镜像协议已上膛');
+  // 队友手里有它（队友激活与否都不影响判定：判据只问「**我**的池子要不要」）
+  applyHex(m, p1, m.gd.hex('hex_kjerag_thaw'));
+  assert.deepEqual(mirrorOwned(p0), ['hex_mirror'], '专属卡不会被复制过来');
+  assert.equal(m.pendingMirror.length, 1, '还在等一张我池子里真有的');
+  // 队友再拿一张普通卡 ⇒ 这次付得出（证明上面不是「镜像整个坏了」）
+  applyHex(m, p1, m.gd.hex('hex_stipend'));
+  assert.deepEqual(mirrorOwned(p0).slice().sort(), ['hex_mirror', 'hex_stipend'], '普通卡照常复制');
+  h.invariants();
+  m.dispose();
+});
+
+// 反向：我的盟约**激活了**，同一张专属卡就该能复制过来 —— 判据是「我的池子」，不是「专属卡一律不许复制」。
+test('镜像协议: 我盟约激活时，同一张专属协议可以复制（判据是我的池子，不是一刀切）', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 43, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const p0 = h.ps('p_0');
+  const p1 = h.ps('p_1');
+  clearHexes(p0);
+  clearHexes(p1);
+  // 先上膛再改盟约状态：applyHex 会按棋盘重算 bonds，抢在它前面写会被覆盖（这一条本身就是测试写法的坑）
+  applyHex(m, p0, m.gd.hex('hex_mirror'));
+  p0.bonds = { ...(p0.bonds || {}), kjeragShip: { active: true, count: 2, tier: 1, layers: 0 } };
+  assert.ok(hexPoolFor(p0, m.gd).some((x) => x.id === 'hex_kjerag_thaw'), 'premise: 我的池子里有它了');
+  applyHex(m, p1, m.gd.hex('hex_kjerag_thaw'));
+  assert.deepEqual(mirrorOwned(p0).slice().sort(), ['hex_kjerag_thaw', 'hex_mirror'], '激活了就复制得动');
+  h.invariants();
+  m.dispose();
+});
+
 // 同一个报告的正面回归：潘多拉自己走的是 `hexPoolFor`（bans + 专属），这条用例把「它确实不摇被 ban 的」钉住，
 // 免得以后有人绕开 `hexPoolFor` 取池子。
 test('潘多拉: 不会摇出被 ban 的协议源石（业主 2026-10-27）', () => {
@@ -401,6 +449,31 @@ test('潘多拉: 不会摇出被 ban 的协议源石（业主 2026-10-27）', ()
   assert.ok(owned.length >= 1, `premise: 潘多拉换了牌 (${JSON.stringify(owned)})`);
   assert.deepEqual(owned.filter((id) => bans.includes(id)), [], '换出来的牌里没有一张是禁用的');
   assert.ok(!owned.includes('hex_pandora'), '连潘多拉自己也不会回来');
+  h.invariants();
+  m.dispose();
+});
+
+// 潘多拉池子的另一半：`hexPoolFor` 也过滤「我盟约没激活的专属卡」。这条把它钉住 —— 换出来的每一张都必须在我
+// **自己**的池子里（直接拿 `hexPoolFor` 做集合比对，而不是逐条猜规则）。
+test('潘多拉: 换出来的每一张都在我自己的池子里（含盟约专属卡的过滤）', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 47, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  clearHexes(ps);
+  // 前提：没有任何核心盟约激活 ⇒ 所有 requiresBond 的专属卡都不该出现
+  const active = Object.entries(ps.bonds || {}).filter(([, b]) => b && b.active).map(([k]) => k);
+  assert.deepEqual(active, [], 'premise: 这局没有任何核心盟约激活');
+  const pool = new Set(hexPoolFor(ps, m.gd).map((x) => x.id));
+  assert.ok(![...pool].some((id) => (m.gd.hex(id) || {}).requiresBond), 'premise: 池子里没有专属卡');
+  applyHex(m, ps, m.gd.hex('hex_pandora'));
+  const owned = mirrorOwned(ps);
+  assert.ok(owned.length >= 1, `premise: 潘多拉换了牌 (${JSON.stringify(owned)})`);
+  for (const id of owned) {
+    assert.ok(pool.has(id), `${id} 在它换出来的那一刻属于我的池子`);
+    assert.ok(!(m.gd.hex(id) || {}).requiresBond, `${id} 不是盟约没激活的专属卡`);
+  }
   h.invariants();
   m.dispose();
 });

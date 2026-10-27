@@ -489,22 +489,30 @@ export function resolveMirrorCopies(m) {
  * The hex an armed 镜像协议 copies: a random one of the teammate-owned cards the picker does not own, highest rarity
  * first (the card's own 「优先阶位更高的一枚」). The picker's own cards are excluded by `pend.owned` plus a live read, so
  * a card it gained after arming is never copied off a teammate by accident. Null when there is nothing to copy.
+ *
+ * 业主 2026-10-27「ban 了的协议源石能被潘多拉摇出来」→「补上镜像协议的过滤，队友持有你禁用的卡时不会再复制给你」：
+ * 复制**也是我的一次获得**，所以它必须和自己的抽卡池同一个判据 —— 也就是 `hexPoolFor` 里那两条，缺一不可：
+ *   1. **我禁用的**（`hexBans`）：队友手里那张照样不能复制过来；
+ *   2. **我盟约没激活的专属卡**（`requiresBond`）：只在某核心盟约激活时才会刷出的第 7 回合专属协议，
+ *     我的池子里根本不出现，镜像当然也不能从队友那儿把它带回来（队友激活了、我没有，不是我的牌）。
+ * 判据只问「**接受方**的池子要不要它」，与提供方是谁无关；这样以后给 `hexPoolFor` 加第三条规则时，镜像自动跟上。
  * @returns {object|null} the data record
  */
 function mirrorCandidate(m, picker, pend) {
   const mine = new Set([...(pend.owned || []), ...hexIdsOf(picker)]);
-  // 业主 2026-10-27「ban 了的协议源石能被潘多拉摇出来」: 禁用是「**我**的抽取跳过它」——复制也是我的获得，
-  // 所以队友手里那张被我 ban 掉的卡同样不能复制过来（镜像协议是另一条把禁用卡带回手上的边）。
-  const bans = new Set(Array.isArray(picker.hexBans) ? picker.hexBans : []);
   const pool = [];
   for (const ally of m.alivePlayers()) {
     if (ally === picker) continue;
     for (const id of hexIdsOf(ally)) {
-      if (id === pend.hexId || mine.has(id) || bans.has(id)) continue;
+      if (id === pend.hexId || mine.has(id)) continue;
       const rec = m.gd.hex(id);
-      if (rec) pool.push(rec);
+      // `hexAvailableTo` = the SAME 专属-card rule `hexPoolFor` applies (bans are checked separately, on the whole
+      // pool below): a card my own draft could never show me is not a card I may take off a teammate either.
+      if (rec && hexAvailableTo(picker, rec)) pool.push(rec);
     }
   }
+  const bans = new Set(Array.isArray(picker.hexBans) ? picker.hexBans : []);
+  for (let i = pool.length - 1; i >= 0; i--) if (bans.has(pool[i].id)) pool.splice(i, 1);
   if (!pool.length) return null;
   const rank = { silver: 0, gold: 1, prismatic: 2 };
   const best = pool.reduce((mx, h) => Math.max(mx, rank[h.rarity] ?? 0), 0);
