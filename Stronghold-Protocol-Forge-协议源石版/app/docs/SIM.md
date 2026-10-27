@@ -1442,14 +1442,19 @@ Unknown subprofessions fall back to the profession default (test `professions.te
   extrapolated velocity uses the same moving span as the interpolation (the stand is not in its denominator).
 - `drainEvents()` tuples: `['spawn', UnitInfo]` (first appearance), `['deploy', id]` (every (re)deploy and 【移动】 — the
   client plays the deploy and its interpolation snaps instead of sliding), `['atk', src, tgt, projKind]`
-  (`none|arrow|bolt|bomb|lob|orb|drone|enemy|boomerang|droneBomb|chain|chainHeal`; a boomerang's way back has no event —
+  (`none|arrow|bolt|bomb|lob|orb|drone|enemy|boomerang|droneBomb|chain|chainHeal|note` — `note` is 丰川祥子's 音符:
+  a visual swap only (server/sim/constants.js `PROJECTILE_SPEEDS`, tools/build-data.mjs `PROJECTILE_VISUAL_OVERRIDES`),
+  the damage still lands on impact like every ranged attack; a boomerang's way back has no event —
   the renderer flies it back to the thrower at `BOOMERANG_RETURN_SPEED`; an enemy's `profile.shot` may name another
   kind, e.g. `mortar` for 帝国炮火先兆者, which the renderer does not draw — its fx `bombardShell` is the shell), `['dmg', tgt,
   amount, type]` (`phys|arts|true|burn|neural|necrosis|apoptosis`), `['heal', tgt, amount]`, `['skill', id, 1|0]`,
   `['engage', id]` (an ally's first attack that hits an enemy — the client's 行动开始 voice, DESIGN §21.30), `['die', id,
   reason]`, `['leak', id]`, `['status', id, key, 1|0]`, `['fx', kind, x, y, extra]` (`hitCap` `{ id, n }`: a leader's
   hit cancelled by 限伤 — the renderer draws nothing; `extra.form` = the unit's model form from then on — an enemy's
-  `content/enemies/helpers.js setForm`, a 傀儡师's 替身 — `shared/protocol.js fxForm`), `['layer', playerId, bondId, n]` (n =
+  `content/enemies/helpers.js setForm`, a 傀儡师's 替身 — `shared/protocol.js fxForm`; the enemies' own kinds include
+  `'shell'` with `extra.kind` naming the look — `'bsnakeFire'` is 不死的黑蛇's 不息恶火 fireball, emitted once per field
+  row from the left edge to `{tx, ty}` over `dur` game s, the very flight its damage waits, while a plain `'shell'` is the
+  mortar that drops onto `(tx, ty)`), `['layer', playerId, bondId, n]` (n =
   the layers actually added, capped at 999), `['bounty', playerId, coins]`, `['cast', id, slot, dur?]` (display only,
   0.3.0: an enemy uses the skill of index `slot` of its data record's `skills[]` — data/enemies.json, the order the
   client resolves its `prefabKey` by —, `dur` its blackboard `duration` when it has one; `content/enemies/helpers.js

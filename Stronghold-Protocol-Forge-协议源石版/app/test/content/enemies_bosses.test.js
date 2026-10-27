@@ -3370,9 +3370,17 @@ test('黑蛇：首次被击败（血池 60 %）→ 5 s 重生 → 狂暴 + 不�
   // 把血池打到 60 %（= 第一条血条 40 % 打掉）
   h.b.sharedBoss.hp = Math.round(h.b.sharedBoss.maxHp * 0.6);
   h.run(0.5);
-  assert.equal(boss.form, 'form2', '进入重生形态');
+  // 复活动作走模型自己的 Reborn_1_*（render/units.js FORMS）：'reborn' 形态，5 s 后切到 'form2'（狂暴）
+  assert.equal(boss.form, 'reborn', '进入重生形态（Reborn_1_*）');
   assert.ok(hasBuff(boss, 'boss:bsnakeReborn'), '5 s 重生（无敌/不可选中）');
+  const rebornFx = h.eventsOf('fx').find((e) => e[4] && e[4].form === 'reborn');
+  assert.ok(rebornFx, '重生发出带 form 的 fx（模型靠它换 clip 集）');
+  assert.equal(rebornFx[1], 'telegraph', '重生用 telegraph fx 挂 dur：收尾 clip 由引擎按 dur 定时');
+  assert.equal(rebornFx[4].dur, 5, 'dur = 重生时长（Reborn_1_End 正好在 5 s 结束）');
   assert.ok(h.runUntil(() => hasBuff(boss, 'boss:bsnakeScreen'), 10), '重生结束进入不息恶火');
+  assert.equal(boss.form, 'form2', '狂暴形态（Reborn_2_Start → *_B）');
+  const rageFx = h.eventsOf('fx').find((e) => e[4] && e[4].form === 'form2');
+  assert.ok(rageFx, '狂暴换形态也有 fx');
   assert.ok(hasBuff(boss, 'boss:bsnakeRage'), '狂暴：攻击力提升');
   assert.ok(boss.s.atk > E[SNAKE].stats.atk, `狂暴后攻击力 ${boss.s.atk} > 数据 ${E[SNAKE].stats.atk}`);
   const hp = wall.hp;
@@ -3380,7 +3388,48 @@ test('黑蛇：首次被击败（血池 60 %）→ 5 s 重生 → 狂暴 + 不�
   assert.ok(h.runUntil(() => hasBuff(boss, 'boss:bsnakeInvuln'), 30), '不息恶火结束：切回形态并 15 s 无敌');
   assert.ok(h.runUntil(() => !hasBuff(boss, 'boss:bsnakeInvuln'), 20), '无敌结束');
   assert.equal(boss.form, null, '回到黑蛇形态');
+  const backFx = h.eventsOf('fx').find((e) => e[4] && Object.hasOwn(e[4], 'form') && e[4].form === null);
+  assert.ok(backFx, '切回黑蛇形态也发 fx（模型的 Reborn_2_End 就是 form2 的 leave clip）');
   assert.ok(boss.alive);
+});
+
+test('黑蛇：不息恶火每 2 s 一列、每行一颗（空行也有火球，有人的行才结算伤害）', () => {
+  // 只在第 5 行放一个干员；其余行的火球该有画面、但没人可打
+  const h = bossArena({ units: [{ chessId: 't_wall', row: 5, col: 9 }] });
+  h.step();
+  const boss = put(h, SNAKE, [3, 10], { tag: 'boss' });
+  const wall = h.allies()[0];
+  h.b.sharedBoss.hp = Math.round(h.b.sharedBoss.maxHp * 0.6);
+  assert.ok(h.runUntil(() => hasBuff(boss, 'boss:bsnakeScreen'), 12), '进入不息恶火');
+  const R = h.b.rect;
+  const rows = [];
+  for (let r = R.r0; r <= R.r1; r++) rows.push(r);
+  // harness 的 eventsOf 会 drain，所以边跑边收（第一列在进入不息恶火 2 s 后）
+  const seen = [];
+  const runFor = (sec) => {
+    for (let t = 0; t < sec - 1e-9; t += 0.05) {
+      h.run(0.05);
+      for (const e of h.eventsOf('fx')) if (e[1] === 'shell' && e[4] && e[4].kind === 'bsnakeFire') seen.push(e);
+    }
+  };
+  while (!seen.length && h.b.time < 26) runFor(0.05);
+  const wave1 = [...seen];
+  // 一列 = 每一行各一颗，同一帧发出
+  assert.equal(wave1.length, rows.length, `第一列覆盖全场 ${rows.length} 行（实际 ${wave1.length} 颗）`);
+  assert.deepEqual(wave1.map((e) => e[3]).sort((a, b) => a - b), rows, '每一行恰好一颗');
+  // 从场地左侧进场、朝右边缘飞（不是砸在某一格上的迫击炮弹）
+  assert.ok(wave1[0][2] < R.c0, `从左边进场（x=${wave1[0][2]} < ${R.c0}）`);
+  const s = wave1[0][4];
+  assert.equal(s.tx, R.c1 + 1, '向右飞出场外');
+  assert.equal(s.ty, wave1[0][3], '沿着它自己那一行飞');
+  assert.ok(s.dur > 0, '带飞行时长（画面与结算同一个时间）');
+  // 空行的火球不掉血：只有第 5 行那个干员会挨一下
+  const hp0 = wall.hp;
+  runFor(4);
+  assert.ok(wall.hp < hp0, '有干员的那一行被火球打到了');
+  assert.equal(h.allies().length, 1, '只有那一名干员在场上');
+  // 28 s / 每 2 s 一列 = 10 列
+  assert.ok(seen.length >= rows.length * 2, `28 s 里至少两列（${seen.length} 颗）`);
 });
 
 // ---------------------------------------------------------------------------------------------------------------

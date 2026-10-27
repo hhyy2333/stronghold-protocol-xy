@@ -12,6 +12,10 @@ export const FX_KINDS = Object.freeze({
   aoe: { a: 'blast', c: 0xffb35c }, explode: { a: 'blast', c: 0xff7a33 }, explosion: { a: 'blast', c: 0xff7a33 },
   // `pt`: always at the event's (x, y) (its `id` is the shooter); `heavy`: debris + scorch
   bombard: { a: 'blast', c: 0xffa04a, r: 1.5, pt: true, heavy: true }, bombardShell: { a: 'shell', c: 0xff5a3a, r: 1.5, pt: true },
+  // 不息恶火 (boss_11 “不死的黑蛇”, bosses.js fireWave): one fireball per row entering from the left edge and crossing the
+  // whole field — a long, low, burning comet, not the mortar drop the bare 'shell' archetype draws. `pt`: its `id` is
+  // the leader, the fireball is at (x, y) on the field edge, never on it.
+  bsnakeFire: { a: 'fireball', c: 0xff7a33, r: 0.6, pt: true },
   airstrike: { a: 'blast', c: 0xff8a3d, r: 1.5, heavy: true }, splash: { a: 'blast', c: 0xffc27a },
   scorchBurst: { a: 'blast', c: 0xff6a2a }, champagneBomb: { a: 'blast', c: 0xffd27a }, shockBlast: { a: 'blast', c: 0x9fd4ff, smoke: 0x1c2630 },
   frostNova: { a: 'blast', c: 0x9fe6ff, smoke: 0x1c2630 }, sunBurst: { a: 'blast', c: 0xffe28a }, meltdown: { a: 'blast', c: 0xff5a2a, r: 1.5, heavy: true },
@@ -65,6 +69,8 @@ export const FX_KINDS = Object.freeze({
   knack: { a: 'buff', c: 0xffd45a }, bloodBattle: { a: 'buff', c: 0xff4b3e }, sword: { a: 'buff', c: 0xdfe8ff }, equip: { a: 'buff', c: 0x4ed8af },
   garrisonGrant: { a: 'buff', c: 0x4ed8af }, extraAttack: { a: 'buff', c: 0xffe066 }, soul: { a: 'buff', c: 0xb36bff }, jungleSoul: { a: 'buff', c: 0x7fd37a },
   candle: { a: 'buff', c: 0xffb347 }, mote: { a: 'buff', c: 0xfff0a8 }, ember: { a: 'buff', c: 0xff7a33 }, ignite: { a: 'buff', c: 0xff6a2a },
+  // 丰川祥子的音符（simfx.js 的 'note' 分支，原型名就是 note）：一颗紫色的音符飞向目标
+  note: { a: 'note', c: 0xd08cff },
   flame: { a: 'buff', c: 0xff6a2a }, grow: { a: 'buff', c: 0x7fd37a }, weightlessBuff: { a: 'buff', c: 0xcfe0ff },
   // 炎佑 祛恶之焰: a continuous jet from the dragon (`id`) onto its locked target (`target`) + a burning disc (_flame)
   yanyouFlame: { a: 'flame', c: 0xff8a3d, r: 1 },

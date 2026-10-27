@@ -463,12 +463,14 @@ function fxScene(view, stageId) {
       case 'dp': return { ...base, id: 3, n: 10 };
       case 'element': return { ...base, id: 21, element: ['burn', 'neural', 'apoptosis'][i % 3] };
       case 'shell': return { id: 2, r: 1.5, t: 0.3, i: 0 };                  // 蕾缪安 (id = the shooter) shelling an enemy
+      // 不息恶火 (黑蛇): a fireball crossing one field row, left edge → right edge, over `dur`
+      case 'fireball': return { row: 8, tx: rect.c1 + 1, ty: 8, dur: 2.4 };
       case 'flame': return { id: 1, target: 20, r: 1, n: 1, dur: 1 };        // 炎佑's jet (id = the dragon) onto its target
       default: return k === 'lock' ? { id: 21, src: 2 } : FX_KINDS[k].pt ? { id: 2, r: 1.5 } : base;
     }
   };
   // `pt` kinds name the shooter in `id` and happen at an enemy's spot; a 'flame' happens at its target
-  const posFor = (k, ex) => unitAt(FX_KINDS[k].pt ? [21, 23, 20][i % 3] : FX_KINDS[k].a === 'flame' ? ex.target : ex.id);
+  const posFor = (k, ex) => (FX_KINDS[k].a === 'fireball' ? { x: rect.c0 - 1, y: 8 } : unitAt(FX_KINDS[k].pt ? [21, 23, 20][i % 3] : FX_KINDS[k].a === 'flame' ? ex.target : ex.id));
   // 蕾缪安 S3 as the sim plays it (sim/content/kits/tier6.js): a lock every 0.5 s, then after the skill one shell every
   // 0.3 s on the locks in order, each landing 0.3 s later with its bombard — queued [game time, event]
   const queue = [];

@@ -2,6 +2,34 @@
 // The containers are installed in source order. A name defined twice is an error.
 
 import { fxAtlas } from '../textures.js';
+
+/**
+ * 丰川祥子的「音符」贴图：本机《明日方舟》客户端里她那张音符贴图（battle/prefabs/effects/oblvns.ab 的
+ * oblvns_skin_04 / _05，一个贴图里 4 个字形）由 tools/local-extract 解到 public/assets/local/fx/note_1..8.png。
+ * public/assets 是 git-ignored 的本机素材，所以这些文件**可以缺席**：缺席时用 FX 图集里画出来的那颗音符兜底。
+ */
+const NOTE_TEXTURE_URLS = Object.freeze([
+  '/assets/local/fx/note_1.png', '/assets/local/fx/note_2.png', '/assets/local/fx/note_3.png', '/assets/local/fx/note_4.png',
+  '/assets/local/fx/note_5.png', '/assets/local/fx/note_6.png', '/assets/local/fx/note_7.png', '/assets/local/fx/note_8.png',
+]);
+
+/**
+ * 「不死的黑蛇」不息恶火的火球贴图：本机客户端 pkgrps/btl_pfb_fx_enemy_1.ab 里的 bsnake_04 / 05 / 07 / 10 / 12 / 16，
+ * 由 tools/local-extract/op-fx.py --prefix bsnake --no-split 解到 public/assets/local/fx/。每张本身就是一整片字形，
+ * 不能再切象限：
+ *   bsnake_10 —— 火球本体（一朵带火星的火焰），fx 'fireball' 的弹头；
+ *   bsnake_05 / 07 —— 一段火焰条（冷 / 热两张），火球身后那截燃烧尾迹；
+ *   bsnake_12 —— 带火舌的圆环，火球进场时铺在地面上的那圈预热；
+ *   bsnake_16 —— 首领轮廓的白光，重生那一瞬的剪影。
+ * public/assets 是 git-ignored 的本机素材，所以这些文件**可以缺席**：缺席时全部退回 FX 图集里画的那几样。
+ */
+const SNAKE_FIRE_TEXTURES = Object.freeze({
+  head: '/assets/local/fx/bsnake_10.png',
+  trailHot: '/assets/local/fx/bsnake_05.png',
+  trailCold: '/assets/local/fx/bsnake_07.png',
+  ring: '/assets/local/fx/bsnake_12.png',
+  silhouette: '/assets/local/fx/bsnake_16.png',
+});
 import { ensureDamageFonts } from './fonts.js';
 import { MAX_PARTICLES } from './limits.js';
 import { FxParticles } from './particles.js';
@@ -26,6 +54,21 @@ export class FxSystem {
     this.P = P;
     this.atlas = fxAtlas();
     this.tex = this.atlas.tex;
+    // 官方音符 / 火球贴图（异步就绪；没加载到就继续用图集里画的那几样）
+    this.noteTex = [];
+    this.fireTex = {};
+    if (typeof Image === 'function') {
+      for (const url of NOTE_TEXTURE_URLS) {
+        const img = new Image();
+        img.onload = () => { try { this.noteTex.push(new P.Texture(P.BaseTexture.from(img))); } catch { /* keep the drawn glyph */ } };
+        img.src = url;
+      }
+      for (const [key, url] of Object.entries(SNAKE_FIRE_TEXTURES)) {
+        const img = new Image();
+        img.onload = () => { try { this.fireTex[key] = new P.Texture(P.BaseTexture.from(img)); } catch { /* keep the drawn one */ } };
+        img.src = url;
+      }
+    }
     ensureDamageFonts();
     const props = { vertices: true, position: true, rotation: true, uvs: true, tint: true };
     this.addPc = new P.ParticleContainer(MAX_PARTICLES.high, props, 512, true);
@@ -166,7 +209,7 @@ export class FxSystem {
 }
 
 const FX_PARTS = [FxParticles, FxProjectiles, FxBeams, FxLocks, FxNumbers, FxRings, FxArrivals, FxSim, FxZones];
-const FX_METHOD_ORDER = ["quality","load","maxParticles","rich","_room","_ts","_groundZ","particle","_o","_freeParticle","_updateParticles","_proj","_onGround","_chest","_bodyPt","burst","attack","_takeProj","_dressProj","_releaseProj","_updateProjs","_shotPoint","_stepShot","_stepBoomerang","_stepMortar","_mote","_puff","_muzzle","_impact","_catch","mortar","_landed","_beam","_updateBeams","_flame","_freeFlame","_updateFlames","_lock","_touchLocks","_nearestLock","_releaseLock","_freeLock","_updateLocks","damage","_slash","heal","officialNumber","number","_growFits","_numSlotPx","_layoutNums","_layoutNumsOnce","_sizeNum","_fadeNum","_takeNum","_releaseNum","_updateNums","ring","_updateRings","skill","_aura","_updateAuras","deploy","promote","death","crateBreak","_viewOf","_where","_point","simFx","explosion","smoke","streak","strike","numberAt","_updateLabels","zone","_freeZone","_updateZones","tileFlash","tileField","_updateTileFlashes","music","stopMusic","_updateMusic","_fadeOutMusic","flashScreen","snowfall","leak","pop","_updatePops"];
+const FX_METHOD_ORDER = ["quality","load","maxParticles","rich","_room","_ts","_groundZ","particle","_o","_freeParticle","_updateParticles","_proj","_onGround","_chest","_bodyPt","burst","attack","_takeProj","_dressProj","_releaseProj","_updateProjs","_shotPoint","_stepShot","_stepBoomerang","_stepMortar","_stepComet","fireball","_mote","_puff","_muzzle","_impact","_catch","mortar","_landed","_beam","_updateBeams","_flame","_freeFlame","_updateFlames","_lock","_touchLocks","_nearestLock","_releaseLock","_freeLock","_updateLocks","damage","_slash","heal","officialNumber","number","_growFits","_numSlotPx","_layoutNums","_layoutNumsOnce","_sizeNum","_fadeNum","_takeNum","_releaseNum","_updateNums","ring","_updateRings","skill","_aura","_updateAuras","deploy","promote","death","crateBreak","_viewOf","_where","_point","simFx","explosion","smoke","streak","strike","numberAt","_updateLabels","zone","_freeZone","_updateZones","tileFlash","tileField","_updateTileFlashes","music","stopMusic","_updateMusic","_fadeOutMusic","flashScreen","snowfall","leak","pop","_updatePops"];
 
 for (const key of FX_METHOD_ORDER) {
   let found = null;

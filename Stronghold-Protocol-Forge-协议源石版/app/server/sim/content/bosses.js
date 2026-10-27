@@ -65,7 +65,9 @@
 // §22.12). Only 【盲信之誓】 ("无视无法选择、迷彩") takes everyone on its lines.
 // LP effects ('lpLoss' hook + result.lpLoss) must be applied by the match (see the report of this module's owner).
 // fx kinds: 'beam' 'shell' 'explode' 'telegraph' 'charge' 'link' 'dash' 'column' 'tide' 'rockfall' 'tentacle' 'equip'
-//   'sword' 'vest' 'blink' 'summon' 'grow' 'phase' 'lpLoss' (x, y + extra {id, r, tiles, kind, tx, ty …}).
+//   'sword' 'vest' 'blink' 'summon' 'grow' 'phase' 'revive' 'lpLoss' (x, y + extra {id, r, tiles, kind, tx, ty, dur, form …}).
+//   A 'shell' with `kind` names its look (render/fx/kinds.js): 'bsnakeFire' is 不息恶火's fireball — a comet crossing one
+//   field row, from the left edge to (tx, ty) over `dur` — while a plain 'shell' is the mortar that drops onto (tx, ty).
 
 import { MOVE_SCALE, MAX_ALIVE_ENEMIES, ALLY_COLLIDER_RADIUS } from '../constants.js';
 import { aggroCmp, areaSelectable } from '../targeting.js';
@@ -1128,8 +1130,13 @@ function kitEquip() {
 //   · 点燃 (cd 19): applies it to up to 2 units that do not carry it yet.
 //   · 引爆 (cd 35): 100 % arts to every carrier, clears it there, then 100 % arts to the carrier's tile + its four
 //     neighbours and re-applies it to them (the carrier itself excluded); it fires even with no carrier at all.
-//   · 首次被击败: 5 s 重生 to 100 % ⇒ 狂暴 (+50 % ATK) ⇒ 不息恶火 (28 s, invincible/untargetable, a fireball column every
-//     2 s, 10 waves, 100 % arts to the first unit of the row) ⇒ 黑蛇形态 again with 15 s 无敌 (PRTS ScreenAttack).
+//   · 首次被击败: 5 s 重生 to 100 % (the model plays Reborn_1_Start / Reborn_1_Idle / Reborn_1_End) ⇒ 狂暴 (+50 % ATK,
+//     model Reborn_2_Start then its *_B clip set) ⇒ 不息恶火 (28 s, invincible/untargetable, one fireball column every
+//     2 s, 10 waves: a fireball per field ROW, entering from the left edge, 100 % arts to the first unit of that row)
+//     ⇒ 黑蛇形态 again (model Reborn_2_End) with 15 s 无敌 (PRTS ScreenAttack).
+//     The column is emitted for EVERY row (PRTS 「每隔2s从场地左侧召唤一列向右飞行的火球（每行一个）」): a row with no
+//     operator in it only gets the picture, a row with one takes the damage when its fireball reaches the leftmost
+//     unit. The fx `dur` is the same flight time the damage waits, so the fireball lands where it is drawn.
 //   · 第二次被击败: leaves the field. In this mode the shared pool reaching 0 ends the round, so that last 28 s beat
 //     cannot be played: the pool is split 40 % : 60 % between the two 血条 (50 000 : 75 000 at PRTS 等级0) and the
 //     "first death" is the pool-ratio threshold below [ASSUMED, DESIGN §20.10 — pooled leaders cannot revive].
@@ -1183,11 +1190,20 @@ function kitBlackSnake(ab, e) {
   /** 100 % arts (引爆 both steps, 「100%法术普通伤害」). */
   const artsHit = (b, u) => hurt(b, e, u, e.s.atk * scale, 'arts');
 
-  /** 重生 / 狂暴 / 不息恶火 — the windows are buffs on the leader, so damage to the pool stops while they run. */
+  /**
+   * 重生 / 狂暴 / 不息恶火 — the windows are buffs on the leader, so damage to the pool stops while they run.
+   *
+   * The model chain is the skeleton's own three clips (data/assets.json animations): 'reborn' = Reborn_1_Start (3.13 s)
+   * held on Reborn_1_Idle (0 s) and closed by Reborn_1_End (2.77 s) as the 5 s 重生 ends — the form's `end` is timed by
+   * the engine from the fx's `dur`, so both start and end land on the 5 s window; then 'form2' = the 狂暴 state
+   * (Reborn_2_Start 5.33 s, walked and attacked on the *_B set) and finally the return to the base set through
+   * Reborn_2_End (1.23 s) — before 0.19.28 the reborn form was 'form2' (the *_B set) and the berserk state was the base
+   * set, i.e. the two Reborn_2 clips, the very ones the model carries for this transition, never played.
+   */
   function beginReborn(b) {
     P.phase = 'reborn';
     P.until = b.time + rebornDur;
-    setForm(b, e, 'form2', 'revive', { kind: 'reborn' });
+    setForm(b, e, 'reborn', 'telegraph', { r: 1, dur: rebornDur, kind: 'reborn' });
     b.addBuff(e, { key: 'boss:bsnakeReborn', duration: rebornDur + 0.05, visible: true,
       flags: { invulnerable: true, untargetable: true, unblockable: true, noMove: true, stun: true } });
   }
@@ -1200,27 +1216,40 @@ function kitBlackSnake(ab, e) {
     b.addBuff(e, { key: 'boss:bsnakeRage', persist: true, visible: true, mods: { atkPct: rageAtk } });
     b.addBuff(e, { key: 'boss:bsnakeScreen', duration: fireDur2 + 0.05, visible: true,
       flags: { invulnerable: true, untargetable: true, unblockable: true, noMove: true, stun: true } });
-    b.fx('phase', { x: e.x, y: e.y, id: e.id, kind: 'bsnakeRage' });
+    // 狂暴: the model's second rebirth clip (Reborn_2_Start, 5.33 s) then its *_B set — the 重生 form's closing clip
+    // (Reborn_1_End) is already timed to end with the 5 s window, so this is the mode the 28 s 不息恶火 is played in
+    setForm(b, e, 'form2', 'revive', { kind: 'bsnakeRage' });
   }
-  /** 不息恶火: one fireball per row, left to right, 100 % arts to the first (leftmost) operator it meets. */
+  /**
+   * 不息恶火: PRTS 「每隔2s从场地左侧召唤一列向右飞行的火球（每行一个）」 — one fireball per field ROW, entering at the left
+   * edge and flying right (fx 'shell' with tx = the right edge of the field, so the renderer's mortar flies the whole
+   * column instead of dropping onto one unit). A row with an operator takes 100 % arts on its FIRST (leftmost) unit when
+   * that fireball reaches it; a row with none gets the fireball alone — the official column crosses the whole field, so
+   * the empty rows are part of the picture, not skipped.
+   */
   function fireWave(b) {
     const R = b.rect;
-    const c0 = R ? R.c0 - 0.5 : -0.5;
+    const c0 = R ? R.c0 - 1 : -1;
+    const c1 = R ? R.c1 + 1 : 21;
     for (let r = R ? R.r0 : 0; r <= (R ? R.r1 : 11); r++) {
-      const row = b.allies().filter((u) => u.tileR === r && u.alive);
-      if (!row.length) continue;
-      let first = row[0];
-      for (const u of row) if (u.x < first.x) first = u;
-      const target = first;
+      // the fireball is a body flying down the row: it meets whoever stands there first (no 选择器 filter — 迷彩 /
+      // 隐匿 do not stop a collision); only a unit that is off the field (hidden: 起飞, a doll switch) is passed through
+      const row = b.allies().filter((u) => u.tileR === r && u.alive && u.deployed && !u.hidden);
+      let target = null;
+      for (const u of row) if (!target || u.x < target.x) target = u;
+      const flight = Math.max(0.05, (c1 - c0) / B_SNAKE.fireballSpeed);
+      b.fx('shell', { x: c0, y: r, tx: c1, ty: r, dur: flight, kind: 'bsnakeFire', row: r });
+      if (!target) continue;
       const travel = Math.max(0, (target.x - c0) / B_SNAKE.fireballSpeed);
-      b.fx('shell', { x: c0, y: r, tx: target.x, ty: target.y, dur: travel, kind: 'bsnakeFire' });
       b.after(travel, () => { if (e.alive && target.alive) hurt(b, e, target, e.s.atk, 'arts'); }, { owner: e });
     }
   }
   function endFire(b) {
     P.phase = 'berserk';
     b.removeBuff(e, 'boss:bsnakeScreen');
-    setForm(b, e, null, 'phase', {});
+    // back to 黑蛇形态: the base clip set, through the model's Reborn_2_End (1.23 s) so the 15 s 无敌 starts on the
+    // leader already standing as the snake again
+    setForm(b, e, null, 'revive', { kind: 'bsnakeBack' });
     b.addBuff(e, { key: 'boss:bsnakeInvuln', duration: returnInvuln, visible: true, flags: { invulnerable: true } });
   }
 

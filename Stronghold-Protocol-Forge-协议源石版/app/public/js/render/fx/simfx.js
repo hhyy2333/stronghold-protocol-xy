@@ -78,11 +78,32 @@ export class FxSim {
         this.explosion(at.x, at.y, at.z, r, col, { smoke: spec.smoke, heavy: !!spec.heavy, tiles: ex.tiles ? tilesAround(at.x, at.y, r, ex.tiles) : null });
         break;
       }
+      // 丰川祥子的「音符」（server/sim/content/kits/ops/chess_char_6_22-oblvns.js 的 battle.fx('note', …)）：
+      // 从她身上飞向 target 的一颗音符。引擎的 ranged 攻击本来就会用 PROJ.note 画弹道（'atk' 事件），但领主打
+      // 「自己阻挡的敌人」时客户端画的是近战挥击（wiring.js _combatKind），而 kit 自己放出去的音符（S1 的 8 连、
+      // S3 的 4 个、持续攻击的空放）也没有 'atk' 事件 —— 这几种情况由这个 fx 补画。
+      case 'note': {
+        const src = this._viewOf(ex.id ?? ex.src);
+        const tgt = this._viewOf(ex.target ?? ex.to ?? (Array.isArray(ex.targets) ? ex.targets[0] : null));
+        const pt = tgt || (Number.isFinite(ex.tx) && Number.isFinite(ex.ty) ? this._point(ex.tx, ex.ty) : null);
+        if (src && pt) this.attack(src, pt, 'note');
+        else if (src) this.burst(src.x, src.y, (src.z || 0) + 0.2, 4, col, { speed: 1.6, life: 0.3 });
+        break;
+      }
       case 'shell': {
         // 蕾缪安 S3: a shell fired now by `id` that lands at (x, y) after `t` game seconds (its 'bombard' explodes there)
         const flight = num(ex.t ?? ex.flight ?? ex.dur ?? ex.duration, 1) / ts;
         this._touchLocks(ex.id ?? ex.src ?? null);
         this.mortar(this._viewOf(ex.id ?? ex.src), at.x, at.y, r, flight);
+        break;
+      }
+      // 不息恶火 (boss_11 fireWave): the sim sends one `shell` per field row, from the left edge to (tx, ty) at the right
+      // one, its `dur` the very flight the damage waits. Drawn as its own archetype: the mortar's climb-and-drop reads
+      // as an artillery shot from the leader, while this is a column of fire sweeping the field — a burning comet
+      // hugging the ground of its row, a scorch trail it leaves behind and a burst where its row's first operator stood.
+      case 'fireball': {
+        const flight = Math.max(0.12, num(ex.dur ?? ex.t, 1) / ts);
+        this.fireball(at.x, at.y, num(ex.tx, NaN), num(ex.ty, NaN), r, col, flight);
         break;
       }
       // `key`: one zone the sim re-sends as it moves / grows (an update in place, never a second layer — zones.js)
@@ -104,6 +125,12 @@ export class FxSim {
         if (r >= 12) { this.flashScreen(col, 0.45, d); break; }
         if (ex.tiles) this.tileFlash(tilesAround(at.x, at.y, r, ex.tiles), col, d, true);
         else this.zone(at.x, at.y, at.z, r, col, d, 'ring', true);
+        // 黑蛇的 5 s 重生：模型的 Reborn_1_Start 会把首领整个换成火里的人形（见 render/units.js FORMS），这里再补
+        // 一层光——官方解包出来的 bsnake_16（首领轮廓的白光）在首领身上一闪，交代「它正在站起来」；缺席时只是没有这层光。
+        if (ex.kind === 'reborn' && at.v && this.fireTex && this.fireTex.silhouette) {
+          const q = this._chest(at.v, this._q);
+          this.particle(this.fireTex.silhouette, q.x, q.y, { tint: 0xffffff, life: Math.min(1.1, d), s0: (q.s / 128) * 1.15, s1: (q.s / 128) * 0.85, a0: 0.85, a1: 0 });
+        }
         break;
       }
       // 盟约寒风 (谢拉格's field-wide wind — the device emits it with no anchor unit): a blizzard up the field and a

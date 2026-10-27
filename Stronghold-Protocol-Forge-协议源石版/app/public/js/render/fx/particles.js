@@ -38,7 +38,9 @@ export class FxParticles {
   particle(tex, x, y, o = NO_OPTS) {
     if (this.parts.length >= this.maxParticles) this._freeParticle(this.parts.shift());
     const add = o.add !== false;
-    const t = this.tex[tex] || this.tex.dot;
+    // `tex` is an atlas key, or a ready PIXI.Texture — the official sheets extracted from the local client (丰川祥子的
+    // 音符, 黑蛇的火球; render/fx/system.js) come in as textures because they are no part of the FX atlas
+    const t = typeof tex === 'string' ? (this.tex[tex] || this.tex.dot) : (tex || this.tex.dot);
     let p = (add ? this.freeAdd : this.freeNorm).pop();
     if (!p) {
       const sp = new this.P.Sprite(t);

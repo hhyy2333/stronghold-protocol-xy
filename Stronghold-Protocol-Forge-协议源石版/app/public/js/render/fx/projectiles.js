@@ -20,6 +20,9 @@ const BOOM_SPIN = 22, BOOM_BOW = 0.35, BOOM_MAX_T = 6;
 /** Bombard shell: share of its flight spent rising from the shooter, and the height it climbs / falls from (tiles). */
 const SHELL_RISE = 0.34, SHELL_UP = 5.5;
 
+/** 不息恶火 fireball (fx 'fireball', bosses.js fireWave): its own flight — a burning comet on the ground of one row. */
+const FIREBALL = Object.freeze({ look: 'comet', tint: 0xffe0b0, glow: 0xff7a33, trail: 0xff9c4a, smoke: 0x2e2016, len: 2.2, width: 0.5, head: 0.75 });
+
 /** 蕾缪安 S3 shell (fx 'bombardShell'); `look` 'mortar' is its own flight (_stepMortar). */
 const BOMBARD_SHELL = Object.freeze({ look: 'mortar', tint: 0xfff2d8, glow: 0xff9c33, trail: 0xffb35c, smoke: 0x3a3430, len: 1.3, width: 0.3, head: 0.56 });
 
@@ -119,7 +122,11 @@ export class FxProjectiles {
     halo.texture = this.tex.glow;
     halo.tint = pr.glow;
     halo.visible = true;
-    core.texture = this.tex[look === 'boomerang' ? 'boomerang' : thin ? 'dot' : 'orb'];
+    // `spec.tex`: a projectile with its own sprite (丰川祥子的音符) instead of the generic orb / dot / boomerang.
+    // 'note' 优先用本机客户端解出来的官方音符（system.js noteTex，8 个字形随机取一个），缺席时退回图集里画的那颗。
+    let own = spec.tex && this.tex[spec.tex];
+    if (spec.tex === 'note' && this.noteTex && this.noteTex.length) own = this.noteTex[(Math.random() * this.noteTex.length) | 0];
+    core.texture = own || this.tex[look === 'boomerang' ? 'boomerang' : thin ? 'dot' : 'orb'];
     core.tint = spec.tint;
     core.rotation = 0;
     core.visible = true;
@@ -142,7 +149,8 @@ export class FxProjectiles {
       const pr = this.projs[i];
       const look = pr.spec.look;
       const live = look === 'boomerang' ? this._stepBoomerang(pr, dt, cam, rich)
-        : look === 'mortar' ? this._stepMortar(pr, dt, cam, rich) : this._stepShot(pr, dt, cam, rich);
+        : look === 'mortar' ? this._stepMortar(pr, dt, cam, rich)
+          : look === 'comet' ? this._stepComet(pr, dt, cam, rich) : this._stepShot(pr, dt, cam, rich);
       if (!live) { this._releaseProj(pr); continue; }
       this.projs[w++] = pr;
     }
@@ -284,6 +292,65 @@ export class FxProjectiles {
           o.tint = spec.glow; o.life = 0.14; o.s0 = hs / 64; o.s1 = (hs / 64) * 0.9; o.a0 = 0.4; o.rot = pr.spin;
           this.particle('boomerang', px, py, o);
         }
+      }
+    }
+    return true;
+  }
+
+  /**
+   * 不息恶火 fireball (fx 'fireball', sim bosses.js kitBlackSnake fireWave): a ball of fire hugging the ground of ONE row,
+   * flying from the field's left edge (x, y) to (tx, ty) = the right edge, over `dur` real seconds — the very flight the
+   * sim's damage waits, so the burst lands where the fireball is drawn. Behind it: a burning trail (hot motes plus a
+   * low scorch puff) that keeps the column's path readable, and a ground shadow. It has no target, so it never homes.
+   */
+  _stepComet(pr, dt, cam, rich) {
+    const spec = pr.spec;
+    pr.t += dt;
+    const k = pr.t / pr.dur;
+    if (k >= 1) return false;
+    const x = pr.x0 + (pr.tx - pr.x0) * k, y = pr.y0 + (pr.ty - pr.y0) * k;
+    const z = this._groundZ(x, y) + 0.45;
+    const p = cam.project(x, y, z, this._p);
+    const px = p.x, py = p.y, s = p.s;
+    const kb = Math.max(0, k - 0.08);
+    const q = cam.project(pr.x0 + (pr.tx - pr.x0) * kb, pr.y0 + (pr.ty - pr.y0) * kb, z, this._q);
+    const seg = Math.hypot(px - q.x, py - q.y);
+    if (seg > 0.5) pr.ang = Math.atan2(py - q.y, px - q.x);
+    // the official sheets when this machine extracted them (fx/system.js SNAKE_FIRE_TEXTURES): bsnake_10 as the
+    // fireball itself and bsnake_05 as the flame strip behind it — otherwise the atlas' orb / streak it was dressed with
+    const ft = this.fireTex || null;
+    const tr = pr.trail;
+    if (ft && ft.trailHot && tr.texture !== ft.trailHot) { tr.texture = ft.trailHot; tr.tint = 0xffffff; }
+    tr.position.set(px, py);
+    tr.rotation = pr.ang;
+    tr.scale.set(Math.max(0.001, (spec.len * s) / 128), (spec.width * s) / 20);
+    tr.alpha = 0.85;
+    const hs = spec.head * s;
+    pr.halo.position.set(px, py);
+    pr.halo.scale.set((hs / 128) * (1 + 0.18 * Math.sin(pr.t * 30)));
+    pr.halo.alpha = 0.95;
+    pr.core.position.set(px, py);
+    if (ft && ft.head) {
+      if (pr.core.texture !== ft.head) { pr.core.texture = ft.head; pr.core.tint = 0xffffff; }
+      // the sheet is a flame, drawn upright (an orb as its own circle needed no turn)
+      pr.core.rotation = 0;
+      pr.core.scale.set(hs / 128);
+    } else {
+      pr.core.scale.set((hs * 0.62) / 64);
+    }
+    pr.core.alpha = 1;
+    // its shadow on the ground under it
+    const g = cam.project(x, y, this._groundZ(x, y) + 0.01, this._g);
+    const sh = pr.shadow;
+    sh.position.set(g.x, g.y);
+    sh.scale.set((g.s * 0.5) / 128, (g.s * 0.2) / 128);
+    sh.alpha = 0.26;
+    if (rich) {
+      pr.emit += dt * TRAIL_HZ * 0.8;
+      for (let n = 0; pr.emit >= 1 && n < 2; n++) {
+        pr.emit -= 1;
+        if (!this._room()) { pr.emit = 0; break; }
+        this._puff(px, py, s, spec.trail, spec.smoke, n);
       }
     }
     return true;
@@ -440,6 +507,34 @@ export class FxProjectiles {
       this.particle('glow', p.x, p.y, { tint: 0xffb35c, life: 0.14, s0: (s / 128) * 0.5, s1: (s / 128) * 0.9, a0: 0.9, a1: 0 });
       this.particle('tracer', p.x, p.y, { tint: 0xffe0b0, life: 0.16, vy: -s * 16, s0: (s * 0.3) / 16, s1: (s * 0.24) / 16, sx: (1.3 * 16) / (0.3 * 128), a0: 1, a1: 0.2, rot: -Math.PI / 2, anchorX: 1 });
     }
+    return pr;
+  }
+
+  /**
+   * fx 'fireball' (不息恶火): a fireball entering the field at (x, y) and flying to (tx, ty) over `flight` real seconds.
+   * The sim emits one per field row every 2 s — rows without an operator included, which is what makes the column read
+   * as a wall of fire rather than a few aimed shots.
+   */
+  fireball(x, y, tx, ty, r, col, flight) {
+    const pr = this._takeProj();
+    const gz = this._groundZ(x, y);
+    pr.kind = 'bsnakeFire'; pr.spec = FIREBALL; pr.src = null; pr.tgt = null;
+    pr.x0 = x; pr.y0 = y; pr.z0 = gz;
+    pr.tx = Number.isFinite(tx) ? tx : x + 20; pr.ty = Number.isFinite(ty) ? ty : y;
+    pr.t = 0; pr.dur = clamp(flight, 0.12, 6); pr.fade = 0; pr.hit = false; pr.emit = 0; pr.arc = 0; pr.ang = 0;
+    pr.rise = 0; pr.glow = FIREBALL.glow; pr.trailTint = FIREBALL.trail;
+    this._dressProj(pr);
+    this.projs.push(pr);
+    // the entry flare where it comes in over the field edge: the official bsnake_12 fire ring when this machine has
+    // it, else a glow + sparks. (No persistent ground zone: ten waves × every row would fill the zone pool.)
+    const cam = this.ctx.cam();
+    const g = cam.project(x, y, gz + 0.3, this._g);
+    const ring = this.fireTex && this.fireTex.ring;
+    this.particle('glow', g.x, g.y, { tint: col, life: 0.4, s0: (g.s / 128) * 0.7, s1: (g.s / 128) * 1.5, a0: 0.9, a1: 0 });
+    // the official fire ring, blown up as it fades — the column's mouth
+    if (ring) this.particle(ring, g.x, g.y, { tint: 0xffffff, life: 0.5, s0: (g.s / 128) * 1.0, s1: (g.s / 128) * 1.8, a0: 0.95, a1: 0 });
+    this.burst(g.x, g.y, g.s, 6, col, { speed: 2, life: 0.35, tex: 'dot' });
+    this.smoke(g.x, g.y, g.s * 0.3, FIREBALL.smoke, 0.3);
     return pr;
   }
 

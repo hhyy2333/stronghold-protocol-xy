@@ -387,6 +387,21 @@ export const FORMS = Object.freeze({
   char_4016_kazema: Object.freeze({
     doll: Object.freeze({ change: 'Start_B', leave: 'Start', roles: dollRoles('Idle_B', 'Die_B', 'Attack_B') }),
   }),
+  // 结城理 (char_4217_makoto, 傀儡师): 他的 skeleton 把三具人格面具都画在同一副骨架上（Doll_Skill_1_* 俄耳甫斯 /
+  // Doll_Skill_2_* 塔纳托斯 / Doll_Skill_3_P1_* 第三形态）。形态通道只有「一个 spine id 一个形态名」这一层，
+  // 所以替身形态统一用**俄耳甫斯**那一组 clip；换技能只换攻击方式，不换 clip 集 —— [ASSUMED]，与 kit 里
+  // 「人格面具落在替身形态上」是同一条简化（server/sim/content/kits/ops/chess_char_6_21-makoto.js 头注释）。
+  char_4217_makoto: Object.freeze({
+    doll: Object.freeze({
+      change: 'Doll_Skill_1_SwitchIn',
+      leave: 'Doll_Skill_1_SwitchOut',
+      roles: Object.freeze({
+        idle: 'Doll_Skill_1_Idle', deploy: 'Doll_Skill_1_Idle', die: 'Doll_Skill_1_Die',
+        stun: 'Doll_Skill_1_Stun', attack: Object.freeze({ begin: null, loop: 'Doll_Skill_1_Attack', end: null }),
+        attackDown: null, skill: null,
+      }),
+    }),
+  }),
   enemy_1040_bombd: Object.freeze({
     bombed: Object.freeze({
       roles: Object.freeze({
@@ -428,11 +443,15 @@ export const FORMS = Object.freeze({
     reborn: Object.freeze({ change: 'Revive_01', next: 'form2', roles: Object.freeze({}) }),
     form2: Object.freeze({ change: null, roles: Object.freeze({}) }),
   }),
-  // 不死的黑蛇 (boss_11, content/bosses.js kitBlackSnake): 5 s 重生 on Reborn_1_Start / Reborn_1_Idle / Reborn_1_End, then
-  // the same skeleton in 狂暴 — the model carries Reborn_2_* as well (PRTS: both waves of 不息恶火)
+  // 不死的黑蛇 (boss_11, content/bosses.js kitBlackSnake): the skeleton's own three rebirth clips —
+  //   重生 (5 s): Reborn_1_Start (3.13 s) → Reborn_1_Idle (0 s, held) → Reborn_1_End (2.77 s) as the window closes
+  //               (the closing clip is timed by the engine from the fx's dur, so it lands exactly on the 5 s);
+  //   狂暴 (28 s 不息恶火): Reborn_2_Start (5.33 s) then the *_B set — the stronger snake 狂暴 is drawn on;
+  //   back to 黑蛇形态: the base clip set again, through the form's `leave` clip Reborn_2_End (1.23 s).
+  // Until 0.19.28 the 重生 form was 'form2' (the *_B set) and 狂暴 was the base set, so neither Reborn_2 clip ever played.
   enemy_1515_bsnake: Object.freeze({
     reborn: Object.freeze({ change: 'Reborn_1_Start', end: 'Reborn_1_End', next: 'form2', roles: Object.freeze({ idle: 'Reborn_1_Idle', deploy: 'Reborn_1_Idle', move: loop('Reborn_1_Idle'), stun: loop('Reborn_1_Idle'), attack: null, skill: null }) }),
-    form2: Object.freeze({ change: null, roles: Object.freeze(clipSet('Idle_B', 'Move_B', 'Die', 'Attack_B')) }),
+    form2: Object.freeze({ change: 'Reborn_2_Start', leave: 'Reborn_2_End', roles: Object.freeze(clipSet('Idle_B', 'Move_B', 'Die', 'Attack_B')) }),
   }),
   enemy_1516_jakill: Object.freeze({
     reborn: Object.freeze({ change: 'C1_Die', roles: JAKILL2 }),
