@@ -1,7 +1,8 @@
 // Bottom shop bar (research 06 §11.2 / D3): LEVEL card (upgrade price hex, 升级), 3–5 operator cards
-// (tier chip, price hex with discount/markup colours, portrait, bonds — a bond the mode never activates struck through,
-// 本局禁用 — class, frozen overlay, sold state,
-// merge progress), the item card, the funds card with ✕ 收起; above it 剩余可放置角色, 冻结/解冻 and 刷新.
+// (tier chip, price hex with discount/markup colours, portrait, one horizontal row of bonds — a bond the mode never
+// activates struck through, 本局禁用 — frozen overlay, sold state, merge progress), the item card, the funds card with
+// ✕ 收起; above it 剩余可放置角色, 冻结/解冻 and 刷新. The sub-profession (子职业) lives on the detail card only: the
+// shop card spent its bottom row on a line the player rarely reads and the bonds needed the height (owner 2026-10-27).
 // Buying and upgrading take two taps (research 09 §5 / §6.5, official `EventOnFirstClick` → `EventOnConfirm` /
 // `EventOnUpgrade`): the first tap selects a card — it lifts and enlarges, its detail opens and it shows 确认购买
 // (无法购买 + the reason when it cannot be bought) — and a second tap on the same card buys it; the LEVEL card's first
@@ -21,17 +22,17 @@
 // Every operator card shows the skill it will fight with — the player's 干员调配 loadout (m.private.loadout, DESIGN
 // §16): the skill icon above the name, mint-framed with 已调配 in its title when it is not the default skill (and the
 // module type of an elite card, with its official type icon when the local-client art has it). A chess the player does
-// not own (0.2.0 补位, m.private.standIns) shows its stand-in — portrait, name, class and its backup skill, the one that
+// not own (0.2.0 补位, m.private.standIns) shows its stand-in — portrait, name and its backup skill, the one that
 // fights — with the chess's bonds, tier and price and a small ice 「替补」 mark (the owner's recall of the official mode,
 // 2026-10-06; the replaced operator's name is in the mark's title and on the detail card the first tap opens). A 自选
 // piece (0.2.0, m.private.diy — a DIY slot the player filled, only ever in its own shop) shows the operator — name,
-// portrait, class, the bonds of its factions, the pick's skill and module — with a mint 「自选」 badge.
+// portrait, the bonds of its factions, the pick's skill and module — with a mint 「自选」 badge.
 
-import { useEffect, useState } from '../../vendor/hooks.module.js';
+import { useEffect, useLayoutEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, HexBadge, TierChip, Tooltip, MicroLabel } from './components.js';
 import { Img, BondGlyph, CoinGlyph, GIcon, RichText } from './gameComponents.js';
 import { priceTone, mergeProgress, mergeTarget, shopBlockReason, chessLoadout, offerHeader, briefingBondTip, ownStandIn, standInLoadout, standInLabel, standInTip, standInForText, ownDiyRecord, diyGetter } from './gameLogic.js';
-import { itemIconUrl, profIconUrl, uiUrl, skillIconUrl, skillRecordIconUrl, moduleTypeIconUrl } from './assetUrls.js';
+import { itemIconUrl, uiUrl, skillIconUrl, skillRecordIconUrl, moduleTypeIconUrl } from './assetUrls.js';
 import { portraitUrlOf, currentAppearanceLookup } from './portraitChain.js';
 import { data } from '../data.js';
 import { assets } from '../assets.js';
@@ -104,7 +105,7 @@ export const ChessCard = modComponent('game.shopCard', function ChessCard({ slot
   const lo = si ? standInLoadout(si, LOOKUPS.getChess, data.get('backups')) : c ? chessLoadout(c, priv?.loadout, dr ? diyGetter(LOOKUPS.getChess, priv, diyData) : LOOKUPS.getChess, { ops: priv?.ops ?? null, effects: data.get('effects') }) : null;
   // 资源预加载（业主 2026-10-16）：这张卡要用的图先拉起来。`Img` 是 `loading="lazy"` 的 <img>，滚动/重绘时
   // 才真正发请求；先预热进去，刷新商店与二次渲染就不会再闪一下。warmUrls 去重、不阻塞、不抛错。
-  warmUrls(assets, [portraitUrlOf(m, c, { lookup: currentAppearanceLookup() }), profIconUrl(m, c?.profession)]);
+  warmUrls(assets, [portraitUrlOf(m, c, { lookup: currentAppearanceLookup() })]);
   const tap = () => { if (onTap) onTap(idx); else if (!disabled) onBuy(idx); else onDetail(slot.id, 'chess', hint); };
   const name = `${c?.name || t('干员')}${si ? t('（{note}）', { note: standInForText(c0.name) }) : ''}`;
   const card = html`<button type="button" class=${cx('scard', `scard--t${tier}`, frozen && 'is-frozen', disabled && 'is-disabled', willMerge && 'is-merge', armed && 'is-armed', si && 'is-standin')}
@@ -128,17 +129,13 @@ export const ChessCard = modComponent('game.shopCard', function ChessCard({ slot
     <span class="scard__body">
       ${lo?.skill ? html`<${SkillBadge} chess=${c} lo=${lo} standIn=${!!si} />` : null}
       <span class="scard__name">${c?.name || slot.id}</span>
-      <span class="scard__bonds">
+      <${BondRow} bonds=${bonds}>
         ${bonds.slice(0, 3).map((b) => {
           const name = data.lookup('bonds', b)?.name || b;
           const off = !!(offBonds && offBonds.has(b)); // a bond this mode never activates (gameLogic modeOffBonds)
-          return html`<span key=${b} class=${cx('scard__bond', off && 'is-off')} title=${off ? briefingBondTip(name, 'off') : undefined}><${BondGlyph} bondId=${b} /><span>${name}</span></span>`;
+          return html`<span key=${b} class=${cx('scard__bond', off && 'is-off')} title=${off ? briefingBondTip(name, 'off') : name}><${BondGlyph} bondId=${b} /><span>${name}</span></span>`;
         })}
-      </span>
-      <span class="scard__class">
-        <${Img} src=${profIconUrl(m, c?.profession)} class="scard__prof" />
-        <span>${c?.subProfessionName || ''}</span>
-      </span>
+      </${BondRow}>
     </span>
     ${willMerge ? html`<span class="scard__mergetag" title=${hint}>${t('可晋升')}</span>` : null}
     ${frozen ? html`<span class="scard__ice" aria-hidden="true"><${Icon} name="snow" /></span>` : null}
@@ -146,6 +143,39 @@ export const ChessCard = modComponent('game.shopCard', function ChessCard({ slot
   </button>`;
   return reason && reason !== t('已售出') && !armed ? html`<${Tooltip} text=${reason} block=${true} class="scard-wrap">${card}<//>` : card;
 });
+
+/**
+ * A horizontal bond line. Name chips are the first choice; when their measured width does not fit
+ * the card (three bonds, a long pack name, or a narrow phone), the line becomes glyphs instead of
+ * clipping a bond or wrapping into the portrait. Every glyph keeps its full name in the tooltip.
+ * The wrapper returns its children so the existing static vnode tests can still inspect every chip.
+ */
+function BondRow({ bonds, children }) {
+  const ref = useRef(null);
+  // Re-measure after a shop refresh or a language change, not only on the first mount.
+  const key = bonds.map((b) => `${b}:${data.lookup('bonds', b)?.name || b}`).join('|');
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    let live = true;
+    const fit = () => {
+      if (!live) return;
+      // Measure the full-name row even when the phone fallback or the previous result hid it, so
+      // widening the viewport can bring the names back. The fixed-height row cannot resize here.
+      el.classList.remove('is-compact');
+      el.classList.add('is-measuring');
+      const compact = el.scrollWidth > el.clientWidth + 0.5;
+      el.classList.remove('is-measuring');
+      el.classList.toggle('is-compact', compact);
+    };
+    fit();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
+    ro?.observe(el);
+    document.fonts?.ready?.then(fit).catch(() => {});
+    return () => { live = false; ro?.disconnect(); };
+  }, [key]);
+  return html`<span ref=${ref} class="scard__bonds">${children}</span>`;
+}
 
 /** The loadout's skill (icon; name + 已调配 in the tooltip) and an elite's module type, on an operator card. */
 function SkillBadge({ chess, lo, standIn = false }) {

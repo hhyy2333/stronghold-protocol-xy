@@ -1,7 +1,8 @@
 /* ==========================================================================================
    screens/game-shop.css — bottom shop bar (js/ui/shopBar.js) + merge reward overlay (rewardOverlay.js).
-   Research 06 §11.2: LEVEL card, operator cards (tier chip, price hexagon, half-body art, bond & class
-   rows, icy frozen overlay), item card, funds card with ✕ 收起; 冻结 (ice) / 刷新 (amber) above.
+   Research 06 §11.2: LEVEL card, operator cards (tier chip, price hexagon, half-body art, one horizontal
+   bond row, icy frozen overlay), item card, funds card with ✕ 收起; 冻结 (ice) / 刷新 (amber) above.
+   The sub-profession row is gone from the card (owner 2026-10-27); the detail card still shows it.
    ========================================================================================== */
 
 .shopbar {
@@ -126,12 +127,23 @@
 /* the official module type icon (local-client art, DESIGN §13); the type text stays beside it */
 .scard__skill .scard__modicon { flex: none; width: .14rem; height: .14rem; object-fit: contain; }
 .scard__name { font-size: .19rem; font-weight: 900; letter-spacing: .04em; color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.scard__bonds { display: flex; flex-wrap: wrap; gap: .02rem .08rem; }
-.scard__bond { display: inline-flex; align-items: center; gap: .03rem; font-size: .13rem; color: var(--mint-400); }
-.scard__bond .bglyph { width: .18rem; height: .18rem; }
+/* One bond line, never a stack: with the profession row removed the card has room for the name and
+   one row of bonds. Each chip keeps its name; the line only clips as a last resort on an unusually long
+   pack-supplied name (the full name is still the chip's title). */
+.scard__bonds { display: flex; flex-wrap: nowrap; align-items: center; gap: .02rem .08rem; overflow: hidden; }
+.scard__bond { flex: 0 0 auto; display: inline-flex; align-items: center; gap: .03rem; font-size: .13rem; color: var(--mint-400); white-space: nowrap; }
+.scard__bond .bglyph { flex: none; width: .18rem; height: .18rem; }
 .scard__bond.is-off { color: var(--text-dim); text-decoration: line-through; text-decoration-color: rgba(255, 84, 84, .6); } /* the mode never activates it (标准) */
-.scard__class { display: flex; align-items: center; gap: .05rem; font-size: .13rem; color: var(--text-lo); }
-.scard__prof { width: .18rem; height: .18rem; object-fit: contain; opacity: .85; }
+/* Measured fallback (shopBar.js BondRow): never wrap or silently clip a bond. `.is-measuring` is the
+   transient state the script uses to measure the full-name row, so it always wins over both the phone
+   fallback below and the previous `.is-compact` result. */
+.scard__bonds.is-compact { gap: .02rem .08rem; }
+.scard__bonds.is-compact .scard__bond > span { display: none; }
+.scard__bonds.is-compact .scard__bond .bglyph { display: block; }
+.scard__bonds.is-compact.is-measuring .scard__bond > span,
+.scard__bonds.is-measuring .scard__bond > span { display: inline; }
+.scard__bonds.is-compact.is-measuring .scard__bond .bglyph,
+.scard__bonds.is-measuring .scard__bond .bglyph { display: none; }
 .scard__mergetag { position: absolute; z-index: 3; right: 0; top: .38rem; font-size: .12rem; font-weight: 700; padding: .01rem .06rem; background: var(--gold); color: #1d1400; letter-spacing: .08em; }
 /* 0.2.0 补位: a chess the player does not own shows its stand-in (ui/shopBar.js ChessCard) — a small 「替补」 mark */
 .scard__standin { position: absolute; z-index: 3; left: 0; top: .38rem; max-width: calc(100% - .1rem); font-size: max(.11rem, 8px); font-weight: 700; line-height: 1.4;
@@ -295,8 +307,16 @@
   .scard__name { font-size: max(calc(var(--shop-card-h) * .135), 9px); }
   .scard__idesc { font-size: max(calc(var(--shop-card-h) * .1), 8px); }
   .scard__price { font-size: max(calc(var(--shop-card-h) * .112), 9px); }
-  .scard__bond, .scard__class { font-size: max(calc(var(--shop-card-h) * .112), 8px); }
-  .scard__bond .bglyph, .scard__prof { width: max(calc(var(--shop-card-h) * .2), 10px); height: max(calc(var(--shop-card-h) * .2), 10px); }
+  .scard__bond { font-size: max(calc(var(--shop-card-h) * .112), 8px); }
+  /* 手机上名称优先：这一行去掉小图标，两个三字盟约也能在一张卡里横着排；BondRow 量到
+     名称放不下时给整行加 .is-compact，下面的规则只在该行生效，绝不把第三个盟约截掉。 */
+  .scard__bonds { gap: .02rem .04rem; }
+  .scard__bond { gap: 0; }
+  .scard__bond .bglyph { display: none; }
+  .scard__bonds.is-compact .scard__bond .bglyph { display: block; width: 12px; height: 12px; }
+  .scard__bonds:not(.is-compact) .scard__bond > span { display: inline; }
+  .scard__bonds.is-measuring .scard__bond > span { display: inline; }
+  .scard__bonds.is-measuring .scard__bond .bglyph { display: none; }
   .scard__soldtxt { font-size: max(calc(var(--shop-card-h) * .122), 10px); }
   .scard__free { font-size: max(calc(var(--shop-card-h) * .11), 9px); }
   .scard__diy, .scard__mergetag, .scard__sglyph { font-size: max(calc(var(--shop-card-h) * .1), 8px); }
@@ -321,7 +341,26 @@
 @media (max-height: 280px) {
   :root { --shop-card-h: 1.28rem; --shop-card-w: .92rem; }
   .shopbar__remain { display: none; }   /* 第一行让位：卡牌优先 */
+  /* 极矮卡片没有放字的空间：保留可辨识的盟约图标，完整名称在 title / 详情里，不换行也不截字。
+     这是没有 JS 测量时的兜底；BondRow 量到放得下时仍显示名称。 */
+  .scard__bonds { gap: .02rem .08rem; }
+  .scard__bond { gap: 0; }
+  .scard__bonds .scard__bond .bglyph { display: block; width: 12px; height: 12px; }
+  .scard__bonds .scard__bond > span { display: none; }
+  .scard__bonds.is-compact .scard__bond > span { display: none; }
 }
+
+/* 480px 级窄屏：卡宽上限会压到 40px 左右，同样只留图标横排（无 JS 时的兜底；BondRow 能放下名称时会覆盖它）。 */ 
+@media (max-height: 420px) and (max-width: 520px) {
+  .scard__bonds .scard__bond .bglyph { display: block; width: 12px; height: 12px; }
+  .scard__bonds .scard__bond > span { display: none; }
+}
+
+/* Script result last: `.is-measuring` (a temporary full-name row while reading widths) must beat the
+   phone / narrow fallbacks above, and the non-measuring row follows `.is-compact` again. */
+.scard__bonds.is-measuring .scard__bond > span { display: inline; }
+.scard__bonds.is-measuring .scard__bond .bglyph { display: none; }
+.scard__bonds.is-measuring { gap: .02rem .08rem; }
 
 /* 竖屏手机：游戏本体是横屏玩法（devices.css 的 .rotate-hint 会盖一层「请横屏」），但商店栏仍然要自己站得住 ——
  * 390px 宽的竖屏上卡行是 389px，右对齐之后左边被切掉 10px。这一档只把卡面收窄到装得下，不改任何横屏档。 */

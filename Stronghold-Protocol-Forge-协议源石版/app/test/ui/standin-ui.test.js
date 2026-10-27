@@ -1,7 +1,7 @@
 // 0.2.0 补位 — client side (the approved plan, owner's decision 2026-10-05): the 干员持有 tab's model (storage, toggles,
 // the roster by tier, export / import) and its server sync (room.ownership), and the match UI of a not-owned chess —
 // SHOWN as its stand-in wherever the player's copy appears (the owner's recall of the official mode, 2026-10-06): the
-// shop / reward card (the stand-in's portrait, name, class and skill; the chess's bonds and price; a small 「替补」 mark),
+// shop / reward card (the stand-in's portrait, name and skill; the chess's bonds and price; a small 「替补」 mark),
 // the own pieces (the stand-in's model in the hand, 临时整备区 and on the board, a 「替补」 tag), the detail card (the
 // stand-in's portrait, name, skill, talents; the chess's bonds and 特质; 「银灰的替补」), the bond popups (own and a
 // teammate's), the result lineup and the equip-replace dialog — while the rules keep the chess (placement and ranges
@@ -235,7 +235,7 @@ describe('match UI of a not-owned chess', () => {
     assert.equal(G.piecePosition(own, { kind: 'chess', id: SARIA }), 'MELEE');
   });
 
-  test('shop / reward card: the stand-in\'s portrait, name, class and skill; the chess\'s bonds and price; a small 「替补」 mark', () => {
+  test('shop / reward card: the stand-in\'s portrait, name and skill; the chess\'s bonds and price; a small 「替补」 mark', () => {
     const slot = { kind: 'chess', id: SILVER, price: 3, basePrice: 3 };
     const card = ChessCard({ slot, idx: 0, priv, onBuy() {}, onDetail() {} });
     const nodes = [...walk(card)];
@@ -248,14 +248,30 @@ describe('match UI of a not-owned chess', () => {
     assert.match(card.props['aria-label'], /^Sharp（银灰的替补），价格 3/);
     assert.ok(srcsOf(card).some((u) => u.includes('char_609_acguad_1')), 'the stand-in\'s portrait');
     assert.ok(!srcsOf(card).some((u) => u.includes('svrash')), 'not the replaced operator\'s');
-    assert.ok(textOf(nodes.find((v) => hasClass(v, 'scard__class'))).includes(sharp().subProfessionName), 'the stand-in\'s class (无畏者)');
+    assert.equal(nodes.find((v) => hasClass(v, 'scard__class')), undefined, 'the shop card leaves the sub-profession to the detail panel');
     const bonds = nodes.filter((v) => hasClass(v, 'scard__bond')).map((v) => v.key);
     assert.deepEqual(bonds, getChess(SILVER).bonds, 'the chess\'s bonds still count');
+    assert.ok(nodes.some((v) => v?.type?.name === 'BondRow'), 'the measured row keeps every bond in its static children');
+    const css = readFileSync(path.join(ROOT, 'public/css/screens/game-shop.css'), 'utf8');
+    assert.match(css, /\.scard__bonds \{ display: flex; flex-wrap: nowrap;/, 'bonds never stack vertically');
+    assert.match(css, /\.scard__bonds\.is-compact \.scard__bond > span \{ display: none; \}/, 'a narrow row swaps names for glyphs, never clips a bond');
+    assert.doesNotMatch(css, /\.scard__class \{|\.scard__prof \{/, 'no profession row remains in the shop stylesheet');
     const skill = nodes.find((v) => v?.type && v.props?.lo);
     assert.equal(skill.props.lo.skill.skillId, 'skchr_acguad_2');
     const owned = ChessCard({ slot, idx: 0, priv: { standIns: [] }, onBuy() {}, onDetail() {} });
     assert.equal([...walk(owned)].find((v) => hasClass(v, 'scard__standin')), undefined, 'owned: no mark');
     assert.equal([...walk(owned)].find((v) => hasClass(v, 'scard__name')).props.children, '银灰');
+  });
+
+  test('shop card: three bonds stay in one measured row; no sub-profession row', () => {
+    const id = 'chess_char_3_05_a'; // 斯卡蒂: 阿戈尔 / 坚守 / 突袭
+    const card = ChessCard({ slot: { kind: 'chess', id, price: 5 }, idx: 0, priv, onBuy() {}, onDetail() {} });
+    const nodes = [...walk(card)];
+    const chips = nodes.filter((v) => hasClass(v, 'scard__bond'));
+    assert.equal(chips.length, 3, 'all three bonds are rendered');
+    assert.ok(chips.every((v) => v.props.title), 'every bond keeps its full name in the tooltip');
+    assert.equal(nodes.find((v) => hasClass(v, 'scard__class')), undefined);
+    assert.ok(nodes.some((v) => v?.type?.name === 'BondRow'));
   });
 
   test('detail card: the stand-in\'s portrait, name, skill and talents, 「银灰的替补」, the chess\'s bonds and 特质; a unit with standInFor likewise', () => {
