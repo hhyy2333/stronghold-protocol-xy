@@ -493,11 +493,14 @@ export function resolveMirrorCopies(m) {
  */
 function mirrorCandidate(m, picker, pend) {
   const mine = new Set([...(pend.owned || []), ...hexIdsOf(picker)]);
+  // 业主 2026-10-27「ban 了的协议源石能被潘多拉摇出来」: 禁用是「**我**的抽取跳过它」——复制也是我的获得，
+  // 所以队友手里那张被我 ban 掉的卡同样不能复制过来（镜像协议是另一条把禁用卡带回手上的边）。
+  const bans = new Set(Array.isArray(picker.hexBans) ? picker.hexBans : []);
   const pool = [];
   for (const ally of m.alivePlayers()) {
     if (ally === picker) continue;
     for (const id of hexIdsOf(ally)) {
-      if (id === pend.hexId || mine.has(id)) continue;
+      if (id === pend.hexId || mine.has(id) || bans.has(id)) continue;
       const rec = m.gd.hex(id);
       if (rec) pool.push(rec);
     }

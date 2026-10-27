@@ -40,7 +40,7 @@ const HEXTECH = JSON.parse(readFileSync(path.join(ROOT, 'data', 'hextech.json'),
 
 /** 设计稿 §3.3 / §3.4 的参数（卡面 effect 就是这一份；模块只读卡面）。 */
 const KJ = Object.freeze({ layers: 1, coldMul: 130, frozenMul: 260, slowPct: 40, slowSec: 6, buffLayer: 75, atkPct: 50, hpPct: 50 });
-const LA = Object.freeze({ healPct: 5, shieldHits: 1 });
+const LA = Object.freeze({ healPct: 5, shieldHits: 1, aspd: 50, atkPct: 80 });
 
 const CARD_KJ = 'hex_kjerag_thaw';
 const CARD_LA = 'hex_laterano_sanctuary';
@@ -48,6 +48,8 @@ const CARD_LA = 'hex_laterano_sanctuary';
 const PASSIVE_KJ = 'hex:kjeragthaw';
 /** 免死那 1 层次数盾的 buff 键。 */
 const SHIELD_LA = 'hex:laterano:shield';
+/** 攻速 / 攻击力被动的 buff 键（与模块一致）。 */
+const PASSIVE_LA = 'hex:laterano:stats';
 
 /**
  * One playerEffects entry, the shape server/match/hextech.js addHexRef writes. `effect` overrides the design values
@@ -422,7 +424,8 @@ test('圣佑: 每消耗 1 颗弹药，回复所有己方【拉特兰】干员 5%
   assert.equal(a.skill.activate('test', { free: true }), true);
   assert.equal(a.skill.ammoLeft, 3, 'premise: 3 发弹药');
   assert.equal(h.battle.forceAttack(a, [foe]), true, 'premise: 打一发');
-  assert.equal(a.skill.ammoLeft, 2, 'premise: 消耗了 1 发');
+  assert.equal(a.skill.ammoLeft, 1, 'premise: 一发消耗 1 发 + 额外消耗 1 发 = 2 发（业主 2026-10-27）');
+  assert.equal(inst.extraAmmo, 1, '额外消耗记账');
 
   assert.equal(a.hp, 550, '自己回复 5% 最大生命 = 50');
   assert.equal(b.hp, 1000, '满血的同伴不会超过上限');
@@ -447,6 +450,60 @@ test('圣佑: 别人的【拉特兰】干员不在治疗名单里', () => {
   h.battle.forceAttack(mine, [foe]);
   assert.equal(mine.hp, 550, '自己的干员被治疗');
   assert.equal(theirs.hp, 500, '别人的干员没有');
+  h.invariants();
+});
+
+// =====================================================================================================================
+// 圣佑 · 攻速 / 攻击力（业主 2026-10-27 追加）
+
+test('圣佑: 【拉特兰】干员攻速 +50、攻击力 +80%（非拉特兰 / 别人的干员不吃）', () => {
+  const h = field([
+    seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano'), at(2, 10, 6, 'test_plain')], bonds: bondsOf() }),
+    seat('p2', 1, { effects: [], units: [at(3, 10, 7, 'test_laterano')], bonds: bondsOf() }),
+  ], { kind: 'unite' });
+  installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const mine = ops(h).find((u) => u.ownerId === 'p1' && u.defId === 'test_laterano');
+  const plain = ops(h).find((u) => u.ownerId === 'p1' && u.defId === 'test_plain');
+  const theirs = ops(h).find((u) => u.ownerId === 'p2');
+  const baseAspd = theirs.s.aspd;
+  assert.equal(mine.s.atk, 180, '100 × 1.8');
+  assert.equal(mine.s.aspd, baseAspd + 50, '攻速 +50');
+  assert.equal(plain.s.atk, 100, '非【拉特兰】干员不吃');
+  assert.equal(theirs.s.atk, 100, '别人的干员不吃');
+  assert.equal(mine.buffs.filter((b) => b.key === PASSIVE_LA).length, 1, '一个被动实例');
+  assert.equal(plain.buffs.filter((b) => b.key === PASSIVE_LA).length, 0);
+  h.invariants();
+});
+
+test('圣佑: 数字读卡面 — aspd 20 / atkPct 30 时按卡面算', () => {
+  const custom = refOf(CARD_LA, 'lateranoSanctuary', { ...LA, aspd: 20, atkPct: 30 });
+  const h = field([seat('p1', 0, { effects: [custom], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
+  installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  assert.equal(u.s.atk, 130, '100 × 1.3');
+  assert.equal(u.s.aspd, 120, '基础 100 + 20');
+  h.invariants();
+});
+
+test('圣佑: 消耗子弹时额外消耗 1 发（打空的技能照常结束）', () => {
+  const h = field([seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  assert.equal(u.skill.ammoLeft, 3, 'premise: 3 发');
+  h.battle.forceAttack(u, [foe]);
+  assert.equal(u.skill.ammoLeft, 1, '一发扣 2 发（引擎 1 + 额外 1）');
+  assert.equal(u.skill.active, true, '还有 1 发，技能继续');
+  assert.equal(inst.extraAmmo, 1, '这一次的额外消耗记账');
+  // 最后一发没有「额外一发」可扣：引擎扣完就是 0，技能照常结束
+  h.battle.forceAttack(u, [foe]);
+  assert.equal(u.skill.ammoLeft, 0, '最后一发打完');
+  assert.equal(u.skill.active, false, '打空 ⇒ 技能像正常打完一样结束');
+  assert.equal(inst.extraAmmo, 1, '没有弹药时不额外扣（也不会扣成负数）');
   h.invariants();
 });
 

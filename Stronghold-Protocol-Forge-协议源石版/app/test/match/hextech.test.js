@@ -359,6 +359,52 @@ test('镜像协议: a pick with no teammate-owned card is armed, not wasted, and
   m.dispose();
 });
 
+// 业主 2026-10-27「ban 了的协议源石能被潘多拉摇出来」：禁用是「我的抽取跳过它」。潘多拉 / 二次抽取本身走
+// `hexPoolFor`（已过滤禁用），但换牌之后可能给出【镜像协议】—— 而镜像协议挑的是**队友**的卡，原来完全不看我的
+// 禁用列表，于是「我 ban 的卡」从这条边回到了我手上。现在它也跳过被禁用的 id。
+test('镜像协议: 不复制自己 ban 掉的协议源石（业主 2026-10-27）', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 43, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const p0 = h.ps('p_0');
+  const p1 = h.ps('p_1');
+  clearHexes(p0);
+  clearHexes(p1);
+  p0.hexBans = Object.freeze(['hex_bulwark']);   // 本房禁用的协议源石
+  applyHex(m, p0, m.gd.hex('hex_mirror'));
+  assert.equal(m.pendingMirror.length, 1, 'premise: 镜像协议已上膛');
+  // 队友手里只有那张被 ban 的 ⇒ 复制不出来（旧的会直接复制过来）
+  applyHex(m, p1, m.gd.hex('hex_bulwark'));
+  assert.deepEqual(mirrorOwned(p0), ['hex_mirror'], '被 ban 的卡不会被复制过来');
+  assert.equal(m.pendingMirror.length, 1, '还在等一张能复制的');
+  // 队友再拿一张没被 ban 的 ⇒ 这次付得出
+  applyHex(m, p1, m.gd.hex('hex_stipend'));
+  assert.deepEqual(mirrorOwned(p0).slice().sort(), ['hex_mirror', 'hex_stipend'], '没被 ban 的照常复制');
+  h.invariants();
+  m.dispose();
+});
+
+// 同一个报告的正面回归：潘多拉自己走的是 `hexPoolFor`（bans + 专属），这条用例把「它确实不摇被 ban 的」钉住，
+// 免得以后有人绕开 `hexPoolFor` 取池子。
+test('潘多拉: 不会摇出被 ban 的协议源石（业主 2026-10-27）', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 47, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  const bans = ['hex_artifactkit', 'hex_pandora', 'hex_echo'];
+  ps.hexBans = Object.freeze(bans.slice());
+  clearHexes(ps);
+  applyHex(m, ps, m.gd.hex('hex_pandora'));
+  const owned = mirrorOwned(ps);
+  assert.ok(owned.length >= 1, `premise: 潘多拉换了牌 (${JSON.stringify(owned)})`);
+  assert.deepEqual(owned.filter((id) => bans.includes(id)), [], '换出来的牌里没有一张是禁用的');
+  assert.ok(!owned.includes('hex_pandora'), '连潘多拉自己也不会回来');
+  h.invariants();
+  m.dispose();
+});
+
 test('镜像协议: the arm is retried at the next round start, so an out-of-band teammate gain still pays out', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 37, fake: true });
   h.start();

@@ -9,7 +9,7 @@
 //
 // 确定性：没有 Math.random / Date / Node API；随机一律走 battle.rng()（这两张卡其实不需要随机）。
 
-import { isMember, bondLayers, passiveBuff } from '../support/index.js';
+import { isMember, bondLayers, passiveBuff, directMods } from '../support/index.js';
 import { isChained, isHpLoss, isRetaliation } from '../../damage.js';
 
 /** 卡 id（模块自己的查表键）。 */
@@ -180,8 +180,9 @@ export function installKjeragThaw(hooks) {
  * 【圣佑】hex_laterano_sanctuary（3 阶，requiresBond: lateranoShip）。
  *
  * 设计稿原文（§3.4，逐字）：
- *   「作战中：【拉特兰】干员每消耗 1 颗弹药，回复所有【拉特兰】干员 5% 最大生命；【拉特兰】干员受到致命伤害时，
- *    若仍有弹药，消耗全部弹药，免疫本次伤害，并获得 1 层次数盾。」
+ *   「作战中：【拉特兰】干员攻击速度 +50、攻击力 +80%；【拉特兰】干员每消耗 1 颗弹药，回复所有【拉特兰】干员
+ *    5% 最大生命；消耗子弹时额外消耗 1 发；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药，
+ *    免疫本次伤害，并获得 1 层次数盾。」（前两句的攻速 / 攻击力与额外消耗为业主 2026-10-27 追加）
  *
  * 口径：
  *   * **谁算【拉特兰】干员**：拥有者自己的己方干员 + `isMember(battle, u, 'lateranoShip')`（同上一张卡的成员资格判据）。
@@ -216,12 +217,31 @@ export function installLateranoSanctuary(hooks) {
     plan.set(pid, {
       healPct: num('healPct', 5) / 100,
       shieldHits: Math.max(1, Math.round(num('shieldHits', 1))),
+      // 业主 2026-10-27 追加：拉特兰干员攻速 +50、攻击力 +80%
+      aspd: num('aspd', 50),
+      atkPct: num('atkPct', 80) / 100,
     });
   }
 
   const isCarrier = (u) => isOwnOp(u, owned) && isMember(battle, u, BOND_LATERANO);
   /** 拥有者的在场拉特兰干员（治疗目标 / 免死判定都只认这些）。 */
   const carriersOnField = (pid) => battle.allyUnits.filter((u) => u.ownerId === pid && isCarrier(u) && u.alive && u.deployed && !u.hidden);
+
+  // ---- 【拉特兰】干员：攻速 +50、攻击力 +80%（业主 2026-10-27） -----------------------------------------------
+  // 与谢拉格那张同一个做法：passiveBuff 按 key 覆盖（幂等），battleStart / deploy 刷新，所以后部署的干员也吃得到；
+  // 成员资格仍然只看 isMember(拉特兰) —— 盟约没激活时这张卡本来也不会被抽到。
+  const PASSIVE_LATERANO = 'hex:laterano:stats';
+  const applyStats = (pid = null) => {
+    for (const u of battle.allyUnits) {
+      if (!isCarrier(u) || (pid != null && u.ownerId !== pid)) continue;
+      const p = plan.get(u.ownerId);
+      if (!p) continue;
+      // aspd 不是「直接乘算」的那三个比例之一（directMods 只管 atk/def/hp），走它的 `extra` 合并进来
+      passiveBuff(battle, u, PASSIVE_LATERANO, directMods({ atk: p.atkPct }, { aspd: p.aspd }));
+    }
+  };
+  battle.on('battleStart', () => applyStats(), { priority: -10 });
+  battle.on('deploy', (c) => { const u = c && c.unit; if (isCarrier(u)) applyStats(u.ownerId); });
 
   // ---- 每消耗 1 颗弹药：回复所有己方【拉特兰】干员 5% 最大生命 ------------------------------------------------
   let heals = 0;
@@ -236,6 +256,20 @@ export function installLateranoSanctuary(hooks) {
       if (!(maxHp > 0)) continue;
       battle.heal(u, a, maxHp * p.healPct, {});
     }
+  });
+
+  // ---- 消耗子弹时额外消耗 1 发（业主 2026-10-27）：弹药烧得更快 ------------------------------------------------
+  // 引擎在 `emit('ammoUsed')` 之后自己判 `if (ammoLeft <= 0) end('ammo')`（skills.js），所以这里只扣数、不重复收尾；
+  // 也不再补一次 `ammoUsed`（那会把治疗再算一遍、并且自己套自己）。[ASSUMED] 额外这一发**不**再触发一次「每消耗 1 颗
+  // 回复 5%」—— 卡面把「额外消耗」写成代价，治疗仍按每次消耗事件结算一次。
+  let extraAmmo = 0;
+  battle.on('ammoUsed', (c) => {
+    const u = c && c.unit;
+    if (!isCarrier(u)) return;
+    const sk = (c && c.skill) || u.skill;
+    if (!sk || sk.kind !== 'ammo' || !(sk.ammoLeft > 0)) return;
+    sk.ammoLeft -= 1;
+    extraAmmo++;
   });
 
   // ---- 受到致命伤害时：仍有弹药 ⇒ 清空弹药、免疫本次伤害、获得 shieldHits 层次数盾 --------------------------
@@ -265,5 +299,6 @@ export function installLateranoSanctuary(hooks) {
     get owners() { return owners.length; },
     get heals() { return heals; },
     get prevented() { return prevented; },
+    get extraAmmo() { return extraAmmo; },
   };
 }

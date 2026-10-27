@@ -1442,10 +1442,10 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_laterano_sanctuary',
     name: '圣佑',
-    desc: '仅【拉特兰】盟约激活时才会出现。作战中，【拉特兰】干员每消耗 1 颗弹药，回复所有【拉特兰】干员 5% 最大生命；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药免疫本次伤害，并获得 1 层次数盾。',
+    desc: '仅【拉特兰】盟约激活时才会出现。作战中，【拉特兰】干员攻击速度 +50、攻击力 +80%；每消耗 1 颗弹药，回复所有【拉特兰】干员 5% 最大生命；消耗子弹时额外消耗 1 发；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药免疫本次伤害，并获得 1 层次数盾。',
     rarity: 'prismatic',
     requiresBond: 'lateranoShip',
-    effect: { lateranoSanctuary: { healPct: 5, shieldHits: 1 } },
+    effect: { lateranoSanctuary: { healPct: 5, shieldHits: 1, aspd: 50, atkPct: 80 } },
   },
   {
     id: 'hex_egir_symbiosis',
