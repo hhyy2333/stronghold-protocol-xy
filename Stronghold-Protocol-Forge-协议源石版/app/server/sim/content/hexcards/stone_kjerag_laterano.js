@@ -48,8 +48,8 @@ const isOwnOp = (u, owned) => !!u && u.kind === 'op' && u.side === 'ally' && own
  * 【冰雪消融】hex_kjerag_thaw（3 阶，requiresBond: kjeragShip）。
  *
  * 业主 / 设计稿原文（§3.3，逐字）：
- *   「作战中：【谢拉格】干员攻击寒冷/冻结敌人时，解除其寒冷/冻结，获得 5 层谢拉格；这次伤害提升至 180%（寒冷）/
- *    360%（冻结），并施加 60% 减速 6 秒。【谢拉格】≥75 层：【谢拉格】干员攻击力 +50%、生命值 +50%。」
+ *   「作战中：【谢拉格】干员攻击寒冷/冻结敌人时，解除其寒冷/冻结，获得 1 层谢拉格；这次伤害提升至 130%（寒冷）/
+ *    260%（冻结），并施加 40% 减速 6 秒。【谢拉格】≥75 层：【谢拉格】干员攻击力 +50%、生命值 +50%。」
  * （「获得时：获得干员【耶拉】；所有【谢拉格】干员价格 −1」是备战侧，不在这个模块里。）
  *
  * 口径：
@@ -62,14 +62,14 @@ const isOwnOp = (u, owned) => !!u && u.kind === 'op' && u.side === 'ally' && own
  *   * **解除寒冷 / 冻结**：命中时先读状态（`findBuff('freeze')` 优先，其次 `findBuff('cold')`），再用
  *     `battle.removeStatus` 把**两个键都清掉**（引擎的友方寒冷成对转冻结时已经把 cold 摘掉，但手动挂的状态不一定；
  *     一次「解除」把残留一起清干净更贴近卡面「解除其寒冷/冻结」）。
- *   * **获得 5 层**：`battle.addLayers(pid, 'kjeragShip', layers, 'hex', { source: u })`——战斗内加层，走引擎的
+ *   * **获得 1 层**：`battle.addLayers(pid, 'kjeragShip', layers, 'hex', { source: u })`——战斗内加层，走引擎的
  *     `layerGain` 钩子与 999 层上限；联防 / boss 场（`flags.layerGainsEnabled === false`）里引擎自己会拒绝加层，
  *     模块不另做判断。每次命中只加一次（多目标 / 多段伤害各自算各自的一次命中）。
- *   * **「这次伤害提升至 180% / 360%」**：乘在 DamageInfo 自己的 `mul` 上（引擎的每实例乘区，与 近大远小 / 你我一体
- *     同一个字段），所以是**这次结算的最终伤害** ×1.8 / ×3.6，而不是把面板攻击力改大再走一遍减伤。
- *     [ASSUMED]「提升至」按最终伤害的倍率读（不是「再额外加 180%」）。
- *   * **60% 减速 6 秒**：`applyStatus(target, 'slow', { duration: slowSec, value: slowPct / 100 })`——目录状态 `slow` 的
- *     `value` 就是速度削减比例（buffs.js：`moveMul = 1 − value`），所以 60 → 0.6。免疫 / 抵抗由引擎负责。
+ *   * **「这次伤害提升至 130% / 260%」**：乘在 DamageInfo 自己的 `mul` 上（引擎的每实例乘区，与 近大远小 / 你我一体
+ *     同一个字段），所以是**这次结算的最终伤害** ×1.3 / ×2.6，而不是把面板攻击力改大再走一遍减伤。
+ *     [ASSUMED]「提升至」按最终伤害的倍率读（不是「再额外加 130%」）。
+ *   * **40% 减速 6 秒**：`applyStatus(target, 'slow', { duration: slowSec, value: slowPct / 100 })`——目录状态 `slow` 的
+ *     `value` 就是速度削减比例（buffs.js：`moveMul = 1 − value`），所以 40 → 0.4。免疫 / 抵抗由引擎负责。
  *   * **75 层被动**：`passiveBuff(u, 'hex:kjeragthaw', { atkPct, hpPct })`（加算百分比，与其它加算 mod 同栈、死亡 /
  *     重部署不丢）。刷新时机：`battleStart`、`layerGain`（本卡自己加层，以及别的来源给谢拉格加层）、`deploy`（战斗
  *     中途部署的干员补装），以及模块返回的 `refresh()`（掉层撤销的入口）。层数掉回阈值以下时**撤销**那个 buff
@@ -158,11 +158,11 @@ export function installKjeragThaw(hooks) {
     // 1) 解除寒冷 / 冻结（两个键都清：成对转冻结之后可能还残留一个）
     battle.removeStatus(tgt, 'freeze');
     battle.removeStatus(tgt, 'cold');
-    // 2) 获得 5 层谢拉格
+    // 2) 获得 1 层谢拉格
     battle.addLayers(src.ownerId, BOND_KJERAG, p.layers, 'hex', { source: src });
-    // 3) 这次伤害提升至 180%（寒冷）/ 360%（冻结）
+    // 3) 这次伤害提升至 130%（寒冷）/ 260%（冻结）
     dmg.mul *= frozen ? p.frozenMul : p.coldMul;
-    // 4) 60% 减速 6 秒（目录状态 slow 的 value = 速度削减比例）
+    // 4) 40% 减速 6 秒（目录状态 slow 的 value = 速度削减比例）
     if (tgt.alive) battle.applyStatus(tgt, 'slow', { duration: p.slowSec, value: p.slowPct, source: src });
   });
 

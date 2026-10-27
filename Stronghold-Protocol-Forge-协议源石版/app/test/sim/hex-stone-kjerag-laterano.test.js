@@ -9,7 +9,7 @@
 // content/hextech.js 的 `install()`、也不装盟约内容（层数只当数据用），于是这些数字只可能来自被测模块。
 //
 // 覆盖（设计稿 §3.3 / §3.4 的每条关键路径，一条一个 test）：
-//   冰雪消融：无卡无效果；寒冷命中 100%→180%、冻结命中 100%→360%；解除状态、+5 层、60% 减速 6 秒；
+//   冰雪消融：无卡无效果；寒冷命中 100%→130%、冻结命中 100%→260%；解除状态、+1 层、40% 减速 6 秒；
 //             只有「攻击命中活着的敌人」才算（非攻击实例 / 链式附加 / 反伤 / 流失 / 元素损伤都不算）；
 //             只认拥有者自己的【谢拉格】干员；75 层被动（含掉层撤销、layerGain 现场跨过阈值）；参数读卡面。
 //   圣佑：无卡无效果；每消耗 1 发弹药回复所有己方【拉特兰】干员 5% 最大生命；致命伤害时仍有弹药 ⇒ 免死 +
@@ -18,8 +18,8 @@
 //   数据：data/hextech.json 里两张卡的记录与设计稿口径一致（Lead 接线用）。
 //
 // [ASSUMED]（模块头注释里有完整口径，这里是测试侧的断言口径）：
-//   1. 「这次伤害提升至 180%/360%」按**最终伤害**的倍率读（DamageInfo 的 `mul`），所以断言的是「同样一发 100 点
-//      伤害，命中带状态的目标结算成 180 / 360」，不是面板攻击力的变化。
+//   1. 「这次伤害提升至 130%/260%」按**最终伤害**的倍率读（DamageInfo 的 `mul`），所以断言的是「同样一发 100 点
+//      伤害，命中带状态的目标结算成 130 / 260」，不是面板攻击力的变化。
 //   2. 「≥75 层」判**当前层数**，掉回阈值以下要撤销被动（不是「本场曾经到过」）。
 //   3. 圣佑的治疗是各自最大生命上限的 5%，只算在场（活着 / 已部署 / 未隐匿）的己方【拉特兰】干员。
 //   4. 免死只认「受到伤害」：生命流失（`isHpLoss`）不免死；护盾是下一次受击才消耗。
@@ -39,7 +39,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const HEXTECH = JSON.parse(readFileSync(path.join(ROOT, 'data', 'hextech.json'), 'utf8'));
 
 /** 设计稿 §3.3 / §3.4 的参数（卡面 effect 就是这一份；模块只读卡面）。 */
-const KJ = Object.freeze({ layers: 5, coldMul: 180, frozenMul: 360, slowPct: 60, slowSec: 6, buffLayer: 75, atkPct: 50, hpPct: 50 });
+const KJ = Object.freeze({ layers: 1, coldMul: 130, frozenMul: 260, slowPct: 40, slowSec: 6, buffLayer: 75, atkPct: 50, hpPct: 50 });
 const LA = Object.freeze({ healPct: 5, shieldHits: 1 });
 
 const CARD_KJ = 'hex_kjerag_thaw';
@@ -164,7 +164,7 @@ test('冰雪消融: 敌人既没有寒冷也没有冻结时，命中什么都不
 // =====================================================================================================================
 // 冰雪消融 · 命中寒冷 / 冻结
 
-test('冰雪消融: 命中寒冷的敌人 — 解除寒冷、+5 层谢拉格、这次伤害 180%、60% 减速 6 秒', () => {
+test('冰雪消融: 命中寒冷的敌人 — 解除寒冷、+1 层谢拉格、这次伤害 130%、40% 减速 6 秒', () => {
   const h = field([seat('p1', 0, { effects: [refOf(CARD_KJ, 'kjeragThaw', KJ)], units: [at(1, 9, 6, 'test_kjerag')], bonds: bondsOf() })]);
   const inst = installKjeragThaw(hexHooks(h.battle));
   h.run(1);
@@ -176,23 +176,23 @@ test('冰雪消融: 命中寒冷的敌人 — 解除寒冷、+5 层谢拉格、�
   assert.ok(foe.findBuff('cold'), 'premise: 寒冷挂上了');
   const dealt = attackHit(h, u, foe);
 
-  assert.equal(dealt, 180, '100 × 180% = 180（最终伤害倍率）');
+  assert.equal(dealt, 130, '100 × 130% = 130（最终伤害倍率）');
   assert.equal(foe.findBuff('cold'), null, '寒冷被解除');
-  assert.equal(layersOf(h, 'p1'), 5, '+5 层谢拉格');
+  assert.equal(layersOf(h, 'p1'), 1, '+1 层谢拉格');
   const slow = foe.findBuff('slow');
   assert.ok(slow, '施加了减速');
-  assert.equal(slow.mods.moveMul, 0.4, '60% 减速 ⇒ 移速 ×0.4');
+  assert.equal(slow.mods.moveMul, 0.6, '40% 减速 ⇒ 移速 ×0.6');
   assert.ok(Math.abs(slow.timeLeft - 6) < 1e-9, `持续 6 秒（实际 ${slow.timeLeft}）`);
   assert.equal(inst.thaws, 1, '一次消融');
   const gains = h.hooksOf('layerGain').filter((c) => c && c.bondId === 'kjeragShip');
   assert.equal(gains.length, 1, '加层走引擎的 layerGain 钩子');
-  assert.equal(gains[0].n, 5, '一次 +5 层');
+  assert.equal(gains[0].n, 1, '一次 +1 层');
   assert.equal(gains[0].playerId, 'p1');
   assert.equal(gains[0].source, u, '来源是出手的干员');
   h.invariants();
 });
 
-test('冰雪消融: 命中冻结的敌人 — 解除冻结、这次伤害 360%（比寒冷更高的一档）', () => {
+test('冰雪消融: 命中冻结的敌人 — 解除冻结、这次伤害 260%（比寒冷更高的一档）', () => {
   const h = field([seat('p1', 0, { effects: [refOf(CARD_KJ, 'kjeragThaw', KJ)], units: [at(1, 9, 6, 'test_kjerag')], bonds: bondsOf() })]);
   const inst = installKjeragThaw(hexHooks(h.battle));
   h.run(1);
@@ -200,16 +200,16 @@ test('冰雪消融: 命中冻结的敌人 — 解除冻结、这次伤害 360%�
   const foe = foes(h)[0];
   h.battle.applyStatus(foe, 'freeze', { duration: 3, source: u });
   assert.ok(foe.findBuff('freeze'), 'premise: 冻结挂上了');
-  assert.equal(attackHit(h, u, foe), 360, '100 × 360% = 360');
+  assert.equal(attackHit(h, u, foe), 260, '100 × 260% = 260');
   assert.equal(foe.findBuff('freeze'), null, '冻结被解除');
   assert.equal(foe.findBuff('cold'), null, '寒冷也没有残留');
-  assert.equal(layersOf(h, 'p1'), 5);
+  assert.equal(layersOf(h, 'p1'), 1);
   assert.ok(foe.findBuff('slow'), '减速照常施加');
   assert.equal(inst.thaws, 1);
   h.invariants();
 });
 
-test('冰雪消融: 连续两次命中两个带状态的敌人，各算各的一次（10 层 / 两次消融）', () => {
+test('冰雪消融: 连续两次命中两个带状态的敌人，各算各的一次（2 层 / 两次消融）', () => {
   const h = makeBattle({
     kind: 'normal',
     content: 'generic',
@@ -227,9 +227,9 @@ test('冰雪消融: 连续两次命中两个带状态的敌人，各算各的一
   assert.equal(foes(h).length, 2, 'premise: 场上有两个敌人');
   h.battle.applyStatus(a, 'cold', { duration: 3, source: u });
   h.battle.applyStatus(b, 'freeze', { duration: 3, source: u });
-  assert.equal(attackHit(h, u, a), 180);
-  assert.equal(attackHit(h, u, b), 360);
-  assert.equal(layersOf(h, 'p1'), 10, '两次命中 = 两次 +5 层');
+  assert.equal(attackHit(h, u, a), 130);
+  assert.equal(attackHit(h, u, b), 260);
+  assert.equal(layersOf(h, 'p1'), 2, '两次命中 = 两次 +1 层');
   assert.equal(inst.thaws, 2);
   assert.equal(a.findBuff('cold'), null);
   assert.equal(b.findBuff('freeze'), null);
@@ -367,15 +367,15 @@ test('冰雪消融: 命中消融现场把层数推过 75 —— 同一个 tick �
   const h = field([seat('p1', 0, {
     effects: [refOf(CARD_KJ, 'kjeragThaw', KJ)],
     units: [at(1, 9, 6, 'test_kjerag')],
-    bonds: bondsOf({ kjeragShip: { layers: 70 } }),
+    bonds: bondsOf({ kjeragShip: { layers: 74 } }),
   })]);
   installKjeragThaw(hexHooks(h.battle));
   h.run(1);
   const [u] = ops(h);
   const foe = foes(h)[0];
-  assert.equal(u.s.atk, 500, 'premise: 70 层还没到阈值');
+  assert.equal(u.s.atk, 500, 'premise: 74 层还没到阈值');
   h.battle.applyStatus(foe, 'cold', { duration: 3, source: u });
-  attackHit(h, u, foe);                      // 70 + 5 = 75
+  attackHit(h, u, foe);                      // 74 + 1 = 75
   assert.equal(layersOf(h, 'p1'), 75, 'premise: 层数到 75');
   assert.equal(u.s.atk, 750, '同一 tick 里就吃到 +50% 攻击力');
   h.run(0.5);                                // layerGain 的对账（battle.after(0)）跑完

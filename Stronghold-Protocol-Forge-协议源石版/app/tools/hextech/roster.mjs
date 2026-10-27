@@ -1429,14 +1429,14 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_kjerag_thaw',
     name: '冰雪消融',
-    desc: '仅【谢拉格】盟约激活时才会出现。获得时立即获得干员【耶拉】，所有【谢拉格】干员价格 −1（最低 1）。作战中，【谢拉格】干员攻击带有寒冷/冻结的敌人时解除其寒冷/冻结，获得 5 层谢拉格，这次伤害提升至 180%（寒冷）/360%（冻结），并施加 60% 减速 6 秒。【谢拉格】达到 75 层时，【谢拉格】干员攻击力 +50%、生命值 +50%。',
+    desc: '仅【谢拉格】盟约激活时才会出现。获得时立即获得干员【耶拉】，所有【谢拉格】干员价格 −1（最低 1）。作战中，【谢拉格】干员攻击带有寒冷/冻结的敌人时解除其寒冷/冻结，获得 1 层谢拉格，这次伤害提升至 130%（寒冷）/260%（冻结），并施加 40% 减速 6 秒。【谢拉格】达到 75 层时，【谢拉格】干员攻击力 +50%、生命值 +50%。',
     rarity: 'prismatic',
     requiresBond: 'kjeragShip',
     effect: {
       onPick: { chess: { ids: ['chess_char_3_20_a'] } },
       // 价格折扣走 onPrice（applySpec 的 bondPriceDiscount），同样必须挂在 effect.onPrice 下。
       onPrice: { bondPriceDiscount: { bondId: 'kjeragShip', delta: -1, min: 1 } },
-      kjeragThaw: { layers: 5, coldMul: 180, frozenMul: 360, slowPct: 60, slowSec: 6, buffLayer: 75, atkPct: 50, hpPct: 50 },
+      kjeragThaw: { layers: 1, coldMul: 130, frozenMul: 260, slowPct: 40, slowSec: 6, buffLayer: 75, atkPct: 50, hpPct: 50 },
     },
   },
   {

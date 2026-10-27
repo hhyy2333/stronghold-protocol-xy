@@ -2773,7 +2773,6 @@
   "绿洲": "Oasis",
   "仅【萨尔贡】盟约激活时才会出现。作战中，【萨尔贡】干员释放技能时获得相当于攻击力 100% 的护盾，其下一次攻击额外造成等同护盾值的法术伤害。【萨尔贡】首次达到 60 层时获得干员【缇缇】，首次达到 325 层时获得装备【黄沙罗盘】。": "Only offered while [Sargon] is active. In battle, a [Sargon] operator who casts a skill gains a shield equal to 100% of ATK, and its next attack deals extra Arts damage equal to the shield. The first time [Sargon] reaches 60 layers, gain Titi; at 325 layers, gain the Yellow Sand Compass.",
   "冰雪消融": "Thaw",
-  "仅【谢拉格】盟约激活时才会出现。获得时立即获得干员【耶拉】，所有【谢拉格】干员价格 −1（最低 1）。作战中，【谢拉格】干员攻击带有寒冷/冻结的敌人时解除其寒冷/冻结，获得 5 层谢拉格，这次伤害提升至 180%（寒冷）/360%（冻结），并施加 60% 减速 6 秒。【谢拉格】达到 75 层时，【谢拉格】干员攻击力 +50%、生命值 +50%。": "Only offered while [Kjerag] is active. On pickup, gain Yella and every [Kjerag] operator costs 1 less (minimum 1). In battle, a [Kjerag] operator attacking a Chilled/Frozen enemy removes that status, gains 5 Kjerag layers, deals 180% (Chilled) / 360% (Frozen) damage this hit, and applies a 60% Slow for 6 s. At 75 Kjerag layers, [Kjerag] operators gain +50% ATK and +50% max HP.",
   "圣佑": "Sanctuary",
   "仅【拉特兰】盟约激活时才会出现。作战中，【拉特兰】干员每消耗 1 颗弹药，回复所有【拉特兰】干员 5% 最大生命；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药免疫本次伤害，并获得 1 层次数盾。": "Only offered while [Laterano] is active. In battle, each ammo a [Laterano] operator spends heals every [Laterano] operator for 5% of max HP; when a [Laterano] operator would take fatal damage and still has ammo, spend all ammo to negate it and gain a 1-hit shield.",
   "协同进化": "Symbiosis",
@@ -2785,5 +2784,6 @@
   "骑士徽章": "Knight's Badge",
   "仅【维多利亚】盟约激活时才会出现。获得时立即获得干员【薄绿】与【洛洛】。你的干员装备第 2 件装备时，两件装备融合为装备【百变】：百变同时拥有这两件装备的全部效果，不会再被融合，仍可被【变形同构体】识别。": "Only offered while [Victoria] is active. On pickup, gain Bolin and Lolo. When one of your operators equips a second item, the two fuse into [Versatile]: it has both items' full effects, never fuses again, and is still recognised by the Morph Construct.",
   "始发": "Genesis",
-  "星迹": "Ad Astra"
+  "星迹": "Ad Astra",
+  "仅【谢拉格】盟约激活时才会出现。获得时立即获得干员【耶拉】，所有【谢拉格】干员价格 −1（最低 1）。作战中，【谢拉格】干员攻击带有寒冷/冻结的敌人时解除其寒冷/冻结，获得 1 层谢拉格，这次伤害提升至 130%（寒冷）/260%（冻结），并施加 40% 减速 6 秒。【谢拉格】达到 75 层时，【谢拉格】干员攻击力 +50%、生命值 +50%。": "Only offered while [Kjerag] is active. On pickup, gain Yella and every [Kjerag] operator costs 1 less (minimum 1). In battle, a [Kjerag] operator attacking a Chilled/Frozen enemy removes that status, gains 1 Kjerag layer, deals 130% (Chilled) / 260% (Frozen) damage this hit, and applies a 40% Slow for 6 s. At 75 Kjerag layers, [Kjerag] operators gain +50% ATK and +50% max HP."
 }
