@@ -928,7 +928,10 @@ function applySpec(ctx, spec, hex = null, hook = '') {
     const k = `${HEX_KEY}${id}:eliteGrant:${ctx.round}`;
     if (ctx.counter(k) < 1) {
       const top = typeof ctx.topMemberBond === 'function' ? ctx.topMemberBond() : null;
-      const cid = top ? ctx.rollChess({ bond: top, ignoreCounts: true }) : null;
+      // NOT ignoreCounts: that let the roll pick an operator whose pool copies were all gone, and grantChess then
+      // refused it — the card randomly did nothing (业主 2026-10-27「三连透支有概率不生效」). Rolling only stocked
+      // entries is the same pool the grant enforces.
+      const cid = top ? ctx.rollChess({ bond: top }) : null;
       const got = cid ? ctx.grantChess(cid, { golden: true, source: 'hex' }) : null;
       if (got) { ctx.setCounter(k, 1); did = true; }
     }

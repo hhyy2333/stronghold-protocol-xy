@@ -1004,7 +1004,11 @@ test('三连透支: an elite merge grants an elite of the board’s most numerou
   const mk = (round) => ctxStub({
     round,
     topMemberBond: () => 'preciShip',
-    rollChess: (o) => { assert.equal(o.bond, 'preciShip', 'rolled from the top bond'); return 'chess_char_1_01'; },
+    rollChess: (o) => {
+      assert.equal(o.bond, 'preciShip', 'rolled from the top bond');
+      assert.notEqual(o.ignoreCounts, true, 'only operators with a spare pool copy are rolled (the grant enforces stock)');
+      return 'chess_char_1_01';
+    },
     grantChess: (id, o) => { got.push([id, o && o.golden]); return { id }; },
     ev: { kind: 'chess', piece: { kind: 'chess', id: 'chess_char_1_01_b' }, baseId: 'chess_char_1_01' },
   });
@@ -1408,4 +1412,23 @@ test('第十九批：7 张盟约专属协议 —— 名称/阶位/requiresBond/�
   for (const id of ['chess_char_3_08_a', 'chess_char_2_10_a', 'chess_char_3_20_a', 'chess_char_5_20_a', 'chess_char_5_02_a', 'chess_item_6_07_e_a']) {
     assert.ok(DATA.chess[id] || DATA.items[id], `${id} 能在 data 里解析`);
   }
+});
+
+test('三连透支: a merge that cannot grant (no stock) does not spend the round', () => {
+  const reg = getDefaultRegistry();
+  const h = reg.get(hexEffectKey('hex_tripleoverdraft'));
+  let calls = 0;
+  const r = ctxStub({
+    round: 5,
+    topMemberBond: () => 'preciShip',
+    rollChess: () => 'chess_char_1_01',
+    grantChess: () => { calls += 1; return calls === 1 ? null : { id: 'chess_char_1_01_b' }; },
+    ev: { kind: 'chess', piece: { kind: 'chess', id: 'chess_char_1_01_b' }, baseId: 'chess_char_1_01' },
+  });
+  h.onMerge(r);
+  assert.equal(calls, 1);
+  assert.equal(r.counter('hex:hex_tripleoverdraft:eliteGrant:5'), 0, 'a failed grant does not spend the round');
+  h.onMerge(r);
+  assert.equal(calls, 2, 'the next merge retries');
+  assert.equal(r.counter('hex:hex_tripleoverdraft:eliteGrant:5'), 1, 'and spends it once it lands');
 });
