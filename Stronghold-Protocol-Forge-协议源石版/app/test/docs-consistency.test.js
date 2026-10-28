@@ -274,7 +274,9 @@ test('回环射手 boomerang and 蕾缪安 S3 shells (user playtest #3 items 4�
   assert.equal(typeof SUB.loopshooter.canAttack, 'function', 'attacks only while holding the boomerang');
   assert.match(SIM, /boomerang 15 out,\s*3\.75 back/);
   assert.ok(!/next attack waits for the boomerang \(2 × distance \/ 10 s\)/.test(SIM), 'SIM §8: the old lob rule is gone');
-  assert.match(SIM, /`none\|arrow\|bolt\|bomb\|lob\|orb\|drone\|enemy\|boomerang\|droneBomb\|chain\|chainHeal`/);
+  // `note` = 丰川祥子的音符弹道（server/sim/constants.js PROJECTILE_SPEEDS，2026-10-26）
+  assert.match(SIM, /`none\|arrow\|bolt\|bomb\|lob\|orb\|drone\|enemy\|boomerang\|droneBomb\|chain\|chainHeal\|note`/);
+  assert.equal(PROJECTILE_SPEEDS.note, 5, '音符弹道速度（prefab 粒子 startSpeed 4~5，取 5 [ASSUMED]）');
   assert.match(DESIGN, /BOOMERANG_RETURN_SPEED/);
   // 蕾缪安: one shell every 0.3 s after the skill (PRTS), fx 'bombardShell' then 'bombard' — the kit's constants
   const kit = readFileSync(join(ROOT, 'server/sim/content/kits/ops/chess_char_6_01-lemuen.js'), 'utf8');
