@@ -9,7 +9,7 @@
 // CONTRACT (identical to the sibling modules): every `installX(hooks)` takes the shared bundle from hooks.js and
 // returns a small handle. Nothing here mutates the battle at install time except through the hooks it registers.
 
-import { passiveBuff, bondLayers, isMember } from '../support/index.js';
+import { passiveBuff, isMember, activeBondIds } from '../support/index.js';
 import { isRetaliation, isHpLoss } from '../../damage.js';
 import { areaAlliesInTiles, elem, hurt } from '../enemies/helpers.js';
 
@@ -45,36 +45,64 @@ function noteDirective(battle, pid, hexId, kind, pick, amount) {
 }
 
 /**
- * 挡挡: 不屈 operators gain block slots from the bond's own LAYER count — +1 once it passes `base`, and another +1
- * for every `step` layers beyond that.
+ * 挡挡 (业主 2026-10-28 重做): 不屈 operators gain a FLAT +block, and every time one of them DIES every NON-不屈 own
+ * operator gains a shield equal to that operator's max HP.
  *
- * 「不屈超过 100 层后不屈干员阻挡数 +1，多余的层数每 150 层阻挡数再 +1」. Read LIVE on every tick because layers move
- * during a battle (机变, 盟约回响, a teammate's 层数转移), and a block count frozen at install would disagree with the
- * panel the player is watching. `passiveBuff` with `refresh: 'replace'` is the engine's own re-apply, so the buff
- * never stacks with itself; a drop back to 0 removes it outright.
+ * 「挡挡，效果重做，不屈干员阻挡数+3，每次不屈干员死亡时，给所有不是不屈的干员一个不屈干员血量上限护盾」.
+ * The old layer-driven ladder (+1 past 100 layers, another per 150) is gone — the block part no longer reads layers.
+ *
+ * Both halves read LIVE:
+ *   * the block half re-applies on `tick` (`passivePerCopy` = the engine's replace rule, one install per card copy
+ *     under `hex:blockwall` / `:2` …), because an operator can join / leave 不屈 membership only by its own data,
+ *     but the per-copy stacking and the 管理员 copy convention are the engine's, so it must go through the bundle;
+ *   * the shield half listens to `death`. 「不屈干员死亡」 = a KNOCK-OUT (`reason === 'killed'`), the gate 泰拉在上
+ *     uses for 「阵亡」: a retreat is not a death [ASSUMED]. The shield is 「该干员生命上限」% (spec `shieldPct`, 100 =
+ *     full) and STACKS: several deaths add onto the same buff (`shield` is a number the damage pipeline drains). It
+ *     rides `persist` so a redeploy keeps it, and 不屈 operators themselves are excluded by membership.
  * @param {any} hooks the shared bundle
  */
 export function installBlockwall(hooks) {
-  const { battle, ownersOf, opsOf, specOf, optNumber, onField, passivePerCopy } = hooks;
+  const { battle, ownersOf, opsOf, specOf, optNumber, onField, passivePerCopy, copiesOf } = hooks;
   const owners = ownersOf('hex_blockwall');
   if (!owners.length) return 0;
+  const SHIELD_KEY = 'hex:blockwall:shield';
   let applied = 0;
+  let shielded = 0;
   battle.on('tick', () => {
     for (const pid of owners) {
       const spec = specOf(pid, 'hex_blockwall', 'blockwall');
-      const base = optNumber(spec, 'base', 100);
-      const step = optNumber(spec, 'step', 150);
-      const n = bondLayers(battle, pid, 'indomShip');
-      const extra = n > base ? 1 + Math.floor((n - base) / step) : 0;
+      const block = Math.trunc(optNumber(spec, 'block', 3));
+      if (!(block > 0)) continue;
       for (const u of opsOf(pid)) {
-        if (!onField(u)) continue;
-        if (!isMember(battle, u, 'indomShip')) continue;
-        if (extra > 0) { passivePerCopy(u, pid, 'hex_blockwall', 'hex:blockwall', { blockCnt: extra }); applied++; }
-        else { battle.removeBuff(u, 'hex:blockwall'); for (let i = 2; i <= 4; i++) battle.removeBuff(u, `hex:blockwall:${i}`); }
+        if (!onField(u) || !isMember(battle, u, 'indomShip')) continue;
+        passivePerCopy(u, pid, 'hex_blockwall', 'hex:blockwall', { blockCnt: block });
+        applied++;
       }
     }
   });
-  return { get applied() { return applied; } };
+  battle.on('death', ({ unit, reason }) => {
+    if (reason !== 'killed') return;
+    if (!unit || unit.kind !== 'op' || unit.side !== 'ally' || unit.ownerId == null) return;
+    const pid = unit.ownerId;
+    if (!owners.includes(pid)) return;
+    if (!isMember(battle, unit, 'indomShip')) return;
+    const spec = specOf(pid, 'hex_blockwall', 'blockwall');
+    const pct = optNumber(spec, 'shieldPct', 100) / 100;
+    const amount = (Number(unit.s && unit.s.maxHp) || 0) * pct;
+    if (!(amount > 0)) return;
+    const copies = Math.max(1, copiesOf(pid, 'hex_blockwall'));   // 策略「管理员」: a copied card is a second ref
+    for (const a of opsOf(pid)) {
+      if (!onField(a) || isMember(battle, a, 'indomShip')) continue;
+      for (let i = 1; i <= copies; i++) {
+        const key = i === 1 ? SHIELD_KEY : `${SHIELD_KEY}:${i}`;
+        const cur = typeof a.findBuff === 'function' ? a.findBuff(key) : null;
+        if (cur) { cur.shield = (Number(cur.shield) || 0) + amount; a.markDirty(); }
+        else battle.addBuff(a, { key, shield: amount, persist: true, visible: true, tags: ['hex'] });
+      }
+      shielded++;
+    }
+  });
+  return { get applied() { return applied; }, get shielded() { return shielded; } };
 }
 
 /**
@@ -129,6 +157,20 @@ export function installSharePain(hooks) {
       if (tgt.alive) { tgt.hp = Math.min(tgt.s.maxHp, tgt.hp + moved); tgt.markDirty(); }
       break;
     }
+  });
+  // 业主 2026-10-28：「不区区，除了原有效果外，外加一个不屈效果触发时，给所有已激活层数+1」—— the 不屈 bond emits
+  // `bondTrigger` on the proc itself (bonds/addon/battle.js) — the immediate free redeploy; the 傀儡师's dollSwap only
+  // ARMS a zero-cost next deployment and does not emit [ASSUMED: the card says 「触发时」, which reads as the redeploy].
+  // Every ACTIVE bond of the triggering operator's OWNER gains
+  // `indomLayers` layers (不屈 itself included). Scoped to the owner: a teammate's 不屈 proc must not feed my bonds.
+  battle.on('bondTrigger', ({ bondId, unit }) => {
+    if (bondId !== 'indomShip') return;
+    if (!unit || unit.kind !== 'op' || unit.ownerId == null) return;
+    const pid = unit.ownerId;
+    if (!owners.includes(pid)) return;
+    const n = Math.trunc(optNumber(specOf(pid, 'hex_sharepain', 'sharePain'), 'indomLayers', 1));
+    if (!(n > 0)) return;
+    for (const bid of activeBondIds(battle, pid)) battle.addLayers(pid, bid, n, 'hex');
   });
   return { get shared() { return shared; } };
 }

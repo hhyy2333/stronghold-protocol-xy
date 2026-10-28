@@ -64,7 +64,9 @@
 //   battleForRounds { rounds, battle } — on pick: a battle passive that lapses after `rounds` rounds
 //   bondShare true                  — ownership: adjacent board operators share each other's bonds
 //   devourTarget { maxTargets }     — ownership: 阿戈尔's devour gives the devourer +maxTargets attack targets
-//   indomEmber { seconds, block }   — ownership: after 不屈 fires, that operator survives `seconds` (HP floored at 1)
+//   indomEmberGift { base, step }   — prep: at pick and every round start, grant ONE more 不屈余烬 item for every
+//                                     `step` layers past `base` that 不屈 has (owner's rework of 2026-10-28; the
+//                                     equipment itself is items/protocol.js and the card is prep-only)
 //   traitSpread true                — ownership: the leftmost-bottom operator copies its IN_BATTLE 特质 to an adjacent one
 //   killGift { atkPct }             — ownership: every knock-out in battle adds atkPct
 //   skillFlow { layers }            — ownership: every skill a member opens adds `layers` to its own active bonds
@@ -351,9 +353,18 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_indomember',
     name: '不屈余烬',
-    desc: '〖不屈〗盟约效果触发后，该干员获得 6 秒阻挡数 +2。',
-    rarity: 'silver',
-    effect: { indomEmber: { seconds: 6, block: 2 } },
+    // 业主 2026-10-28（原话）：「不屈余烬，这个改成三阶然后给一个不屈余烬的装备，装备继承死掉不屈干员属性的5%
+    // （无限叠加），然后同时拥有同构体的效果，不屈大于200层后，每150层提供一件不屈余烬（装备属性都保持一致没有
+    // 先后叠的区别）」—— 三阶（was silver）。卡本身是 PREP-ONLY：战斗效果属于装备（items/protocol.js
+    // `chess_item_9_99_e`），与恶魔形态 / 幽魂形态 2026-10-26 的拆法一致；【变形同构体】那一半是装备记录的
+    // `canGiveBond`。`indomEmberGift` = 每次跨过 150 层（>200 起算）再发一件，pick 与每回合开始都会跑，
+    // 已发件数记在卡自己的 counter 上，重跑不会重复发。
+    desc: '获得时立即得到装备【不屈余烬】（该装备同时具有【变形同构体】效果）：己方每有一名【不屈】干员阵亡，装备者便继承其基础生命上限、攻击力、防御力与法抗的 5%（无限叠加，跨战斗保留；同一玩家的所有【不屈余烬】共享同一份累计值）。【不屈】盟约层数超过 200 层后，每多出 150 层再获得一件【不屈余烬】（所有副本属性一致）。',
+    rarity: 'prismatic',
+    effect: {
+      onPick: { item: { id: 'chess_item_9_99_e_a', count: 1 }, indomEmberGift: { base: 200, step: 150 } },
+      onRoundStart: { indomEmberGift: { base: 200, step: 150 } },
+    },
   },
   {
     id: 'hex_traitspread',
@@ -970,16 +981,21 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_blockwall',
     name: '挡挡',
-    desc: '不屈盟约的层数超过 100 层后，不屈干员阻挡数 +1；此后每多出 150 层，阻挡数再 +1。',
+    // 业主 2026-10-28 重做（原话）：「挡挡，效果重做，不屈干员阻挡数+3，每次不屈干员死亡时，给所有不是不屈的干员
+    // 一个不屈干员血量上限护盾」—— 旧的「按层数 +1 / 每 150 层再 +1」整条删掉；`block` = 平 +3，`shieldPct` = 阵亡者
+    // 生命上限的百分比（100 = 全额）。
+    desc: '作战中，不屈干员阻挡数 +3；每有一名不屈干员阵亡，所有不是不屈的己方干员获得一个等同于该干员生命上限的护盾。',
     rarity: 'silver',
-    effect: { blockwall: { base: 100, step: 150 } },
+    effect: { blockwall: { block: 3, shieldPct: 100 } },
   },
   {
     id: 'hex_sharepain',
     name: '不区区！',
-    desc: '作战中，不屈干员会为其他干员分担 50% 的伤害。',
+    // 业主 2026-10-28（原话）：「不区区，除了原有效果外，外加一个不屈效果触发时，给所有已激活层数+1」——
+    // `indomLayers` = 每次〖不屈〗触发时，该玩家**所有已激活盟约**各 +N 层（含〖不屈〗自己）。
+    desc: '作战中，不屈干员会为其他干员分担 50% 的伤害。此外，〖不屈〗效果触发时，所有已激活盟约的层数 +1。',
     rarity: 'gold',
-    effect: { sharePain: { pct: 50 } },
+    effect: { sharePain: { pct: 50, indomLayers: 1 } },
   },
   {
     id: 'hex_terramourn',

@@ -138,6 +138,10 @@ const isUnitEnd = (u) => isPlain(u) && nullable(isUid)(u.uid) && isNum(u.hpPct, 
   && optional(isBool)(u.skillActive) && nullable(isId)(u.defId);
 const isUnitStat = (u) => isPlain(u) && nullable(isUid)(u.uid) && nullable(isId)(u.defId) && optional((v) => isStr(v, 16))(u.kind)
   && isStat(u.dmg) && isStat(u.kills) && isStat(u.heal) && isStat(u.taken) && isStat(u.attacks);
+// 不屈余烬 (业主 2026-10-28): the equipment's MATCH-LONG inheritance totals (`{ maxHp, atk, def, res }`), present only
+// when a battle wore a copy. Structural check only — the data/balance bounds are validateClientResult's job.
+const isIndomEmber = (v) => isPlain(v) && Object.keys(v).length <= 4
+  && ['maxHp', 'atk', 'def', 'res'].every((k) => v[k] === undefined || isNum(v[k], 0, 1e9));
 const isPerPlayer = (p) => isPlain(p) && isInt(p.killed, 0, 1e5) && isInt(p.total, 0, 1e5)
   // `resolved` = the HUD capsule's numerator of this player's own field (the round's own scheduled enemies knocked out
   // or leaked: server/sim/battle/deploy.js killedInTotal / leakedInTotal, Battle.resolved). `killed` counts every counted
@@ -149,7 +153,8 @@ const isPerPlayer = (p) => isPlain(p) && isInt(p.killed, 0, 1e5) && isInt(p.tota
   && isMap(p.layerGains, RESULT_LIMITS.layerGains, isId, (v) => isNum(v, 0, 1e4))
   && isStat(p.coins) && isStat(p.damageDealt) && isStat(p.bossDamage) && isStat(p.healingDone) && isStat(p.deaths)
   && isList(p.unitsEnd, RESULT_LIMITS.unitsEnd, isUnitEnd)
-  && (p.unitStats === undefined || isList(p.unitStats, RESULT_LIMITS.unitStats, isUnitStat));
+  && (p.unitStats === undefined || isList(p.unitStats, RESULT_LIMITS.unitStats, isUnitStat))
+  && (p.indomEmber === undefined || isIndomEmber(p.indomEmber));
 const isUnspawned = (u) => isPlain(u) && isId(u.enemyKey) && nullable(isId)(u.sourcePlayerId) && nullable((v) => isStr(v, 16))(u.tag)
   && optional((v) => isNum(v, 0, 1e6))(u.time);
 
@@ -867,12 +872,19 @@ export const C2S = {
   //                             is the one named (`bossId`, any data/bosses.json entry — including the fork's hand-added
   //                             boss_11) or, without it, the one this match already drew. Accepted only in a test field
   //                             and only when no battle is running (`testField.js testBoss`).
+  //   g.testChess { chessId }   BUY any shop operator (业主 2026-10-26「在测试场增加功能可以购买任何干员」): the ordinary
+  //                             purchase path (`PlayerState._buyChessSlot`, the one `g.buy` takes) at the tier price, but
+  //                             without the shop's draw / level cap / bans / remaining copies. PREP only, and only before
+  //                             that player is Ready (`testField.js testChess`).
   'g.testFunds': { amount: (v) => isInt(v, 1, 1e6) },
   'g.testHex': { hexId: isId },
   'g.testHexClear': {},
   'g.testEnemyHex': { hexId: isId },
   'g.testEnemyHexClear': {},
   'g.testBoss': { bossId: isId, $optional: ['bossId'] },
+  // 新增的 C2S 类型，`PROTOCOL_VERSION` 不动（先例 `records.mine` / `g.unequip` / `g.testBoss`）：老客户端不发它，一切照旧；
+  // 它只在一个**测试场房间**里被受理，普通对局回 WRONG_PHASE。
+  'g.testChess': { chessId: isId },
   // 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12; the reference mod 休整期切换技能模组mod): change ONE
   // operator's equipped skill / elite module between rounds. Unlike room.loadout (a whole-roster replacement, INFO_CHECK
   // only) this is a per-operator increment applied on top of the seat's current 配发, so one click never clears another

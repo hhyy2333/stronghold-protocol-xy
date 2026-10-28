@@ -348,6 +348,84 @@ function heartsteel(battle, u, rec, _S) {
   });
 }
 
+// =====================================================================================================================
+// 不屈余烬 (9_99) — 协议源石【不屈余烬】's equipment
+//
+// 业主 2026-10-28（原话）：「给一个不屈余烬的装备，装备继承死掉不屈干员属性的5%（无限叠加）…装备属性都保持
+// 一致没有先后叠的区别」+「不屈大于200层后，每150层提供一件不屈余烬」。装备这一半只回答「继承」：
+//   * 累计是**本局对局级**的（跨战斗保留，不按单场清零）：战斗输入带着上一次存下的总数
+//     （`input.indomEmber`，server/match/player/round.js battleInput / bankIndomEmber），这场里的阵亡继续往上加，
+//     结束时把新的总数写回结果（`perPlayer[pid].indomEmber`），由 match 的 `_addCumStats` 存回玩家。
+//   * 同一玩家所有装备者 / 所有副本共用同一份总数：先拿到与后拿到的副本吃到的数值完全一样（这正是「没有先后叠
+//     的区别」），因为总数在玩家身上、不在某一件装备上。
+//   * 触发 = 己方【不屈】干员**阵亡**（`death`，reason 'killed'）。〖不屈〗的免费再部署也走这一条，所以每次不屈触发
+//     都会喂一层；撤退 / 切换 / 联防退场不算 [ASSUMED: 卡面只说「死掉」]。
+//   * 每层 = 该干员**基础面板**（unit.base，不含装备与增益，与尸山 / 吞噬同一条口径）的 inheritPct%：
+//     生命上限 → hpFlat（吃百分比），攻击力 → atkFinal（最终加算），防御 → defFlat，法抗 → resFlat。
+//     阻挡数不进：5% 的整数阻挡没有意义，累计的小数也不会显示 [ASSUMED]。
+//   * 累计一变，就把同一组 mods 重新扣到每一个当前装备者身上（passiveBuff 同 key 覆盖，不会重复叠加）；装备者自己
+//     阵亡也照算（buff persist + allowDead，再部署后按最新累计值生效）。
+//
+// [ASSUMED: 1) 只算 op（召唤物不算）；2) 只算同一 ownerId 的己方干员；3) 攒下的总数挂在玩家身上，副本全部失去后
+//   再拿到新副本仍会继承（「装备属性」跟着人走；否则新副本与旧副本就不可能一致）。]
+
+const INDOMEMBER_KEY = 'protocol:indomember';   // battleStore namespace (the item key is only the BY_ITEM key)
+/** The bond whose members count as 「不屈干员」 (own bonds + 变形同构体 / 特质 grants, support.isMember). */
+const INDOMEMBER_BOND = 'indomShip';
+
+/**
+ * 不屈余烬: the carrier inherits `params.inheritPct`% of every own 不屈 operator's BASE stats when it dies. The totals
+ * are MATCH-LONG and shared by every copy of the item its player owns (banked on the match player, carried in through
+ * `input.indomEmber` and handed back on the battle result).
+ * @param {any} battle @param {any} u the carrier @param {any} rec its item record @param {any} S the grant Scope
+ */
+function indomEmber(battle, u, rec, S) {
+  const pid = u.ownerId;
+  if (pid == null) return;
+  const pct = pos(paramsOf(rec).inheritPct, 5) / 100;
+  // ONE pool per (battle, player): every copy — on this carrier or any other — reads the same totals.
+  const pool = battleStore(battle, `${INDOMEMBER_KEY}:${pid}`, () => {
+    const ps = typeof battle.getPlayer === 'function' ? battle.getPlayer(pid) : null;
+    const banked = (ps && ps.input && ps.input.indomEmber) || {};
+    const acc = {
+      hp: Math.max(0, num(banked.maxHp, 0)),
+      atk: Math.max(0, num(banked.atk, 0)),
+      def: Math.max(0, num(banked.def, 0)),
+      res: Math.max(0, num(banked.res, 0)),
+      subs: new Set(),
+    };
+    battle.on('death', ({ unit, reason }) => {
+      if (reason !== 'killed') return;
+      if (!unit || unit.kind !== 'op' || unit.side !== 'ally' || unit.ownerId !== pid) return;
+      if (!isMember(battle, unit, INDOMEMBER_BOND)) return;
+      acc.hp += num(unit.base && unit.base.maxHp, 0) * pct;
+      acc.atk += num(unit.base && unit.base.atk, 0) * pct;
+      acc.def += num(unit.base && unit.base.def, 0) * pct;
+      acc.res += num(unit.base && unit.base.res, 0) * pct;
+      for (const fn of acc.subs) fn(acc);
+    });
+    // Hand the MATCH-LONG totals back (the match banks them in PlayerRound._addCumStats). Only a battle that actually
+    // wore a copy reports the field — deaths nobody's equipment witnessed never feed it.
+    battle.on('battleEnd', ({ result }) => {
+      const pp = result && result.perPlayer && result.perPlayer[pid];
+      if (!pp) return;
+      pp.indomEmber = { maxHp: acc.hp, atk: acc.atk, def: acc.def, res: acc.res };
+    });
+    return acc;
+  });
+  const apply = (acc) => {
+    const mods = {};
+    if (acc.hp > 0) mods.hpFlat = acc.hp;
+    if (acc.atk > 0) mods.atkFinal = acc.atk;
+    if (acc.def > 0) mods.defFlat = acc.def;
+    if (acc.res > 0) mods.resFlat = acc.res;
+    if (Object.keys(mods).length) S.stat('ember', mods, { tags: ['item'] });
+  };
+  pool.subs.add(apply);
+  S.onDispose(() => pool.subs.delete(apply));
+  apply(pool);
+}
+
 /**
  * The battle behaviours of the remake's 协议源石 equipment, keyed by ITEM KEY (`itemKeyOf`, i.e. without the `_a` / `_b`
  * quality suffix — 尸山 and 尸山·极 are one key and each behaviour reads the numbers off the concrete record).
@@ -361,4 +439,5 @@ export const PROTOCOL_ITEMS = Object.freeze({
   chess_item_9_95_e: corpseHill,  // 尸山 / 尸山·极
   chess_item_9_96_e: heartsteel,  // 心之钢
   chess_item_9_98_e: knightBadge, // 骑士徽章（协议源石【骑士】）
+  chess_item_9_99_e: indomEmber,  // 不屈余烬（协议源石【不屈余烬】）
 });

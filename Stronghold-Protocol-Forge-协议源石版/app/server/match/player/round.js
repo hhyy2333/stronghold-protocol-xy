@@ -8,7 +8,7 @@
 
 import { boardOrder, pieceDir, tileKey } from '../board.js';
 import { computeBonds, bondSnapshot, activatedLayers, bondsWithGains, pieceBonds } from '../bondsMeta.js';
-import { ownsHex, applyThiefIncomeCut, applyForgeFusion } from '../hextech.js';
+import { ownsHex, applyThiefIncomeCut, applyForgeFusion, indomEmberBonuses, bankIndomEmber } from '../hextech.js';
 
 export class PlayerRound {
   startRound(r) {
@@ -215,7 +215,7 @@ export class PlayerRound {
         units.push(u);
       }
     }
-    return {
+    const out = {
       playerId: this.playerId,
       seat: this.seat,
       side,
@@ -228,6 +228,12 @@ export class PlayerRound {
       })),
       deviceOverrides: { ...this.deviceOverrides },
     };
+    // 不屈余烬 (业主 2026-10-28): the MATCH-LONG inheritance rides the input, so every copy a player owns fights with
+    // the same totals regardless of when it was acquired. The equipment's behaviour (items/protocol.js) starts from this
+    // and hands the updated totals back on the battle result; `_addCumStats` banks them.
+    const indomEmber = indomEmberBonuses(this);
+    if (indomEmber) out.indomEmber = indomEmber;
+    return out;
   }
 /**
    * 本局累计伤害统计: fold one battle's per-player result (`BattleResult.perPlayer[pid]`, the same object `lastResults`
@@ -244,6 +250,9 @@ export class PlayerRound {
    * @param {{ unitStats?: any[] } | null} pp one player's BattleResult.perPlayer entry
    */
   _addCumStats(pp) {
+    // 不屈余烬: the battle hands back the equipment's MATCH-LONG totals (it started from `battleInput.indomEmber`); SET
+    // them so a repeated fold is harmless. Equipment-driven: only a battle with a carrier reports the field at all.
+    bankIndomEmber(this, pp);
     const list = pp && Array.isArray(pp.unitStats) ? pp.unitStats : null;
     if (!list || !list.length) return 0;
     // what the board fields right now: uid → base chess id, and token id → the base chess id of the piece creating it

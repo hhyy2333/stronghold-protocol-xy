@@ -447,40 +447,90 @@ test('深度吞噬: another player’s marker gets nothing', () => {
   h.invariants();
 });
 
-test('不屈余烬 (indomEmber): 不屈’s trigger grants +2 block for 6 s — and NO HP floor any more', () => {
-  const h = soloBattle({ hexes: ['hex_indomember'], timeLimit: 20 });
+test('挡挡 (blockwall, 重做 2026-10-28): 不屈 operators gain a FLAT +3 block — the old layer ladder is gone', () => {
+  // 业主 2026-10-28：「挡挡，效果重做，不屈干员阻挡数+3…」. The ladder (+1 past 100 layers, another per 150) is deleted:
+  // 500 layers and 0 layers must both read +3, and a non-不屈 operator gets nothing.
+  const bonds = { indomShip: { count: 2, active: true, tier: 1, layers: 500 } };
+  const unitsOf = () => [
+    { uid: 1, kind: 'chess', chessId: 'test_indom', row: 9, col: 6 },
+    { uid: 2, kind: 'chess', chessId: 'test_indom2', row: 10, col: 6 },
+    { uid: 3, kind: 'chess', chessId: 'test_plain', row: 11, col: 6 },
+  ];
+  const withCard = soloBattle({
+    hexes: [], players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds, playerEffects: [refOf('hex_blockwall')], units: unitsOf() }],
+    chess: { test_indom: guard({ id: 'test_indom', bonds: ['indomShip'] }), test_indom2: guard({ id: 'test_indom2', bonds: ['indomShip'] }), test_plain: guard({ id: 'test_plain' }) },
+    timeLimit: 30,
+  });
+  const without = soloBattle({
+    hexes: [], players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds, playerEffects: [], units: unitsOf() }],
+    chess: { test_indom: guard({ id: 'test_indom', bonds: ['indomShip'] }), test_indom2: guard({ id: 'test_indom2', bonds: ['indomShip'] }), test_plain: guard({ id: 'test_plain' }) },
+    timeLimit: 30,
+  });
+  withCard.run(0.5);
+  without.run(0.5);
+  for (const id of ['test_indom', 'test_indom2']) {
+    assert.equal(withCard.unit(id).s.blockCnt - without.unit(id).s.blockCnt, 3, `${id}: +3 block from the card (no layer term)`);
+  }
+  assert.equal(withCard.unit('test_plain').s.blockCnt, without.unit('test_plain').s.blockCnt, 'a non-不屈 operator gets no block');
+  withCard.invariants();
+  without.invariants();
+});
+
+test('挡挡: every 不屈 death shields every NON-不屈 own operator with that operator’s max HP', () => {
+  // 「每次不屈干员死亡时，给所有不是不屈的干员一个不屈干员血量上限护盾」. A KNOCK-OUT only ('killed'): a retreat is not
+  // a death [ASSUMED]; the shield stacks with a further death and never goes to an 不屈 operator.
+  const bonds = { indomShip: { count: 2, active: true, tier: 1, layers: 10 } };
+  const units = [
+    { uid: 1, kind: 'chess', chessId: 'test_indom', row: 9, col: 6 },
+    { uid: 2, kind: 'chess', chessId: 'test_indom2', row: 10, col: 6 },
+    { uid: 3, kind: 'chess', chessId: 'test_plain', row: 11, col: 6 },
+  ];
+  const h = soloBattle({
+    hexes: [], players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds, playerEffects: [refOf('hex_blockwall')], units }],
+    chess: { test_indom: guard({ id: 'test_indom', bonds: ['indomShip'] }), test_indom2: guard({ id: 'test_indom2', bonds: ['indomShip'] }), test_plain: guard({ id: 'test_plain' }) },
+    timeLimit: 30,
+  });
   h.run(0.5);
-  const u = one(h);
-  const block0 = u.s.blockCnt;                             // the live stat before the card fires (premise)
-  h.battle.emit('bondTrigger', { bondId: 'indomShip', unit: u });
-  const ember = buffsOf(u, 'hex:indomember')[0];
-  assert.ok(ember, 'the buff is applied');
-  assert.equal(ember.duration, 6, 'the record’s seconds: 6 (raised from 4 on 2026-10-13)');
-  assert.equal(ember.mods.blockCnt, 2, 'the record’s block: +2');
-  assert.equal(u.s.blockCnt, block0 + 2, 'and the +2 really reaches the unit’s live block count');
-  // The HP floor (锁血) was removed on 2026-10-14 (owner: 「不屈余烬去掉锁血」). The card no longer arms a window and
-  // no longer touches the `fatal` hook, so a lethal hit inside the 6 s is NOT prevented by this card.
-  assert.equal(u.mem.hexEmberUntil, undefined, 'no window is armed any more');
-  const fatal = { unit: u, prevented: false, dmg: { amount: 1e9 } };
-  h.battle.emit('fatal', fatal);
-  assert.equal(fatal.prevented, false, 'the card never floors HP now');
+  const plain = h.unit('test_plain');
+  const dead = h.unit('test_indom');
+  assert.equal(buffsOf(plain, 'hex:blockwall:shield').length, 0, 'nothing before a death (premise)');
+  h.battle.emit('death', { unit: dead, reason: 'retreat' });
+  assert.equal(buffsOf(plain, 'hex:blockwall:shield').length, 0, 'a retreat is not 「死亡」');
+  h.battle.emit('death', { unit: dead, reason: 'killed' });
+  const shield = buffsOf(plain, 'hex:blockwall:shield')[0];
+  assert.ok(shield, 'the non-不屈 operator is shielded');
+  assert.equal(shield.shield, dead.s.maxHp, 'the shield equals the 不屈 operator’s max HP');
+  assert.equal(buffsOf(h.unit('test_indom2'), 'hex:blockwall:shield').length, 0, 'an 不屈 operator is never shielded by this half');
+  h.battle.emit('death', { unit: h.unit('test_indom2'), reason: 'killed' });
+  assert.equal(shield.shield, dead.s.maxHp * 2, 'a second death stacks onto the same shield');
   h.invariants();
 });
 
-test('不屈余烬: another bond’s trigger is ignored, and the buff lapses with its 6 s', () => {
-  const h = soloBattle({ hexes: ['hex_indomember'], timeLimit: 20 });
+test('不区区！(sharePain, 2026-10-28): every 不屈 trigger gives ALL active bonds of the owner +1 layer', () => {
+  // 业主 2026-10-28：「不区区，除了原有效果外，外加一个不屈效果触发时，给所有已激活层数+1」. The bond now EMITS
+  // `bondTrigger` on a real 不屈 proc (bonds/addon/battle.js), so this test drives the event the engine sends.
+  const bonds = {
+    indomShip: { count: 2, active: true, tier: 1, layers: 5 },
+    yanShip: { count: 3, active: true, tier: 1, layers: 10 },
+    sargonShip: { count: 3, active: false, tier: 0, layers: 20 },
+  };
+  const h = soloBattle({
+    hexes: [], players: [{ playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds, playerEffects: [refOf('hex_sharepain')], units: [{ uid: 1, kind: 'chess', chessId: 'test_indom', row: 9, col: 6 }] }],
+    chess: { test_indom: guard({ bonds: ['indomShip'] }) }, timeLimit: 30,
+  });
   h.run(0.5);
   const u = one(h);
-  h.battle.emit('bondTrigger', { bondId: 'yanShip', unit: u });
-  assert.equal(buffsOf(u, 'hex:indomember').length, 0, 'only 不屈 (indomShip) arms it');
+  const layersOf = (id) => h.battle.getPlayer('p1').bonds[id].layers;
+  assert.equal(layersOf('indomShip'), 5, 'the trigger is what moves layers (premise)');
   h.battle.emit('bondTrigger', { bondId: 'indomShip', unit: u });
-  assert.equal(buffsOf(u, 'hex:indomember').length, 1, 'armed by 不屈');
-  h.run(7);                                                // past the 6 s window
-  assert.equal(buffsOf(u, 'hex:indomember').length, 0, 'the buff lapsed on its own timer');
-  // a lethal hit after the window is (and always was) not prevented — the card has no `fatal` half at all now
-  const late = { unit: u, prevented: false, dmg: { amount: 1e9 } };
-  h.battle.emit('fatal', late);
-  assert.equal(late.prevented, false, 'no HP floor at any time');
+  assert.equal(layersOf('indomShip'), 6, '不屈 itself +1');
+  assert.equal(layersOf('yanShip'), 11, 'every OTHER active bond +1');
+  assert.equal(layersOf('sargonShip'), 20, 'an inactive bond gains nothing');
+  h.battle.emit('bondTrigger', { bondId: 'yanShip', unit: u });
+  assert.equal(layersOf('yanShip'), 11, 'another bond’s trigger is ignored');
+  // a teammate’s 不屈 proc must not feed my bonds (the card is per-player)
+  h.battle.emit('bondTrigger', { bondId: 'indomShip', unit: { kind: 'op', ownerId: 'p2' } });
+  assert.equal(layersOf('yanShip'), 11, 'not another owner’s trigger');
   h.invariants();
 });
 

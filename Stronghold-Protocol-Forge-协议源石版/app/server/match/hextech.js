@@ -67,6 +67,50 @@ export const FORGE_ITEM_ID = 'chess_item_9_97_e_a';
 export const VOIDRETURN_ITEM_ID = 'chess_item_9_94_e_a';
 
 /**
+ * 不屈余烬's equipment (data/items.json CUSTOM_ITEMS `chess_item_9_99_e_a`, 业主 2026-10-28). Its inheritance is
+ * **match-long**: every own 〖不屈〗 operator's death feeds it 5 % of that operator's base stats (uncapped), the totals
+ * survive every battle and every copy a player owns reads the SAME totals (「装备属性都保持一致没有先后叠的区别」).
+ * The banked totals ride the battle input as `indomEmber` and come back on the result; see `bankIndomEmber`.
+ */
+export const INDOMEMBER_ITEM_ID = 'chess_item_9_99_e_a';
+/** Counter namespace of the banked inheritance (player scope, persistent — `ps.counters`). */
+const INDOMEMBER_COUNTER = 'item:indomember:';
+
+/**
+ * The banked 不屈余烬 inheritance of a player (`{ maxHp, atk, def, res }`), or null when nothing has been inherited.
+ * Read by `battleInput` and carried into the battle, where the equipment's own behaviour (items/protocol.js) adds to it.
+ * @param {any} ps
+ * @returns {{ maxHp: number, atk: number, def: number, res: number } | null}
+ */
+export function indomEmberBonuses(ps) {
+  if (!ps || !ps.counters || typeof ps.counters !== 'object') return null;
+  const read = (k) => { const v = Number(ps.counters[INDOMEMBER_COUNTER + k]); return Number.isFinite(v) && v > 0 ? v : 0; };
+  const out = { maxHp: read('maxHp'), atk: read('atk'), def: read('def'), res: read('res') };
+  return out.maxHp + out.atk + out.def + out.res > 0 ? out : null;
+}
+
+/**
+ * Bank an accepted battle's `perPlayer[pid].indomEmber` (the equipment's totals AFTER that battle). SET, not added: the
+ * battle already starts from the banked value it was handed, so folding the same result twice is harmless — the
+ * 本局累计伤害统计 precedent (`PlayerRound._addCumStats`, which calls this).
+ * @param {any} ps @param {{ indomEmber?: any } | null} pp the player's BattleResult.perPlayer entry
+ * @returns {boolean} whether anything was banked
+ */
+export function bankIndomEmber(ps, pp) {
+  const ie = pp && pp.indomEmber;
+  if (!ps || !ps.counters || !ie || typeof ie !== 'object') return false;
+  let any = false;
+  for (const k of ['maxHp', 'atk', 'def', 'res']) {
+    const v = Number(ie[k]);
+    if (!Number.isFinite(v) || v < 0) continue;
+    ps.counters[INDOMEMBER_COUNTER + k] = v;
+    any = true;
+  }
+  if (any && typeof ps.dirty === 'function') ps.dirty();
+  return any;
+}
+
+/**
  * Merge two item pieces' `state` maps (锻炉's 百变 keeps the effects — and the state — of both components). Same key on
  * both sides: numeric fields add up (万物归虚's layers accumulate), anything else takes the second one.
  * @param {object|null} a @param {object|null} b @returns {object|null}

@@ -231,7 +231,7 @@ export function hexIds() {
  * `params.battle`, so a ref whose only battle part is one of these was built with `battle: false` and then dropped by
  * `player/round.js battleInput` — the whole mechanic silently never ran. `install()` reads these:
  *
- *   per owner off the ref (`specOf`) — armorBreak · killGift · skillFlow · devourTarget · indomEmber · bondFission
+ *   per owner off the ref (`specOf`) — armorBreak · killGift · skillFlow · devourTarget · bondFission
  *     (its `mul`), northWall · precisionPen, and the fourth batch's holdLine · rangedExtend · lastStand · overdrive ·
  *     fieldHospital · elemAmp;
  *   特质扩散 through the module that installs 特质 (`content/garrisons/battle.js` matches the ref KEY).
@@ -240,7 +240,7 @@ export function hexIds() {
  * the `install` reader) or its ref never leaves the prep phase.
  */
 export const BATTLE_SPEC_KEYS = Object.freeze([
-  'armorBreak', 'killGift', 'skillFlow', 'devourTarget', 'indomEmber', 'bondFission', 'northWall', 'precisionPen',
+  'armorBreak', 'killGift', 'skillFlow', 'devourTarget', 'bondFission', 'northWall', 'precisionPen',
   'traitSpread',
   // fourth batch (2026-10-09)
   'holdLine', 'rangedExtend', 'lastStand', 'overdrive', 'fieldHospital', 'elemAmp',
@@ -269,7 +269,8 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // fire. Both are ownership-only mechanics (no `params.battle`), so each has to be declared here beside its `install`
   // reader or `addHexRef` marks the ref prep-only and the battle never sees the card.
   'logos', 'oneBody',
-  // tenth batch (the owner's list of 2026-10-15): 挡挡's block-slot ladder, 不区区's damage share, 泰拉在上's death
+  // tenth batch (the owner's list of 2026-10-15): 挡挡's flat block + death shield (reworked 2026-10-28), 不区区's damage
+  // share + 不屈-trigger layer gain, 泰拉在上's death
   // blast, the two 指令之意 rolls, 兔头's ranking and 职业共鸣's profession count. All ownership-only mechanics (no
   // params.battle passive), so each key MUST be declared here or addHexRef marks the ref prep-only and the battle
   // never sees the card.
@@ -390,6 +391,30 @@ function applySpec(ctx, spec, hex = null, hook = '') {
         if (gid) grant(gid);
       }
       did = did || granted > started;
+    }
+  }
+  // 不屈余烬 (业主 2026-10-28): 「不屈大于200层后，每150层提供一件不屈余烬（装备属性都保持一致没有先后叠的区别）」.
+  // ONE grant per threshold — layers > base counts as the first, every `step` layers past `base` adds another. Runs at
+  // PICK and at every round start (the roster puts the same spec on both hooks because a pick in R11 has no next round
+  // start), so the count of copies already handed out rides the card's own counter and a repeated hook never pays twice.
+  // Layers read `ctx.layers` (the MILESTONE view: 圣约回响's +50 % counts, exactly like 维多利亚's item milestones).
+  // `itemId` defaults to the equipment this card's roster entry names; a failed grant (`ctx.grantItem` null) stops the
+  // loop and the next hook retries the SAME threshold, the 后勤整备 convention.
+  if (spec.indomEmberGift && typeof spec.indomEmberGift === 'object') {
+    const gift = spec.indomEmberGift;
+    const base = Math.max(0, Math.trunc(Number(gift.base) || 0));
+    const step = Math.max(1, Math.trunc(Number(gift.step) || 1));
+    const itemId = typeof gift.itemId === 'string' && gift.itemId ? gift.itemId : 'chess_item_9_99_e_a';
+    const layers = typeof ctx.layers === 'function' ? Math.max(0, Math.trunc(Number(ctx.layers('indomShip')) || 0)) : 0;
+    const want = layers > base ? 1 + Math.floor((layers - base) / step) : 0;
+    const key = `${HEX_KEY}${id}:emberGifts`;
+    let given = Math.max(0, Math.trunc(Number(ctx.counter(key)) || 0));
+    while (given < want) {
+      const got = ctx.grantItem(itemId, { source: 'hex' });
+      if (got === false || got === null) break;
+      given += 1;
+      ctx.setCounter(key, given);
+      did = true;
     }
   }
   // 后勤整备 (2026-10-12 rebalance): a GOLDEN (进阶) equipment grant whose TIER is on a ladder —
@@ -1383,26 +1408,6 @@ export function install(battle) {
     battle.on('devourGain', ({ marker }) => {
       if (!marker || marker.ownerId !== pid) return;
       passiveBuff(battle, marker, 'hex:deepdevour', { maxTargets: extra });
-    });
-  }
-
-  // ---- 不屈余烬: after 不屈 redeploys an operator it gains +`block` block for `seconds`. The roster's numbers became
-  // 6 s / +2 on 2026-10-13 (they were 4 s / +1); the defaults below only cover a hand-built ref.
-  //
-  // The HP floor (锁血) was REMOVED on 2026-10-14 (owner: 「不屈余烬去掉锁血」): the card used to arm a
-  // `unit.mem.hexEmberUntil` window and hold it at 1 HP through a `fatal` handler, on top of the block. Only the block
-  // half remains, so nothing here touches `fatal` any more — 不屈's own redeploy is again the only thing that keeps the
-  // operator standing, and any other `fatal` consumer is unaffected (this handler never shared state with them).
-  const ember = ownersOf('hex_indomember');
-  if (ember.length) {
-    const specs = new Map(ember.map((pid) => [pid, specOf(pid, 'hex_indomember', 'indomEmber')]));
-    battle.on('bondTrigger', ({ bondId, unit }) => {
-      if (bondId !== 'indomShip' || !unit || !specs.has(unit.ownerId)) return;
-      const s = specs.get(unit.ownerId);
-      const seconds = Number(s.seconds) > 0 ? Number(s.seconds) : 6;
-      const block = Number.isFinite(Number(s.block)) ? Math.trunc(Number(s.block)) : 2;
-      if (!(block > 0)) return; // a block-less spec would be a no-op card: arm nothing at all
-      battle.addBuff(unit, { key: 'hex:indomember', duration: seconds, mods: { blockCnt: block }, visible: true, tags: ['hex'] });
     });
   }
 

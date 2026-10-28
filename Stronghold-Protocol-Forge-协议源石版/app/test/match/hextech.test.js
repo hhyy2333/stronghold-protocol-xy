@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, DATA, withoutHextech, give, giveItem, chessOfTier, legalTileFor } from './harness.js';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
-import { enemyHexMods, applyHex, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, enemyPrepLpCost, resolveMirrorCopies, bondLayerViewMulOf } from '../../server/match/hextech.js';
+import { enemyHexMods, applyHex, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, enemyPrepLpCost, resolveMirrorCopies, bondLayerViewMulOf, indomEmberBonuses, bankIndomEmber } from '../../server/match/hextech.js';
 import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
 import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
@@ -681,7 +681,7 @@ test('every battle-side hex reaches the battle input (a ref addHexRef marks prep
   const BATTLE_HEXES = [
     'hex_drill', 'hex_armor', 'hex_immortal', 'hex_vanguard', 'hex_allin',       // params.battle passives
     'hex_armorbreak', 'hex_killgift', 'hex_skillflow', 'hex_northwall', 'hex_precisionpen',
-    'hex_deepdevour', 'hex_indomember', 'hex_bondfission', 'hex_traitspread',     // conditional / ownership-only
+    'hex_deepdevour', 'hex_bondfission', 'hex_traitspread',                       // conditional / ownership-only
     'hex_heritage',                                                              // accumulates params.battle on a sale
     'hex_echoform', 'hex_serpentform',                                           // eighth batch: charges / battle-start kills
     // 业主 2026-10-26: 悬赏倍增 grew a battle half (对悬赏怪 +30% 伤害) — its `bountyDamage` spec key is in
@@ -702,6 +702,9 @@ test('every battle-side hex reaches the battle input (a ref addHexRef marks prep
     'hex_stipend', 'hex_echo', 'hex_itemrefund', 'hex_fullkit', 'hex_mirror', 'hex_voidform',
     'hex_heavenform', 'hex_ghostform',
     'hex_canlight', 'hex_warding', 'hex_voidreturn', 'hex_corpsehill', 'hex_heartsteel', 'hex_demonform',
+    // 业主 2026-10-28: 不屈余烬 became a 3阶 equipment-granting card too — its battle half is the EQUIPMENT's
+    // (items/protocol.js `chess_item_9_99_e`), so the card itself is prep-only.
+    'hex_indomember',
   ]) {
     applyHex(m, ps, m.gd.hex(id));
     const input = ps.battleInput();
@@ -1041,6 +1044,58 @@ test('幽魂形态: the pick grants the remake’s own 幽魂 equipment through 
   assert.equal(ownsHex(ps, 'hex_ghostform'), true);
   const input = ps.battleInput();
   assert.ok(!input.playerEffects.some((e) => e.data && e.data.hexId === 'hex_ghostform'), 'the card itself stays in prep');
+  h.invariants();
+  m.dispose();
+});
+
+test('不屈余烬 (2026-10-28): the pick grants one 不屈余烬; every 150 不屈 layers past 200 add another, once each', () => {
+  const { h, m, ps } = solo1(219);
+  const embers = () => [...(ps.hand || []), ...(ps.temp || [])].filter((p) => p && p.kind === 'item' && p.id === 'chess_item_9_99_e_a').length;
+  ps.layers.indomShip = 0;
+  applyHex(m, ps, m.gd.hex('hex_indomember'));
+  assert.equal(embers(), 1, 'the pick itself grants the first copy');
+  const rec = m.gd.item('chess_item_9_99_e_a');
+  assert.equal(rec.name, '不屈余烬');
+  assert.equal(rec.canGiveBond, true, '「同时拥有同构体的效果」 (a 变形同构体 carrier)');
+  assert.equal(rec.shopExcluded, true, 'never sold');
+  assert.equal(rec.mergeable, false, 'never merges');
+  assert.equal(m.gd.hex('hex_indomember').rarity, 'prismatic', '3阶 (was 1阶)');
+  // 0 -> 200 layers: nothing extra. 「大于 200 层后」 is strict — exactly 200 still pays nothing.
+  m.dispatch(ps, 'onRoundStart', { round: 2 });
+  assert.equal(embers(), 1, 'no layers yet');
+  ps.layers.indomShip = 200;
+  m.dispatch(ps, 'onRoundStart', { round: 3 });
+  assert.equal(embers(), 1, 'exactly 200 is not 「大于 200」');
+  ps.layers.indomShip = 201;
+  m.dispatch(ps, 'onRoundStart', { round: 4 });
+  assert.equal(embers(), 2, 'past 200 → the first extra copy');
+  m.dispatch(ps, 'onRoundStart', { round: 5 });
+  assert.equal(embers(), 2, 're-running the hook never double-pays the same threshold');
+  ps.layers.indomShip = 350;
+  m.dispatch(ps, 'onRoundStart', { round: 6 });
+  assert.equal(embers(), 3, '150 layers later → one more');
+  ps.layers.indomShip = 700;
+  m.dispatch(ps, 'onRoundStart', { round: 7 });
+  assert.equal(embers(), 5, 'a big jump pays every threshold it crossed in one go');
+  h.invariants();
+  m.dispose();
+});
+
+test('不屈余烬: the battle result banks the equipment\'s match-long totals, and every copy\'s battle input carries them', () => {
+  // 业主 2026-10-28: the inheritance is MATCH-LONG and shared by every copy — the pool lives on the player, so a copy
+  // acquired later reads exactly the same totals. PlayerRound.battleInput writes it into the input; the battle hands the
+  // updated totals back on the result and _addCumStats banks them (SET, so folding the same result twice is harmless).
+  const { h, m, ps } = solo1(221);
+  assert.equal(indomEmberBonuses(ps), null, 'nothing banked before the first carrier');
+  ps._addCumStats({ indomEmber: { maxHp: 300, atk: 15, def: 4, res: 2 } });
+  assert.deepEqual(indomEmberBonuses(ps), { maxHp: 300, atk: 15, def: 4, res: 2 }, 'the settled result banks the totals');
+  assert.deepEqual(ps.battleInput().indomEmber, { maxHp: 300, atk: 15, def: 4, res: 2 }, 'and the next battle input carries them');
+  ps._addCumStats({ indomEmber: { maxHp: 300, atk: 15, def: 4, res: 2 } });
+  assert.deepEqual(indomEmberBonuses(ps), { maxHp: 300, atk: 15, def: 4, res: 2 }, 'a repeated fold is idempotent (SET)');
+  ps._addCumStats({});
+  assert.deepEqual(indomEmberBonuses(ps), { maxHp: 300, atk: 15, def: 4, res: 2 }, 'a battle without a carrier reports nothing');
+  bankIndomEmber(ps, { indomEmber: { maxHp: 500, atk: 25, def: 8, res: 3 } });
+  assert.deepEqual(ps.battleInput().indomEmber, { maxHp: 500, atk: 25, def: 8, res: 3 }, 'the shared pool is what EVERY copy reads');
   h.invariants();
   m.dispose();
 });

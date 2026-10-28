@@ -1977,6 +1977,14 @@ const CUSTOM_EFFECTS = Object.freeze({
     descRaw: '装备者成为<@ba.vup>【卡西米尔】</>的「骑士」：己方【卡西米尔】干员受到的伤害<@ba.vup>转移给装备者</>；己方【卡西米尔】干员造成的真实伤害<@ba.vup>×2</>；装备者受到致命伤害时<@ba.vup>+5 层【不屈】</>，并<@ba.vup>锁血 5 秒</>',
     buffs: [],
   },
+  // 不屈余烬 (业主 2026-10-28): the equipment the 协议源石【不屈余烬】hands out. The mechanic is
+  // server/sim/content/items/protocol.js (BY_ITEM['chess_item_9_99_e']); numbers live on the item record's params.
+  eff_item_indomember: {
+    name: '不屈余烬',
+    desc: '己方每有一名【不屈】干员阵亡，装备便继承其基础生命上限、攻击力、防御力与法抗的 5%（无限叠加，跨战斗保留；同一玩家的所有【不屈余烬】共享同一份累计值）；该装备同时视为【变形同构体】',
+    descRaw: '己方每有一名<@ba.vup>【不屈】</>干员阵亡，装备便继承其基础生命上限、攻击力、防御力与法抗的<@ba.vup>5%</>（<@ba.vup>无限叠加</>、跨战斗保留；同一玩家的所有【不屈余烬】共享同一份累计值）；该装备同时视为<@ba.vup>【变形同构体】</>',
+    buffs: [],
+  },
 });
 
 // ===== bonds ====================================================================================
@@ -2439,6 +2447,26 @@ const CUSTOM_ITEMS = Object.freeze({
     buffs: [],
     params: { transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 },
     note: '本作自制装备：只由协议源石【骑士】发放，商店不出售、不可合并',
+  },
+  // 不屈余烬 (业主 2026-10-28): 协议源石【不屈余烬】发放的装备。三阶卡：获得时给 1 件，不屈 >200 层后每 150 层再给 1 件。
+  // 装备行为在 server/sim/content/items/protocol.js（BY_ITEM['chess_item_9_99_e']）：己方每有一名【不屈】干员阵亡，
+  // 装备者就继承该干员**基础面板**的 5%（本场战斗内无限叠加；同一玩家的所有副本共用同一份累计值，所以先后拿到的
+  // 副本属性一致）。`canGiveBond: true` = 同时具有【变形同构体】效果（与恶魔之契 / 幽魂 / 骑士徽章同一条数据字段）。
+  chess_item_9_99_e_a: {
+    name: '不屈余烬',
+    tier: 1,
+    price: 0,
+    shopSortId: 999,
+    identifier: 9010,
+    iconId: 'item_indomember',
+    desc: '己方每有一名【不屈】干员阵亡，装备者便继承其基础生命上限、攻击力、防御力与法抗的 5%（无限叠加，跨战斗保留；同一玩家的所有【不屈余烬】共享同一份累计值）；该装备同时视为【变形同构体】',
+    descRaw: '己方每有一名<@ba.vup>【不屈】</>干员阵亡，装备者便继承其基础生命上限、攻击力、防御力与法抗的<@ba.vup>5%</>（<@ba.vup>无限叠加</>、跨战斗保留；同一玩家的所有【不屈余烬】共享同一份累计值）；该装备同时视为<@ba.vup>【变形同构体】</>',
+    effectId: 'eff_item_indomember',
+    effectName: '不屈余烬',
+    buffs: [],
+    params: { inheritPct: 5 },
+    canGiveBond: true,
+    note: '本作自制装备：只由协议源石【不屈余烬】发放，商店不出售、不可合并',
   },
 });
 

@@ -437,6 +437,8 @@ export function resultDigest(result) {
       (Array.isArray(p.leaked) ? p.leaked : []).map((l) => `${l && l.enemyKey}|${l && l.counted === false ? 0 : 1}|${(l && l.sourcePlayerId) || ''}|${modsKey(l && l.mods)}`).sort(),
       Math.round(Number(p.damageDealt) || 0), Math.round(Number(p.bossDamage) || 0),
       (Array.isArray(p.unitsEnd) ? p.unitsEnd : []).map((u) => [u && u.uid, r4(u && u.hpPct), r4(u && u.sp), !!(u && u.alive)]),
+      // 不屈余烬's match-long inheritance (a game stat for the NEXT battles, not a display number)
+      p.indomEmber ? [r4(p.indomEmber.maxHp), r4(p.indomEmber.atk), r4(p.indomEmber.def), r4(p.indomEmber.res)] : null,
     ];
   });
   const json = JSON.stringify([res.reason ?? null, r4(res.time), res.killed | 0, res.total | 0, players]);
@@ -511,6 +513,15 @@ export function compactResult(res) {
     // the HUD capsule's numerator (or absent for a result that has none: the teammate UI falls back to `killed`)
     const resolved = Number.isFinite(p.resolved) ? Math.max(0, Math.min(total, Math.trunc(p.resolved))) : null;
     if (resolved != null) perPlayer[pid].resolved = resolved;
+    // 不屈余烬 (业主 2026-10-28): the equipment's MATCH-LONG totals after this battle — reported only by a battle that
+    // actually wore a copy, so an absent field means "no carrier, nothing banked".
+    const ie = p.indomEmber;
+    if (ie && typeof ie === 'object') {
+      perPlayer[pid].indomEmber = {
+        maxHp: Math.max(0, fnum(ie.maxHp)), atk: Math.max(0, fnum(ie.atk)),
+        def: Math.max(0, fnum(ie.def)), res: Math.max(0, fnum(ie.res)),
+      };
+    }
   }
   const out = {
     reason: ['cleared', 'timeout', 'forced'].includes(r.reason) ? r.reason : 'forced',

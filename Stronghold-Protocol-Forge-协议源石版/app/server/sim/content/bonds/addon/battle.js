@@ -655,7 +655,15 @@ export function install(battle) {
       if (u.alive || u.removed || u.mem[ID.indom] === battle.time) return;
       if (banked || (st && battle.rng() < prob(bb, L(battle, st, ID.indom)))) {
         u.mem[ID.indom] = battle.time;
-        if (battle.redeploy(u, { free: true })) fxOn(battle, 'revive', u, 'bond:indomShip', 'redeploy');
+        if (battle.redeploy(u, { free: true })) {
+          fxOn(battle, 'revive', u, 'bond:indomShip', 'redeploy');
+          // 〖不屈〗真的触发了一次（立刻免费再部署成功）—— 协议源石战斗脚本读这个事件：
+          //   不屈余烬（旧版）/ 不区区！的「所有已激活盟约层数 +1」。
+          // 由 bond 自己发（不是由卡假发），这样「卡只在真的触发时生效」不需要各自的判据。2026-10-28: the old
+          // 不屈余烬 script listened for it but NOTHING emitted it since 0.2.x — the card was silently inert; this is
+          // the single emit both halves read now.
+          battle.emit('bondTrigger', { bondId: ID.indom, unit: u });
+        }
       }
     }, { priority: 10 });
     battle.on('dollSwap', ({ unit: u }) => {

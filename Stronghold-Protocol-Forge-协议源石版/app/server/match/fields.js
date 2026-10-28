@@ -975,6 +975,17 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         unitsEnd, unitStats,
         creditedKills: Number.isInteger(p.creditedKills) ? p.creditedKills : unitStats.reduce((n, u) => n + u.kills, 0),
       };
+      // 不屈余烬 (业主 2026-10-28): the equipment's MATCH-LONG totals after this battle — kept only when the client sent
+      // one (a battle that wore no copy sends none, and an absent field must stay absent: the next battle then starts
+      // from nothing new). Bounded by the same BIG bound the other per-player stats use; the sim itself never exceeds
+      // base stats × deaths, and a co-op guest cannot mint anything the equipment would not.
+      if (p.indomEmber && typeof p.indomEmber === 'object') {
+        const ie = {
+          maxHp: stat(p.indomEmber.maxHp), atk: stat(p.indomEmber.atk),
+          def: stat(p.indomEmber.def), res: stat(p.indomEmber.res),
+        };
+        if (ie.maxHp + ie.atk + ie.def + ie.res > 0) perPlayer[pid].indomEmber = ie;
+      }
       // the HUD capsule's numerator: kept only when the client reported one (an absent value must stay absent — the
       // teammate UI then falls back to `killed`, never to a fabricated 0); clamped to the denominator
       if (Number.isInteger(p.resolved) && p.resolved >= 0) perPlayer[pid].resolved = Math.min(p.total, p.resolved);

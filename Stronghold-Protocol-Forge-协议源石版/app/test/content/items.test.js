@@ -1273,7 +1273,7 @@ test('merging: two identical normal items become the golden one (upgradeNum 2); 
   const never = Object.values(DATA.items).filter((r) => r.itemType === 'EQUIP' && !r.isGolden && r.upgradeNum === 100).map((r) => r.name).sort();
   // 尸山 left this list on 2026-10-25 (owner「两个装备尸山应该能合成」): it is upgradeNum 2 now, with 尸山·极 as its
   // golden. 尸山·极 itself is a terminal form (upgradeNum 100 = never merges again), so it IS in the list.
-  assert.deepEqual(never, ['人事部文档', '信标', '变形同构体', '寻呼模块', '拟态物质', '突变细胞', '幽魂', '恶魔之契', '残光', '加护', '万物归虚', '心之钢', '尸山·极', '百变', '骑士徽章'].sort());
+  assert.deepEqual(never, ['人事部文档', '信标', '变形同构体', '寻呼模块', '拟态物质', '突变细胞', '幽魂', '恶魔之契', '残光', '加护', '万物归虚', '心之钢', '尸山·极', '百变', '骑士徽章', '不屈余烬'].sort());
   const { m, ps } = setup();
   ps.acquireItem(A('3_07'));
   ps.acquireItem(A('3_07'));
@@ -1338,6 +1338,84 @@ test('恶魔之契 (the remake’s second equipment): its own battle behaviour p
   checkInvariants(withIt.b);
   checkInvariants(without.b);
   checkInvariants(paired.b);
+});
+
+test('不屈余烬 (the remake’s fourth equipment): every own 不屈 death feeds it 5 % of that operator’s base stats — for the whole match, shared by every copy', () => {
+  // 业主 2026-10-28：「给一个不屈余烬的装备，装备继承死掉不屈干员属性的5%（无限叠加）…装备属性都保持一致没有先后叠的
+  // 区别」. ONE banked pool per player, so every copy the card hands out (one at pick, one more per 150 不屈 layers past
+  // 200) always reads the same totals; only the OWNER's 不屈 operators feed it, and a non-不屈 death does not. The totals
+  // are MATCH-LONG: the battle starts from `input.indomEmber` and hands the new totals back on the result.
+  const ITEM = 'chess_item_9_99_e_a';
+  const rec = DATA.items[ITEM];
+  assert.equal(rec.name, '不屈余烬');
+  assert.equal(rec.shopExcluded, true, 'never sold');
+  assert.equal(rec.canGiveBond, true, 'the 变形同构体 carrier flag (「同时拥有同构体的效果」)');
+  assert.equal(hasBattleEffect(rec), true, 'the equipment carries its own battle behaviour');
+  assert.deepEqual(rec.params, { inheritPct: 5 });
+  const KEY = `item:${ITEM}:ember`;
+  const statBuff = (u) => u.buffs.filter((b) => b.key === KEY)[0];
+  const BONDS = { indomShip: { count: 3, active: true, tier: 1, layers: 10 } };
+  const h = fight({
+    ops: { t_carrier: op('t_carrier'), t_indom: op('t_indom', { bonds: ['indomShip'] }), t_plain: op('t_plain') },
+    bonds: BONDS,
+    units: [
+      { chessId: 't_carrier', row: 10, col: 4, items: [ITEM] },
+      { chessId: 't_indom', row: 10, col: 5 },
+      { chessId: 't_plain', row: 10, col: 6 },
+    ],
+  });
+  h.step(1);
+  const carrier = h.unit('t_carrier');
+  assert.equal(statBuff(carrier), undefined, 'nothing inherited before a death (premise)');
+  h.b.kill(h.unit('t_plain'));
+  assert.equal(statBuff(carrier), undefined, 'a non-不屈 death feeds nothing');
+  h.b.kill(h.unit('t_indom'));
+  const b1 = statBuff(carrier);
+  assert.ok(b1, 'the 不屈 death feeds the carrier');
+  close(b1.mods.hpFlat, 100, '5 % of the 2000 base max HP');
+  close(b1.mods.atkFinal, 25, '5 % of the 500 base ATK');
+  close(b1.mods.defFlat, 10, '5 % of the 200 base DEF');
+  close(b1.mods.resFlat, 0.5, '5 % of the 10 base RES');
+  close(carrier.s.maxHp, 2100, 'the inherited max HP really reaches the carrier');
+  // unbounded: a SECOND 不屈 death adds another 5 % of that operator's base panel (the pool never caps)
+  h.b.kill(h.unit('t_indom'));
+  close(statBuff(carrier).mods.hpFlat, 200, 'two deaths, two layers');
+  // the battle hands the MATCH-LONG totals back on the result (the match banks them)
+  h.b.forceEnd('forced');
+  assert.deepEqual(h.b.result().perPlayer.p1.indomEmber, { maxHp: 200, atk: 50, def: 20, res: 1 }, 'the result carries the totals');
+  // two copies on two operators: identical totals — no acquisition-order difference
+  const h2 = fight({
+    ops: { t_carrier: op('t_carrier'), t_carrier2: op('t_carrier2'), t_indom: op('t_indom', { bonds: ['indomShip'] }) },
+    bonds: BONDS,
+    units: [
+      { chessId: 't_carrier', row: 10, col: 4, items: [ITEM] },
+      { chessId: 't_carrier2', row: 10, col: 5, items: [ITEM] },
+      { chessId: 't_indom', row: 10, col: 6 },
+    ],
+  });
+  h2.step(1);
+  h2.b.kill(h2.unit('t_indom'));
+  const a2 = statBuff(h2.unit('t_carrier')).mods;
+  const b2 = statBuff(h2.unit('t_carrier2')).mods;
+  assert.deepEqual(b2, a2, 'the two copies read the same hidden pool');
+  // …and the next battle starts FROM the banked totals: the match puts them on the input
+  const h3 = fight({
+    ops: { t_carrier: op('t_carrier'), t_indom: op('t_indom', { bonds: ['indomShip'] }) },
+    players: [{
+      playerId: 'p1', seat: 0, side: 'L', colOffset: 0, bonds: BONDS, playerEffects: [], indomEmber: { maxHp: 200, atk: 50, def: 20, res: 1 },
+      units: [{ chessId: 't_carrier', row: 10, col: 4, items: [ITEM] }, { chessId: 't_indom', row: 10, col: 5 }],
+    }],
+  });
+  h3.step(1);
+  const next = h3.unit('t_carrier');
+  close(statBuff(next).mods.hpFlat, 200, 'the banked total is applied at battle start');
+  close(next.s.maxHp, 2200, 'and reaches the stat');
+  h3.b.kill(h3.unit('t_indom'));
+  close(statBuff(next).mods.hpFlat, 300, 'a new death adds on top of the banked total');
+  cover(ITEM);
+  checkInvariants(h.b);
+  checkInvariants(h2.b);
+  checkInvariants(h3.b);
 });
 
 test('心之钢 (the remake’s third equipment): its carrier counts as a 坚守 member', () => {
@@ -1518,7 +1596,7 @@ test('神器整备 / 工坊 发出去的每一件 协议源石装备都真的能
   assert.equal(hasBattleEffect(DATA.items['chess_item_9_97_e_a']), false, '百变 has no behaviour: its components do');
 });
 
-test('协议源石自制的五件装备记录: name / effect / never-sold', () => {
+test('协议源石自制的六件装备记录: name / effect / never-sold', () => {
   // 尸山 is the ONE custom equipment that merges (owner 2026-10-25「两个装备尸山应该能合成」): `_a` → `_b` 尸山·极.
   // Its `_b` row is asserted right below; every other custom item stays upgradeNum 100 (never merges).
   const MERGES = new Set(['chess_item_9_95_e_a']);
@@ -1529,6 +1607,8 @@ test('协议源石自制的五件装备记录: name / effect / never-sold', () =
     ['chess_item_9_94_e_a', '万物归虚', 'eff_item_void'],
     ['chess_item_9_95_e_a', '尸山', 'eff_item_corpsehill'],
     ['chess_item_9_96_e_a', '心之钢', 'eff_item_heartsteel'],
+    // 业主 2026-10-28: 不屈余烬 (the 不屈余烬 card's equipment, a 变形同构体 carrier).
+    ['chess_item_9_99_e_a', '不屈余烬', 'eff_item_indomember'],
   ]) {
     const rec = DATA.items[id];
     assert.ok(rec, `${id} exists`);
@@ -1559,6 +1639,6 @@ test('coverage: every equipment (normal + golden) and every Art is exercised by 
   const KNOWN_UNCOVERED = new Set(['chess_item_9_97_e_a', 'chess_item_9_98_e_a']);
   const missing = Object.keys(DATA.items).filter((id) => !COVER.has(id) && !KNOWN_UNCOVERED.has(id)).sort();
   assert.deepEqual(missing, []);
-  // 125 = 124 + 骑士徽章 (chess_item_9_98_e_a), added 2026-10-26 with the 骑士 exclusive stone.
-  assert.equal(Object.keys(DATA.items).length, 125);
+  // 126 = 125 + 不屈余烬 (chess_item_9_99_e_a), added 2026-10-28 with the card's rework.
+  assert.equal(Object.keys(DATA.items).length, 126);
 });
