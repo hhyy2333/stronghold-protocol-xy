@@ -141,12 +141,21 @@ export function bandIconUrl(m, bandId) {
   return bandId ? str(obj(obj(m)?.bands)?.[bandId]) : null;
 }
 
-/** Item icon for an items.json record (by trapId / iconId) or a raw trap id. */
-export function itemIconUrl(m, item) {
+/**
+ * Item icon for an items.json record (by iconId / trapId) or a raw trap id.
+ *
+ * The official manifest's `items` map wins. The remake's OWN 协议源石 equipment (幽魂 / 恶魔之契 / 残光 / 加护 / 万物归虚 /
+ * 尸山 / 心之钢 / 百变 / 骑士徽章 / 不屈余烬) has no official sprite: its art is the owner's own PNG, extracted/imported into
+ * `public/assets/local/hextech/item/<iconId>.png` and listed in data/local-assets.json `groups['hextech/item']` — the same
+ * per-machine channel the 阶位 art and the effect icons' fallback use. `local` is optional; without it the fallback is null
+ * and the caller draws its glyph, exactly as before (业主 2026-10-28「把这几个装备素材添加进去」).
+ * @param {any} m @param {any} item an items.json record or an iconId/trapId string @param {any} [local] data/local-assets.json
+ */
+export function itemIconUrl(m, item, local = null) {
   const items = obj(obj(m)?.items);
-  if (!items) return null;
-  if (typeof item === 'string') return str(items[item]);
-  return str(items[item?.iconId]) || str(items[item?.trapId]);
+  const id = typeof item === 'string' ? str(item) : (str(item?.iconId) || str(item?.trapId));
+  if (!id) return null;
+  return (items && str(items[id])) || localArtUrl(local, { group: 'hextech/item', name: id });
 }
 
 /** Enemy icon (manifest keeps fallbacks resolved). */
@@ -224,7 +233,7 @@ export function effectIconUrl(m, eff, local = null) {
   const kind = eff?.iconKind;
   const id = str(eff?.iconId);
   if (kind === 'band') return bandIconUrl(m, id) || (id && id.startsWith('icon_') ? bandIconUrl(m, `band_${id.slice(5)}`) : null);
-  if (kind === 'item') return itemIconUrl(m, id) || localArtUrl(local, { group: 'hextech/item', name: id }) || null;
+  if (kind === 'item') return itemIconUrl(m, id, local);
   if (kind === 'garrison') return uiUrl(m, `garrisonTypeIcon/${id || 's_icon_bond'}`) || uiUrl(m, 'garrisonTypeIcon/s_icon_bond');
   if (kind === 'team') return uiUrl(m, `buffIcon/${id && id.startsWith('icon_') ? id : 'icon_team_buff'}`);
   if (kind === 'choice') return uiUrl(m, `buffIcon/${id && id.startsWith('icon_') ? id : 'icon_player_buff'}`);

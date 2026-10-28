@@ -213,7 +213,7 @@ export function ItemCard({ slot, idx, frozen = false, reason = null, free = fals
       <${TierChip} tier=${it?.tier ?? 1} size="md" />
       <${PriceHex} slot=${slot} free=${free} poor=${reason === t('资金不足')} />
     </span>
-    <span class="scard__itemart"><${Img} src=${itemIconUrl(m, it)} fallback=${html`<${GIcon} name="bolt" />`} /></span>
+    <span class="scard__itemart"><${Img} src=${itemIconUrl(m, it, data.get('local'))} fallback=${html`<${GIcon} name="bolt" />`} /></span>
     <span class="scard__body">
       <span class="scard__name">${it?.name || slot.id}</span>
       <span class="scard__idesc"><${RichText} text=${it?.descRaw || it?.desc || ''} /></span>

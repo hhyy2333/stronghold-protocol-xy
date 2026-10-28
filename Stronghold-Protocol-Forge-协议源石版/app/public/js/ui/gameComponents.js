@@ -132,7 +132,7 @@ export function UnitThumb({ kind = 'chess', id, golden, size = 'md', tier, showT
     golden = golden ?? !!c?.isGolden;
   } else if (kind === 'item') {
     const it = data.lookup('items', id);
-    src = itemIconUrl(m, it);
+    src = itemIconUrl(m, it, data.get('local'));
     name = it?.name || '';
     t = t ?? it?.tier;
     golden = golden ?? !!it?.isGolden;

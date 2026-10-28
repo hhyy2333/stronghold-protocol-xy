@@ -64,7 +64,7 @@ export function resolveSpCard(card, family) {
   const enemyKey = card.enemyKey || bounty?.enemyKey || eff?.params?.enemy_id || null;
   const team = card.team ?? tactic?.team ?? (eff?.decoIconId === 'icon_team_buff');
   let icon = null;
-  if (item) icon = itemIconUrl(m, item);
+  if (item) icon = itemIconUrl(m, item, data.get('local'));
   else if (kind === 'bounty' && enemyKey) icon = enemyIconUrl(m, enemyKey);
   else if ((card.tacticKind || tactic?.kind) === 'terrain') icon = uiUrl(m, 'buffIcon/icon_stage_buff');
   else if ((card.tacticKind || tactic?.kind) === 'enemyDebuff') icon = uiUrl(m, 'buffIcon/icon_enemy_debuff');

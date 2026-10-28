@@ -153,7 +153,7 @@ export function createFallbackView(host, opts = {}) {
   // ---- pieces (prep) ---------------------------------------------------------------------------------------
   function pieceArt(p) {
     const mm = m();
-    if (p.kind === 'item') return itemIconUrl(mm, lookup('items', p.id));
+    if (p.kind === 'item') return itemIconUrl(mm, lookup('items', p.id), dataStore?.get?.('local') ?? null);
     if (p.kind === 'token') return tokenAvatarUrl(mm, p.id);
     const chess = lookup('chess', p.id);
     return avatarUrlOf(mm, ownSi(chess) || ownDiy(chess) || chess, { lookup: currentAppearanceLookup() });

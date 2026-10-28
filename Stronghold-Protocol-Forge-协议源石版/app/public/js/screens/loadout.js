@@ -630,7 +630,7 @@ function ItemCodex({ m, items, deckRef, onOpen, onTier }) {
         <span class="lo-tmark__no">NO.</span><b class="lo-tmark__n">${ROMAN[g.tier]}</b><span class="lo-tmark__cnt num">${g.items.length}</span>
       </div>
       <div class="lo-igrid">${g.items.map((it) => { n += 1; const idx = n; return html`<button key=${it.id} type="button" role="listitem" class="lo-item" data-item=${it.id} onClick=${() => onOpen(idx)}>
-        <span class="lo-item__icon"><${Img} src=${itemIconUrl(m, it)} fallback=${html`<${Icon} name="box" />`} /></span>
+        <span class="lo-item__icon"><${Img} src=${itemIconUrl(m, it, data.get('local'))} fallback=${html`<${Icon} name="box" />`} /></span>
         <span class="lo-item__body">
           <span class="lo-item__head"><${TierChip} tier=${it.tier} size="sm" /><b class="lo-item__name">${it.name}</b></span>
           <${RichText} class="lo-item__desc" text=${it.descRaw || it.desc || ''} />
@@ -657,7 +657,7 @@ function ItemDetail({ m, items, index, all, onIndex, onClose }) {
         <span class="lo-idetail__price">${t('售价')} <b class="num">${it.price ?? '—'}</b></span>
         ${it.shopExcluded ? html`<span class="lo-item__tag">${t('特殊获取')}</span>` : null}</header>
       <div class="lo-idetail__main">
-        <span class="lo-idetail__icon"><${Img} src=${itemIconUrl(m, it)} fallback=${html`<${Icon} name="box" />`} /></span>
+        <span class="lo-idetail__icon"><${Img} src=${itemIconUrl(m, it, data.get('local'))} fallback=${html`<${Icon} name="box" />`} /></span>
         <div class="lo-idetail__text">
           <span class="lo-idetail__chip">${same ? t('基础 & 进阶效果') : t('基础效果')}</span>
           <${RichText} as="p" class="lo-idetail__eff" text=${it.descRaw || it.desc || ''} />

@@ -986,7 +986,7 @@ export function createAssets(options) {
     tokenAvatar: (id) => tokenAvatarUrl(m(), id),
     bondIcon: (id) => bondIconUrl(m(), id),
     bandIcon: (id) => bandIconUrl(m(), id),
-    itemIcon: (item) => itemIconUrl(m(), item),
+    itemIcon: (item) => itemIconUrl(m(), item, localManifest),
     skillIcon: (id, o) => skillIconUrl(m(), id, o),
     profIcon: (p, kind) => profIconUrl(m(), p, kind),
     subProfIcon: (s) => subProfIconUrl(m(), s),

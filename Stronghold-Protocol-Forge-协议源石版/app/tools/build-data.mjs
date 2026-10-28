@@ -2420,8 +2420,9 @@ const CUSTOM_ITEMS = Object.freeze({
     price: 0,
     shopSortId: 997,
     identifier: 9008,
-    // 复用【变形同构体】的官方图标：本作没有为「百变」画过图，这个 iconId 至少一定画得出来（缺图会退成空板）。
-    iconId: 'trap_1073_acarm073',
+    // 业主 2026-10-28 提供了「百变」的装备图标（`hextech/item/item_versatile`，本机素材，见 data/local-assets.json）：
+    // iconId 改成它；没有本机素材的机器退回字母/空板（原先是复用【变形同构体】的官方图标兜底）。
+    iconId: 'item_versatile',
     desc: '由【锻炉】融合两件装备而成：同时拥有那两件装备的全部效果；不会再被融合，仍可被【变形同构体】识别',
     descRaw: '由【锻炉】融合两件装备而成：同时拥有那两件装备的<@ba.vup>全部效果</>；<@ba.vup>不会再被融合</>，仍可被【变形同构体】识别',
     effectId: 'eff_item_versatile',

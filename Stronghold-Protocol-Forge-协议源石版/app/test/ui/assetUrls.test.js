@@ -100,6 +100,24 @@ describe('assetUrls', () => {
     }
     assert.equal(hexTierArtUrl(null, 2), null);
   });
+  test('协议源石 equipment icons: the owner’s own art resolves from the local hextech/item group', () => {
+    // 业主 2026-10-28「把这几个装备素材添加进去」: 幽魂 / 恶魔之契 / 残光 / 加护 / 万物归虚 / 尸山 / 百变 的 PNG 由
+    // public/assets/local/hextech/item 提供（本机素材，data/local-assets.json 登记），assets.json 里没有它们的官方图标。
+    if (!local) return;                                  // no local client art on this machine
+    const group = local.groups['hextech/item'];
+    if (!group) return;
+    for (const [name, entry] of Object.entries(group)) {
+      assert.equal(itemIconUrl(m, { iconId: name }, local), entry.path, name);
+      assert.ok(existsSync(path.join(ROOT, 'public', entry.path.replace(/^\/assets\//, 'assets/'))), `${name}: the PNG is on disk`);
+    }
+    assert.equal(itemIconUrl(m, { iconId: 'item_nope' }, local), null, 'an absent icon is null, never a broken URL');
+    // the official sprite wins over the local fallback when both exist
+    const official = Object.keys(m.items)[0];
+    assert.equal(itemIconUrl(m, official, local), m.items[official]);
+    // without the local manifest the behaviour is exactly what it was: null → the caller draws its glyph
+    assert.equal(itemIconUrl(m, { iconId: 'item_demon' }), null);
+  });
+
   test('missing manifest / ids ⇒ null, never throws', () => {
     for (const fn of [chessAvatarUrl, chessPortraitUrl, skillIconUrl, subProfIconUrl, itemIconUrl]) {
       assert.equal(fn(null, null), null);

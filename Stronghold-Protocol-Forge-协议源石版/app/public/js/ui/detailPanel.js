@@ -623,7 +623,7 @@ export function ItemDetail({ item, piece, editable, onDestroy, offBonds = null, 
   const m = data.get('assets');
   return html`
     <div class="dhead dhead--item">
-      <div class=${cx('dhead__icon', item.isGolden && 'is-golden')}><${Img} src=${itemIconUrl(m, item)} fallback=${html`<${GIcon} name="bolt" />`} /></div>
+      <div class=${cx('dhead__icon', item.isGolden && 'is-golden')}><${Img} src=${itemIconUrl(m, item, data.get('local'))} fallback=${html`<${GIcon} name="bolt" />`} /></div>
       <div class="dhead__info">
         <div class="dhead__chips"><${TierChip} tier=${item.tier} golden=${item.isGolden} size="lg" />${item.isGolden ? html`<span class="dtag-elite">${t('进阶')}</span>` : null}
           <span class="dtag-kind">${item.itemType === 'MAGIC' ? t('奇术') : t('装备')}</span></div>
