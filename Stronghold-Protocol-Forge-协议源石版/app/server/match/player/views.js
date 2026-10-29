@@ -8,6 +8,15 @@ import { boardOrder, pieceDir } from '../board.js';
 import { bondList, offBondCounts } from '../bondsMeta.js';
 import { bountyText, bountyCard } from '../choices.js';
 
+/**
+ * 灵魂炸弹: the card id, and the player counter its 「本局医疗干员治疗量」 is banked in. The battle start hands that counter to
+ * the sim (content/hextech.js applySpec soulBombArm) and it is written where a battle result reaches the player
+ * (player/round.js _addCumStats). The effects column reads THE SAME counter, so the number it shows is the number the
+ * card actually spends — never a second account of it.
+ */
+const SOULBOMB_HEX_ID = 'hex_soulbomb';
+const SOULBOMB_HEAL_COUNTER = 'hex:hex_soulbomb:heal';
+
 export class PlayerViews {
   pieceView(p, rc = null) {
     const rec = p.kind === 'item' ? this.gd.item(p.id) : p.kind === 'token' ? this.gd.token(p.id) : this.gd.chess(p.id);
@@ -62,6 +71,15 @@ export class PlayerViews {
       }
       const v = { id: e.id, name: e.name || e.id, desc: e.desc || '', iconKind: e.iconKind || 'choice', iconId: e.iconId || e.id };
       if (e.counter != null) v.counter = e.counter;
+      // 灵魂炸弹 (业主 2026-10-29「给灵魂炸弹加个累计治疗量显示」): the card's whole value IS the match's banked medical healing,
+      // so the effects column carries it — the tile's badge is the number and the card's own line says what it is (the way
+      // 盟约寄生 spells out 寄生对象). Read off the same counter, so a 管理员 / 复制 second ref shows the same total and the
+      // display can never disagree with what the battle spends.
+      if (e.iconKind === 'hex' && e.data && e.data.hexId === SOULBOMB_HEX_ID) {
+        const total = Math.max(0, Math.round(Number((this.counters || {})[SOULBOMB_HEAL_COUNTER]) || 0));
+        v.desc = `${v.desc}（本局累计治疗量：${total}）`; // i18n-ignore: server-side effect text
+        if (total > 0) v.counter = total;
+      }
       if (copyKey != null && hexCount.get(copyKey) > 1) v.count = hexCount.get(copyKey);
       // 协议源石 (DESIGN §29): the effect column shows the card's 阶位 art, so the rarity's tier rides along (the ref's
       // data carries the rarity; the tier itself is data/hextech.json `rarities[].tier`). Without it the client's

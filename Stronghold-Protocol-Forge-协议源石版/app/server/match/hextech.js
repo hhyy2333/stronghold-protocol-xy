@@ -678,31 +678,48 @@ function applyHexExtras(m, ps, hex, { depth = 0, ref: gainRef = null } = {}) {
   // depth guard exists for is already stopped at the top of the function (`depth >= 2`, which also caps
   // 镜像→镜像 and 二次抽取→二次抽取): the extra `=== 0` only ever blocked legitimate gains. The per-(picker, card)
   // watcher id below still keeps a repeated gain from stacking a second observer.
+  //
+  // 业主 2026-10-29「债务显示放债对象」: the teammate is drawn at random with no UI, so the effects column used to show the
+  // card's generic text and the picker could not tell WHO took the +3. The chosen target is stamped on THIS gain's own ref
+  // (gainRef — the 盟约寄生 convention; a lookup by the base id always answered with the FIRST ref) and appended to its
+  // desc, the same way 「寄生对象」 is shown. The teammate's watcher names the picker back, so both sides see the pairing.
   if (spec.debt) {
     const d = spec.debt;
     const funds = Number.isFinite(d.funds) ? Math.max(0, Math.trunc(d.funds)) : 3;
     const rounds = Number.isFinite(d.rounds) ? Math.max(1, Math.trunc(d.rounds)) : 3;
+    const untilRound = Math.max(1, Math.trunc(Number(m.round) || 1)) + rounds - 1;
+    const ref = gainRef || (ps.effects || []).find((e) => e && (e.id === `hex:${hex.id}` || e.key === `hex:${hex.id}`));
+    const cardText = String(hex.desc || '');
     const mates = m.alivePlayers().filter((p) => p !== ps);
     if (!mates.length) {
       ps.addFunds(funds, { reason: 'hex_debt' });
+      // Solo: the first half falls on the player itself, so the card says 自己 instead of naming a teammate that is not there
+      if (ref) {
+        ref.params = { ...(ref.params || {}), debt: { targetId: ps.playerId, targetName: String(ps.name || ps.playerId), untilRound } };
+        ref.desc = `${cardText}（放债对象：自己）`;
+        ps.dirty();
+      }
     } else {
       const to = mates[Math.min(mates.length - 1, Math.floor(m.rngHex() * mates.length))];
       to.addFunds(funds, { reason: 'hex_debt' });
+      const targetName = String(to.name || to.playerId);
+      if (ref) {
+        ref.params = { ...(ref.params || {}), debt: { targetId: to.playerId, targetName, untilRound } };
+        ref.desc = `${cardText}（放债对象：${targetName}）`;
+        ps.dirty();
+      }
       const id = `${DEBT_EFFECT_KEY}:${ps.playerId}:${hex.id}`;
       if (!(to.effects || []).some((e) => e && e.id === id)) {
         to.effects.push({
           id,
           key: DEBT_EFFECT_KEY,
-          name: hex.name,
-          desc: hex.desc,
+          // 债务（被放债）: the teammate does not own the card — this ref exists to be READ, so it says whose debt it is.
+          name: '债务（被放债）', // i18n-ignore: server-side effect text (the 盟约寄生（被寄生） convention)
+          desc: `队友 ${String(ps.name || ps.playerId)} 的【债务】以你为放债对象：${rounds} 回合内你购买干员时，其获得一个相同干员。`, // i18n-ignore: server-side effect text
           iconKind: 'hex',
           counter: null,
           battle: false,
-          params: {
-            ownerId: ps.playerId,
-            hexId: hex.id,
-            untilRound: Math.max(1, Math.trunc(Number(m.round) || 1)) + rounds - 1,
-          },
+          params: { ownerId: ps.playerId, hexId: hex.id, untilRound },
           data: { hexId: hex.id, rarity: hex.rarity, debt: true },
         });
         to.dirty();

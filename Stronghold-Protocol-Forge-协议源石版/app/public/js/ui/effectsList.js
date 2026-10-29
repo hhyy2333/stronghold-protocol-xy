@@ -7,6 +7,7 @@ import { html, Tooltip, MicroLabel } from './components.js';
 import { Img, RichText, GIcon } from './gameComponents.js';
 import { effectIconUrl, hexTierArtUrl } from './assetUrls.js';
 import { data } from '../data.js';
+import { fmtNum } from './gameLogic.js';
 import { t, tName, N_ } from '../../../shared/i18n.js';
 import { sentText } from './lang.js';
 
@@ -18,6 +19,17 @@ const KIND = { band: N_('策略'), choice: N_('机变'), team: N_('团队增益'
  * @param {{ counter?: number|null }} e
  */
 export const bountyCounterText = (e) => (e.counter == null ? t('之后的每场作战') : t('还剩 {left} 场作战', { left: e.counter }));
+
+/**
+ * The short text the tile's corner badge shows for an effect's counter. 悬赏's 「还剩 N 场」 is one or two digits, but a
+ * 协议源石 counter can be a match-long total (灵魂炸弹's 本局累计治疗量, five or six digits) and the tile is .5rem wide
+ * with `overflow: hidden` once it carries its 阶位 art — a raw long number would spill/crop. So a finite number goes
+ * through the HUD's own 万/亿 formatter (gameLogic fmtNum: 3 ⇒ "3", 1235 ⇒ "1,235", 123456 ⇒ "12.3万"); anything that is
+ * not a finite number is printed as sent, exactly as before.
+ * @param {unknown} n
+ * @returns {string}
+ */
+const counterBadgeText = (n) => (Number.isFinite(Number(n)) ? fmtNum(n) : String(n));
 
 /** Data files whose records an effect entry copies its name / description from (by its id or icon id). */
 const SOURCES = ['effects', 'bands', 'items', 'garrisons'];
@@ -72,7 +84,7 @@ export function EffectsList({ effects }) {
       </div>`}>
       <span class=${`effect effect--${e.iconKind || 'x'}${tierArt ? ` effect--hextier effect--tier${e.tier}` : ''}`}>
         <${Img} src=${src} fallback=${html`<${GIcon} name="bolt" />`} />
-        ${e.count > 1 ? html`<b class="effect__n num">×${e.count}</b>` : e.counter != null && e.counter !== '' ? html`<b class="effect__n num">${e.counter}</b>` : null}
+        ${e.count > 1 ? html`<b class="effect__n num">×${e.count}</b>` : e.counter != null && e.counter !== '' ? html`<b class="effect__n num">${counterBadgeText(e.counter)}</b>` : null}
       </span>
     <//>`;
     })}

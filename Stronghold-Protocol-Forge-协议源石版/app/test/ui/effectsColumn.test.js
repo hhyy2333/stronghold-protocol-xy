@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fmtNum } from '../../public/js/ui/gameLogic.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (p) => readFileSync(path.join(ROOT, p), 'utf8');
@@ -68,6 +69,30 @@ describe('effects column: a 协议源石 shows its 阶位 art', () => {
     // used to pin was retired by the owner on 2026-10-12 (docs/history/0.3.0.md §29.3), so no rune may reappear here.
     assert.ok(!JSON.stringify(tree).includes('hextech/tier'), 'no tier art without a tier');
     assert.ok(!JSON.stringify(tree).includes('Rune'), 'the retired rune fallback is gone');
+  });
+
+  test('a big counter is compacted into the tile, a 悬赏-sized one is untouched', () => {
+    // 业主 2026-10-29「给灵魂炸弹加个累计治疗量显示」: the server hands the card's match-long 本局累计治疗量 over as the entry's
+    // `counter`. The tile is .5rem wide and clips once it carries its 阶位 art, so the badge runs a finite number through
+    // the HUD's own 万/亿 formatter (gameLogic fmtNum) instead of painting five or six digits raw. 悬赏's 1–2 digits are
+    // unchanged by that. (The tooltip still spells the exact number out — only the TILE is compacted.)
+    const badge = (node) => {
+      let found = null;
+      const walk = (n) => {
+        if (found != null || !n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { for (const x of n) walk(x); return; }
+        if (n.props?.class === 'effect__n num') found = String(n.props.children);
+        else walk(n.props?.children);
+      };
+      walk(node);
+      return found;
+    };
+    const small = EffectsList({ effects: [{ id: 'b', name: '悬赏', desc: 'd', iconKind: 'choice', counter: 2 }] });
+    assert.equal(badge(small), '2', 'a one-digit counter is painted as before');
+    const big = 123456;
+    const tree = EffectsList({ effects: [{ id: 'hex:hex_soulbomb', name: '灵魂炸弹', desc: 'd', iconKind: 'hex', counter: big }] });
+    assert.equal(badge(tree), fmtNum(big), 'the tile carries the compacted 万/亿 reading');
+    assert.notEqual(badge(tree), String(big), 'never the raw six-digit total');
   });
 
   test('other effect kinds are untouched', () => {
