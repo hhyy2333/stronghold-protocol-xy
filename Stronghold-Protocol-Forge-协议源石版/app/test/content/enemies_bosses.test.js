@@ -3409,7 +3409,9 @@ test('黑蛇：不息恶火每 2 s 一列、每行一颗（空行也有火球，
   const runFor = (sec) => {
     for (let t = 0; t < sec - 1e-9; t += 0.05) {
       h.run(0.05);
-      for (const e of h.eventsOf('fx')) if (e[1] === 'shell' && e[4] && e[4].kind === 'bsnakeFire') seen.push(e);
+      // the fx KIND is the renderer's archetype key: 'bsnakeFire' (FX_KINDS) is the comet — `fx('shell', …)` is the
+      // shield archetype and drew nothing on the field (fixed 2026-10-30).
+      for (const e of h.eventsOf('fx')) if (e[1] === 'bsnakeFire') seen.push(e);
     }
   };
   while (!seen.length && h.b.time < 26) runFor(0.05);

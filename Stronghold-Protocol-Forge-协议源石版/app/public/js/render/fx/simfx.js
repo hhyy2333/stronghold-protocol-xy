@@ -97,7 +97,7 @@ export class FxSim {
         this.mortar(this._viewOf(ex.id ?? ex.src), at.x, at.y, r, flight);
         break;
       }
-      // 不息恶火 (boss_11 fireWave): the sim sends one `shell` per field row, from the left edge to (tx, ty) at the right
+      // 不息恶火 (boss_11 fireWave): the sim sends one `bsnakeFire` per field row, from the left edge to (tx, ty) at the right
       // one, its `dur` the very flight the damage waits. Drawn as its own archetype: the mortar's climb-and-drop reads
       // as an artillery shot from the leader, while this is a column of fire sweeping the field — a burning comet
       // hugging the ground of its row, a scorch trail it leaves behind and a burst where its row's first operator stood.

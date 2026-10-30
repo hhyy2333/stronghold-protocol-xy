@@ -1238,7 +1238,10 @@ function kitBlackSnake(ab, e) {
       let target = null;
       for (const u of row) if (!target || u.x < target.x) target = u;
       const flight = Math.max(0.05, (c1 - c0) / B_SNAKE.fireballSpeed);
-      b.fx('shell', { x: c0, y: r, tx: c1, ty: r, dur: flight, kind: 'bsnakeFire', row: r });
+      // The fx KIND is the renderer's archetype lookup (render/fx/kinds.js FX_KINDS): 'bsnakeFire' is the comet.
+      // It used to be sent as `fx('shell', { kind: 'bsnakeFire' })` — 'shell' is the SHIELD archetype (护盾), so the
+      // column drew as an off-field shield glyph and the comet never played (业主 2026-10-30「给我看看火雨特效」时查实).
+      b.fx('bsnakeFire', { x: c0, y: r, tx: c1, ty: r, dur: flight, row: r });
       if (!target) continue;
       const travel = Math.max(0, (target.x - c0) / B_SNAKE.fireballSpeed);
       b.after(travel, () => { if (e.alive && target.alive) hurt(b, e, target, e.s.atk, 'arts'); }, { owner: e });
