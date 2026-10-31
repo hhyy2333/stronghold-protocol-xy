@@ -674,7 +674,9 @@ its 禁疗 狼群, which the skill text grants), flag `healFree` = 禁疗 that a
 only other units' heals and heal picks): 史尔特尔's 余烬 sets both, shown as the status 'healFree' — only an HP-regen
 attribute (`heal` opts `regen`) and a heal that "无视禁疗" (`ignoreHealFree`: her S3's start heal) reach her (PRTS 异常效果
 HEAL_FREE "受到的治疗量变为0"; DESIGN §22.7), `stealthOff` = an enemy 隐匿 source switched off after a block
-(`stealthOff:<source buff key>`, below), `camou` = 迷彩 (below)). `taunt: true` as a flag counts
+(`stealthOff:<source buff key>`, below), `camou` = 迷彩 (below), `seeStealth` = the attacker may **select** a 隐匿 enemy
+(号角's 特限证章, 协议源石【特限恢复】`hex_mode_modules`: `targeting.js canTargetEnemy` skips the 隐匿 exclusion for that
+attacker only — an operator's splash `foesInRadius` still skips it)). `taunt: true` as a flag counts
 as +1 taunt level (DESIGN §5.3).
 
 **Statuses** — `battle.applyStatus(target, key, { duration, source, value, force, refresh, point, stackAs })` (returns true if

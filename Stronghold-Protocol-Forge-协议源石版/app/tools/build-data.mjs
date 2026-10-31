@@ -39,6 +39,7 @@ import { DEPLOY_REFUSED_TILES } from '../server/sim/grid.js';
 import { validateReferences } from '../shared/plugins/validate.js';
 import { computeGroundPaths } from '../server/sim/groundPaths.js';
 import { applyCustomOps, FIXED_CHESS_IDS } from './custom-ops.mjs';
+import { applyCustomModules } from './custom-modules.mjs';
 import { bandBondIds } from '../shared/bandBonds.js';
 import { statusKey, composeUnitRecord } from '../shared/standIn.js';
 import { extendedGrid } from '../shared/loadoutRecord.js';
@@ -4990,6 +4991,10 @@ async function main() {
   // 自制 / 联动干员（tools/custom-ops.mjs）：把商店行、盟约成员与召唤物补进官方表，数据本身照官方原值走。
   const customAdded = applyCustomOps(ctx);
   if (customAdded.length) log(`custom ops: ${customAdded.length} row(s) merged (${customAdded.join(', ')})`);
+  // 官方表里还没有的模组（tools/custom-modules.mjs）：号角特限证章 uniequip_004_horn（ISW-A），合成记录注入
+  // uniequip_table 的 equipDict / charEquip 与 battle_equip_table，生成逻辑一行不改。
+  const customModules = applyCustomModules(ctx);
+  if (customModules.length) log(`custom modules: ${customModules.length} row(s) merged (${customModules.join(', ')})`);
   log('building…');
   // one pass of the operator builders per potential rank (潜能 1–6, ctx.potRank): the full-potential pass is the data,
   // annotated below with what every lower rank changes (attachPotential)

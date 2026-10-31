@@ -85,7 +85,12 @@ export function canTargetEnemy(attacker, e, profile) {
   if (!e.alive || e.hidden || !e.deployed) return false;
   const f = e.s.flags;
   if (f.untargetable || (f.sleep && !(profile && profile.hitSleep))) return false;
-  if (f.stealth && enemyStealthed(e)) return false;
+  // 号角特限模组「号角特限证章」（ISW-A，协议源石【特限恢复】hex_mode_modules）:「可以攻击隐匿敌人」。attacker 身上挂着
+  // `flags: { seeStealth: true }` 的常驻 buff（stone_mode_modules_isw.js 给号角挂的那条）时，跳过下面这条隐匿排除。
+  // 只放开**索敌**：溅射仍按引擎的 foesInRadius 跳过隐匿（别的敌人照旧看不见），`e.hidden`（隐身战场那套「不可见」，
+  // 见上一行）也不碰。
+  const seeStealth = !!(attacker && attacker.s && attacker.s.flags.seeStealth);
+  if (!seeStealth && f.stealth && enemyStealthed(e)) return false;
   // `dollHitsFly`: a 傀儡师 whose <替身> state hits air (风丸 — PRTS 特性备注 「<替身>状态下可对空，由技能产生的召唤物不可对空」,
   // GitHub community report of 2026-10-15) targets flyers while substituted (Unit.trait.doll, professions.js installDollkeeper)
   if (e.isFlying && !(profile && (profile.canHitFly || (profile.dollHitsFly && attacker && attacker.trait && attacker.trait.doll)))) return false;

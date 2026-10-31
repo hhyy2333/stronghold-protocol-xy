@@ -47,6 +47,10 @@ export const FLAG_KEYS = Object.freeze([
   'selfBound', 'healFree', 'stealthOff',
   // 缚地 (status `groundbind`): an enemy air unit counts as a ground unit meanwhile (Unit.isFlying)
   'groundbind',
+  // seeStealth = 攻击者**可以选中隐匿的敌人**（号角特限模组「号角特限证章」/ 协议源石【特限恢复】hex_mode_modules：
+  // stone_mode_modules_isw.js 给号角挂 `flags: { seeStealth: true }`，targeting.js canTargetEnemy 认它）。只放开索敌：
+  // 溅射 / 光环仍按引擎的 foesInRadius / auraSelectable 跳过隐匿。
+  'seeStealth',
 ]);
 
 /**

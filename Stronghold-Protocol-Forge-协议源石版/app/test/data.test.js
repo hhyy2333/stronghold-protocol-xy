@@ -858,6 +858,10 @@ test('independent re-derivation of every chess and enemy stat from the raw offic
       assert.deepEqual([s.spCost, s.initSp, s.duration, s.name], [sl.spData.spCost, sl.spData.initSp, sl.duration, sl.name], `${id} S${s.index + 1}: sp`);
     }
     for (const m of c.modules || []) {
+      // 合成模组（tools/custom-modules.mjs 注入、官方表里还没有的那几张 —— 号角特限证章 uniequip_004_horn ISW-A）
+      // 不在原始 battle_equip_table 里，无从重算；它们的面板由 tools/custom-modules.mjs 的常量给出，
+      // 生成结果由 test/content/custom-modules.test.js 断言。
+      if (!BE[m.uniEquipId]) continue;
       const mp = BE[m.uniEquipId].phases.find((p) => p.equipLevel === cd.status.equipLevel);
       const exp = {};
       for (const b of mp.attributeBlackboard) exp[map[b.key] ?? b.key] = (exp[map[b.key] ?? b.key] || 0) + b.value;

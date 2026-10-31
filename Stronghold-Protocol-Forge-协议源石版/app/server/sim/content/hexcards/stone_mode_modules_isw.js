@@ -5,8 +5,9 @@
 // 口径：拥有者的干员，当前装备模组 `u.def.module.type` 以 `ISW-` 开头时，模组「在集成战略中…」的专属效果在
 // 卫戍协议里生效。数值全部读卡面 `params.modeModules`（tools/hextech/roster.mjs）。
 //
-// 设计稿 §4.3 的表一共 12 条记录 / 11 名干员，按模组前缀分三族（ISW- / SO- / RA-）。本文件**只**做 ISW- 那 8 名
-// 干员（空弦 / 水月 / 灵知 / 夕 / 归溟幽灵鲨 / 安洁莉娜 / 迷迭香 / 琳琅诗怀雅）；RA- 三行在
+// 设计稿 §4.3 的表一共 12 条记录 / 11 名干员，按模组前缀分三族（ISW- / SO- / RA-）。本文件做 ISW- 那 9 名
+// 干员（空弦 / 水月 / 灵知 / 夕 / 归溟幽灵鲨 / 安洁莉娜 / 迷迭香 / 琳琅诗怀雅 / **号角** —— 号角是业主 2026-10-31
+// 追加的「号角特限证章」，设计稿 04-文档/协议源石-号角特限模组-设计稿-20261031.md §3，见下面第 9 条）；RA- 三行在
 // stone_mode_modules_ra.js（同一个批次），SO- 在后续模块里，互相不 import。
 //
 // CONTRACT: export function installModeModulesIsw(hooks) — hooks is the shared `hexHooks(battle)` bundle
@@ -84,9 +85,40 @@
 //      [ASSUMED] 卫戍协议的战斗里**没有部署费用**（费用是备战侧的事），所以「部署与在场消耗的费用 -30%」与
 //      「每消耗 1 点费用令再部署时间最短的干员 -2 秒」这两半无法建模、整条跳过；只保留设计稿 §4.3 给的等价落地
 //      「再部署时间 -30%」。
+//
+//   9. 号角 chess_char_5_08_b / ISW-A 「号角特限证章」（业主 2026-10-31；设计稿
+//      04-文档/协议源石-号角特限模组-设计稿-20261031.md §3）。官方图（02 / 03 STAGE，天赋【军事要塞】追加）原文：
+//      「在集成战略中，在场时额外使重装干员攻击力提升、生命上限提升，号角身前2格每部署1个友方单位，使号角攻击距离提升，
+//      远程攻击目标数提升」+「自身立即获得数点技力（有上限）」，特性追加「…且可以攻击隐匿敌人」。四条一起落地：
+//
+//      (a) 可以攻击隐匿敌人 → 号角挂一条 `flags: { seeStealth: true }` 的常驻 buff；targeting.js `canTargetEnemy()`
+//          见到 `attacker.s.flags.seeStealth` 就跳过 `f.stealth && enemyStealthed(e)` 那条排除。
+//          [ASSUMED] 1) 只影响**索敌**（普攻 / 技能覆盖的那一次攻击）：溅射仍按引擎的 `foesInRadius` 跳过隐匿，不额外
+//          扩散；2) 不改变 `e.hidden`（隐身战场那套「不可见」是另一种机制，模组不碰）。
+//      (b) 重装光环 → 号角在场时，**全场己方**（含队友的）`profession === 'TANK'` 的干员额外 `atkPct +8%` /
+//          `hpPct +12%`；每 0.25 s 刷新一次、持续 0.5 s 的 aura buff（与 kits/ops/chess_char_5_08-horn.js 的军事要塞
+//          同一手法，AURA_IV / AURA_DUR 同值）。
+//          [ASSUMED] 1) 数值按设计稿 §3-2 自拟（官方预览图只给「提升」，没有数字）；2) 与号角 1 天赋军事要塞**叠加**、
+//          不替换；3) 多名拥有者的号角光环同键替换、不叠加（与军事要塞同一条手法）；4) `battleStart` / `deploy` 时
+//          立刻补一次（否则开局有 0.25 s 空窗），之后由 0.25 s 的 ticker 维持；5) 队友的重装晚部署时最多等 0.25 s。
+//      (c) 身前 2 格 → 数号角朝向（dir.js `frontOf` / `dirVec(u.dir)`）前 1、前 2 格上的己方单位（干员 + 召唤物，
+//          `kind !== 'device'`、`alive && deployed && !hidden`），每有 1 个：`rangeExtend +1`、`maxTargets +1`，
+//          两张格子封顶 +2 / +2。常驻 `passiveBuff` 挂在号角身上，`battleStart` / `deploy` / `death` 与每 0.5 s 对账。
+//          [ASSUMED] 1) 「身前」= 朝向的直线前 2 格，不含左右；2) 「友方单位」= 己方干员与召唤物，不算装置与敌人
+//          （任何玩家的己方单位都算：原文说的是「友方单位」）；3) 上限 = 两张格子（各 1 名）；4) 这份 rangeExtend 是
+//          **常驻**的（`persist` + `Infinity` ⇒ 引擎把它算进初始攻击范围 `baseRangeExtend`，Battle._refreshRange 重建
+//          rangeKeys），与另外 8 条里空弦那条同一个读法。
+//      (d) 3 级技力 → 每次部署（含再部署）`u.skill.gainSp(10, 'module')`，单个号角本场累计封顶 20。记账记在 `u.mem`，
+//          按 `u.deploySeq` 幂等（`battleStart` 的补挂与 `deploy` 钩子给的是同一份）。
+//          [ASSUMED] 1) 记账记**实际到手**的技力（`gainSp` 的返回值；技能忙碌 / 无技能 / 阻回时引擎自己返回 0，不扣
+//          预算）；2) 不按模组 `level` 门控（与另外 8 条一致：这张卡本身就把模组拉到 3 级）；3) 引擎仍按 `spCost`
+//          截断，所以实际到手 ≤ 技能消耗。
+//      (e) 「可以部署在目标点」整条**不落地**：[ASSUMED] 跳过 —— 卫戍协议的目标点是保护目标点（漏怪扣 LP 的格子），
+//          本作不允许在它上面部署干员，为一张模组改部署规则会牵动备战校验、客户端与 bot（设计稿 §3-5）。
 
 import { passiveBuff } from '../support/index.js';
 import { isChained, isHpLoss, isRetaliation, makeDamageInfo } from '../../damage.js';
+import { frontOf } from '../../dir.js';
 
 /** 卡 id（模块自己的查表键）。 */
 const CARD = 'hex_mode_modules';
@@ -104,11 +136,14 @@ const KEY = Object.freeze({
   dusk: `${TAG}:isw:dusk`,         // 夕：maxTargets
   ghost2: `${TAG}:isw:ghost2`,     // 归溟幽灵鲨（与替身）：dealt / taken 倍率
   swire2: `${TAG}:isw:swire2`,     // 琳琅诗怀雅：redeployMul
+  hornAura: `${TAG}:isw:horn:aura`,        // 号角：全场己方重装的 atkPct / hpPct 光环（0.25 s 刷新 / 0.5 s 持续）
+  hornFront: `${TAG}:isw:horn:front`,      // 号角：身前 2 格的 rangeExtend / maxTargets
+  hornSeeStealth: `${TAG}:isw:horn:stealth`, // 号角：可以攻击隐匿敌人（flags.seeStealth）
 });
 /** 安洁莉娜挂在**敌人**身上的减重 buff 键（她离场时按它撤销）。 */
 const KEY_MASS = `${TAG}:isw:aglina:mass`;
 
-/** 设计稿 §4.3 的八名干员（棋子基名，见文件头「哪名干员吃哪条」）。 */
+/** 设计稿 §4.3 的九名干员（棋子基名，见文件头「哪名干员吃哪条」；第 9 名号角见文件头第 9 条）。 */
 const GROUP_ARCHET = Object.freeze(new Set(['chess_char_3_21']));   // 空弦
 const GROUP_MIZUKI = Object.freeze(new Set(['chess_char_4_09']));   // 水月
 const GROUP_GNOSIS = Object.freeze(new Set(['chess_char_4_13']));   // 灵知
@@ -117,6 +152,7 @@ const GROUP_GHOST2 = Object.freeze(new Set(['chess_char_5_13']));   // 归溟幽
 const GROUP_AGLINA = Object.freeze(new Set(['chess_char_5_20']));   // 安洁莉娜
 const GROUP_ROSMON = Object.freeze(new Set(['chess_char_6_12']));   // 迷迭香
 const GROUP_SWIRE2 = Object.freeze(new Set(['chess_char_3_04']));   // 琳琅诗怀雅
+const GROUP_HORN = Object.freeze(new Set(['chess_char_5_08']));     // 号角（_a / _b 归一）
 
 /** 替身 token 的判据：同玩家、`kind === 'token'`、defId / 名字像替身（见文件头 [ASSUMED] 5-2）。 */
 const DOLL_RE = /替身|doll|shadow/i;
@@ -203,6 +239,13 @@ export function installModeModulesIsw(hooks) {
       rosmonAtkScale: numOf(spec, 'rosmonAtkScale', 1),
       // 琳琅诗怀雅：再部署时间 -30%
       swireRedeployMul: numOf(spec, 'swireRedeployMul', 0.7),
+      // 号角（文件头第 9 条）：重装光环 atkPct / hpPct、身前每格 rangeExtend / maxTargets、部署技力与上限
+      hornAuraAtkPct: numOf(spec, 'hornAuraAtkPct', 0.08),
+      hornAuraHpPct: numOf(spec, 'hornAuraHpPct', 0.12),
+      hornFrontRange: numOf(spec, 'hornFrontRange', 1),
+      hornFrontTargets: numOf(spec, 'hornFrontTargets', 1),
+      hornSp: numOf(spec, 'hornSp', 10),
+      hornSpCap: numOf(spec, 'hornSpCap', 20),
     });
   }
 
@@ -295,6 +338,10 @@ export function installModeModulesIsw(hooks) {
       const mods = statMods(u, p);
       const key = statKey(u);
       if (mods && key) passiveBuff(battle, u, key, mods, { tags: ['hex'] });
+      // 号角（第 9 条 a）：可以攻击隐匿敌人 —— 常驻 `flags.seeStealth`（targeting.js canTargetEnemy 认它）
+      if (inGroup(u, GROUP_HORN)) {
+        passiveBuff(battle, u, KEY.hornSeeStealth, null, { flags: { seeStealth: true }, tags: ['hex'] });
+      }
       return;
     }
     if (isDollToken(u, u.ownerId) && battle.allyUnits.some((o) => isOwnOp(o, u.ownerId) && inGroup(o, GROUP_GHOST2) && !!iswModuleOf(o))) {
@@ -337,12 +384,112 @@ export function installModeModulesIsw(hooks) {
   };
 
   // ===================================================================================================================
+  // 号角 · 重装光环 / 身前 2 格 / 部署技力 / seeStealth（文件头第 9 条）
+
+  /** 号角身前数的格数（前 1、前 2 格 = 两张格子，也是 rangeExtend / maxTargets 的封顶）。 */
+  const HORN_FRONT_TILES = 2;
+  /** 光环刷新间隔 / 持续时间（与 kits/ops/chess_char_5_08-horn.js 军事要塞的 AURA_IV / AURA_DUR 同值）。 */
+  const HORN_AURA_IV = 0.25;
+  const HORN_AURA_DUR = 0.5;
+
+  /** 这名干员是不是「拥有者的号角 + 装了启用的 ISW- 特限模组」。 */
+  const isHornCarrier = (u) => isIswCarrier(u) && inGroup(u, GROUP_HORN);
+
+  /** 拥有者 pid 的、在场的号角。 */
+  const hornCarriers = (pid) => fieldCarriers(pid, GROUP_HORN);
+
+  /**
+   * 号角的光环（第 9 条 b）：全场己方 `profession === 'TANK'` 的干员（含队友的、含号角自己）`atkPct` / `hpPct`。
+   * 同键替换 ⇒ 每 0.25 s 重挂一次、持续 0.5 s（军事要塞同一手法）；没有在场的号角就什么都不挂，旧的那份自然过期。
+   * @param {string} pid 拥有者
+   */
+  const applyHornAura = (pid) => {
+    const p = plan.get(pid);
+    if (!p || !hornCarriers(pid).length) return;
+    for (const a of battle.allies()) {
+      if (a.kind !== 'op' || a.def?.profession !== 'TANK') continue;
+      battle.addBuff(a, {
+        key: KEY.hornAura, duration: HORN_AURA_DUR,
+        mods: { atkPct: p.hornAuraAtkPct, hpPct: p.hornAuraHpPct }, tags: ['hex'],
+      });
+    }
+  };
+
+  /**
+   * 号角身前 1、2 格上的己方单位数（干员 + 召唤物，装置不算），封顶两张格子（第 9 条 c）。
+   * @param {any} u 号角
+   * @returns {number} 0 … HORN_FRONT_TILES
+   */
+  const hornFrontCount = (u) => {
+    let n = 0;
+    for (let k = 1; k <= HORN_FRONT_TILES; k++) {
+      const [r, c] = frontOf(u.tileR, u.tileC, u.dir, k);
+      if (!battle.grid || !battle.grid.inRect(r, c)) continue;
+      const a = battle.unitAt(r, c);
+      if (!a || a === u || a.side !== 'ally' || a.kind === 'device') continue;
+      if (!a.alive || !a.deployed || a.hidden) continue;
+      n++;
+    }
+    return Math.min(HORN_FRONT_TILES, n);
+  };
+
+  /** 按**当前**身前人数给号角的 rangeExtend / maxTargets 装 / 改 / 撤（数值没变就不重建 buff 实例）。 */
+  const refreshHornFront = (pid) => {
+    const p = plan.get(pid);
+    if (!p) return;
+    for (const u of battle.allyUnits) {
+      if (!isOwnOp(u, pid) || !inGroup(u, GROUP_HORN) || !iswModuleOf(u)) continue;
+      const n = isOnField(u) ? hornFrontCount(u) : 0;
+      const rangeExtend = n * p.hornFrontRange;
+      const maxTargets = n * p.hornFrontTargets;
+      const has = typeof u.findBuff === 'function' ? u.findBuff(KEY.hornFront) : null;
+      if (rangeExtend > 0 || maxTargets > 0) {
+        if (has && has.mods && has.mods.rangeExtend === rangeExtend && has.mods.maxTargets === maxTargets) continue;
+        passiveBuff(battle, u, KEY.hornFront, { rangeExtend, maxTargets }, { tags: ['hex'] });
+      } else if (has) {
+        battle.removeBuff(u, KEY.hornFront);
+      }
+    }
+  };
+
+  /**
+   * 3 级技力（第 9 条 d）：每次部署给号角 `hornSp` 点技力，本场累计封顶 `hornSpCap`（`u.mem` 记账）。
+   * 同一个部署只给一次（`u.mem.hornSpDeploy === u.deploySeq`）⇒ `battleStart` 的补挂与 `deploy` 钩子幂等。
+   * @param {any} u 刚部署的干员
+   * @returns {number} 实际到手的技力（引擎拒绝时 0）
+   */
+  const giveHornDeploySp = (u) => {
+    if (!u || !isHornCarrier(u) || !isOnField(u)) return 0;
+    const p = plan.get(u.ownerId);
+    if (!p) return 0;
+    if (u.mem.hornSpDeploy === u.deploySeq) return 0;
+    u.mem.hornSpDeploy = u.deploySeq;
+    const given = Number.isFinite(u.mem.hornSpGiven) ? u.mem.hornSpGiven : 0;
+    const left = p.hornSpCap - given;
+    if (!(left > 0)) return 0;
+    const sk = u.skill;
+    if (!sk || typeof sk.gainSp !== 'function') return 0;
+    const got = sk.gainSp(Math.min(p.hornSp, left), 'module');
+    if (!(got > 0)) return 0;
+    u.mem.hornSpGiven = given + got;
+    return got;
+  };
+
+  // 光环：每 0.25 s 重挂一次（持续 0.5 s ⇒ 号角离场后 0.5 s 内自然过期）；身前格数：每 0.5 s 对账（设计稿 §3-3）
+  for (const pid of owners) {
+    battle.every(HORN_AURA_IV, () => applyHornAura(pid));
+    battle.every(0.5, () => refreshHornFront(pid));
+  }
+
+  // ===================================================================================================================
   // 注册：battleStart / deploy / death / enemySpawn
 
-  /** 全场扫一遍（battleStart / refresh 的入口）：常驻面板 + 空弦那一份 + 安洁莉娜的减重。 */
+  /** 全场扫一遍（battleStart / refresh 的入口）：常驻面板 + 空弦那一份 + 安洁莉娜的减重 + 号角那三条。 */
   const refresh = () => {
     for (const u of battle.allyUnits) applySelfPassive(u);
     for (const pid of owners) refreshArchet(pid);
+    for (const pid of owners) { applyHornAura(pid); refreshHornFront(pid); }
+    for (const u of battle.allyUnits) giveHornDeploySp(u);
     refreshMass();
   };
 
@@ -350,16 +497,23 @@ export function installModeModulesIsw(hooks) {
 
   battle.on('deploy', (c) => {
     const u = c && c.unit;
-    if (!u || u.side !== 'ally' || !owned.has(u.ownerId)) return;
+    if (!u || u.side !== 'ally') return;
+    // 号角的光环 / 身前格数按**全场**算（含队友的干员与召唤物），所以先于「拥有者自己的干员」那道门控跑一次
+    for (const pid of owners) { applyHornAura(pid); refreshHornFront(pid); }
+    if (!owned.has(u.ownerId)) return;
     applySelfPassive(u);
+    giveHornDeploySp(u);
     refreshArchet(u.ownerId);
     refreshMass();
   });
 
-  // 「在场」掉回去时把空弦那一份收回来（设计稿只写了 battleStart / deploy，见文件头 [ASSUMED] 1-3）
+  // 「在场」掉回去时把空弦那一份收回来（设计稿只写了 battleStart / deploy，见文件头 [ASSUMED] 1-3）；
+  // 号角身前格数同理：有人（谁的都算）离场就要掉回去（第 9 条 c）
   battle.on('death', (c) => {
     const u = c && c.unit;
-    if (!u || !owned.has(u.ownerId)) return;
+    if (!u) return;
+    for (const pid of owners) refreshHornFront(pid);
+    if (!owned.has(u.ownerId)) return;
     refreshArchet(u.ownerId);
   });
 
