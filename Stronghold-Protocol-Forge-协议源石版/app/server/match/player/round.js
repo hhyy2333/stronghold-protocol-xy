@@ -8,11 +8,13 @@
 
 import { boardOrder, pieceDir, tileKey } from '../board.js';
 import { computeBonds, bondSnapshot, activatedLayers, bondsWithGains, pieceBonds } from '../bondsMeta.js';
-import { ownsHex, applyThiefIncomeCut, applyForgeFusion, indomEmberBonuses, bankIndomEmber } from '../hextech.js';
+import { ownsHex, applyThiefIncomeCut, applyForgeFusion, indomEmberBonuses, bankIndomEmber, bondLayerCapOf } from '../hextech.js';
 
 export class PlayerRound {
   startRound(r) {
-    this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0 };
+    // `fundsGained` = 本回合已经获得的资金，addFunds 的一回合上限（协议等级 19 的 `fundsGainCap`）就按它算；下面那笔收入
+    // 本身也计入新回合的额度（业主 2026-10-29「增加限制玩家一回合最多获得30块」→「把这个负面做成 n19」）
+    this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0, fundsGained: 0 };
     // 可露希尔大降价's free-purchase window is 「本回合内」: it does not survive the round it was opened in
     this.shop.freeBuyWindow = 0;
     this.pendingLayerGains = null; // settled (or lapsed) at the last SETTLE
@@ -126,10 +128,11 @@ export class PlayerRound {
 
   /**
    * The bond states the views show (m.private bonds, m.public players[].bonds): the computed states plus the pending
-   * in-battle gains of this round's finished normal battle (bondsMeta.bondsWithGains). The 联防 field fights with them too
+   * in-battle gains of this round's finished normal battle (bondsMeta.bondsWithGains), clamped by THIS player's cap
+   * (【突破极限】: 9999, else BOND_LAYER_CAP — the same number settle() will apply). The 联防 field fights with them too
    * (battleInput `reached`); no other rule reads them.
    */
-  bondsView() { return bondsWithGains(this.bonds, this.pendingLayerGains); }
+  bondsView() { return bondsWithGains(this.bonds, this.pendingLayerGains, bondLayerCapOf(this)); }
 
   /**
    * `reached`: the bonds carry the layers this round's own combat reached (bondsView: the pending in-battle gains, capped
@@ -146,6 +149,13 @@ export class PlayerRound {
     // grant from `unit.bonds` (sim/content/support unitBonds). Without this the prep-side strip would show the shared
     // count while the battle itself still fought without it — the card is only half-real until both sides agree.
     const resonance = ownsHex(this, 'hex_bondresonance');
+    // 【特限恢复】(`hex_mode_modules`, 2 阶 / gold, 04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md §4.2):
+    // 拥有者的干员用 3 级模组数据（业主口径「所有形态」—— 普通 chess 与自选编队都算）。标记打在 unit 上，战斗侧
+    // (sim/battle/players.js → simdata getChess → shared/loadoutRecord.js withModuleLevel3) 据此把所选模组换成
+    // equipLevel 3 的记录；备战预览 `g.unitStats` 走同一份 battleInput，所以预览与实战是同一个数。
+    // [ASSUMED] 补位干员（standIn）不带这个标记：它打的是 data/backups.json 里另一名干员的身体与模组，不是「你的
+    // 干员」；「所有形态」指的是同一位干员自己的普通 / 精锐 / 自选形态。
+    const modeModules = ownsHex(this, 'hex_mode_modules');
     for (const { r, c, piece } of boardOrder(this.board)) {
       if (piece.kind === 'chess') {
         // 锻炉 (业主 2026-10-24): a fused 百变 is ONE item piece carrying `merged: [a, b]`; the battle gets the TWO
@@ -207,6 +217,8 @@ export class PlayerRound {
         // 干员调配 settings, 潜能 6 / 精英2 Lv.60 by default and for bots; never a stand-in's nor a prototype pick's)
         const cv = u.standIn ? null : this.cultivationFor(this.gd.chess(piece.id));
         if (cv) { u.potential = cv.potential; u.cultivate = cv.cultivate; }
+        // 【特限恢复】3 级模组：自己的干员（普通 chess 与 自选编队）都带 —— 补位干员不带（见上面 modeModules 的注释）
+        if (modeModules && !u.standIn) u.moduleLevel = 3;
         if (carry && carry.has(piece.uid)) u.carryState = carry.get(piece.uid);
         units.push(u);
       } else if (piece.kind === 'token') {
@@ -227,6 +239,11 @@ export class PlayerRound {
         id: e.id, key: e.key ?? null, source: e.iconKind ?? null, params: e.params ?? null, counter: e.counter ?? null, data: e.data ?? null,
       })),
       deviceOverrides: { ...this.deviceOverrides },
+      // 【突破极限】(hex_break_limit, 设计稿 §3): 这一场里**这个玩家**的盟约叠层上限。备战侧读的是同一个
+      // `bondLayerCapOf(this)`（player/economy.js addLayers、bondsMeta.bondsWithGains、settle、fields、invariants），
+      // 战斗侧 server/sim/battle/economy.js addLayers 用它当 cap（缺省 BOND_LAYER_CAP），所以「备战 / 战斗内 / 结算 /
+      // 客户端显示」四处是同一个数。没这张卡时它就是 999（= 官方 BOND_LAYER_CAP），战斗里与以前完全一样。
+      bondLayerCap: bondLayerCapOf(this),
     };
     // 不屈余烬 (业主 2026-10-28): the MATCH-LONG inheritance rides the input, so every copy a player owns fights with
     // the same totals regardless of when it was acquired. The equipment's behaviour (items/protocol.js) starts from this

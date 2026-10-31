@@ -32,7 +32,7 @@
 //                    for the match; those chess fight as their stand-ins (PlayerState setNotOwned; bots own everything).
 //                    `diy` (0.2.0 自选编队, optional): the human's 自选 picks (shared/protocol.js checkDiyPicks) — fixed for
 //                    the match; the slotted operators join the human's own shop (PlayerState setDiy / initDiyStock).
-//                    `hexBans` (业主 2026-10-21, optional): ≤ 3 protocol-originium card ids this seat's OWN draws skip
+//                    `hexBans` (业主 2026-10-21, optional): ≤ 6 protocol-originium card ids this seat's OWN draws skip
 //                    (checkHexBans; PlayerState.hexBans; hexDraft filters the offer/reroll pool). Bots ban none.
 //   opts.spectators  string[] (optional)        the room's spectator seats (remake feature, community report #26;
 //                                              server/lobby.js): never players — see addSpectator below
@@ -230,7 +230,7 @@ import { MatchWatch } from './match/watch.js';
 import { MatchIntents } from './match/intents.js';
 import { MatchPause } from './match/pause.js';
 import { MatchPhases } from './match/phases.js';
-import { MatchSetupVote } from './match/setupVote.js';
+import { MatchSetupReroll } from './match/setupReroll.js';
 import { MatchSpDraft } from './match/spDraft.js';
 import { MatchHexDraft } from './match/hexDraft.js';
 import { MatchTestField } from './match/testField.js';
@@ -562,21 +562,7 @@ export class Match {
     this.disabledBonds = bans.drawn;
     this.staticInactiveBonds = bans.staticOff;
     this.bannedChess = bans.banned;
-    /**
-     * 助战供给 (shared/support.js): the operators the HUMAN seats brought. Each gets one extra pool copy for this match
-     * and is in the pool even when the random bans took it out — a brought operator must be purchasable, because that is
-     * what borrowing it means here (the owner's call 2026-10-07: 助战干员进商店，按阶级像普通棋子一样购买出售).
-     * Bots never bring supports (PlayerState.setSupport refuses them), so their seats are ignored. Read from the seats
-     * because the pool is built before any player state exists; `PlayerState.setSupport` re-checks the same rule later.
-     */
-    this.supportSupply = [...new Set(opts.seats
-      .filter((s) => s && !s.isBot && Array.isArray(s.support))
-      .flatMap((s) => s.support.map((id) => String(id || ''))))]
-      .filter((id) => id && this.gd.isSupportChess(id))
-      .sort();
-    // 上游 0.2.4（DESIGN §31.8 共享库存）与我们的助战供给落在同一行，两者互不相干，故并存：
-    // 助战多一份拷贝走 SharedPool 的 support 选项；共享装备库存是另一个池，由 SharedItemPool 表达。
-    this.pool = new SharedPool(this.gd, { banned: bans.banned, support: this.supportSupply });
+    this.pool = new SharedPool(this.gd, { banned: bans.banned });
     this.itemPool = new SharedItemPool(this.gd, () => this.order);
     // 自选编队 (0.2.0): each human's slotted DIY pieces get their own stock — none for one whose bonds are all off this
     // match (player/diy.js initDiyStock); no randomness is drawn here
@@ -597,9 +583,7 @@ export class Match {
     this._phaseTimer = null;
     this._infoAdvanceTimer = null;
     this.setupRevision = 0;
-    this.setupVote = null;
-    this._setupVoteSeq = 0;
-    this._lastSetupVoteAt = -Infinity;
+    this._lastSetupRerollAt = -Infinity;
     this._turnTimer = null;
     this._pubDirty = false;
     this._pubTimer = null;
@@ -643,7 +627,8 @@ export class Match {
     this.hexDrawRound = 0;
     this.wave = null;
     this.bossWaves = null;
-    this.bossPairs = null; // drawn once per match; the hidden round retains partners and sides
+    this.bossPairs = null; // kept across rounds (a departure re-pairs only the orphan)
+    this.bossPairsRound = null; // the round the pairs were last planned in: the Hidden Core draws anew ONCE per round (GitHub #845)
     this.fields = [];
     this.runner = null;
     /** playerId → fieldId */
@@ -689,7 +674,7 @@ export class Match {
 }
 
 // the method modules, in this order (a name defined twice is an error, never a silent override)
-for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSetupVote, MatchSpDraft, MatchHexDraft, MatchTestField, MatchPrep, MatchCombat, MatchClientCombat, MatchRehearsal, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
+for (const part of [MatchPlatform, MatchInfra, MatchMessaging, MatchViews, MatchWatch, MatchIntents, MatchPause, MatchPhases, MatchSetupReroll, MatchSpDraft, MatchHexDraft, MatchTestField, MatchPrep, MatchCombat, MatchClientCombat, MatchRehearsal, MatchReports, MatchUnite, MatchBoss, MatchSettle]) {
   for (const key of Reflect.ownKeys(part.prototype)) {
     if (key === 'constructor') continue;
     if (Object.prototype.hasOwnProperty.call(Match.prototype, key)) throw new Error(`Match.${String(key)} is defined twice`);

@@ -106,7 +106,7 @@ describe('0.2.3 follow-up client features', { skip: !ENABLED }, () => {
       }
     } finally { await ctx.close(); }
   });
-  test('co-op opening reroll shows a unanimous vote, clears stale readiness and can be rejected', { timeout: 45000 }, async () => {
+  test('co-op opening reroll is the host alone: one confirmation, no vote, stale readiness cleared', { timeout: 45000 }, async () => {
     const ctx = await browser.createBrowserContext();
     try {
       const host = await pageIn(ctx), guest = await pageIn(ctx);
@@ -122,27 +122,17 @@ describe('0.2.3 follow-up client features', { skip: !ENABLED }, () => {
       await host.evaluate(() => globalThis.__SP__.net.request('room.start', {}));
       for (const p of [host, guest]) await p.waitForFunction(() => globalThis.__SP__.store.get().match.public?.phase === 'INFO_CHECK');
       await guest.evaluate(() => globalThis.__SP__.net.request('g.infoReady', { setupRevision: 0 }));
+      // The panel is the host's: a guest has no reroll control and no vote to answer.
+      assert.equal(await guest.$('.brief-reroll'), null);
       await host.waitForSelector('.brief-reroll button');
       await host.bringToFront();
       await host.click('.brief-reroll button');
-      await guest.waitForSelector('.brief-reroll .btn--primary');
-      assert.equal(await guest.evaluate(() => globalThis.__SP__.store.get().match.public.deadline), 0);
-      await guest.bringToFront();
-      await guest.click('.brief-reroll .btn--primary');
+      await host.waitForSelector('.modal [data-autofocus]');
+      await host.click('.modal [data-autofocus]');
       for (const p of [host, guest]) await p.waitForFunction(() => globalThis.__SP__.store.get().match.public?.setupRevision === 1);
       const state = await guest.evaluate(() => globalThis.__SP__.store.get().match.public);
-      assert.equal(state.rerollVote, null);
       assert.ok(state.players.filter((p) => !p.isBot).every((p) => !p.ready));
-      await host.waitForFunction(() => !!document.querySelector('.brief-reroll button:not(:disabled)'));
-      // Wait out the documented server anti-burst interval before a second request.
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      await host.bringToFront();
-      await host.click('.brief-reroll button');
-      await guest.waitForSelector('.brief-reroll .btn--danger');
-      await guest.bringToFront();
-      await guest.click('.brief-reroll .btn--danger');
-      await host.waitForFunction(() => !globalThis.__SP__.store.get().match.public.rerollVote);
-      assert.equal(await host.evaluate(() => globalThis.__SP__.store.get().match.public.setupRevision), 1);
+      assert.equal(await guest.$('.brief-reroll'), null);
     } finally { await ctx.close(); }
   });
   test('operator voice selection persists across reload and follows global after reset', async () => {

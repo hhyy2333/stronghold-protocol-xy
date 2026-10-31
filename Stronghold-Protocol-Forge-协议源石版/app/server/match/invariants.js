@@ -19,21 +19,20 @@
 //            range); no items on the board; chess count ≤ deploy cap
 //            (where a merge's elite goes — a consumed deployed copy's tile, else the hand — needs the state before the
 //            merge: audit.js checks it per merge)
-//   bonds    ps.bonds equals a fresh computeBonds() (every mutation recomputed them); every bond's layers 0 … BOND_LAYER_CAP
-//   shop     slot count follows the rolled layout; ids known; banned chess never offered by the shop / rewards — the
-//            only exception is an operator a player BROUGHT as 助战 (shared/support.js: it keeps one pool copy and is
-//            marked `support` on its slot), because banning a shop roll must not disable a support
+//   bonds    ps.bonds equals a fresh computeBonds() (every mutation recomputed them); every bond's layers 0 … that
+//            player's layer cap (BOND_LAYER_CAP 999, or 9999 with 【突破极限】 hex_break_limit)
+//   shop     slot count follows the rolled layout; ids known; banned chess never offered by the shop / rewards
 //   elim.    an eliminated player owns nothing (board, hand, temp, shop, offers, bounties, funds)
 //   choice   a player's open 教鞭 choice (`personalChoice`) is one of an alive, not-Ready player in the PREP of its own round,
 //            with one to three different cards
 //   match    phase known; teamLp / boss pool within range; combat fields match the alive players
 
-import { PHASE, BOND_LAYER_CAP } from '../../shared/constants.js';
+import { PHASE } from '../../shared/constants.js';
 import { FIELD, canPlace, placeClass, positionClass, parseKey } from './board.js';
 import { computeBonds } from './bondsMeta.js';
 // 装备位语义（第 7 段）：不变量里「占几格 / 最多几件 / 最多一件变形同构体」读这一局的策略（缺省档 = 官方那条算术）。
 import { matchSlotPolicy } from '../../shared/morph.js';
-import { equipCapCeiling } from './hextech.js';
+import { equipCapCeiling, bondLayerCapOf } from './hextech.js';
 
 const PHASES = new Set(Object.values(PHASE));
 
@@ -85,9 +84,11 @@ export function collectViolations(m, { limit = 25 } = {}) {
     if (!(ps.shop.upgradePrice >= 0)) fail(`${id}: upgradePrice ${ps.shop.upgradePrice}`);
     if (!Number.isInteger(ps.shop.freeRefreshes) || ps.shop.freeRefreshes < 0) fail(`${id}: freeRefreshes ${ps.shop.freeRefreshes}`);
     if (!Number.isInteger(ps.shop.freeBuyWindow) || ps.shop.freeBuyWindow < 0) fail(`${id}: freeBuyWindow ${ps.shop.freeBuyWindow}`);
-    // the official per-bond layer cap (shared/constants.js): no writer may pass it
+    // the per-bond layer cap of THIS player (shared/constants.js BOND_LAYER_CAP = 999, or the 9999 of 【突破极限】
+    // hex_break_limit — server/match/hextech.js bondLayerCapOf): no writer may pass it
+    const layerCap = bondLayerCapOf(ps);
     for (const [b, v] of Object.entries(ps.layers || {})) {
-      if (!(Number.isFinite(v) && v >= 0 && (!(BOND_LAYER_CAP > 0) || v <= BOND_LAYER_CAP))) fail(`${id}: ${b} layers ${v}`);
+      if (!(Number.isFinite(v) && v >= 0 && (!(layerCap > 0) || v <= layerCap))) fail(`${id}: ${b} layers ${v}`);
     }
 
     if (!ps.alive) {
@@ -218,11 +219,7 @@ export function collectViolations(m, { limit = 25 } = {}) {
         if (!s) return;
         if (s.kind === 'chess' ? !gd.chess(s.id) : !gd.item(s.id)) fail(`${id}: shop slot ${i} unknown ${s.kind} ${s.id}`);
         if (!Number.isInteger(s.basePrice) || s.basePrice < 0) fail(`${id}: shop slot ${i} basePrice ${s.basePrice}`);
-        // 助战是这条规则唯一的例外（shared/support.js）：本局随机禁用的是**抽卡内容**，而带上的助战必须买得到，
-        // 所以它的池子拷贝能出现在商店里 —— 前提是它真的带着那份助战拷贝（pool.isSupport），不是被禁了还漏出来。
-        if (s.kind === 'chess' && banned.has(gd.baseIdOf(s.id)) && !(s.support === true && m.pool.isSupport(gd.baseIdOf(s.id)))) {
-          fail(`${id}: banned chess ${s.id} in the shop`);
-        }
+        if (s.kind === 'chess' && banned.has(gd.baseIdOf(s.id))) fail(`${id}: banned chess ${s.id} in the shop`);
         if (s.kind === 'chess' && gd.chess(s.id)?.isDiy && !(ps.diyStock && ps.diyStock.has(gd.baseIdOf(s.id)))) fail(`${id}: 自选 slot ${s.id} in the shop without its stock`);
       });
       for (const o of ps.offers) {

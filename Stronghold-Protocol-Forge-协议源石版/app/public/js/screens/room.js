@@ -52,7 +52,7 @@ import { ChatPanel } from './chat.js';
 import * as roomMods from '../roomMods.js';
 import { roomModsOf, shortDigest } from '../roomMods.js';
 import { loadCatalog, planAlignment, alignRoom, missingPackIds, storeFor } from '../mods/align.js';
-import { PROTOCOL_LEVEL_MAX, protocolLevelEffects, protocolLevelHeadline } from '../../../shared/protocolLevels.js';
+import { PROTOCOL_LEVEL_MAX, PROTOCOL_LEVEL_SPECIAL_EFFECT_IDS, protocolLevelEffects, protocolLevelHeadline } from '../../../shared/protocolLevels.js';
 import { shouldAutoFill, autoFillDigest, AUTO_FILL_DELAY_MS } from '../mods/autoFill.js';
 import { net } from '../net.js';
 import { store, useStore, shallowEqual, emptyMatch, isSpectating, serverNow, loadPref, savePref } from '../store.js';
@@ -66,6 +66,9 @@ import { ProtocolScene } from '../ui/protocolScene.js';
 import { SearchPanel, FoundPanel } from '../ui/matchFlow.js';
 import { usePresence, useRise, afterLeave } from '../ui/transitions.js';
 import { t, tc } from '../../../shared/i18n.js';
+
+/** 模组目录第一次没拿到时，隔多久再试一次（蓝绿切流 / 手机切网这种抖动通常一两秒就过去了）。 */
+const CATALOG_RETRY_MS = 1500;
 
 const MAX_SEATS = Number(SEAT_CONST.MAX_SEATS) || 4;
 const DEFAULT_SEATS = Number(SEAT_CONST.DEFAULT_SEATS) || MAX_SEATS;
@@ -539,7 +542,14 @@ function RoomModsPanel({ room, myId = null, onAlignment = null }) {
     setAutoRun(false);
     setBytesDone(0);
     (async () => {
-      const catalog = await loadCatalog();
+      // 目录拉不到（超时 / 被掐断）时再试一次：蓝绿切流、手机切网这类抖动通常一两秒就过去了，
+      // 而这一条链不落定，玩家就一直停在「正在核对…」。第二次仍拿不到才按「不知道」处理（fail closed）。
+      let catalog = await loadCatalog();
+      if (!catalog) {
+        await new Promise((resolve) => { setTimeout(resolve, CATALOG_RETRY_MS); });
+        if (!live || !alive.current) return;
+        catalog = await loadCatalog();
+      }
       const next = await planAlignment({ catalog, mods, store: storeFor() });
       if (!live || !alive.current) return;
       setPlan(next);
@@ -1081,8 +1091,8 @@ export function RoomScreen() {
               <button type="button" class="rs-lvhelp__close" aria-label=${t('关闭')} onClick=${() => setLevelHelp(false)}>×</button>
             </div>
             <ul class="rs-lvhelp__list">
-              ${levelEffects.map((e) => html`<li key=${e.id} class=${'rs-lvhelp__item' + (e.id === 'extraBoss' ? ' is-special' : '')}>
-                <span aria-hidden="true">${e.id === 'extraBoss' ? '★' : '·'}</span><span>${t(e.msgid, e.params)}</span>
+              ${levelEffects.map((e) => html`<li key=${e.id} class=${'rs-lvhelp__item' + (PROTOCOL_LEVEL_SPECIAL_EFFECT_IDS.includes(e.id) ? ' is-special' : '')}>
+                <span aria-hidden="true">${PROTOCOL_LEVEL_SPECIAL_EFFECT_IDS.includes(e.id) ? '★' : '·'}</span><span>${t(e.msgid, e.params)}</span>
               </li>`)}
             </ul>
           </div>` : null}` : null}

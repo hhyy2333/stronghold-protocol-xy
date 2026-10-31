@@ -28,15 +28,22 @@
 //   specBounds(spec, gd) / validateClientResult(spec, result, { gd })
 //                                          a client's b.result is accepted only when it is plausible for its spec;
 //                                          the returned result is rebuilt from whitelisted fields (never the raw object)
-//   uniteBillBounds(spawns, gd)            联防: per leaker, the most survivors settlement can bill (sent in + the
-//                                          offspring bound) — the live counter's clamp
+//   uniteBillBounds(spawns, gd)            联防: per leaker, the most survivors settlement can bill (what the escaped
+//                                          wave sent in; offspring never — GitHub #675) — the live counter's clamp
 //   syntheticResult(players, progress)     stand-in when a boss field's client never reported
 import { TICK, SNAPSHOT_EVERY } from '../sim/constants.js';
-import { layerGainRoom } from '../../shared/constants.js';
+import { BOND_LAYER_CAP, layerGainRoom } from '../../shared/constants.js';
+import { verbSpawnMods } from '../../shared/hextech.js';
 import { uniteLeft } from '../sim/spec.js';
 import { diyTokenOwner, diyRecordOf } from '../../shared/diy.js';
 
 export const MAX_TICKS_PER_INTERVAL = 8;
+/**
+ * How long ONE `_pump()` may spend before its fields are abandoned as a timeout (wall clock — this file runs on the
+ * server, where a clock is allowed; the sim keeps count-based caps so replays stay deterministic). Generous on purpose:
+ * a normal pump is a few milliseconds even with AI fields, so only a pathological match gets near it.
+ */
+export const PUMP_BUDGET_MS = 5000;
 export const INTERVAL_MS = 1000 / 30;
 export const GAME_SPEED = 2;
 export const HARD_CAP_SECONDS = 3700;
@@ -149,9 +156,19 @@ export class FieldRunner {
     const cap = maxTicksPerInterval(speed);
     let n = Math.floor(this.acc / TICK + 1e-9);
     if (n > cap) { n = cap; this.acc = 0; } else this.acc -= n * TICK;
+    const budgetFrom = Date.now();
     for (let i = 0; i < n && !this.done && !this.stopped; i++) {
       this._tick();
       if (this.fields.every((f) => !f.live)) break;
+    }
+    // Wall-clock budget of ONE pump (server side, where a clock is allowed — the sim's own caps are count-based so that
+    // replays stay deterministic). A pump that spends longer than PUMP_BUDGET_MS on a handful of ticks means the fields
+    // are pathological (a content storm dragging on without tripping the sim's per-tick caps); abandon them rather than
+    // letting the interval queue up behind them. 2026-10-30: the sim caps above are the real guard — this one tells an
+    // operator *which* match was the problem.
+    if (Date.now() - budgetFrom > PUMP_BUDGET_MS) {
+      this.m.log?.warn?.(`[match ${this.m.roomCode}] combat over its wall-clock budget (${Date.now() - budgetFrom} ms in one pump) — abandoning the fields`);
+      this._forceAll('timeout');
     }
     if (this.time >= HARD_CAP_SECONDS) this._forceAll('timeout');
     this._checkDone();
@@ -681,6 +698,8 @@ export function specBounds(spec, gd = null) {
   // enemy on a timeout field). Same shape as the 回响 children below: keys content may add, bounded by maxTotal.
   /** content key → how many bodies the card adds per battle (通缉令 1, 通厕大队 `params.count`) */
   const contentKeys = new Map();
+  /** content key → the stat multipliers the spawning card gives it (通厕大队's (1 + 5x)%), for the leak rebuild below */
+  const contentMods = new Map();
   const addContentKey = (key, n) => contentKeys.set(key, Math.max(1, Math.min(20, Math.trunc(Number(n) || 1)), contentKeys.get(key) || 0));
   const wantedKey = spec && spec.flags && typeof spec.flags.enemyHexWanted === 'string' ? spec.flags.enemyHexWanted : '';
   if (wantedKey) addContentKey(wantedKey, 1);
@@ -689,7 +708,17 @@ export function specBounds(spec, gd = null) {
     const params = rec && rec.params && typeof rec.params === 'object' ? rec.params : null;
     if (!params) continue;
     // every `enemy_…` string a verb card carries is a body it can spawn (通厕大队's `enemyKey`; a future card's own key)
-    for (const v of Object.values(params)) if (typeof v === 'string' && /^enemy_[A-Za-z0-9_]+$/.test(v)) addContentKey(v, params.count);
+    // — and, when the card scales that body, the multipliers it spawns with. Those are recomputed here from the card's
+    // `params` + the spec's round via the same helper the battle script spawns with (shared/hextech.js
+    // verbSpawnMods), never read off the client: a leaked body re-enters 联防 with its `mods`, so a leak of a
+    // content-scaled body used to be rebuilt with `mods: null` and came back at full stats (业主 2026-10-28:
+    // 「前期通厕大队会出现联防2w5血700多攻的杰斯顿，数值异常bug」).
+    const mods = verbSpawnMods(rec.verb, params, spec && spec.round);
+    for (const v of Object.values(params)) {
+      if (typeof v !== 'string' || !/^enemy_[A-Za-z0-9_]+$/.test(v)) continue;
+      addContentKey(v, params.count);
+      if (mods) contentMods.set(v, mods);
+    }
   }
   for (const k of contentKeys.keys()) if (!gd || typeof gd.enemy !== 'function' || gd.enemy(k)) derived.add(k);
   // 协议源石敌方动词「回响」(ehex_echo): a killed enemy splits into `params.count` copies of the SAME key that DO count
@@ -766,17 +795,24 @@ export function specBounds(spec, gd = null) {
         if (gd && u.diy) for (const t of diySummonsOf(gd, defId, u.diy)) defIds.add(t);
       }
     }
-    // the layers each bond starts the battle with (PlayerBattleInput.bonds): a gain never passes BOND_LAYER_CAP
+    // the layers each bond starts the battle with (PlayerBattleInput.bonds): a gain never passes this player's cap
+    // (BOND_LAYER_CAP 999 — 9999 with 【突破极限】, PlayerBattleInput.bondLayerCap)
     const startLayers = new Map();
     for (const [id, b] of Object.entries(p.bonds && typeof p.bonds === 'object' ? p.bonds : {})) {
       const v = Number(b && b.layers);
       if (Number.isFinite(v) && v > 0) startLayers.set(id, v);
     }
-    players.set(p.playerId, { chess, all, names, defIds, bonds: gd ? layerBondsOf(p, gd) : null, startLayers, layerAllow: gd ? layerAllowanceOf(p, gd) : new Map() });
+    // 每玩家的盟约叠层上限（【突破极限】, 设计稿 §3）：由 player/round.js battleInput 写进 input（match 侧 bondLayerCapOf），
+    // 缺省 / 非法值 = BOND_LAYER_CAP，所以老 spec（没有这个字段）的校验与以前完全一样。
+    const capRaw = Number(p.bondLayerCap);
+    const bondLayerCap = Number.isFinite(capRaw) && capRaw > 0 ? capRaw : BOND_LAYER_CAP;
+    players.set(p.playerId, { chess, all, names, defIds, bonds: gd ? layerBondsOf(p, gd) : null, startLayers, bondLayerCap, layerAllow: gd ? layerAllowanceOf(p, gd) : new Map() });
   }
   const round = Number(spec && spec.round) || 0;
   return {
     keyCounts, leakKeyCounts, keySourceCounts, derivedSourceCounts, uncountedKeys, derived, spawnCount, bountyCoins, sources, players,
+    // content-spawned keys the wave never schedules (通缉令 / 通厕大队) and the stat multipliers their card gives them
+    contentMods,
     // content spawns (splits, summons, boss minions) can add enemies beyond the schedule
     maxTotal,
     layerCap: 60 + 4 * round,
@@ -785,16 +821,23 @@ export function specBounds(spec, gd = null) {
 }
 
 /**
- * 联防: the most enemies settlement can bill each leaker — what it sent in plus what those enemies can leave behind
- * (splits / summons within offspringPerParent, maxTotal without a data bound): validateClientResult's (key, leaker)
- * budgets summed per leaker. Bounds the live counter (Match._uniteLeft; user playtest #6 item 7).
+ * 联防: the most enemies settlement can bill each leaker — what the escaped wave SENT IN (keySourceCounts only):
+ * validateClientResult's (key, leaker) budgets summed per leaker. Bounds the live counter (Match._uniteLeft; user
+ * playtest #6 item 7).
+ *
+ * The offspring allowance (derivedSourceCounts: split children, summons) is deliberately NOT added (GitHub #675,
+ * upstream Forge 0.3.1 §36.19): such an enemy appears while the field runs, never crossed the leaker's own goal, and
+ * the field tags it 'uniteRuntime' at birth — settlement (uniteSurvivors) bills nobody for it, so the ×N this clamps
+ * must not grow with it either. Adding the two together is exactly the reported bug (×N climbing, LP lost for an enemy
+ * the leaker never sent in). validateClientResult still ACCEPTS such a leak (against the offspring budget), so an
+ * honest client is never rejected — only the billing ignores it.
  * @param {object[]} spawns the 联防 spawns (unite.js plan.leaked: { enemyKey, sourcePlayerId, … })
  * @returns {Map<string, number>} leaker id → bound
  */
 export function uniteBillBounds(spawns, gd = null) {
   const B = specBounds({ spawns: Array.isArray(spawns) ? spawns : [] }, gd);
   const out = new Map();
-  for (const [ks, n] of [...B.keySourceCounts, ...B.derivedSourceCounts]) {
+  for (const [ks, n] of B.keySourceCounts) {
     const pid = ks.slice(ks.lastIndexOf('|') + 1);
     if (pid) out.set(pid, (out.get(pid) || 0) + n);
   }
@@ -896,8 +939,19 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         const src = match || cands[0] || null;
         const parent = match ? null : (spec.spawns || []).find((s) => s && typeof s.enemyKey === 'string' && sameMods(s.mods ?? null, l.mods ?? null)) || null;
         const modsOf = (s) => (s && s.mods ? { ...s.mods } : null);
-        const mods = match ? modsOf(match) : parent ? modsOf(parent) : modsOf(src);
+        // A content-spawned body the wave never schedules (通厕大队's Jesseltons) has no spec spawn to read its mods
+        // from; the card's scale for THIS spec is deterministic (B.contentMods: card params + round), so the numbers
+        // come from there — the client only selects which body leaked when the same key is also scheduled, and even
+        // then its mods must equal the recomputed ones. Without this the rebuild wrote `mods: null` and the leak
+        // re-entered 联防 at the body's data stats (业主 2026-10-28).
+        const cm = B.contentMods && B.contentMods.get(key);
+        // content-only key (no schedule entry in this spec): only the card can have spawned it, so the card's own scale
+        // wins outright; mixed key: the client's mods must name the content half before it is believed this far
+        const contentHalf = cm && (cands.length === 0 || sameMods(l.mods ?? null, cm)) ? { ...cm } : null;
+        const mods = match ? modsOf(match) : parent ? modsOf(parent) : contentHalf ? contentHalf : modsOf(src);
         let sourcePlayerId = typeof l.sourcePlayerId === 'string' ? l.sourcePlayerId : null;
+        // set only after a 联防 `uniteRuntime` leak has spent the offspring budget below — never copied off another field
+        let keepRuntime = false;
         if (spec.kind === 'unite') {
           // 认不出来的 source 才回落到 spawn 计划。**已经有主**的（这一场里真实存在的玩家 id）不要动：
           // 通厕大队 / 通缉令 这类敌方 verb 卡在战斗里自己刷的敌人，泄漏时带的是它走到的半场主人（一个 helper），
@@ -905,8 +959,16 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
           const knownPlayer = sourcePlayerId != null && B.players.has(sourcePlayerId);
           if (!knownPlayer && (!sourcePlayerId || !B.sources.has(sourcePlayerId))) sourcePlayerId = src && typeof src.sourcePlayerId === 'string' ? src.sourcePlayerId : null;
           // whose LP a surviving enemy costs: never more of (key, leaker) than that leaker sent into the 联防 — or, for a
-          // split / summon, than the enemies that leaker sent in can leave behind
-          if (!takeSource(key, sourcePlayerId) && !takeDerived(key, sourcePlayerId)) {
+          // split / summon, than the enemies that leaker sent in can leave behind.
+          // `uniteRuntime` (GitHub #675) exempts a runtime child from LP: an enemy born while the field ran was never one of
+          // the leaker's own (battle/spawns.js tags it). It must spend ONLY the offspring budget — accepting the flag after
+          // `takeSource` let every scheduled body pay 0 LP — and an impossible flag is refused, so the server re-simulates
+          // even with SP_VERIFY off. Residual [ASSUMED]: that budget cannot prove origin; a key that is both a scheduled body
+          // and another enemy's child can still be flagged within its offspring cap, and only SP_VERIFY=all closes it.
+          if (l.uniteRuntime === true) {
+            if (!takeDerived(key, sourcePlayerId)) return bad('unite runtime');
+            keepRuntime = true;
+          } else if (!takeSource(key, sourcePlayerId) && !takeDerived(key, sourcePlayerId)) {
             // 协议源石敌方 verb 卡在战斗里自己刷出来的敌人（通厕大队 / 通缉令）在联防里**没有 leaker**：它不是任何玩家漏
             // 进来的。真跑那一路 Battle._recordLeak 记的是它走到的那个半场的主人 —— 在联防里是一个 helper —— 而
             // settle 的 uniteSurvivors 只结算 plan.leakers，所以它一分 LP 都不扣。战报里它因此带着一个 helper 的 id，
@@ -920,6 +982,8 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         } else if (sourcePlayerId !== pid && !B.players.has(sourcePlayerId)) sourcePlayerId = pid;
         const lpr = finiteIn(l.lpr, 0, 1000) ? l.lpr : 1;
         const e = { enemyKey: key, mods, lpr, sourcePlayerId, tag: src ? (src.tag ?? null) : (typeof l.tag === 'string' ? l.tag : null), counted, spawned: true };
+        // stored only after the offspring take succeeded, and only for a 联防 spec
+        if (keepRuntime) e.uniteRuntime = true;
         if (l.boss) e.boss = true;
         leaked.push(e);
       }
@@ -931,8 +995,9 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       const layerGains = {};
       for (const [bondId, n] of Object.entries(p.layerGains || {})) {
         // ≤ 60 + 4·round + what the player's layer 特质 can add to the bond (layerAllowanceOf; uncapped ones: no flat
-        // bound), and never past BOND_LAYER_CAP from the layers the bond started with (Battle.addLayers clamps)
-        const bound = Math.min(B.layerCap + (own.layerAllow.get(bondId) || 0), layerGainRoom(own.startLayers.get(bondId) || 0, Infinity));
+        // bound), and never past this player's cap from the layers the bond started with (Battle.addLayers clamps:
+        // BOND_LAYER_CAP 999, or the 9999 of 【突破极限】 — `own.bondLayerCap` from the spec's PlayerBattleInput)
+        const bound = Math.min(B.layerCap + (own.layerAllow.get(bondId) || 0), layerGainRoom(own.startLayers.get(bondId) || 0, Infinity, own.bondLayerCap));
         if (!finiteIn(n, 0, bound)) return bad('layer bound');
         if (n > 0 && spec.flags && spec.flags.layerGainsEnabled === false) return bad('layers disabled');
         if (gd && typeof gd.bond === 'function' && !gd.bond(bondId)) return bad('bond');

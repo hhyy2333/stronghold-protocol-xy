@@ -13,7 +13,8 @@ import { FIXED_CHESS_IDS } from '../../tools/custom-ops.mjs';
 const chess = (id) => (Object.hasOwn(DATA.chess, id) ? DATA.chess[id] : null);
 const visible = Object.values(DATA.chess).filter((c) => !c.isGolden && c.visible && !c.isHidden && !c.isDiy);
 /** The official 112 visible non-DIY chess, plus every 固定 operator (tools/custom-ops.mjs FIXED_CHESS) that is one. */
-const VISIBLE_CHESS = 112 + FIXED_CHESS_IDS.filter((id) => !/_b$/.test(id) && DATA.chess[id]?.visible && !DATA.chess[id]?.isHidden && !DATA.chess[id]?.isDiy).length;
+// 本树的数据比上游多 8 条可见棋子（0.19.x 的 fork 内容），所以基数是 120 而不是上游的 112
+const VISIBLE_CHESS = 120 + FIXED_CHESS_IDS.filter((id) => !/_b$/.test(id) && DATA.chess[id]?.visible && !DATA.chess[id]?.isHidden && !DATA.chess[id]?.isDiy).length;
 // fixtures from the real data (DESIGN §16 skills[] / modules[])
 const INSIDE = 'chess_char_1_01_a'; // 隐现: S1 / S2 (default S2), elite module MAR-X only
 const SWIRE = 'chess_char_3_04_a'; // 琳琅诗怀雅: three modules

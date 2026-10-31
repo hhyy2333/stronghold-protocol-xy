@@ -23,7 +23,7 @@
 // `tier` = number of thresholds reached (downward: 1 when active); `active = tier ≥ 1`.
 // Layers (`ps.layers[bondId]`) persist the whole match; they are reported for every bond but only matter while active.
 
-import { layerGainRoom } from '../../shared/constants.js';
+import { BOND_LAYER_CAP, layerGainRoom } from '../../shared/constants.js';
 import { memberBonds, itemRecs } from '../../shared/morph.js';
 import { ownsHex, bondCapOf, fissionBondIds, bondNeedBonusOf } from './hextech.js';
 
@@ -318,19 +318,23 @@ export function bondList(gd, bonds, { full = false, off = null } = {}) {
 /**
  * The bond states the views show (m.private / m.public players[].bonds, DESIGN §20.15): `bonds` with this round's
  * IN_BATTLE gains of a finished normal battle (`gains` = the result's layerGains, PlayerState.pendingLayerGains, set
- * when the COMBAT phase ends) added the way settle() will add them — at most up to BOND_LAYER_CAP — so the strip of a
+ * when the COMBAT phase ends) added the way settle() will add them — at most up to `cap` — so the strip of a
  * player (and of a teammate watching him) keeps the layers his battle reached through the 联防 until the settlement
  * makes them persistent. `bonds` itself when there is nothing to add; the persistent state is never touched.
+ *
+ * `cap` 是**该玩家**的盟约叠层上限（【突破极限】, 设计稿 §3）：缺省 BOND_LAYER_CAP（999），拥有 `hex_break_limit` 的玩家由
+ * 调用方传 `bondLayerCapOf(ps)`（9999）—— 和 settle() / 战斗内加层读同一个数，所以预览的层数就是结算后的层数。
  * @param {ReturnType<typeof computeBonds>} bonds
  * @param {Record<string, number>|null|undefined} gains
+ * @param {number} [cap] this player's layer cap (default BOND_LAYER_CAP)
  */
-export function bondsWithGains(bonds, gains) {
+export function bondsWithGains(bonds, gains, cap = BOND_LAYER_CAP) {
   if (!gains || typeof gains !== 'object') return bonds;
   let out = null;
   for (const [id, n] of Object.entries(gains)) {
     const b = bonds && bonds[id];
     if (!b) continue;
-    const add = layerGainRoom(b.layers, Math.floor(Number(n) || 0));
+    const add = layerGainRoom(b.layers, Math.floor(Number(n) || 0), cap);
     if (!(add > 0)) continue;
     if (!out) out = { ...bonds };
     out[id] = { ...b, layers: (b.layers || 0) + add };

@@ -8,6 +8,14 @@ import { ERR, PHASE } from '../../../shared/constants.js';
 import { freeSlot } from '../board.js';
 import { OK, fail } from './common.js';
 
+/**
+ * 突变细胞's official effect id (data/items.json `chess_item_5_08_e_a`; `_b` is its golden record). The same predicate
+ * as server/sim/content/bands/meta.js isMutationCell — both read the DATA's effect id, never a hard-coded item id, so a
+ * regenerated table keeps them in step.
+ */
+const MUTATION_CELL_EFFECT = 'eff_acarm072';
+const isMutationCell = (gd, id) => { const it = gd.item(id); return !!(it && it.effectId === MUTATION_CELL_EFFECT && !it.isGolden); };
+
 export class PlayerPrep {
   _gate({ allowWhenReady = false } = {}) {
     if (!this.alive) return fail(ERR.ELIMINATED);
@@ -45,8 +53,22 @@ export class PlayerPrep {
     slot.sold = true;
     this.offers.shift();
     if (price > 0) this.spend(price);
-    if (slot.kind === 'item') this.acquireItem(slot.id, { source: 'reward', displayed: true });
-    else this.acquireChess(slot.id, { source: 'reward' });
+    if (slot.kind === 'item') {
+      const gained = this.acquireItem(slot.id, { source: 'reward', displayed: true });
+      // 凯瑟琳 【定向投放】: one 突变细胞 per player per match (GitHub #677, upstream Forge 0.3.1 §36.22; maintainer
+      // decision from official play memory). The counter is what bands/meta.js up_shop_add_special_goods reads to leave
+      // the cell out of the strategy's later offers. [ASSUMED] only a TAKE counts (a shown but skipped offer does not),
+      // and the queued offers of the same strategy lose that one slot but keep their other choices (no shrinking, no
+      // reroll); 昆图斯's own grant is outside this allowance.
+      if (gained && offer.source === 'band:band_cathy' && isMutationCell(this.gd, slot.id)) {
+        this.counters['band:cathy:cellTaken'] = 1;
+        for (const pending of this.offers) {
+          if (!pending || pending.source !== 'band:band_cathy') continue;
+          pending.slots = pending.slots.filter((s) => s.id !== slot.id);
+        }
+        this.offers = this.offers.filter((pending) => pending.slots.length > 0);
+      }
+    } else this.acquireChess(slot.id, { source: 'reward' });
     this._afterSpend(price, 'reward');
     this.recompute();
     return OK;

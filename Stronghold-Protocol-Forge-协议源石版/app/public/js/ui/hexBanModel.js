@@ -1,7 +1,7 @@
 // 协议源石禁用 (业主 2026-10-21) — pure logic of the 协议源石 tab of the 干员调配 overlay (screens/loadout.js),
 // shared with the sync (ui/loadoutSync.js) and the tests.
 //
-// An OUT-OF-MATCH, PER-PLAYER setting like 干员持有 / 自选编队: at most 3 protocol-originium (海克斯) card ids the player
+// An OUT-OF-MATCH, PER-PLAYER setting like 干员持有 / 自选编队: at most 6 protocol-originium (海克斯) card ids the player
 // does not want in their own drafts. The server stores the legal list per session / seat (`room.hexBans`), a match takes
 // the list its seat had at its start, and only THAT player's draft offers / rerolls / random extra gains skip them.
 //
@@ -45,7 +45,7 @@ export function parseStoredHexBans(raw) {
 export const toStoredHexBans = (ids) => ({ v: HEX_BANS_VERSION, ids: cleanHexBans(ids) });
 
 /**
- * The legal list against the loaded 协议源石 pool (what the server keeps): unknown / stale ids dropped, capped at 3.
+ * The legal list against the loaded 协议源石 pool (what the server keeps): unknown / stale ids dropped, capped at 6.
  * @param {any} ids @param {Iterable<string>|null} poolIds the player-pool card ids of the loaded data
  * @returns {string[]}
  */
@@ -59,7 +59,7 @@ export function sanitizeHexBans(ids, poolIds) {
 export const isHexBanned = (ids, id) => Array.isArray(ids) && ids.includes(id);
 
 /**
- * Toggle one card. Returns the new list and whether it changed; adding a 4th card is refused (`ok: false`, list kept).
+ * Toggle one card. Returns the new list and whether it changed; adding a 7th card is refused (`ok: false`, list kept).
  * @param {string[]} ids @param {string} id
  * @returns {{ ok: boolean, ids: string[] }}
  */

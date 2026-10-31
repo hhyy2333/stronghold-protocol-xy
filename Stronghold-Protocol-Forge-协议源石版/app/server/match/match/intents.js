@@ -21,11 +21,9 @@ export class MatchIntents {
     switch (msg.t) {
       case 'g.infoReady':
         if (this.phase !== PHASE.INFO_CHECK) return fail(ERR.WRONG_PHASE);
-        if (this.setupVote) return fail(ERR.WRONG_PHASE, 'setup reroll vote in progress');
         if ((msg.setupRevision ?? 0) !== this.setupRevision) return fail(ERR.BAD_TARGET, 'setup changed; confirm the current revision');
         if (!ps.infoReady) { ps.infoReady = true; this.markPublic(); this.maybeEndInfo(); }
         return OK;
-      case 'g.rerollVote': return this.voteSetupReroll(ps, msg.voteId, msg.agree);
       case 'g.band': return this.pickBand(ps, msg.bandId);
       case 'g.bandSkip': return this.skipBand(ps);
       // the strategy highlighted in the draft screen (what a timed-out turn takes, timeoutBand)
@@ -47,6 +45,9 @@ export class MatchIntents {
         : this.pickCard(ps, msg.idx);
       case 'g.hex': return this.pickHex(ps, msg.idx);
       case 'g.hexReroll': return this.rerollHex(ps, msg.idx);
+      // 第 6 回合的「舍弃换随机」(业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的协议源石」):
+      // 休整期里自愿用、每局一次；受理条件与换牌规则都在 hexDraft.js recycleHex（阶段 / 回合 / 未准备 / 未用过 / 拥有）。
+      case 'g.hexRecycle': return this.recycleHex(ps, msg.ids);
       // 测试场 (opts.test, the owner's request of 2026-10-11): the test panel's intents — accepted in a test field in
       // ANY phase (the tester changes the field while watching), refused with WRONG_PHASE everywhere else. The two
       // `testEnemyHex*` ones also require a single human seat: the enemy side is match-global state (testField.js).
@@ -57,6 +58,9 @@ export class MatchIntents {
       case 'g.testEnemyHexClear': return this.testEnemyHexClear(ps);
       // 测试场 (业主 2026-10-21「测试场可以直接到 boss 战」): jump to the leader round's prep, optionally naming the leader
       case 'g.testBoss': return this.testBoss(ps, msg.bossId);
+      // 测试场 买任何干员（业主 2026-10-26「在测试场增加功能可以购买任何干员」）：按阶级价买一名商店这次没摇到的干员，
+      // 走与 g.buy 同一条购买路径（testField.js testChess → PlayerState._buyChessSlot）。PREP、未准备时受理。
+      case 'g.testChess': return this.testChess(ps, msg.chessId);
       // 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12): a per-operator increment merged into the seat's
       // 配发 — and, for a 自选编队 slot the player filled, an update of that slot's pick (platform.js setPrepLoadout)
       case 'g.loadout': return this.setPrepLoadout(ps.playerId, msg.entries);

@@ -1,9 +1,9 @@
-// 协议源石禁用 (业主 2026-10-21) — the fourth tab of the 干员调配 overlay: pick up to 3 protocol-originium cards that
+// 协议源石禁用 (业主 2026-10-21) — the fourth tab of the 干员调配 overlay: pick up to 6 protocol-originium cards that
 // must NOT be offered in THIS player's own drafts. An out-of-match setting like 干员持有 / 自选编队: the picks live in
 // ui/hexBanModel.js (localStorage `sp.pref.hexBans`) and reach the server through ui/loadoutSync.js (`room.hexBans`).
 //
 // The panel is deliberately a simple searchable list of cards (name, tier, effect text) rather than another card deck:
-// the overlay's deck machinery belongs to 干员调配, and this tab's only job is picking at most three ids.
+// the overlay's deck machinery belongs to 干员调配, and this tab's only job is picking at most six ids.
 
 import { useMemo, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, TextField } from '../ui/components.js';

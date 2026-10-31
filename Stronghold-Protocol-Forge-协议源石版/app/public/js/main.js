@@ -75,12 +75,10 @@ import { GuideHost } from './ui/guide.js';
 import { installDeviceSupport } from './ui/device.js';
 import { registerImportedAssetWorker } from './assetCache.js';
 import { LoadoutHost } from './screens/loadout.js';
-import { SupportHost } from './screens/support.js';
 import { StatsHost } from './screens/stats.js';
 import { installRehearsal } from './battle/rehearsal.js';
 import { recordResult, installStatsRecorder } from './ui/stats.js';
 import { installLoadoutSync, installOwnershipSync, installDiySync, installHexBanSync } from './ui/loadoutSync.js';
-import { installSupportSync } from './ui/supportSync.js';
 import { startBuildGuard } from './ui/buildGuard.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
 // 更新公告 (ui/updateNotesModel.js) — 协议源石版 port: the LIVE revision first (GET /api/notes — the operator's copy
@@ -540,7 +538,6 @@ function App() {
     <${UiHosts} />
     <${GuideHost} />
     <${LoadoutHost} />
-    <${SupportHost} />
     <${StatsHost} />
   </div>`;
 }
@@ -616,7 +613,6 @@ async function boot() {
   wireNet();
   installStatsRecorder(store); // follows the match on screen, so a 放弃模拟 can be recorded (ui/stats.js)
   installLoadoutSync({ net });
-  installSupportSync({ net });
   installOwnershipSync({ net });
   installDiySync({ net });
   installHexBanSync({ net }); // 协议源石禁用 (业主 2026-10-21): room.hexBans, out of match like the two above

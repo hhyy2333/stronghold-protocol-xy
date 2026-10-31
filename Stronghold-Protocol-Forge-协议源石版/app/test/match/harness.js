@@ -8,7 +8,9 @@
 // fake (true → test/match/fakeBattle.js as BattleClass), script (FakeBattle.script), registry, instant (virtual
 // scheduler runs battles synchronously; default true), timerScale, battleContent, botRehearsal (default 0),
 // botSliceMs (bot rehearsal slice budget; default: unbounded in virtual time), aiPicksLast (the room option
-// AI 队友最后选择: the drafts order every human seat before every AI seat), test (the room flag 测试场: no 协议源石 draft
+// AI 队友最后选择: the drafts order every human seat before every AI seat), hostId (the room's current host: the host-only
+// reroll checks it; absent = the match knows no host and accepts any human, as the engine tests need), test (the room flag
+// 测试场: no 协议源石 draft
 // and the g.test* intents are accepted — server/match/match/testField.js), MatchClass (a wrapped Match class to
 // instantiate instead of the engine's own — how a workshop pack's `matchClass` layer is exercised, e.g.
 // test/workshop/field-store.test.js).
@@ -102,6 +104,7 @@ export function makeMatch(o = {}) {
     verify: o.verify ?? 'off',
     headlessSliceMs: o.headlessSliceMs,
     aiPicksLast: o.aiPicksLast,
+    hostId: o.hostId,
     test: o.test,
   });
   const m = h.m;

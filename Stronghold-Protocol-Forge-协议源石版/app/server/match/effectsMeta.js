@@ -16,7 +16,7 @@
 //   onBattleStart onBattleResult onChoicePick onEquip onArt onDestroy onLayers onActiveBonds
 // (onActiveBonds: the set of active bonds changed — PlayerState.recompute, player/round.js _reportActiveBonds.)
 // Garrisons fire only on the hook of their eventType (SERVER_GAIN→onGain of the gained piece, SERVER_PREP_START→
-// onRoundStart, SERVER_PREP_FIN→onPrepEnd, SERVER_CHESS_SOLD→onSold of the sold piece, SERVER_PRICE→onPrice of the
+// onPrepStart, SERVER_PREP_FIN→onPrepEnd, SERVER_CHESS_SOLD→onSold of the sold piece, SERVER_PRICE→onPrice of the
 // slot's chess, SERVER_REFRESH_SHOP→onRefresh); the dispatcher calls `handler[hook] ?? handler.run`. A handler may
 // widen that per garrison with `garrisonHooks(garrison) → hook[]` (e.g. "<进入休整期时><休整期结束时>"). Owned-piece
 // garrisons fire for board pieces, and for hand pieces unless bbStr.conditionkey is 'character_target_inboard'. A
@@ -68,10 +68,17 @@ export const HOOKS = Object.freeze([
 /** Non-hook members a handler object may carry. */
 const HANDLER_EXTRAS = new Set(['run', 'garrisonHooks']);
 
-/** Garrison eventType → dispatcher hook. */
+/**
+ * Garrison eventType → dispatcher hook.
+ *
+ * SERVER_PREP_START is 「进入休整期时」 (the official 休整期's own 「进入此阶段时，触发<进入休整期时>的效果」) and therefore runs
+ * on onPrepStart: at the round's PREP start, i.e. AFTER the 机变 (SP) draft of that round. It used to run on onRoundStart,
+ * which is the round start proper — before the draft (upstream Forge 0.3.2 §37.53 / GitHub #851, ported here). The
+ * 回合开始时 traits stay where they are (SERVER_GAIN of a 「每回合开始时」-style trait is not this key).
+ */
 export const GARRISON_HOOK = Object.freeze({
   SERVER_GAIN: 'onGain',
-  SERVER_PREP_START: 'onRoundStart',
+  SERVER_PREP_START: 'onPrepStart',
   SERVER_PREP_FIN: 'onPrepEnd',
   SERVER_CHESS_SOLD: 'onSold',
   SERVER_PRICE: 'onPrice',
@@ -404,7 +411,9 @@ export class EffectDispatcher {
       if (ev && ev.slot && ev.slot.kind === 'chess') run({ uid: 0, kind: 'chess', id: ev.slot.id, items: [] }, 'shop');
       return;
     }
-    if (hook !== 'onRoundStart' && hook !== 'onPrepEnd' && hook !== 'onRefresh') return;
+    // the hooks a 「特质」 walks the board / hand on: the round start, the PREP start (「进入休整期时」, GitHub #851), the prep
+    // end and a refresh
+    if (hook !== 'onPrepStart' && hook !== 'onRoundStart' && hook !== 'onPrepEnd' && hook !== 'onRefresh') return;
     if (refreshed) {
       for (const { piece, area } of refreshed) {
         const loc = ps.find(piece.uid);
@@ -654,7 +663,16 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     data: gd.raw,
     gd,
     rng,
-    log: (msg) => m.log.info?.(`[meta ${m.roomCode}] ${ps.playerId}: ${msg}`),
+    /**
+     * A seed of its own for this match, named by `salt` (server/sim/rng.js deriveSeed of the match seed). It draws
+     * nothing by itself: a handler that needs an independent stream makes one (createRng(ctx.seedFor('…'))). Two
+     * properties make it the right tool for a 「每回合…」 global strategy: the stream is independent of the match's own
+     * (shop / wave / draft / meta) streams, so it cannot shift them, and every player who asks with the same salt in
+     * the same round gets the same seed — so a draw over the round's own enemies gives the whole team the same count,
+     * the same units and the same enemies (鸭爵's 神秘顾客, GitHub #839). The stats preview and the bot rehearsals
+     * derive the same seed, so a card never disagrees with the battle it describes.
+     */
+    seedFor: (salt) => deriveSeed(m.seed, String(salt)),    log: (msg) => m.log.info?.(`[meta ${m.roomCode}] ${ps.playerId}: ${msg}`),
 
     // ---- reads
     funds: () => ps.funds,
@@ -776,9 +794,12 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
     levelUpFree: () => {
       if (ps.shop.level >= gd.maxShopLevel) return false;
       const price = Math.max(0, finiteInt(ps.shop.upgradePrice));
-      ps.addFunds(price, { reason: 'hex' });
+      // `force`：这笔钱只是**过路**（发进来、同一步立刻按原价扣出去），不是玩家「获得」的资金 —— 否则
+      // 协议等级 19 的一回合获得上限（业主 2026-10-29「把这个负面做成 n19」）没额度时，天人形态会变成从玩家自己的
+      // 钱包里扣升级费
+      ps.addFunds(price, { reason: 'hex', force: true });
       const res = ps.levelUp();
-      if (!(res && res.ok)) { ps.addFunds(-price, { reason: 'hex' }); return false; }
+      if (!(res && res.ok)) { ps.addFunds(-price, { reason: 'hex', force: true }); return false; }
       return true;
     },
     /**

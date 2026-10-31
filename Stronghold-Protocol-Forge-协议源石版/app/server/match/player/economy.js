@@ -1,15 +1,18 @@
 // server/match/player/economy.js — PlayerState methods: the economy — funds, spending (onSpend), prep-side bond layer
 // gains (clamped by layerGainRoom), the shop (onPrice prices, copy-weighted rolls from the shared pool plus the player's
 // own 自选 stock — player/diy.js —, freeze) and its intents: g.buy, g.refresh, g.freeze, g.levelUp, g.sell.
+// `_buyChessSlot` is the chess half of a purchase on its own, so the 测试场's 干员 picker (`g.testChess`, a purchase of an
+// operator the shop never rolled) takes the ordinary path instead of re-implementing it (server/match/match/testField.js).
 // Installed on PlayerState.prototype by server/match/PlayerState.js (a method container: never instantiated; `this` is
 // the player state).
 
-import { ERR, PHASE, BOND_LAYER_CAP, layerGainRoom } from '../../../shared/constants.js';
+import { ERR, PHASE, layerGainRoom } from '../../../shared/constants.js';
 import { behaviourIsDefault } from '../../../shared/behaviour.js';
 import { freeSlot } from '../board.js';
 import { bondBiasPreference } from '../pool.js';
-import { layerGainMulOf, refreshPriceOverrideOf } from '../hextech.js';
+import { layerGainMulOf, bondLayerCapOf, refreshPriceOverrideOf } from '../hextech.js';
 import { OK, fail } from './common.js';
+import { msg } from '../../../shared/i18n.js';
 
 /**
  * **行为开关 `shopBias` 的读取点**（DESIGN §28.43.1）：这一局的声明要不要偏向，要偏就给出「偏向哪些盟约」。
@@ -33,14 +36,55 @@ export function bondBiasBonds(ps) {
 }
 
 export class PlayerEconomy {
-  addFunds(n, { reason = '' } = {}) {
+  /**
+   * 资金进账。**一回合获得上限就卡在这里**（业主 2026-10-29「增加限制玩家一回合最多获得30块」→「把这个负面做成 n19」；
+   * 数字属于协议等级 19 的那一行 `fundsGainCap`，见 `shared/protocolLevels.js` 与 `docs/design/match.md`）：
+   * 全游戏的钱都从这一个原语进 —— 回合收入、协议源石 / 盟约 / 装备 / 策略的发放、卖出返还、债务还款 —— 所以卡在
+   * 这里就没有能绕过去的路。
+   *
+   * - 额度 = `gd.fundsGainCapPerRound`（**0 = 不设上限**：等级 0–18、其它难度、以及关了等级的每一局都是 0，于是
+   *   从前的经济逐字节不变），已用 = `this.round.fundsGained`（`startRound` 把它清零，于是「一回合」= 一次回合开始
+   *   到下一次）；
+   * - 超出的部分**直接作废**，不结转（业主同一次追问的选择），并给本人一条 toast（每回合最多一条）；
+   * - 负数（刚扣掉又退回来的付款、对外还的债）把额度**还回来**，所以「先付再退」的一对不占额度；真正花掉的 `spend()`
+   *   不经这里，也不还额度；
+   * - `force: true` = 不是「获得」：跳过上限、也不计入额度。测试场自己的发钱（`g.testFunds`、首领测试的起步资金）与
+   *   只把钱挪去立刻花掉的内部过路（天人形态的免费升级）用它。
+   *
+   * @returns {number} 真正动了的资金（被上限削掉时就是这个更小的数）
+   */
+  addFunds(n, { reason = '', force = false } = {}) {
     if (!Number.isFinite(n) || n === 0) return 0;
-    const v = Math.trunc(n);
+    const gained = Number.isFinite(this.round.fundsGained) ? this.round.fundsGained : 0;
+    let v = Math.trunc(n);
+    if (v > 0 && !force) {
+      const cap = Number.isFinite(this.gd.fundsGainCapPerRound) && this.gd.fundsGainCapPerRound > 0
+        ? this.gd.fundsGainCapPerRound : Infinity;
+      const room = Math.max(0, cap - gained);
+      if (v > room) {
+        this._fundsGainCapped(cap);
+        v = room;
+      }
+      if (v === 0) return 0;
+    }
     const before = this.funds;
     this.funds = Math.max(0, this.funds + v);
-    if (v > 0) this.stats.fundsGained += v;
+    const delta = this.funds - before;
+    if (delta > 0) {
+      if (!force) this.round.fundsGained = gained + delta;
+      this.stats.fundsGained += delta;
+    } else if (delta < 0 && !force) {
+      this.round.fundsGained = Math.max(0, gained + delta);
+    }
     this.dirty();
-    return this.funds - before;
+    return delta;
+  }
+
+  /** 本回合的获得额度刚被削掉：把上限告诉本人一条（每回合一次，机器人没有 toast）。 */
+  _fundsGainCapped(cap) {    if (this.round.fundsCapWarned) return;
+    this.round.fundsCapWarned = true;
+    if (typeof this.m?.toast !== 'function') return;
+    this.m.toast(this, 'warn', msg('本回合获得的资金已达上限（{cap}）', { cap }));
   }
 
   spend(n) {
@@ -61,7 +105,7 @@ export class PlayerEconomy {
 
   /**
    * The layers a gain of `n` on `bondId` WOULD add right now: the same preconditions and the same clamp
-   * (`layerGainRoom` under BOND_LAYER_CAP, ×`layerGainMulOf`) that `addLayers` applies, computed without writing.
+   * (`layerGainRoom` under THIS player's cap, ×`layerGainMulOf`) that `addLayers` applies, computed without writing.
    *
    * PORT NOTE (2026-10-16): this is the repo's 0.3.0 accessor, and it was the missing half of TWO things at once.
    *   1. `server/match/effectsMeta.js` — a file this tree carries BYTE-IDENTICAL to the repo's — calls
@@ -73,6 +117,9 @@ export class PlayerEconomy {
    * change match state (docs/META.md, onBattleStart), but its layers still have to show in the battle input the preview
    * reads (盟约寄生 patches that snapshot). So the dispatcher makes `ctx.addLayers` inert under `ev.preview` and hands
    * back THIS number instead, and the caller patches `ev.input` with exactly what the real battle would have seen.
+   *
+   * 上限（【突破极限】, 设计稿 §3）：`bondLayerCapOf(this)` —— 默认 999，拥有 `hex_break_limit` 的玩家是 9999。预览与
+   * 真正的加层读同一个数，所以预览永远不会比实战更保守或更乐观。
    * @returns {number} layers that would be added (0 when refused / at the cap)
    */
   layerGainOf(bondId, n, { requireActive = false } = {}) {
@@ -81,12 +128,13 @@ export class PlayerEconomy {
     const before = this.layers[bondId] || 0;
     // 背水一战 (业主 2026-10-24) made the multiplier fractional (×1.5): floors the PRODUCT so a bond's layers stay whole
     // numbers (5 × 1.5 ⇒ +7, not +7.5). 盟约裂变's ×3 is unaffected.
-    return layerGainRoom(before, Math.floor(Math.floor(n) * layerGainMulOf(this, bondId)));
+    return layerGainRoom(before, Math.floor(Math.floor(n) * layerGainMulOf(this, bondId)), bondLayerCapOf(this));
   }
 
   /**
    * Bond layer gain (prep-side). `requireActive` = "使已激活的【X】层数+N". Returns layers added: at most the room left
-   * under BOND_LAYER_CAP (999, shared/constants.js) — a gain at the cap adds 0 and dispatches nothing.
+   * under THIS player's cap (BOND_LAYER_CAP 999 — 9999 with 【突破极限】, shared/constants.js layerGainRoom +
+   * server/match/hextech.js bondLayerCapOf) — a gain at the cap adds 0 and dispatches nothing.
    */
   addLayers(bondId, n, { requireActive = false, reason = '' } = {}) {
     const before = this.layers[bondId] || 0;
@@ -104,12 +152,14 @@ export class PlayerEconomy {
 
   /**
    * SET a bond's layers outright (协议源石 ctx.setLayers, DESIGN §29.23): 盟约之主 / 转移一类卡 move layers to an
-   * absolute value rather than adding. Clamped to 0..BOND_LAYER_CAP and rounded down like addLayers; a no-op (return 0)
-   * when the value does not move, so a card that re-sets the same number produces no cue and no dispatch.
+   * absolute value rather than adding. Clamped to 0..this player's cap (999 — 9999 with 【突破极限】) and rounded down
+   * like addLayers; a no-op (return 0) when the value does not move, so a card that re-sets the same number produces no
+   * cue and no dispatch.
    */
   setLayers(bondId, n, { reason = '' } = {}) {
     if (!this.gd.bond(bondId) || !Number.isFinite(n)) return 0;
-    const target = Math.max(0, Math.min(BOND_LAYER_CAP, Math.floor(n)));
+    const cap = bondLayerCapOf(this);
+    const target = Math.max(0, Math.min(cap > 0 ? cap : Infinity, Math.floor(n)));
     const before = this.layers[bondId] || 0;
     if (target === before) return 0;
     this.layers[bondId] = target;
@@ -159,12 +209,7 @@ export class PlayerEconomy {
     // mainPool — the same object either way when the switch is off, docs/PS100-MIGRATION.md §10-A)
     const id = this.mainPool().roll(this.m.rngShop, { maxTier: this.shop.level, extra: this.diyRollEntries() });
     if (!id) return null;
-    // 助战：自己带上场的干员在商店里按 `data/support.json` 的 prices 标价（没配就是它的阶级价），
-    // 卖掉仍按普通棋子的 sellPrice —— 它就是普通棋子，只是「我的商店池里一定有它」（连本局禁用也盖过去）。
-    // 阶级门照旧：六阶助战仍要商店等级 6 才摇得到。
-    const support = this.support.includes(id);
-    const price = support ? (this.gd.supportPrice(id) ?? this.gd.chessPrice(id)) : this.gd.chessPrice(id);
-    return { kind: 'chess', id, basePrice: price, frozen: false, sold: false, ...(support ? { support: true } : {}) };
+    return { kind: 'chess', id, basePrice: this.gd.chessPrice(id), frozen: false, sold: false };
   }
 
   /**
@@ -259,6 +304,40 @@ export class PlayerEconomy {
   }
 
   /**
+   * The CHESS half of a purchase: the price query, the funds / hand gates, the charge, the piece, the 购买 counters and
+   * the onBuy / onSpend dispatches.
+   *
+   * ONE implementation for `g.buy` and the 测试场's 干员 picker (`g.testChess`, server/match/match/testField.js). The
+   * test panel buys an operator the shop never rolled, but it is still a purchase: a full hand refuses it, `priceOf`
+   * charges the tier price with the onPrice modifiers and the free windows applied, the merge runs, 休露丝 / 玛恩纳 /
+   * 升华 style onBuy hooks fire. Only the slot record is synthetic — the shop's own slots have exactly this shape.
+   *
+   * The order of the gates is the one `buy` has always applied for a chess slot: price → funds → the record → the hand.
+   * @param {{ kind: 'chess', id: string, basePrice: number, sold: boolean }} slot
+   */
+  _buyChessSlot(slot) {
+    const price = this.priceOf(slot);
+    if (this.funds < price) return fail(ERR.NO_FUNDS);
+    const rec = this.gd.chess(slot.id);
+    // a DIY slot sells only as this player's own 自选 piece (a slotted slot's record carries `diyFor`)
+    if (!rec || (rec.isDiy && !rec.diyFor)) return fail(ERR.BAD_TARGET);
+    // Already displayed operators stay purchasable after stock runs out (#498; 路标月报#2,
+    // BV1eLXXBqEgF 2:50–2:57: nine owned + four shop offers => thirteen owned).
+    // acquireChess records every copy, including the deficit; future rolls still exclude empty stock.
+    if (freeSlot(this.hand) < 0) return fail(ERR.HAND_FULL);
+    // 可露希尔大降价: no separate charge — priceOf quotes 0 while the free-refresh window is open
+    this.spend(price);
+    slot.sold = true;
+    const piece = this.acquireChess(slot.id, { source: 'buy' });
+    this.stats.buys++;
+    this.round.buys++;
+    this.m.dispatch(this, 'onBuy', { piece, slot, price, kind: slot.kind });
+    this._afterSpend(price, 'buy');
+    this.recompute();
+    return OK;
+  }
+
+  /**
    * g.buy {slot}. A full regular hand refuses every purchase, also one whose copy would complete a merge at once (PRTS
    * 卫戍协议/帮助 §手牌区 "当常规手牌区全满无空位时，玩家将无法执行使手牌溢出的操作" — "例如招募/购入等通常情况下会增加手牌的
    * 操作"; BWIKI 盟约 "当整备区达到上限后将无法进行涉及到整备区的操作（购买、撤回等）"; GitHub #82: the reporter's first-hand
@@ -270,31 +349,17 @@ export class PlayerEconomy {
     const slot = this.shop.slots[slotIdx];
     if (!slot) return fail(ERR.BAD_TARGET);
     if (slot.sold) return fail(ERR.SOLD_OUT);
+    // the chess half is shared with the 测试场's 干员 picker (testField.js testChess) — one purchase path
+    if (slot.kind === 'chess') return this._buyChessSlot(slot);
     const price = this.priceOf(slot);
     if (this.funds < price) return fail(ERR.NO_FUNDS);
-    const handFull = freeSlot(this.hand) < 0;
-    let piece;
-    if (slot.kind === 'chess') {
-      const rec = this.gd.chess(slot.id);
-      // a DIY slot sells only as this player's own 自选 piece (a slotted slot's record carries `diyFor`)
-      if (!rec || (rec.isDiy && !rec.diyFor)) return fail(ERR.BAD_TARGET);
-      // Already displayed operators stay purchasable after stock runs out (#498; 路标月报#2,
-      // BV1eLXXBqEgF 2:50–2:57: nine owned + four shop offers => thirteen owned).
-      // acquireChess records every copy, including the deficit; future rolls still exclude empty stock.
-      if (handFull) return fail(ERR.HAND_FULL);
-      // 可露希尔大降价: no separate charge — priceOf quotes 0 while the free-refresh window is open
-      this.spend(price);
-      slot.sold = true;
-      piece = this.acquireChess(slot.id, { source: 'buy' });
-    } else {
-      if (!this.gd.item(slot.id)) return fail(ERR.BAD_TARGET);
-      // Already displayed equipment stays purchasable after stock runs out (#624, maintainer 2026-10-14).
-      // acquireItem records the debt. Future rolls still exclude empty stock. SOLD_OUT is only this slot, already sold.
-      if (handFull) return fail(ERR.HAND_FULL);
-      this.spend(price);
-      slot.sold = true;
-      piece = this.acquireItem(slot.id, { source: 'buy', displayed: true });
-    }
+    if (!this.gd.item(slot.id)) return fail(ERR.BAD_TARGET);
+    // Already displayed equipment stays purchasable after stock runs out (#624, maintainer 2026-10-14).
+    // acquireItem records the debt. Future rolls still exclude empty stock. SOLD_OUT is only this slot, already sold.
+    if (freeSlot(this.hand) < 0) return fail(ERR.HAND_FULL);
+    this.spend(price);
+    slot.sold = true;
+    const piece = this.acquireItem(slot.id, { source: 'buy', displayed: true });
     this.stats.buys++;
     this.round.buys++;
     this.m.dispatch(this, 'onBuy', { piece, slot, price, kind: slot.kind });

@@ -83,9 +83,14 @@ test('perfect-payout bounties in the boss rounds: a 战术特训 card\'s coins j
   const owed = ps.bounties.filter((b) => b.card.payout === 'perfect').reduce((n, b) => n + b.card.coin, 0);
   h.drive(() => m.phase === PHASE.HIDDEN_CORE);
   assert.ok(bossFields().at(-1).opts.spawns.some((s) => s.tag === 'bounty' && s.enemyKey === second.enemyKey), 'and in the Hidden Core');
-  h.runToEnd();
+  // 第16回合「木桩演练」(docs/research/17-dummy-round.json): the Hidden Core is no longer the match's LAST round — the
+  // dummy round follows it, and its PREP issues its own income, which spends `pendingFunds` the moment it lands (that is
+  // the economy rule, not a defect). So the payment is observed where it happens: right after the hidden core settled
+  // (`m.runner === null`) and before R16's prep. Then the match finishes through R16.
+  h.run(() => m.runner === null);
   assert.equal(ps.pendingFunds, 3 + owed, 'the Hidden Core pays by the same rule');
   assert.equal(ps.bounties.length, 0, 'every bounty used its battles');
+  h.runToEnd();
   checkInvariants(m);
   m.dispose();
 });
@@ -118,8 +123,11 @@ test('教鞭 in the boss rounds (R14, R15): the card the owner chose spawns in t
   const owed = ps.bounties.filter((b) => b.card.payout === 'perfect').reduce((n, b) => n + b.card.coin, 0);
   h.drive(() => m.phase === PHASE.HIDDEN_CORE);
   assert.ok(bossFields().at(-1).opts.spawns.some((s) => s.tag === 'bounty' && s.enemyKey === hiddenCard.enemyKey));
-  h.runToEnd();
+  // 第16回合「木桩演练」: same observation point as above — the payment lands at the hidden core's settlement, and the
+  // dummy round's PREP income (which spends `pendingFunds`) comes after it.
+  h.run(() => m.runner === null);
   assert.equal(ps.pendingFunds, 3 + owed, 'the Hidden Core pays by the same rule');
+  h.runToEnd();
   checkInvariants(m);
   m.dispose();
 });

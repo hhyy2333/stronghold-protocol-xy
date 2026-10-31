@@ -1,17 +1,18 @@
-// 协议等级 1–18（owner's call 2026-10-18）：叠加在**终极模拟**上的一条数值轴，0 = 关闭。
+// 协议等级 1–19（owner's call 2026-10-18；19 级 = 2026-10-29「把这个负面做成 n19」）：叠加在**终极模拟**上的一条数值轴，
+// 0 = 关闭。
 //
 // 这一份钉住三件事：
-//   * 表本身（18 行、逐级单调、13–18 的每一轴都不回头、综合压力严格上升）；
+//   * 表本身（19 行、逐级单调、13–19 的每一轴都不回头、综合压力严格上升）；
 //   * 归一化：等级只在 ABYSS 上生效，其它难度一律 0；缺省 0 时引擎逐字节不变；
-//   * 折入：敌方 mods（预览=实战同一个 matchEnemyMods）、收入、首领池，以及额外敌方协议源石按 R1/R3/R5 分散发放
-//     （业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」）。
+//   * 折入：敌方 mods（预览=实战同一个 matchEnemyMods）、收入、首领池、19 级的一回合资金上限，以及额外敌方协议源石按
+//     R1/R3/R5 分散发放（业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeMatch, DATA } from './harness.js';
-import { enemyHexMods, matchEnemyMods, bossPoolHpFor } from '../../server/match/hextech.js';
+import { enemyHexMods, matchEnemyMods, bossPoolHpFor, applyEnemyHexes, isRangedEnemyKey } from '../../server/match/hextech.js';
 import { buildNormalWave, withExtraBoss } from '../../server/match/waves.js';
 import {
   PROTOCOL_LEVELS, PROTOCOL_LEVEL_MAX, isProtocolLevel, protocolLevelActive, protocolLevelRow, protocolLevelMods,
@@ -20,14 +21,15 @@ import {
   PROTOCOL_LEVEL_INCOME_FREE_ROUNDS, PROTOCOL_LEVEL_DEEP_FROM, PROTOCOL_LEVEL_EFFECT_TEXT,
   protocolLevelEffects, protocolLevelHeadline,
   PROTOCOL_LEVEL_ROUND_RAMP, PROTOCOL_LEVEL_FULL_ROUND, PROTOCOL_LEVEL_LATE_ROUND, protocolLevelRoundK,
+  PROTOCOL_LEVEL_SPIKE_ROUNDS,
   protocolLevelEnemyMods, protocolLevelCountAddAt,
 } from '../../shared/protocolLevels.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-test('the table: 18 levels, no axis ever steps back, total pressure strictly rises', () => {
-  assert.equal(PROTOCOL_LEVEL_MAX, 18);
-  assert.equal(PROTOCOL_LEVELS.length, 18);
+test('the table: 19 levels, no axis ever steps back, total pressure strictly rises', () => {
+  assert.equal(PROTOCOL_LEVEL_MAX, 19);
+  assert.equal(PROTOCOL_LEVELS.length, 19);
   // 每级的「综合压力」代理：生命倍率 × (1 + 每波额外数量 × 0.08)。数量是最强的杠杆，所以它进代理；
   // 代理逐级严格上升 = 没有「12 级比 13 级还难」那类暗坑。
   const pressure = (row) => row.enemy.hpMul * (1 + (row.enemy.countAdd || 0) * 0.08);
@@ -35,8 +37,13 @@ test('the table: 18 levels, no axis ever steps back, total pressure strictly ris
     const row = PROTOCOL_LEVELS[i];
     assert.equal(row.level, i + 1);
     assert.ok(row.enemy.hpMul > 1 && row.enemy.atkMul > 1, 'every level is harder in HP and ATK');
+    // 远程怪那条攻击力曲线（业主 2026-10-30）：每一级都有、逐级上升、**永不超过通用那条**，1–6 级与通用逐值相同
+    assert.ok(Number.isFinite(row.enemy.atkMulRanged) && row.enemy.atkMulRanged >= 1, `L${row.level} carries a ranged ATK curve`);
+    assert.ok(row.enemy.atkMulRanged <= row.enemy.atkMul, `ranged ATK never outgrows the generic one at L${row.level}`);
+    if (row.level <= 6) assert.equal(row.enemy.atkMulRanged, row.enemy.atkMul, `L${row.level}: 稳定区两条曲线相同`);
     if (!i) continue;
     const prev = PROTOCOL_LEVELS[i - 1];
+    assert.ok(row.enemy.atkMulRanged > prev.enemy.atkMulRanged, `ranged ATK rises at L${row.level}`);
     assert.ok(row.enemy.hpMul > prev.enemy.hpMul, `HP rises at L${row.level}`);
     assert.ok(row.enemy.atkMul > prev.enemy.atkMul, `ATK rises at L${row.level}`);
     assert.ok((row.enemy.defMul || 1) >= (prev.enemy.defMul || 1), `DEF never falls at L${row.level}`);
@@ -52,18 +59,25 @@ test('the table: 18 levels, no axis ever steps back, total pressure strictly ris
     }
   }
   assert.deepEqual([6, 12, 18].map((n) => !!protocolLevelRow(n).milestone), [true, true, true], 'milestones at 6/12/18');
+  // 19 级是**唯一**带「一回合获得资金上限」的一级（业主 2026-10-29「把这个负面做成 n19」）
+  assert.deepEqual(PROTOCOL_LEVELS.filter((row) => row.fundsGainCap > 0).map((row) => row.level), [19], 'only N19 caps funds');
+  assert.equal(protocolLevelRow(19).fundsGainCap, 30);
   // 13–18 已经量过一轮（tools/balance.mjs --level），不再挂「实验」牌
   assert.ok(PROTOCOL_LEVELS.every((row) => !row.experimental), 'the whole table is shipped, not a placeholder');
 });
 
-test('normalization: off is off everywhere except ABYSS 1–18', () => {
-  assert.equal(isProtocolLevel(0) && isProtocolLevel(18), true);
-  for (const bad of [-1, 19, 2.5, '6', null, undefined]) assert.equal(isProtocolLevel(bad), false, String(bad));
+test('normalization: off is off everywhere except ABYSS 1–19', () => {
+  assert.equal(isProtocolLevel(0) && isProtocolLevel(18) && isProtocolLevel(19), true);
+  for (const bad of [-1, 20, 2.5, '6', null, undefined]) assert.equal(isProtocolLevel(bad), false, String(bad));
   assert.equal(protocolLevelActive(6, 'ABYSS'), true);
   for (const d of ['FUNNY', 'NORMAL', 'HARD', 'TRAINING']) assert.equal(protocolLevelActive(6, d), false, d);
   assert.equal(protocolLevelMods(0, 'ABYSS'), null, '0 = off, byte-for-byte the old game');
   assert.equal(protocolLevelMods(6, 'HARD'), null, 'other difficulties never carry a level');
   assert.deepEqual(protocolLevelMods(18, 'ABYSS').enemy.hpMul, 2.45);
+  // 19 级：数值再抬一格，并且是唯一带资金上限的等级
+  assert.deepEqual(protocolLevelMods(19, 'ABYSS').enemy.hpMul, 2.56);
+  assert.equal(protocolLevelMods(19, 'ABYSS').fundsGainCap, 30);
+  assert.equal(protocolLevelMods(18, 'ABYSS').fundsGainCap, 0, 'N18 has no funds cap');
 });
 
 test('a match at level 0 reads exactly like before (enemy mods empty, income untouched, boss pool untouched)', () => {
@@ -91,9 +105,9 @@ test('a level folds into enemy mods, income and the leader pool — and only on 
   assert.equal(lv12.m.gd.income(7), base.m.gd.income(7), 'round 7 is still exempt');
   assert.equal(lv12.m.gd.income(8) >= 0, true);
   const bossId = Object.keys(DATA.bosses)[0];
-  assert.equal(lv18.m.gd.bossPoolHp(bossId, 2), Math.round(base.m.gd.bossPoolHp(bossId, 2) * 1.8));
+  assert.equal(lv18.m.gd.bossPoolHp(bossId, 2), Math.round(base.m.gd.bossPoolHp(bossId, 2) * 2.0));
   // the pool a real boss round builds (bossPoolHpFor → finalAssault.bossPoolHp) carries it too — one source, both halves
-  assert.equal(bossPoolHpFor(lv18.m, bossId), Math.round(bossPoolHpFor(base.m, bossId) * 1.8), 'real boss pool ×1.8 at level 18');
+  assert.equal(bossPoolHpFor(lv18.m, bossId), Math.round(bossPoolHpFor(base.m, bossId) * 2.0), 'real boss pool ×2.0 at level 18');
   assert.equal(bossPoolHpFor(lv6.m, bossId), bossPoolHpFor(base.m, bossId), 'levels below 13 leave the pool alone');
   // another difficulty normalizes the level away
   const hard = makeMatch({ mode: 'solo', difficulty: 'HARD', humans: 1, seed: 21, fake: true, protocolLevel: 6 });
@@ -114,7 +128,7 @@ test('回合爬升：k 表冻结、R6 满额、随回合不减', () => {
   assert.equal(PROTOCOL_LEVEL_FULL_ROUND, 6, 'k = 1 lands on round 6 (the owner\'s call)');
   assert.equal(PROTOCOL_LEVEL_LATE_ROUND, 11);
   assert.deepEqual(PROTOCOL_LEVEL_ROUND_RAMP.map((s) => [s.from, s.k]),
-    [[1, 0.45], [3, 0.6], [5, 0.8], [6, 1], [11, 1.2], [14, 1.35]]);
+    [[1, 0.45], [3, 0.6], [5, 0.8], [6, 1], [11, 1.2], [13, 1.35], [14, 1.55]]);
   assert.ok(Object.isFrozen(PROTOCOL_LEVEL_ROUND_RAMP), 'the ramp table is frozen');
   assert.equal(protocolLevelRoundK(1), 0.45);
   assert.equal(protocolLevelRoundK(2), 0.45);
@@ -123,8 +137,12 @@ test('回合爬升：k 表冻结、R6 满额、随回合不减', () => {
   assert.equal(protocolLevelRoundK(6), 1, 'round 6 is the first full-strength round');
   assert.equal(protocolLevelRoundK(10), 1, 'and it holds through R10');
   assert.equal(protocolLevelRoundK(11), 1.2);
-  assert.equal(protocolLevelRoundK(14), 1.35);
-  assert.equal(protocolLevelRoundK(15), 1.35);
+  assert.equal(protocolLevelRoundK(12), 1.2, 'R11–R12 are the first late step');
+  // 13 / 14 / 15 三回合单独抬（业主 2026-10-30「增加 n1-n19，13，14，15 回合的敌人加成」）
+  assert.equal(protocolLevelRoundK(13), 1.35);
+  assert.equal(protocolLevelRoundK(14), 1.55);
+  assert.equal(protocolLevelRoundK(15), 1.55);
+  assert.deepEqual(PROTOCOL_LEVEL_SPIKE_ROUNDS, [13, 15], 'the intro line names these rounds');
   // 不在对局回合里（0 / 负数 / 非整数 / 非数字）⇒ 旧的平曲线
   for (const bad of [0, -1, 2.5, null, undefined, NaN, '6']) assert.equal(protocolLevelRoundK(bad), 1, String(bad));
   // 随回合不减
@@ -149,7 +167,14 @@ test('回合爬升：折入按增量缩放，前期削、R6 满额、后期加�
   assert.deepEqual(at(18, 10), at(18, 6), 'and stays there through R10');
   // 后期加码：k > 1，数量再 +1
   assert.deepEqual(at(18, 11), { hpMul: 2.74, atkMul: 2.056, defMul: 1.264, resMul: 1.228, countAdd: 2 });
-  assert.deepEqual(at(18, 14), { hpMul: 2.9575, atkMul: 2.188, defMul: 1.297, resMul: 1.2565, countAdd: 2 });
+  assert.deepEqual(at(18, 12), at(18, 11), 'R11–R12 share the first step of the late ramp');
+  // 最后三个回合各抬一档（业主 2026-10-30「增加 n1-n19，13，14，15 回合的敌人加成」）：
+  // R13 = 旧 R14 的那一档（1.35），R14–15 再上一档（1.55）
+  assert.deepEqual(at(18, 13), { hpMul: 2.9575, atkMul: 2.188, defMul: 1.297, resMul: 1.2565, countAdd: 2 });
+  assert.deepEqual(at(18, 14), { hpMul: 3.2475, atkMul: 2.364, defMul: 1.341, resMul: 1.2945, countAdd: 2 });
+  assert.deepEqual(at(18, 15), at(18, 14), 'R14 and R15 share the top step');
+  assert.ok(at(18, 13).hpMul > at(18, 12).hpMul, 'R13 is above R12');
+  assert.ok(at(18, 14).hpMul > at(18, 13).hpMul, 'R14 is above R13');
   // 一个等级在所有回合上「不低于 1」；R11 之前不超过表值，R6 起不再低于表值
   for (const row of PROTOCOL_LEVELS) {
     for (const round of [1, 3, 5, 6, 8, 11, 14]) {
@@ -183,11 +208,87 @@ test('回合爬升：实战折入点读的是 m.round（预览与实战同一个
   m.round = 1;
   assert.equal(matchEnemyMods(m).hpMul, 1.6525, 'R1 folds the early ramp');
   m.round = 6;
-  assert.deepEqual(matchEnemyMods(m), { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 1 }, 'R6 is the table again');
+  assert.deepEqual(matchEnemyMods(m), { hpMul: 2.45, atkMul: 1.88, atkMulRanged: 1.44, defMul: 1.22, resMul: 1.19, countAdd: 1 }, 'R6 is the table again');
   m.round = 12;
   assert.equal(matchEnemyMods(m).hpMul, 2.74);
   assert.equal(matchEnemyMods(m).countAdd, 2, 'R11+ adds a second body');
   m.dispose();
+});
+
+// =====================================================================================================================
+// 远程怪攻击力曲线（业主 2026-10-30：「给 n1-n19 的远程怪攻击力曲线单独设置」）
+//
+// 钉住四件事：
+//   1. 口径：**只有 `applyWay === 'RANGED'`** 算远程怪（`ALL` 与 `MELEE` 仍吃通用那条 —— 业主当场选的窄口径）；
+//   2. 折入：远程怪的 spawn 拿到「卡牌那份 `atkMul` × 级表 `atkMulRanged`」，其它敌人拿到「卡牌 × 行里的 `atkMul`」；
+//      生命 / 防御 / 法抗 / 速度两条完全一样（只有攻击力分叉）；
+//   3. 领袖（`tag === 'boss'`）不吃这条曲线 —— 首领轮有自己的 `bossPoolMul` 与共享血池；
+//   4. 等级关掉 / 1–6 级（两条曲线相同）时一个键都不多，`applyEnemyHexes` 原样返回同一个数组。
+// =====================================================================================================================
+
+test('远程怪攻击力：单走一条曲线（只算 applyWay RANGED，领袖不吃，两条只在攻击力上分叉）', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true, protocolLevel: 18 });
+  const m = h.m;
+  const byWay = (way) => Object.keys(DATA.enemies).find((k) => String(DATA.enemies[k].applyWay || '').toUpperCase() === way);
+  const rangedKey = byWay('RANGED');
+  const meleeKey = byWay('MELEE');
+  const allKey = byWay('ALL');
+  assert.ok(rangedKey && meleeKey && allKey, 'the data carries all three 攻击方式');
+  assert.equal(isRangedEnemyKey(m.gd, rangedKey), true);
+  assert.equal(isRangedEnemyKey(m.gd, meleeKey), false);
+  assert.equal(isRangedEnemyKey(m.gd, allKey), false, 'ALL 不算远程怪（业主口径：只算 RANGED）');
+  assert.equal(isRangedEnemyKey(m.gd, 'no_such_enemy'), false, 'unknown keys are never ranged');
+
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const fold = (round) => {
+    m.round = round;
+    const spawns = [
+      { enemyKey: rangedKey, mods: { atkMul: 1.1, speedMul: 1.2 }, count: 1 },
+      { enemyKey: meleeKey, mods: { atkMul: 1.1, speedMul: 1.2 }, count: 1 },
+      { enemyKey: allKey, mods: { atkMul: 1.1, speedMul: 1.2 }, count: 1 },
+      { enemyKey: rangedKey, mods: { atkMul: 1.1, speedMul: 1.2 }, count: 1, tag: 'boss' },
+    ];
+    return applyEnemyHexes(spawns, matchEnemyMods(m), (key) => isRangedEnemyKey(m.gd, key));
+  };
+
+  // R6 = 满额：远程 1.44、其余 1.88（等级 18）
+  const r6 = fold(6);
+  assert.ok(near(r6[0].mods.atkMul, 1.1 * 1.44), `远程怪吃 atkMulRanged（拿到 ${r6[0].mods.atkMul}）`);
+  assert.ok(near(r6[1].mods.atkMul, 1.1 * 1.88), '近战怪吃通用 atkMul');
+  assert.ok(near(r6[2].mods.atkMul, 1.1 * 1.88), 'ALL 也吃通用那条');
+  assert.ok(near(r6[3].mods.atkMul, 1.1 * 1.88), '领袖不吃这条曲线');
+  // 除了攻击力，两条曲线给出的东西一模一样
+  for (const i of [0, 1, 2]) {
+    assert.equal(r6[i].mods.hpMul, 2.45, `spawn ${i}: HP is the same curve`);
+    assert.equal(r6[i].mods.defMul, 1.22, `spawn ${i}: DEF is the same curve`);
+    assert.equal(r6[i].mods.resMul, 1.19, `spawn ${i}: RES is the same curve`);
+    assert.equal(r6[i].mods.speedMul, 1.2, `spawn ${i}: the spawn's own speed is untouched`);
+  }
+  assert.equal(r6[0].count, 2, '远程怪照旧吃每波的 +1 数量（R6 起）');
+  assert.equal(r6[3].count, 1, '领袖不加数量');
+
+  // 回合爬升同样作用在远程这一格上（增量缩放：1 + (1.44 - 1) × 0.45）
+  const r1 = fold(1);
+  assert.ok(near(r1[0].mods.atkMul, 1.1 * 1.198), `R1: 远程那一条也提前期打折（拿到 ${r1[0].mods.atkMul}）`);
+  assert.ok(near(r1[1].mods.atkMul, 1.1 * 1.396), 'R1: 通用那条照旧');
+  m.dispose();
+});
+
+test('远程怪攻击力：等级关掉、或 1–6 级（两条曲线相同）时不多带一个键', () => {
+  const off = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true });
+  const spawns = [{ enemyKey: Object.keys(DATA.enemies)[0], mods: { atkMul: 1.1 }, count: 1 }];
+  assert.equal(matchEnemyMods(off.m).atkMulRanged, undefined, 'level 0 carries no ranged curve');
+  assert.equal(applyEnemyHexes(spawns, matchEnemyMods(off.m), () => true), spawns, 'so the fold is a no-op (same array)');
+  off.m.dispose();
+  // 1–6 级：两条曲线逐值相同 ⇒ 不额外带 atkMulRanged，折入结果与改动前逐字节相同
+  for (const lv of [1, 6]) {
+    const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 21, fake: true, protocolLevel: lv });
+    h.m.round = 6;
+    const mods = matchEnemyMods(h.m);
+    assert.equal(mods.atkMulRanged, undefined, `L${lv}: the two curves are equal, so no separate key`);
+    assert.equal(matchEnemyMods(h.m).atkMul, protocolLevelRow(lv).enemy.atkMul);
+    h.m.dispose();
+  }
 });
 
 // 业主 2026-10-18：「n18 经济惩罚太重」，随后定为「从第 8 回合开始减少钱」。收入惩罚是绝对减，而开局是
@@ -281,11 +382,11 @@ test('the lobby and the protocol carry the level; setLevel refuses it off the hi
 // N18 第 10 回合的彩蛋首领（业主 2026-10-22「n18难度增加第10回合会出现黑蛇或梅菲斯特」）
 //
 // 形态：**普通回合里额外刷一只**红蛇 / 梅菲斯特 —— 不碰最终攻势（没有共享血池、不合并团队 LP、R14 照常还是首领关）。
-// 这一组钉住：抽签的边界（只有 ABYSS 18 级、只有 R10、种子决定哪一只）、注入是纯函数（不消耗 rngWaves、不改原 wave），
+// 这一组钉住：抽签的边界（只有 ABYSS 18 级起、只有 R10、种子决定哪一只）、注入是纯函数（不消耗 rngWaves、不改原 wave），
 // 以及它在实战里真的出场、按普通敌人结算（漏掉照扣 LP、破坏完美作战）。
 // =====================================================================================================================
 
-test('N18 R10 彩蛋首领：只有 ABYSS 18 级、只有第 10 回合、种子决定哪一只', () => {
+test('N18 R10 彩蛋首领：只有 ABYSS 18 级起、只有第 10 回合、种子决定哪一只', () => {
   assert.equal(PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, 10);
   assert.equal(PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL, 18);
   assert.deepEqual([...PROTOCOL_LEVEL_EXTRA_BOSSES], ['enemy_1515_bsnake', 'enemy_1507_mephi'], 'the two hand-added leaders');
@@ -388,7 +489,7 @@ test('N18 R10 彩蛋首领：实战里真的出场，按普通敌人结算（数
   m.dispose();
 });
 
-test('N18 R10 彩蛋首领：R10 之外、以及 18 级以外的回合，波次里没有它', () => {
+test('N18 R10 彩蛋首领：R10 之外、以及 18 级以前的回合，波次里没有它', () => {
   // 实战路径：MatchPhases.startRound 里接的是 protocolLevelExtraBossAt —— 这里守着它两侧的边界。
   const build = (level, round) => {
     const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', humans: 1, seed: 5, fake: true, protocolLevel: level });
@@ -412,7 +513,7 @@ test('N18 R10 彩蛋首领：R10 之外、以及 18 级以外的回合，波次�
 //
 // 界面上的那份清单不是手写的文案，而是 `protocolLevelEffects` 从表里现算出来的。这一组钉住三件事：
 //   1. 每条说明都对应表里的**一个**字段 —— 表改了，说明跟着改；表里没有的，说明里不许出现；
-//   2. 18 级独有的那一条（R10 彩蛋首领）必须在，且只出现在 18 级；
+//   2. 18 级起的那一条（R10 彩蛋首领）必须在，且 1–17 级不许有；19 级的一回合资金上限同理只出现在 19 级；
 //   3. 每一个会被界面显示的 msgid 都在 `public/i18n/en.json` 里（这些 msgid 是运行时拼的，
 //      tools/i18n.mjs 的字面量提取看不见它们 —— 漏了的表现是界面上直接显示中文原文）。
 // =====================================================================================================================
@@ -426,16 +527,19 @@ test('难度介绍：每一级的逐条说明都从表里现算，18 级把「�
   assert.deepEqual(protocolLevelEffects(1).map((e) => e.id), ['ramp', 'hp', 'atk']);
 
   // L18 必须把表里每一个非默认字段都翻出来：回合爬升、生命/攻击/防御/法抗、每波 +1（R6 起、R11 起 +2）、漏怪 +2、
-  // 收入 −3、首领池 +80%、三张敌方源石、以及 R10 的彩蛋首领。
+  // 收入 −3、首领池 +100%、三张敌方源石、以及 R10 的彩蛋首领。
   const l18 = protocolLevelEffects(18);
   assert.deepEqual(l18.map((e) => e.id),
-    ['ramp', 'hp', 'atk', 'def', 'res', 'count', 'leakLp', 'income', 'bossPool', 'extraHex', 'extraBoss']);
+    ['ramp', 'hp', 'atk', 'atkRanged', 'def', 'res', 'count', 'leakLp', 'income', 'bossPool', 'extraHex', 'extraBoss']);
   const byId = Object.fromEntries(l18.map((e) => [e.id, e]));
   assert.equal(byId.hp.params.v, '×2.45', 'the numbers come from the table, not from a literal');
   assert.equal(byId.atk.params.v, '×1.88');
+  assert.equal(byId.atkRanged.params.v, '×1.44', '远程怪那条曲线也在介绍里（业主 2026-10-30）');
   assert.equal(byId.ramp.params.end, PROTOCOL_LEVEL_FULL_ROUND - 1, 'the ramp line names the weakened window');
   assert.equal(byId.ramp.params.from, PROTOCOL_LEVEL_FULL_ROUND);
   assert.equal(byId.ramp.params.late, PROTOCOL_LEVEL_LATE_ROUND);
+  assert.equal(byId.ramp.params.spikeFrom, PROTOCOL_LEVEL_SPIKE_ROUNDS[0], 'the line names the peak rounds');
+  assert.equal(byId.ramp.params.spikeTo, PROTOCOL_LEVEL_SPIKE_ROUNDS[1]);
   assert.equal(byId.count.params.n, 1, 'L18 adds one body per wave from R6');
   assert.equal(byId.count.params.n2, 2, 'and a second one from R11');
   assert.equal(byId.count.params.from, PROTOCOL_LEVEL_FULL_ROUND);
@@ -443,7 +547,7 @@ test('难度介绍：每一级的逐条说明都从表里现算，18 级把「�
   assert.equal(byId.leakLp.params.n, 2, 'and 2 extra LP per leak');
   assert.equal(byId.income.params.n, 3);
   assert.equal(byId.income.params.from, PROTOCOL_LEVEL_INCOME_FREE_ROUNDS + 1, 'the income penalty starts at round 8');
-  assert.equal(byId.bossPool.params.v, '80%');
+  assert.equal(byId.bossPool.params.v, '100%');
   assert.equal(byId.extraHex.params.n, 3);
   assert.equal(byId.extraHex.params.rounds, '1 / 3 / 5', 'spread over rounds 1 / 3 / 5');
   assert.equal(byId.extraBoss.params.round, PROTOCOL_LEVEL_EXTRA_BOSS_ROUND, 'and R10 carries the extra leader');

@@ -42,14 +42,11 @@ export class PlayerRules {
   /**
    * This player's own pool — the full original copy count of every non-banned base chess, built from the MATCH's
    * canonical catalog. Built lazily and kept for the match: taking copies from it must never leak into `m.pool`.
-   * `support` is mirrored from the match's own pool so an operator this room brought as 助战 stays purchasable here too
-   * (shared/support.js: banning a shop roll must not disable a support) — dropping it would delete a feature in the
-   * variant.
    * @returns {SharedPool}
    */
   pool() {
     if (!this._ownPool) {
-      this._ownPool = new SharedPool(this.m.gd, { banned: this.m.bannedChess || [], support: this.m.supportSupply || [] });
+      this._ownPool = new SharedPool(this.m.gd, { banned: this.m.bannedChess || [] });
     }
     return this._ownPool;
   }

@@ -75,6 +75,45 @@ export function mergeHint(priv, chessId) {
  */
 export const slotFrozen = (slot, toggle = false) => !!slot?.frozen || !!toggle;
 
+/**
+ * The bar's two columns of shop slots: the operator cards and the equipment column.
+ *
+ * A bought or freshly opened slot carries no `kind`, so the split cannot be read off the cards alone: the bar used to put
+ * every `null` in the operator column, which moved the equipment slot of a level that opens one to the wrong side and
+ * left the equipment column empty — drawn as one SOLD OUT / 已购买 frame (upstream 0.3.3 §38.1 report). With the
+ * server's `layout` (m.private shop.layout — the REAL slot counts of this shop, { chess, item }) the first `chess` slots
+ * are the operators and the next `item` the equipment column, whatever the cards say.
+ *
+ * A frame without a layout (an older server, a mock) falls back to the cards' own kinds — the pre-0.3.3 rule, kept for
+ * compatibility: [ASSUMED] the fallback is what upstream does too.
+ *
+ * `itemOpen` says whether this shop LEVEL has an equipment slot at all: `false` = it has none (a mode whose first levels
+ * open none — the frame stays in place, but it is an EMPTY frame: the bar must never claim 已购买 there, which is the
+ * 1–4 级 report of upstream 0.3.3), `null` = unknown (a frame without a layout).
+ *
+ * Pure, exported for the Node test (test/ui/shop-columns.test.js); the rest of the bar needs a DOM.
+ * @param {any[]} slots m.private shop.slots (null = an empty slot)
+ * @param {{ chess?: number, item?: number }|null|undefined} layout m.private shop.layout
+ * @returns {{ chessSlots: { s: any, i: number }[], itemSlots: { s: any, i: number }[], itemOpen: boolean|null }}
+ */
+export function shopColumns(slots, layout) {
+  const list = Array.isArray(slots) ? slots : [];
+  const indexed = list.map((s, i) => ({ s, i }));
+  const l = layout && Number.isInteger(layout.chess) && Number.isInteger(layout.item) && layout.chess >= 0 && layout.item >= 0 ? layout : null;
+  if (!l) {
+    return {
+      chessSlots: indexed.filter(({ s }) => !s || s.kind !== 'item'),
+      itemSlots: indexed.filter(({ s }) => !!(s && s.kind === 'item')),
+      itemOpen: null,
+    };
+  }
+  return {
+    chessSlots: indexed.filter(({ i }) => i < l.chess),
+    itemSlots: indexed.filter(({ i }) => i >= l.chess && i < l.chess + l.item),
+    itemOpen: l.item > 0,
+  };
+}
+
 /** The armed (first-tapped) card's confirm strip: 确认购买 / 确认选择, or 无法购买 + why. */
 function ArmedTag({ reason, free }) {
   if (reason) return html`<span class="scard__confirm is-no" role="status"><b>${t('无法购买')}</b><small>${reason}</small></span>`;
@@ -343,8 +382,11 @@ export function ShopBar({ priv, editable, collapsed, refreshBusy = false, onColl
   reward = null, onReward, onRewardLater, onArm = null, offBonds = null }) {
   const shop = priv?.shop || {};
   const slots = Array.isArray(shop.slots) ? shop.slots : [];
-  const chessSlots = slots.map((s, i) => ({ s, i })).filter(({ s }) => !s || s.kind !== 'item');
-  const itemSlots = slots.map((s, i) => ({ s, i })).filter(({ s }) => s && s.kind === 'item');
+  // the columns follow the server's real slot counts when it sends them (m.private shop.layout), else the cards'
+  // kinds — an empty or bought slot carries no kind, so this is the only way an empty EQUIPMENT slot stays in the
+  // equipment column (upstream 0.3.3 §38.1). shopColumns also reports whether this level has an equipment slot at all;
+  // the column below does not drop it either way, an empty one is a bare frame.
+  const { chessSlots, itemSlots } = shopColumns(slots, shop.layout);
   const frozen = !!shop.frozen;
   const funds = Number(priv?.funds) || 0;
   const remaining = Math.max(0, (priv?.deployCap ?? 8) - (priv?.deployCount ?? 0));
@@ -431,12 +473,19 @@ export function ShopBar({ priv, editable, collapsed, refreshBusy = false, onColl
       ${showReward ? null : html`<div class="shopbar__item">
         ${itemSlots.length
           ? itemSlots.map(({ s, i }) => {
+            // an empty equipment slot (opened by an upgrade, or rolled empty by a dry item pool) is a bare frame: nothing
+            // was bought there — the pre-0.3.3 bar drew one SOLD OUT / 已购买 frame for the whole column instead
+            // (upstream 0.3.3 §38.1)
+            if (!s) return html`<${EmptyCard} key=${`ie${i}`} item=${true} />`;
             if (s.sold) return html`<${SoldCard} key=${`is${i}`} item=${true} />`;
             const reason = shopBlockReason('buy', { priv, editable, slot: s, ...LOOKUPS });
             return html`<${ItemCard} key=${`i${i}:${s.id}`} slot=${s} idx=${i} frozen=${slotFrozen(s, frozen)} onBuy=${onBuy} onDetail=${onDetail} reason=${reason}
               armed=${armed === armKey('i', i, s)} onTap=${editable ? (idx) => tapCard('i', idx, s, 'item', reason, onBuy) : null} />`;
           })
-          : html`<${SoldCard} item=${true} />`}
+          // no equipment slot in this frame at all: the column keeps its place (the bar never collapses it — a level
+          // without an equipment slot still shows the frame, upstream 0.3.3 §38.1) and it is NOT a bought one: the bar
+          // used to draw SOLD OUT / 已购买 here, which says an equipment was bought where the level has no such slot.
+          : html`<${EmptyCard} item=${true} />`}
       </div>`}
       <div class="funds">
         <div class="funds__hex">

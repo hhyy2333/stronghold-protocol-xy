@@ -31,7 +31,6 @@ function randomIntent(rng, m, ps) {
   const to = () => (rng() < 0.6 ? { area: 'board', row: rng() < 0.8 ? 9 + rng.int(4) : rng.int(19), col: rng() < 0.8 ? 2 + rng.int(9) : rng.int(21) } : { area: 'hand', idx: rng.int(10) });
   switch (t) {
     case 'g.infoReady': return { t, setupRevision: m.setupRevision ?? 0 };
-    case 'g.rerollVote': return { t, voteId: m.setupVote?.id ?? 1 + rng.int(10), agree: rng() < 0.5 };
     case 'g.band': return { t, bandId: rng() < 0.8 ? rng.pick(BANDS) : rng.pick(['constructor', '__proto__', 'band_x', 'a'.repeat(64)]) };
     case 'g.buy': return { t, slot: rng.int(16) };
     case 'g.sell': case 'g.destroy': return { t, uid: uid() };
@@ -45,6 +44,9 @@ function randomIntent(rng, m, ps) {
     // 海克斯 (DESIGN §29): the validator caps the index at 2 (the player's own three offers)
     case 'g.hex': return { t, idx: rng.int(3) };
     case 'g.hexReroll': return { t };
+    // 第 6 回合的「舍弃换随机」(业主 2026-10-30): `ids` is 1–2 owned card ids. The fuzz only needs a legal SHAPE — it rarely
+    // stands in R6's prep, and the engine answers WRONG_PHASE / BAD_TARGET for everything else.
+    case 'g.hexRecycle': return { t, ids: rng() < 0.5 ? [rng.pick(PLAYER_HEXES)] : [rng.pick(PLAYER_HEXES), rng.pick(PLAYER_HEXES)] };
     case 'g.ready': return { t, ready: rng() < 0.4 };
     case 'g.emote': return { t, id: rng.pick(EMOTES) };
     case 'g.watch': return { t, fieldId: rng.pick(['n:p_0', 'n:p_1', 'n:ai_0', 'u', 'b1', 'b2', 'zz', '']) };
@@ -61,6 +63,9 @@ function randomIntent(rng, m, ps) {
     case 'g.testEnemyHex': return { t, hexId: rng.pick(ENEMY_HEXES) };
     // 测试场 直接到 boss 战（2026-10-21）: `bossId` is optional, so both the empty body and a named leader are shapes
     case 'g.testBoss': return rng() < 0.5 ? { t } : { t, bossId: rng.pick(BOSS_IDS) };
+    // 测试场 买任何干员（业主 2026-10-26）: `chessId` is any id the data knows — the engine refuses the ones the shop could
+    // never offer (an elite, a 自选 slot, a hidden record) with BAD_TARGET, and the fuzz only needs a legal SHAPE.
+    case 'g.testChess': return { t, chessId: rng.pick(CHESS_IDS) };
     default: return { t };
   }
 }

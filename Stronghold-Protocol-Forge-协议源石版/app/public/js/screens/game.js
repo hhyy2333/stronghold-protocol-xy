@@ -85,9 +85,10 @@ import { ShopBar } from '../ui/shopBar.js';
 import { DetailPanel, resolveDetail } from '../ui/detailPanel.js';
 import { RewardOverlay } from '../ui/rewardOverlay.js';
 import { ChoiceOverlay } from '../ui/choiceOverlay.js';
-import { HexOverlay } from '../ui/hexOverlay.js';
+import { HexOverlay, HexRecyclePanel, hexRecycleAvailable, hexRecycleWindow, hexRecycleLeft, ownHexIds, recycleCardsOf, RECYCLE_FLASH_MS } from '../ui/hexOverlay.js';
 // 测试场 (the owner's request of 2026-10-11): the funds / 协议源石 panel a room created with `test: true` offers.
-import { TestArenaButton, TestArenaPanel } from '../ui/testArena.js';
+// 业主 2026-10-26: the same panel now also BUYS any operator (`operatorsOf` builds its roster from data/chess.json).
+import { TestArenaButton, TestArenaPanel, operatorsOf } from '../ui/testArena.js';
 import { EnemyDrawer } from '../ui/enemyDrawer.js';
 import { Ticker } from '../ui/ticker.js';
 import { EmoteWheel } from '../ui/emotes.js';
@@ -258,15 +259,17 @@ function MatchScreen() {
     if (v) setChatUnread(false);
   };
 
-  // 伤害统计 (ui/damageReport.js)：浮动报告面板、按哪个指标排序（伤害/承伤/治疗）、实时/已冻结开关，
-  // 以及冻结时最后拿到的那份数字（冻结后不再跟着战斗动）
+  // 伤害统计 (ui/damageReport.js)：浮动报告面板、按哪个指标排序（伤害/秒伤/承伤/治疗）、实时/已冻结开关，
+  // 以及冻结时最后拿到的那份数字（冻结后不再跟着战斗动；秒伤的分母 elapsed 也一起冻在里面）
   const [dmgOpen, setDmgOpen] = useState(false);
   const [dmgLive, setDmgLive] = useState(true);
   const [dmgMetric, setDmgMetric] = useState('dmg');
   // 业主 2026-10-20「点击干员头像可以看他的详细伤害类型」：展开哪一行（一次只开一个，再点收起）。面板是不持有状态的
-  // 纯视图，所以这把开关放在这里，和 metric / live 一样；切到承伤 / 治疗时收起（那两栏没有类型构成可看）。
+  // 纯视图，所以这把开关放在这里，和 metric / live 一样；切到秒伤 / 承伤 / 治疗时收起（那几栏没有类型构成可看）。
   const [dmgDetailRow, setDmgDetailRow] = useState(null);
   const dmgFrozenRef = useRef(null);
+  // 已经自动弹过输出结算的木桩回合号（第 16 回合）：同一回合只弹一次，玩家关掉就不再回来
+  const dummyPopupRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [drag, setDrag] = useState(null);                // { uid, kind, id } while dragging a piece
@@ -283,12 +286,31 @@ function MatchScreen() {
   const [spBusy, setSpBusy] = useState(null);
   // 协议源石 (Hextech): the card being confirmed / -1 while the reroll is in flight
   const [hexBusy, setHexBusy] = useState(null);
+  // 协议源石 · 刷新（业主 2026-10-31「就是选完协议源石，这面板直接出现」「把有的协议源石放上去点击刷新」）：哪一回合按过
+  // 「完成」、正在刷新的那张 id、刚换回来要闪一下的那张 id。面板是不持有状态的纯视图（ui/hexOverlay.js
+  // HexRecyclePanel），状态留在这一层；「开没开」不再是玩家点出来的开关，而是窗口 × 没按过完成派生出来的。
+  const [recycleDismissed, setRecycleDismissed] = useState(null);
+  const [recycleBusy, setRecycleBusy] = useState(null);
+  const [recycleFresh, setRecycleFresh] = useState(null);
+  // 这一手在**本回合**露过面没有：次数用完那一刻面板要留在原地显示「次数已用完」（业主 2026-10-31），靠的就是它 ——
+  // 没有它的话，最后一张刷完的瞬间窗口判据变假、面板会跟着消失，玩家根本读不到那句话。
+  const [recycleShownRound, setRecycleShownRound] = useState(null);
   // 测试场 (the owner's request of 2026-10-11): the test panel's open state, the card whose grant is in flight, and
   // which 协议源石 side it shows ('player' | 'enemy'). `pub.test` is the room flag the server sets for a room created
   // with `room.create.test` (m.public.test, server/match/match/views.js).
   const [testOpen, setTestOpen] = useState(false);
   const [testBusy, setTestBusy] = useState(null);
   const [testSide, setTestSide] = useState('player');
+  // 测试场「买任何干员」(业主 2026-10-26): the picker's search text, and the roster it filters — every shop operator of the
+  // room's data at the price the server charges (ui/testArena.js operatorsOf → shared/chessPrice.js). The list is rebuilt
+  // when the data (a content set / a language switch) or the mode changes; it is one row per visible operator (114 today).
+  const [testSearch, setTestSearch] = useState('');
+  // (deps are the two data files themselves, like `testBossList` below: a content set / a language switch hands over a
+  // new object, and `data.get` returns the same one while nothing changed)
+  const testOperators = useMemo(
+    () => operatorsOf(data.list('chess'), data.get('config'), pub?.modeId),
+    [data.get('chess'), data.get('config'), pub?.modeId],
+  );
   // 测试场「跳到 boss 战」: the leader picked in the panel (absent = the first one, i.e. the panel's own default)
   const [testBoss, setTestBoss] = useState(null);
   // the panel's leader list: every data/bosses.json entry that has a wave, in sort order (the hand-added boss_11 included)
@@ -347,6 +369,62 @@ function MatchScreen() {
   // 协议源石 (Hextech): a PARALLEL draft — the local player's own three offers, their pick and their rerolls.
   // null outside the phase, so the overlay below is rendered only while it runs.
   const hexDraft = phase === PHASE.HEX_DRAFT ? normalizeHex(pub?.hex, myId, players) : null;
+  // 协议源石 · 刷新（业主 2026-10-31「选完协议源石，这面板直接出现」）：窗口一开面板自己出现 —— 没有角落按钮，也没有
+  // 玩家点的开关。窗口判据在 ui/hexOverlay.js hexRecycleAvailable（第 6 回合 / 存活 / 还有次数 / 至少拥有一张 /
+  // HEX_DRAFT 已选完 或 PREP）；PREP 那条还要「未准备」，`priv.ready` 不在那个纯函数的入参里，所以由屏幕补。
+  const recycleLeft = hexRecycleLeft(pub, myId);
+  // 阶段窗口（`hexRecycleWindow`：第 6 回合 / 存活 / 至少一张 / HEX_DRAFT 已选完 或 PREP）＋ 屏幕补的「未准备」。
+  // 注意它**不含次数**：次数用完那一刻面板还要留在原地显示「次数已用完」，见下面 `recycleOpen`。
+  const recycleWindow = hexRecycleWindow(pub, myId) && (phase !== PHASE.PREP || priv?.ready !== true);
+  // 「完成」关掉的是**这一轮**：dismissedRound 记下是按在哪一回合的，同一回合里不再自动弹（换回合时下面那条 effect 把它
+  // 清掉，所以下一局的第 6 回合照旧会自己出现）。
+  // 次数用完 ⇒ 服务端不再受理，但面板不跟着消失：本回合露过面就留着说「次数已用完」，按「完成」才走（业主 2026-10-31）。
+  const recycleOpen = recycleWindow && recycleDismissed !== pub?.round
+    && (recycleLeft > 0 || recycleShownRound === pub?.round);
+  const recycleCards = recycleCardsOf(ownHexIds(pub, myId), data.get('hextech')?.playerHexes);
+  const recycleIdKey = recycleCards.map((c) => c.id).join('|');
+  /** 上一帧自己拥有的 id 集合 —— 「换回来的那张」就是这一帧新出现的 id（见下面那条 effect）。 */
+  const recycleSeen = useRef(new Set());
+  useEffect(() => {
+    setRecycleDismissed((d) => (d != null && d !== pub?.round ? null : d));
+    setRecycleShownRound((r) => (r != null && r !== pub?.round ? null : r));
+  }, [pub?.round]);
+  // 记下「本回合露过面」（次数用完之后面板留在原地靠它）；换回合就归零
+  useEffect(() => {
+    if (!recycleOpen || recycleShownRound === pub?.round) return;
+    setRecycleShownRound(pub?.round ?? null);
+  }, [recycleOpen, recycleShownRound, pub?.round]);
+  // 新卡入场：请求成功后服务端把那张换成另一张，id 集合一变就闪一下（业主「换回来的那张是新的」）。只在面板本来就开着
+  // 的时候闪 —— 第一次铺卡不是「换回来的」。
+  useEffect(() => {
+    const prev = recycleSeen.current;
+    recycleSeen.current = new Set(recycleCards.map((c) => c.id));
+    if (!recycleOpen || !prev.size) return undefined;
+    const fresh = [...recycleSeen.current].find((id) => !prev.has(id));
+    if (!fresh) return undefined;
+    setRecycleFresh(fresh);
+    const timer = setTimeout(() => setRecycleFresh(null), RECYCLE_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [recycleIdKey, recycleOpen]);
+  // 面板收掉时（换阶段 / 次数用完 / 已准备 / 按了完成）把「在飞的那张」一起清掉：下一轮出现时是干净的
+  useEffect(() => {
+    if (recycleOpen) return;
+    setRecycleBusy(null);
+    setRecycleFresh(null);
+  }, [recycleOpen]);
+  // Esc 等同「完成」（面板自己的规矩：Esc / 点 veil / 点「完成」都关掉这一轮）。capture 阶段拦下并 stopPropagation，
+  // 免得局内快捷键（关详情卡 / 关抽屉那些）抢走这一下。
+  useEffect(() => {
+    if (!recycleOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      setRecycleDismissed(pub?.round ?? null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [recycleOpen, pub?.round]);
   // 测试场 (the owner's request of 2026-10-11): the room flag the server sends for a room created with
   // `room.create.test` (m.public.test). The panel is offered only there; every intent is refused elsewhere anyway.
   const testField = pub?.test === true;
@@ -499,6 +577,9 @@ function MatchScreen() {
   // for the tap on a device (gameLogic.deviceTipAt); the renderer's pick skips devices, a tap on one lands in tileClick
   const deviceUnitsRef = useRef(new Map());
   const hudRef = useRef(null);
+  // 屏上这一场已经打了多少秒（服务端流式战斗那条路）：最近一帧 b.snap 的 `t`（server/sim/battle/events.js snapshot，
+  // t = battle.time）。秒伤的分母用它——面板是纯视图，读不到也不许自己读时钟，所以时长由这一层拿着传下去。
+  const snapTimeRef = useRef(null);
   // b.ev / b.snap that arrive before the UI entered their field (the battle's first ticks race the m.public /
   // m.field re-render): kept per fieldId and replayed on enter so no unit's 'spawn' UnitInfo is ever lost.
   const evBufRef = useRef(new Map());   // fieldId → ev tuples since that field's m.field
@@ -674,6 +755,8 @@ function MatchScreen() {
       if (Array.isArray(earlySnap.units)) {
         snapUnitsRef.current = new Map(earlySnap.units.filter(Array.isArray).map((t) => [t[0], t]));
       }
+      // 秒伤的分母：进入这一场时缓冲下来的那一帧也带时长（重连 / 中途进入时战斗已经打了一会儿）
+      snapTimeRef.current = Number.isFinite(earlySnap.t) ? earlySnap.t : null;
       hudRef.current = snapHud(earlySnap);
       setHud(hudRef.current);
     }
@@ -706,6 +789,8 @@ function MatchScreen() {
         for (const u of msg.units) if (u && u.uid != null) m.set(u.uid, u);
         unitInfosRef.current = m;
       }
+      // 秒伤的分母按「这一场」算：新的一场 m.field 到了就先清掉上一场的时长，免得第一帧还没到就拿着上一场的秒数去除
+      if (msg.fieldId === lastFieldRef.current) snapTimeRef.current = null;
       snapBufRef.current.delete(msg.fieldId);
       if (msg.fieldId === lastFieldRef.current) reentryRef.current = msg.fieldId;
     };
@@ -725,6 +810,8 @@ function MatchScreen() {
         snapUnitsRef.current = mp;
       }
       dmgListRef.current = Array.isArray(snap.dmg) ? snap.dmg : null;
+      // 秒伤的分母：这一帧的战斗时间（服务端流式战斗没有本地 battle 可问，snapshot 的 `t` 就是它）
+      snapTimeRef.current = Number.isFinite(snap.t) ? snap.t : null;
       hudRef.current = snapHud(snap);
       const dt = performance.now() - last;
       if (dt >= HUD_HZ_MS) flush();
@@ -905,6 +992,31 @@ function MatchScreen() {
     setSpBusy(null);
   }, [phaseKey]);
 
+  // 木桩演练（第 16 回合，m.public.dummyRound）的**输出结算**：这一回合打完之后，玩家要看到自己这一场的输出，所以
+  // 战斗一结束就把**同一个**伤害统计面板（ui/damageReport.js）以「已冻结」自动弹出来——总伤害、秒伤、战斗时长都在
+  // 那一块里，不另造一套结算界面。`dummyPopupRef` 记「已经自动弹过的回合号」：同一回合的后续帧不会再弹（玩家自己
+  // 关掉就是关掉），离开结算阶段则把这次自动弹出的面板收起，免得它挡在下一回合的备战界面上。
+  // m.public.dummyRound 为 null / undefined（旧服务端、没有木桩回合的模式）时整段不生效，行为与从前完全一致——
+  // 这里只读服务端下发的字段，不去配置里猜第几回合是木桩，免得两边口径不一致。
+  useEffect(() => {
+    const dr = pub?.dummyRound;
+    if (!Number.isFinite(dr) || pub?.round !== dr) return;
+    if (phase === PHASE.SETTLE) {
+      if (dummyPopupRef.current === dr) return;
+      dummyPopupRef.current = dr;
+      // 冻结：面板停在结算这一刻的数字。冻结的报告里 elapsed 与 rows 是一起快照的，所以秒伤也跟着停住。
+      setDmgLive(false);
+      setDmgDetailRow(null);
+      // 木桩回合看的就是秒伤：有战斗时长时直接开在这一栏（没有时长就留在当前指标，那一列显示「—」）
+      const settled = dmgFrozenRef.current;
+      if (settled && Number.isFinite(settled.elapsed) && settled.elapsed > 0) setDmgMetric('dps');
+      setDmgOpen(true);
+    } else if (dummyPopupRef.current === dr) {
+      dummyPopupRef.current = null;
+      setDmgOpen(false);
+    }
+  }, [phase, pub?.round, pub?.dummyRound]);
+
   useEffect(() => {
     setPersonalBusy((b) => b?.choiceId === personalChoice?.id ? b : null);
     if (!personalChoice) return;
@@ -1014,6 +1126,33 @@ function MatchScreen() {
     await actions.testBoss(id);
     setTestBusy(null);
   }, [testBoss, testBossList]);
+  // 测试场 买任何干员（业主 2026-10-26）：the operator whose purchase is in flight stays disabled until the server answers
+  // (the reply carries the new m.private / m.public; the UI never guesses the funds). The server refuses outside PREP or
+  // after Ready, so the panel disables the whole list there (`canBuy` below) instead of letting a tap answer WRONG_PHASE.
+  const buyTestOperator = useCallback(async (chessId) => {
+    setTestBusy(chessId);
+    await actions.testChess(chessId);
+    setTestBusy(null);
+  }, []);
+  // 协议源石 · 刷新（业主 2026-10-31「把有的协议源石放上去点击刷新」）：点一张就发一张，没有确认、没有多选。
+  // 成功后**不关面板** —— 服务端把那张换成另一张的帧随后就到，玩家接着点下一张（或按「完成」）；失败时 act() 已经
+  // toast 过，面板留着、卡也恢复可点。请求在途时整排卡都点不动（`recycleCanRefresh` 在面板里判），一次点击只花一次。
+  const refreshRecycle = useCallback(async (id) => {
+    if (recycleBusy || !id) return;
+    // 服务端此刻会不会受理（阶段窗口 + 还有次数）：面板已经把卡禁掉了，这一句是同一份判据的第二道门 —— 一个注定被
+    // 拒绝的请求不必发出去。
+    if (!hexRecycleAvailable(pub, myId)) return;
+    setRecycleBusy(id);
+    setRecycleFresh(null);
+    const ok = await actions.hexRecycle([id]);
+    setRecycleBusy(null);
+    // 失败：次数没扣、牌没换，什么都不用回滚（`act()` 已经把拒绝码说给玩家了）
+    if (!ok) return;
+  }, [recycleBusy, pub, myId]);
+  // 「完成」/ Esc / 点 veil：关掉**这一轮**（同一回合不再自动弹，见 `recycleDismissed`）
+  const closeRecycle = useCallback(() => {
+    setRecycleDismissed(pub?.round ?? null);
+  }, [pub?.round]);
   // 准备 with funds left asks first: the prep's end wipes them (community report #4; not 坎诺特, not at 0 funds, not
   // under AI 托管 — gameLogic.readyFundsPrompt). The button and Space both come here.
   const askingReady = useRef(false);
@@ -1616,9 +1755,12 @@ function MatchScreen() {
     pub, priv, myId, combat, settle: settleMode, watchingOther, watching, home,
     battleFieldId: cc ? (battleState?.fieldId || null) : (combat || settleMode ? lastFieldRef.current : null),
     field, layers, layer, who: watchWho, bondLayers: battleState?.bondLayers || null,
+    // 【突破极限】(设计稿 §3): 每玩家的叠层上限 (runner state().bondCaps; 缺省 BOND_LAYER_CAP)
+    bondCaps: battleState?.bondCaps || null,
   });
   const stripFid = strip.fieldId;
   const liveLayers = (combat || settleMode) && battleState?.bondLayers ? battleState.bondLayers : null;
+  const liveCaps = (combat || settleMode) && battleState?.bondCaps ? battleState.bondCaps : null;
   // the observing pill names the player whose bonds the strip shows (the same teammate as the strip's "👁 name" tag)
   const observingName = cc && combat && watchedFid ? (!strip.self && stripFid === watchedFid ? strip.name : (players.find((p) => p.fieldId === watchedFid || ownFieldId(p.playerId) === watchedFid)?.name || t('队友'))) : null;
   const watchedP = watchingOther ? (players.find((p) => p.playerId !== myId && (watching === ownFieldId(p.playerId) || (watching === p.fieldId && String(watching).startsWith('n:')))) || null) : null;
@@ -1636,7 +1778,7 @@ function MatchScreen() {
   // and as members your pieces or their operators on the field on screen — under client-side combat the battle's own
   // (the runner's field meta is taken before they deploy); a battle sends no bench (a prep scout does: ownerBoard)
   const popOps = cc && battleRunner && field?.local && bondOpen && bondOpen.ownerId !== myId ? battleRunner.ownerOps(bondOpen.ownerId, field.fieldId) : null;
-  const bondPop = popupView({ open: bondOpen, pub, priv, myId, field, units: popOps, live: liveLayers });
+  const bondPop = popupView({ open: bondOpen, pub, priv, myId, field, units: popOps, live: liveLayers, bondCaps: liveCaps });
   const openBond = (id, ownerId, from) => { setBondOpen((b) => toggleBond(b, id, ownerId, from)); audio.sfx('click', { volume: 0.4 }); };
   const watchingNow = combat ? (watching || field?.fieldId || home) : watching;
   const shopOpen = showShop && !barCollapsed;
@@ -1709,7 +1851,7 @@ function MatchScreen() {
   // teammate's — m.public + live layers), your own piece's yours, a popup member card the popup's player; shop / reward
   // cards read the strip's (ui/watchBonds.js detailBondOwner)
   const detailOwner = detailBondOwner(detailTarget, { pub, myId, stripOwnerId: strip.ownerId });
-  const detailBonds = detailOwner === strip.ownerId ? stripBonds : playerBonds({ pub, priv, myId, ownerId: detailOwner, live: liveLayers });
+  const detailBonds = detailOwner === strip.ownerId ? stripBonds : playerBonds({ pub, priv, myId, ownerId: detailOwner, live: liveLayers, bondCaps: liveCaps });
   // bonds this mode never activates (标准: 10 of 23, 奥术 among them) — shown 本局禁用 on cards, chips and the popup
   const offBonds = modeOffBonds(getMode(pub?.modeId));
 
@@ -1729,17 +1871,28 @@ function MatchScreen() {
   // 本局累计：没有战斗在屏上时（修整期 / 抽取 / SETTLE）面板回落到它
   const cumRows = cumulativeRows(priv?.cumStats);
   const cumulative = !inBattle;
+  // 秒伤的分母（ui/damageReport.js 的 `elapsed`）：屏上这一场**已经打了多少秒**，由这里量好传给面板——面板是纯视图，
+  // 不读时钟、也不自己算时长。两条路各读各的时钟：
+  //   客户端战斗：runner 的公开只读 currentBattle().time，就是本场 sim 的战斗时钟（e.battle.time；单机暂停时一起停住）
+  //   服务端流式战斗：最近一帧 b.snap 的 `t`（snapTimeRef，见 onSnap）
+  // 都拿不到（战斗还没开始计时 / 没有战斗在屏上 / 本局累计）就是 null，面板的秒伤列显示「—」而不是 0。
+  const liveElapsed = cc
+    ? (battleRunner && typeof battleRunner.currentBattle === 'function' ? (battleRunner.currentBattle()?.time ?? null) : null)
+    : (snapTimeRef.current ?? null);
   // 冻结的报告属于它被冻结时的那一场：换场（或新一轮的战斗）就丢掉，免得拿上一场的数字当这一场
   if (dmgFrozenRef.current && dmgFrozenRef.current.fieldId !== reportFieldId) dmgFrozenRef.current = null;
   const reportShown = inBattle && !!reportFieldId && (dmgOpen || dmgLive);
   const liveReport = reportShown && cc && battleRunner && reportFieldId
-    ? { fieldId: reportFieldId, rows: battleRunner.damageReport(null, reportFieldId) || [] }
-    : { fieldId: reportFieldId, rows: snapshotDamageRows([...unitInfosRef.current.values()], dmgListRef.current) };
+    ? { fieldId: reportFieldId, rows: battleRunner.damageReport(null, reportFieldId) || [], elapsed: liveElapsed }
+    : { fieldId: reportFieldId, rows: snapshotDamageRows([...unitInfosRef.current.values()], dmgListRef.current), elapsed: liveElapsed };
   if (dmgLive && liveReport) dmgFrozenRef.current = liveReport;
   const report = dmgLive ? liveReport : (dmgFrozenRef.current || liveReport);
   const reportRows = cumulative ? cumRows : (report ? report.rows : []);
-  const reportList = rankRows(filterByPlayers(reportRows, cumulative ? null : reportPlayers), dmgMetric);
-  const reportSum = reportTotal(reportRows, dmgMetric, cumulative ? null : reportPlayers);
+  // 冻结时 elapsed 与 rows 是同一份快照：否则伤害停住、时长还在涨，冻结后的秒伤会自己往下掉
+  const reportElapsed = cumulative ? null : (report ? (report.elapsed ?? null) : null);
+  const reportPlayersUsed = cumulative ? null : reportPlayers;
+  const reportList = rankRows(filterByPlayers(reportRows, reportPlayersUsed), dmgMetric, { elapsed: reportElapsed });
+  const reportSum = reportTotal(reportRows, dmgMetric, reportPlayersUsed, reportElapsed);
   const reportAvail = (inBattle && !!reportFieldId) || cumulative;
   const reportOpen = dmgOpen && reportAvail;
   const reportRound = Number.isFinite(pub?.round) ? pub.round : null;
@@ -1821,6 +1974,7 @@ function MatchScreen() {
         onMessage=${() => { if (!chatOpenRef.current) setChatUnread(true); }} /></div>
 
       ${reportOpen ? html`<${DamageReportPanel} rows=${reportRows} total=${reportSum} metric=${dmgMetric}
+        elapsed=${reportElapsed}
         onMetric=${(id) => { setDmgMetric(id); setDmgDetailRow(null); }}
         detailRow=${dmgDetailRow} onDetail=${setDmgDetailRow}
         round=${reportRound} live=${dmgLive} cumulative=${cumulative}
@@ -1834,6 +1988,8 @@ function MatchScreen() {
         ${/* 测试场 (the owner's request of 2026-10-11): the panel's HUD toggle, only in a room created with test:true
               (m.public.test). It sits in the corner row, so a tester reaches it in every phase. */ ''}
         ${testField ? html`<${TestArenaButton} open=${testOpen} onToggle=${setTestOpen} />` : null}
+        ${/* 协议源石 · 刷新 (业主 2026-10-31「不要按钮形式」): NO corner entry — the panel opens by itself while the
+              window is up (`recycleOpen` above), so the corner row is byte-identical to before this feature. */ ''}
         <button type="button" class=${`gm__gear gm__chat${chatOpen ? ' is-on' : ''}${chatUnread && !chatOpen ? ' has-unread' : ''}`} aria-expanded=${chatOpen ? 'true' : 'false'}
           aria-label=${t('发言')} title=${t('发言')} onClick=${() => setChatOpen((v) => !v)}><span aria-hidden="true">💬</span>
           ${chatUnread && !chatOpen ? html`<i class="gm__dot" aria-hidden="true"></i>` : null}</button>
@@ -1851,10 +2007,12 @@ function MatchScreen() {
         <${FullscreenButton} class="gm__gear gm__fs" />
       </div>
 
-      ${/* 测试场 (the owner's request of 2026-10-11): the panel itself — funds, both 协议源石 sides, clear. It is a
-            HUD section (not a modal), so the tester keeps playing while it is open. Never rendered in a normal match:
-            pub.test is absent then, and the server would refuse the intents anyway. The owned lists come from the
-            same frames the game itself reads: the player's own m.public players[].hexes, m.public.enemyHexes. */ ''}
+      ${/* 测试场 (the owner's request of 2026-10-11): the panel itself — funds, both 协议源石 sides, clear, and (业主
+            2026-10-26) the 干员 picker. It is a HUD section (not a modal), so the tester keeps playing while it is open.
+            Never rendered in a normal match: pub.test is absent then, and the server would refuse the intents anyway. The
+            owned lists come from the same frames the game itself reads: the player's own m.public players[].hexes,
+            m.public.enemyHexes. `canBuy` is the server's own gate for a purchase (PREP, not Ready) — the picker disables
+            its rows there instead of letting a tap answer WRONG_PHASE. */ ''}
       ${testField && testOpen ? html`<${TestArenaPanel} funds=${priv?.funds ?? 0}
         ownedPlayer=${(pub?.players || []).find((p) => p && p.playerId === myId)?.hexes || []}
         ownedEnemy=${(pub?.enemyHexes || []).map((h) => h && h.id).filter(Boolean)}
@@ -1862,6 +2020,8 @@ function MatchScreen() {
         onGrantPlayer=${grantTestHex} onClearPlayer=${clearTestHex}
         onGrantEnemy=${grantTestEnemyHex} onClearEnemy=${clearTestEnemyHex}
         bosses=${testBossList} boss=${testBoss} onBossPick=${setTestBoss} onBoss=${jumpToTestBoss}
+        operators=${testOperators} search=${testSearch} onSearch=${setTestSearch} onBuyOperator=${buyTestOperator}
+        canBuy=${pub?.phase === PHASE.PREP && !priv?.ready}
         onClose=${() => setTestOpen(false)} />` : null}
       ${drawer ? html`<${EnemyDrawer} tab=${drawer} onTab=${setDrawer} pub=${pub} priv=${priv} onClose=${() => setDrawer(null)}
         bandId=${scoutBandId} bandOwner=${scoutBandOwner}
@@ -1898,6 +2058,13 @@ function MatchScreen() {
     ${hexDraft ? html`<${HexOverlay} hex=${hexDraft} enemy=${pub?.enemyHexes || []} busyIdx=${hexBusy}
       onPick=${async (i) => { setHexBusy(i); await actions.hex(i); setHexBusy(null); }}
       onReroll=${async (idx) => { setHexBusy(-1); await actions.hexReroll(idx); setHexBusy(null); }} />` : null}
+
+    ${/* 协议源石 · 刷新 (业主 2026-10-31「选完协议源石，这面板直接出现」): the panel of the 第 6 回合 window — its own
+          overlay, mounted AFTER the draft's (same `.spov` shell, and `.hxrec` lifts it above `.spov`'s z-index 20), so in
+          HEX_DRAFT it sits ON TOP of the 三选一 overlay that is still up behind it. It shows only while the window is
+          accepted (`recycleOpen`), so a phase change / a spent budget takes it away on its own. */ ''}
+    ${recycleOpen ? html`<${HexRecyclePanel} cards=${recycleCards} left=${recycleLeft} busyId=${recycleBusy}
+      freshId=${recycleFresh} onRefresh=${refreshRecycle} onClose=${closeRecycle} />` : null}
 
     ${banner ? html`<${PhaseBanner} key=${banner.key} mode="overlay" title=${banner.title} sub=${banner.sub} micro=${banner.micro}
       tone=${banner.tone} duration=${banner.duration || 1500} onDone=${() => setBanner(null)} />` : null}

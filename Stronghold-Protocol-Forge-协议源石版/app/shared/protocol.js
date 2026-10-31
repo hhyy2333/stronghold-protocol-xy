@@ -4,7 +4,6 @@
 import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_ROOM_MODS, EMOTES, GEO, maxSeatsFrom, MIN_SEATS, DRAFT_CARDS_MAX } from './constants.js';
 import { isDroppableChess } from './standIn.js';
 import { diySlotIds, validateDiyPicks } from './diy.js';
-import { isSupportEntries } from './support.js';
 import { cultivatedStats, isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT, hasPotentialData } from './potential.js';
 import { isContentHash } from './plugins/identity.js';
 import { isPluginId } from './plugins/manifest.js';
@@ -410,13 +409,17 @@ export const isDiyPicks = (v) => isMap(v, DIY_LIMITS.slots, isId, isDiyPickWire)
 
 // ---- 协议源石禁用 (业主 2026-10-21): room.hexBans { ids } ----------------------------------------------------------
 //
-// An out-of-match setting like 干员持有 / 自选编队: each player may ban up to 3 protocol-originium cards, and ONLY their
+// An out-of-match setting like 干员持有 / 自选编队: each player may ban up to 6 protocol-originium cards, and ONLY their
 // own draft offers / rerolls / random extra gains skip them. Stored per session / seat; a match takes the list its seat
 // had at its start, and during a match the setting is stored for the NEXT one (ROOM_STARTED). The wire check is
-// structural only (≤ 3 id strings, no duplicates); which of them are real cards of this room's data is the semantic
+// structural only (≤ 6 id strings, no duplicates); which of them are real cards of this room's data is the semantic
 // check's job (server/lobby.js, LENIENT like checkNotOwned: an id it does not know is dropped, never the whole setting).
-export const HEX_BANS_LIMIT = 3;
-/** Structural check of `room.hexBans.ids`: an array of ≤ 3 distinct ids. */
+//
+// 3 → 6 (业主 2026-10-30「增加协议源石ban位从3到6」): the cap lives ONLY here — the client's panel / count / toast, the
+// server's structural check and checkHexBans' own slice all read HEX_BANS_LIMIT, so a wider cap is this one number plus
+// the layout that draws the slots (public/js/screens/hexBans.js renders `HEX_BANS_LIMIT` rows).
+export const HEX_BANS_LIMIT = 6;
+/** Structural check of `room.hexBans.ids`: an array of ≤ 6 distinct ids. */
 export const isHexBanList = (v) => isList(v, HEX_BANS_LIMIT, isId) && new Set(v).size === v.length;
 
 /**
@@ -631,7 +634,7 @@ export const C2S = {
     // never runs and the host may grant themselves any 协议源石 and any amount of funds from the in-match test panel
     // (`g.testHex` / `g.testHexClear` / `g.testFunds`). Absent = a normal room (every existing behaviour).
     test: (v) => v === undefined || v === null || isBool(v),
-    // 协议等级 (owner's call 2026-10-18): 0 = off, 1–18 only on the HIGHEST difficulty (the handler normalizes to 0
+    // 协议等级 (owner's call 2026-10-18): 0 = off, 1–19 only on the HIGHEST difficulty (the handler normalizes to 0
     // elsewhere; the wire only guarantees the shape).
     level: (v) => v === undefined || v === null || isInt(v, 0, PROTOCOL_LEVEL_MAX),
     $optional: ['mods', 'modIds', 'chatMode', 'seatCap', 'test', 'level'],
@@ -706,21 +709,16 @@ export const C2S = {
   'room.kick': { seat: (v) => isInt(v, 0, SEAT_CAP - 1), playerId: isId },
   'room.start': {},
   'room.rerollSetup': { setupRevision: (v) => isInt(v, 0, 2 ** 31) },
-  'room.cancelReroll': { voteId: (v) => isInt(v, 1, 2 ** 31) },
   // operator loadout (DESIGN §16): stored per session/seat; accepted until the match leaves INFO_CHECK — `ops` (0.2.2):
   // the per-operator 潜能 / 练度 (absent = none set: every operator at 潜能 6, 精英2 Lv.60)
   'room.loadout': { entries: isLoadoutEntries, ops: isLoadoutOps, $optional: ['ops'] },
-  // 助战 (support operators, remake extension — shared/support.js, docs/WORKSHOP.md): `entries` = the base chess ids the
-  // player brings as supports, stored per session/seat like the loadout. The pool is the SERVER's (data/support.json):
-  // an operator it does not list is DISABLED and refuses the whole message — there is deliberately no fallback.
-  'room.support': { entries: isSupportEntries },
   // operator ownership (干员持有, 0.2.0 补位): stored per session / seat; a match takes the list its seat had when it
   // started (an out-of-match setting — during a match it is stored for the next one: ROOM_STARTED)
   'room.ownership': { notOwned: isNotOwnedList },
   // 自选编队 (0.2.0 DIY): the player's DIY slot picks; stored per session / seat like room.ownership (a match takes the
   // picks its seat had when it started; during a match they are stored for the next one: ROOM_STARTED)
   'room.diy': { picks: isDiyPicks },
-  // 协议源石禁用 (业主 2026-10-21): ≤ 3 card ids this player does not want offered in their own 协议源石 draws. Stored
+  // 协议源石禁用 (业主 2026-10-21): ≤ 6 card ids this player does not want offered in their own 协议源石 draws. Stored
   // per session / seat like room.ownership / room.diy (a match takes the list its seat had at its start; during a match
   // it is stored for the next one: ROOM_STARTED). Only this player's draws are filtered — never a teammate's, never the
   // enemy pool, and never a card copied/granted by another effect.
@@ -823,7 +821,6 @@ export const C2S = {
 
   // match
   'g.infoReady': { setupRevision: (v) => isInt(v, 0, 2 ** 31), $optional: ['setupRevision'] },
-  'g.rerollVote': { voteId: (v) => isInt(v, 1, 2 ** 31), agree: isBool },
   'g.band': { bandId: isId },
   'g.bandSkip': {},
   // the strategy highlighted in the draft screen (user playtest #4 item 4): a turn that runs out takes it while it is
@@ -859,6 +856,13 @@ export const C2S = {
   // `idx` (optional, 业主 2026-10-20「把刷新按钮改成分别刷新每个」): replace ONLY that slot of the offer. Absent keeps the
   // original meaning — replace all three — so an older client's request stays byte-for-byte the one it always sent.
   'g.hexReroll': { idx: (v) => isInt(v, 0, 5), $optional: ['idx'] },
+  // 第 6 回合的「点卡刷新」(业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的协议源石」，
+  // 2026-10-31「把有的协议源石放上去点击刷新」): `ids` = 1–2 个互不相同、**自己已拥有**的协议源石 id（`hex:<id>`
+  // EffectRef 的 `data.hexId`；界面点一次只发一张）。这里只管形状；受理条件（第 6 回合 / 抽卡已选完或休整期未准备 /
+  // 每局 2 张的余量）、换牌池与随机流都在 `server/match/match/hexDraft.js recycleHex` / `_hexRecycleGate`。
+  // **新增的 C2S 类型，`PROTOCOL_VERSION` 不动**（先例 `records.mine` / `g.unequip` / `g.testChess`）：老客户端不发它，
+  // 一切照旧；服务端只在**第 6 回合**的帧里把余数写成 `m.public.players[].hexRecycleLeft`（其它回合逐字节不变）。
+  'g.hexRecycle': { ids: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 2 && v.every(isId) },
   // 测试场 (the owner's request of 2026-10-11): the in-match test panel of a room created with `room.create.test`. The
   // intents below are every one refused outside a test field (ERR.WRONG_PHASE) and only for the requesting player:
   //   g.testFunds { amount }    add that many funds (1…1,000,000; the panel buttons send 10 / 100 / 1000)
@@ -1034,9 +1038,12 @@ export function validateC2S(msg) {
   return null;
 }
 
-// Event tuple kinds inside `b.ev` (DESIGN §8.2). 'cast' ['cast', id, slot, dur?] is display only: an enemy uses the skill
-// of that slot of its data record's skills[] (server/sim/content/enemies/helpers.js castSlot; the client's skill clip
-// and official skill effects — render/app.js).
+// Event tuple kinds inside `b.ev` (DESIGN §8.2). 'cast' ['cast', id, slot, dur?, turnClip?] is display only: an enemy
+// uses the skill of that slot of its data record's skills[] (server/sim/content/enemies/helpers.js castSlot; the client's
+// skill clip and official skill effects — render/app.js). The optional fifth field `turnClip` (s) is the skill's official
+// clip when the cast took the normal attack's turn (upstream 0.3.2 §37.57): the client plays that clip in place of the
+// attack animation for that long (render/units.js holdCast/castHoldSeconds). Additive only — a tuple without it (three or
+// four fields) is byte-for-byte what older consumers already read, so the wire format and PROTOCOL_VERSION do not move.
 export const EV = Object.freeze({
   SPAWN: 'spawn', ATK: 'atk', DMG: 'dmg', HEAL: 'heal', SKILL: 'skill', ENGAGE: 'engage', DIE: 'die', LEAK: 'leak',
   STATUS: 'status', FX: 'fx', LAYER: 'layer', BOUNTY: 'bounty', DEPLOY: 'deploy', CAST: 'cast',

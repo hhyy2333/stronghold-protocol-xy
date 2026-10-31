@@ -27,6 +27,12 @@
 // switch notifies the subscribers of every loaded file, so `useData` components re-render. `localeName(zh)` maps a
 // Chinese game-data name to the current language (server messages name operators / items in Chinese).
 //
+// A rule that reads a Chinese *line* of a record — 高台 placement 「可以放置于远程位」 (shared/highGround.js), the attack
+// range preview 「被动效果：攻击范围扩大」 / 「攻击范围扩大」 / 「集成战略」 (shared/loadoutRecord.js) — cannot read it off a
+// localized record: the overlay has replaced it. The localized copy therefore carries the reading of the same record
+// before the overlay as a boolean (`withReadings`; GitHub #676 / #700), which those two modules take first, and the
+// Chinese file keeps no such field.
+//
 // Views (DESIGN §34 P1a): `setView(name, fn)` shows a file through `fn` from then on — `get(name)` returns fn(the file);
 // `getRaw`, `lookup` and `list` do not — and tells the file's subscribers. public/js/content.js shows the art manifest
 // (`assets`) this way: with the room's cosmetic plugins and the player's own laid over it (public/js/assets.js
@@ -41,6 +47,8 @@
 
 import { useEffect, useReducer } from '../vendor/hooks.module.js';
 import { applyFileOverlay } from '../../shared/i18nData.js';
+import { withPlaceOnRanged } from '../../shared/highGround.js';
+import { withRangeFlags } from '../../shared/loadoutRecord.js';
 import { canonicalLang } from '../../shared/i18nPacks.js';
 
 /** Known data files (name → URL basename). Unknown names are allowed too (`/data/<name>.json`). */
@@ -282,6 +290,8 @@ export function createDataStore(opts = {}) {
   /**
    * The localized copy of a ready file (null in Chinese or without an overlay for the file): the overlays of the chain
    * applied from the last to the first, each text checked against the Chinese file, so the best overlay wins per text.
+   * The rules that read a Chinese *line* of a record get the reading cached on the localized record instead (see
+   * `withReadings`): a translated record no longer holds the line.
    */
   function localizedEntry(name) {
     if (locale === 'zh' || !chain.length) return null;
@@ -295,10 +305,67 @@ export function createDataStore(opts = {}) {
       for (const fo of fileOverlays.reverse()) {
         try { value = applyFileOverlay(e.value, fo, value).value; } catch (err) { console.warn(`[data] ${name}: overlay not applied`, err); }
       }
-      l = { lang: locale, base: e.value, value, index: null };
+      l = { lang: locale, base: e.value, value: withReadings(name, e.value, value), index: null };
       localized.set(name, l);
     }
     return l;
+  }
+
+  /**
+   * A localized file with the Chinese readings of the rule texts cached on its records — the booleans
+   * shared/highGround.js `meleeOnHighGround` and shared/loadoutRecord.js `attackRangeGrid` / `traitRangeExtend` take
+   * first: `placeOnRanged` on a chess record (GitHub #676 — a 钩索师 / 推击手 could not take a 高台 in en / ja / ko /
+   * zh-TW), `passiveRange` on its skills and `rangeExpand` / `modeOnly` on its trait and modules (GitHub #700 — the
+   * attack-range preview). The same readings go on the 补位 forms of data/backups.json, which a stand-in's record is
+   * composed from (自选 温蒂's trait is the 高台 line). The data files keep no such field: the reading is derived from the
+   * same file before the overlay (`zh`) every time a language's copy is built, so Chinese — which never builds one —
+   * behaves exactly as before, and a language cannot disagree with the server, which reads the Chinese data. Untouched
+   * records stay shared with `value` (withRangeFlags copies only the paths that gain a boolean).
+   * @param {string} name file name
+   * @param {any} zh the file as downloaded (Chinese texts)
+   * @param {any} value its localized copy
+   * @returns {any}
+   */
+  function withReadings(name, zh, value) {
+    if (!zh || typeof zh !== 'object' || !value || typeof value !== 'object') return value;
+    if (name === 'chess') {
+      let out = value;
+      for (const [id, rec] of Object.entries(value)) {
+        const base = Object.prototype.hasOwnProperty.call(zh, id) ? zh[id] : null;
+        if (!base || !rec || typeof rec !== 'object') continue;
+        const next = withRangeFlags(withPlaceOnRanged(rec, base), base);
+        if (next === rec) continue;
+        if (out === value) out = { ...value };
+        out[id] = next;
+      }
+      return out;
+    }
+    // 补位 (DATA.md §18): a stand-in body is composed from a form of data/backups.json (shared/standIn.js
+    // composeUnitRecord), whose trait / skills / modules the same two modules read — 自选 温蒂's trait is the 高台 line.
+    if (name === 'backups') {
+      const zUnits = zh.units, vUnits = value.units;
+      if (!zUnits || !vUnits || typeof zUnits !== 'object' || typeof vUnits !== 'object') return value;
+      let units = vUnits;
+      for (const [id, unit] of Object.entries(vUnits)) {
+        const zForms = zUnits[id] && zUnits[id].forms;
+        const vForms = unit && unit.forms;
+        if (!zForms || !vForms) continue;
+        let forms = vForms;
+        for (const [formKey, form] of Object.entries(vForms)) {
+          const base = zForms[formKey];
+          if (!base || !form || typeof form !== 'object') continue;
+          const next = withRangeFlags(withPlaceOnRanged(form, base, zUnits[id]?.position ?? null), base);
+          if (next === form) continue;
+          if (forms === vForms) forms = { ...vForms };
+          forms[formKey] = next;
+        }
+        if (forms === vForms) continue;
+        if (units === vUnits) units = { ...vUnits };
+        units[id] = { ...unit, forms };
+      }
+      return units === vUnits ? value : { ...value, units };
+    }
+    return value;
   }
 
   function index(name) {

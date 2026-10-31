@@ -2,8 +2,9 @@
 // and this suite pins both.
 //
 //   1. the 协议源石 draft never runs (MatchPhases.afterRoundStart), while a same-round 机变 still does;
-//   2. `g.testFunds` / `g.testHex` / `g.testHexClear` are accepted — and ONLY in a test field: a normal match answers
-//      WRONG_PHASE to all three, which is what keeps the feature from being a gameplay change anywhere else.
+//   2. `g.testFunds` / `g.testHex` / `g.testHexClear` / the enemy pair / `g.testBoss` / `g.testChess` are accepted — and
+//      ONLY in a test field: a normal match answers WRONG_PHASE to all of them, which is what keeps the feature from
+//      being a gameplay change anywhere else.
 //
 // The flag itself is created by the lobby (`room.create.test`, SOLO only): the end-to-end half drives the real
 // WebSocket lobby, and the engine half drives Match directly on the virtual scheduler (test/match/harness.js).
@@ -27,9 +28,18 @@ const ENEMY_HEX_IDS = Object.keys(DATA.hextech.enemyHexes);
 const FUNDS_HEX = 'hex_stipend';
 /** A card carrying BOTH a `battle` passive and a fifth-batch script key (反击装甲: +18 % DEF / +10 RES + the riposte). */
 const BATTLE_HEX = 'hex_armor';
-/** An enemy `mods` card (腐蚀甲壳: hpMul 1.08) and an enemy `verb` card (亡语), for both enemy half-paths. */
+/** The enemy `mods` card (腐蚀甲壳: hpMul 1.08) and an enemy `verb` card (亡语), for both enemy half-paths. */
 const ENEMY_MODS_HEX = 'ehex_corrode';
 const ENEMY_VERB_HEX = 'ehex_deathrattle';
+
+/** The shop-eligible operator roster (the same predicate GameData.visibleChess applies), sorted by id for stable picks. */
+const SHOP_OPS = Object.values(DATA.chess)
+  .filter((c) => c && c.visible && !c.isGolden && !c.isDiy && !c.isHidden && Number.isInteger(c.tier))
+  .sort((a, b) => a.chessId.localeCompare(b.chessId));
+/** A 6 阶 operator — unreachable from a level-1 shop, so a successful purchase proves the level cap is gone. */
+const TOP_OP = SHOP_OPS.filter((c) => c.tier === 6)[0].chessId;
+/** A 1 阶 operator (three of it merge into its elite: the ordinary purchase path still merges). */
+const LOW_OP = SHOP_OPS.filter((c) => c.tier === 1)[0].chessId;
 
 /** Assert `{ error: code }` while tolerating the optional developer `detail` the server may add. */
 function assertErr(res, code, what = '') {
@@ -128,6 +138,88 @@ describe('测试场: the engine (opts.test)', () => {
     normal.m.dispose();
   });
 
+  // 业主 2026-10-26「在测试场增加功能可以购买任何干员」
+  test('g.testChess buys ANY shop operator at its price — no shop level, no pool stock, no bans', () => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed: 33, fake: true, test: true }).start();
+    const m = h.m;
+    const ps = h.ps('p_0');
+    h.toPrep(1);
+    assert.equal(ps.shop.level, 1, 'premise: a level-1 shop can never roll a 6 阶 operator');
+    assert.equal(DATA.chess[TOP_OP].tier, 6);
+    ps.addFunds(200, { reason: 'test' });
+    const funds = ps.funds;
+    assert.deepEqual(m.handle('p_0', { t: 'g.testChess', chessId: TOP_OP }), { ok: true });
+    assert.equal(ps.funds, funds - DATA.chess[TOP_OP].price, 'the tier price was charged through the ordinary priceOf path');
+    assert.ok(ps.hand.some((p) => p && p.id === TOP_OP), 'the operator landed in the hand');
+    assert.equal(ps.stats.buys, 1, 'it is a purchase (the 购买 counters move)');
+    assert.equal(ps.round.buys, 1);
+    h.invariants();
+
+    // a BANNED operator (this match's random bans took it out of the pool) is buyable too — it holds no pool copies
+    const banned = m.bannedChess.find((id) => DATA.chess[id] && DATA.chess[id].visible && !DATA.chess[id].isGolden);
+    if (banned) {
+      assert.equal(m.pool.has(banned), false, 'premise: the pool does not hold a banned operator');
+      assert.deepEqual(m.handle('p_0', { t: 'g.testChess', chessId: banned }), { ok: true }, banned);
+      const piece = ps.hand.find((p) => p && p.id === banned) || [...ps.board.values()].find((p) => p && p.id === banned);
+      assert.ok(piece, 'a banned operator is still buyable');
+      assert.equal(piece.poolCopies, 0, 'no pool copies were taken (it is not in the pool)');
+      h.invariants();
+    }
+    m.dispose();
+  });
+
+  test('g.testChess takes the ordinary purchase path: three copies merge into the elite', () => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 34, fake: true, test: true }).start();
+    const ps = h.ps('p_0');
+    h.toPrep(1);
+    ps.addFunds(200, { reason: 'test' });
+    const golden = DATA.chess[LOW_OP].goldenId;
+    assert.ok(golden && DATA.chess[golden], 'premise: the operator has an elite form');
+    for (let i = 0; i < 3; i++) assert.deepEqual(h.m.handle('p_0', { t: 'g.testChess', chessId: LOW_OP }), { ok: true }, `copy ${i + 1}`);
+    assert.ok(ps.hand.some((p) => p && p.id === golden) || [...ps.board.values()].some((p) => p && p.id === golden),
+      'the third copy merged into the elite');
+    assert.equal(ps.stats.buys, 3, 'every copy counted as a purchase');
+    h.invariants();
+    h.m.dispose();
+  });
+
+  test('g.testChess is a PREP purchase: phase / Ready / hand / funds / id gates, and no normal match', () => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 35, fake: true, test: true }).start();
+    const m = h.m;
+    const ps = h.ps('p_0');
+    // the panel's other intents work in any phase; a purchase does not — it mutates the hand and the board
+    assertErr(m.handle('p_0', { t: 'g.testChess', chessId: LOW_OP }), ERR.WRONG_PHASE, 'INFO_CHECK');
+    h.toPrep(1);
+    ps.addFunds(200, { reason: 'test' });
+    // ... nor after Ready
+    ps.ready = true;
+    assertErr(m.handle('p_0', { t: 'g.testChess', chessId: LOW_OP }), ERR.WRONG_PHASE, 'ready');
+    ps.ready = false;
+    // an id the shop could never offer: the elite (what three copies merge INTO), a hidden record, a 自选 slot, junk
+    const golden = DATA.chess[LOW_OP].goldenId;
+    const hidden = Object.values(DATA.chess).find((c) => c.isHidden && !c.isGolden);
+    const diy = Object.values(DATA.chess).find((c) => c.isDiy);
+    assertErr(m.handle('p_0', { t: 'g.testChess', chessId: golden }), ERR.BAD_TARGET, 'the elite');
+    if (hidden) assertErr(m.handle('p_0', { t: 'g.testChess', chessId: hidden.chessId }), ERR.BAD_TARGET, 'hidden');
+    if (diy) assertErr(m.handle('p_0', { t: 'g.testChess', chessId: diy.chessId }), ERR.BAD_TARGET, '自选');
+    assertErr(m.handle('p_0', { t: 'g.testChess', chessId: 'chess_nope' }), ERR.BAD_TARGET, 'unknown');
+    assert.equal(ps.stats.buys, 0, 'nothing was bought by a refused intent');
+    // funds
+    ps.funds = 0;
+    assertErr(m.handle('p_0', { t: 'g.testChess', chessId: TOP_OP }), ERR.NO_FUNDS, 'no funds');
+    // a full hand refuses it like the shop does (PRTS 帮助 §手牌区; GitHub #82)
+    ps.addFunds(200, { reason: 'test' });
+    for (const c of SHOP_OPS.filter((x) => x.tier === 1 && x.chessId !== LOW_OP).slice(0, 10)) ps.acquireChess(c.chessId, { source: 'test' });
+    assert.equal(ps.hand.filter(Boolean).length, 10, 'premise: the hand is full');
+    assertErr(m.handle('p_0', { t: 'g.testChess', chessId: TOP_OP }), ERR.HAND_FULL, 'full hand');
+    h.invariants();
+    m.dispose();
+
+    const normal = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 35, fake: true }).start();
+    assertErr(normal.m.handle('p_0', { t: 'g.testChess', chessId: LOW_OP }), ERR.WRONG_PHASE, 'normal match');
+    normal.m.dispose();
+  });
+
   test('g.testHex grants a card through the real applyHex path: ref, effect column and battle part; repeatable', () => {
     const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 13, fake: true, test: true }).start();
     const ps = h.ps('p_0');
@@ -201,6 +293,7 @@ describe('测试场: the engine (opts.test)', () => {
     for (const msg of [
       { t: 'g.testFunds', amount: 10 }, { t: 'g.testHex', hexId: FUNDS_HEX }, { t: 'g.testHexClear' },
       { t: 'g.testEnemyHex', hexId: ENEMY_MODS_HEX }, { t: 'g.testEnemyHexClear' },
+      { t: 'g.testChess', chessId: LOW_OP },
     ]) {
       assertErr(normal.m.handle('p_0', msg), ERR.WRONG_PHASE, msg.t);
     }
@@ -213,6 +306,7 @@ describe('测试场: the engine (opts.test)', () => {
     assertErr(test1.m.handle('p_0', { t: 'g.testFunds', amount: 10 }), ERR.ELIMINATED, 'eliminated funds');
     assertErr(test1.m.handle('p_0', { t: 'g.testHex', hexId: FUNDS_HEX }), ERR.ELIMINATED, 'eliminated hex');
     assertErr(test1.m.handle('p_0', { t: 'g.testEnemyHex', hexId: ENEMY_MODS_HEX }), ERR.ELIMINATED, 'eliminated enemy hex');
+    assertErr(test1.m.handle('p_0', { t: 'g.testChess', chessId: LOW_OP }), ERR.ELIMINATED, 'eliminated purchase');
     ps.alive = true;
     test1.m.dispose();
   });
@@ -330,7 +424,7 @@ describe('测试场: the engine (opts.test)', () => {
   });});
 
 describe('测试场: the protocol schema', () => {
-  test('room.create.test is an optional boolean; the five test intents are well-formed', () => {
+  test('room.create.test is an optional boolean; the test intents are well-formed', () => {
     assert.equal(validateC2S({ t: 'room.create', mode: 'solo', difficulty: 'FUNNY', test: true }), null);
     assert.equal(validateC2S({ t: 'room.create', mode: 'solo', difficulty: 'FUNNY', test: false }), null);
     assert.equal(validateC2S({ t: 'room.create', mode: 'solo', difficulty: 'FUNNY' }), null, 'absent = a normal room');
@@ -347,6 +441,10 @@ describe('测试场: the protocol schema', () => {
     assert.notEqual(validateC2S({ t: 'g.testEnemyHex', hexId: '' }), null);
     assert.notEqual(validateC2S({ t: 'g.testEnemyHex' }), null);
     assert.equal(validateC2S({ t: 'g.testEnemyHexClear' }), null);
+    // 测试场 买任何干员 (业主 2026-10-26)
+    assert.equal(validateC2S({ t: 'g.testChess', chessId: LOW_OP }), null);
+    assert.notEqual(validateC2S({ t: 'g.testChess', chessId: '' }), null);
+    assert.notEqual(validateC2S({ t: 'g.testChess' }), null);
   });
 });
 

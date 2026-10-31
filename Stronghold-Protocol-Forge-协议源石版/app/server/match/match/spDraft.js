@@ -10,6 +10,7 @@ import { onPickCard } from '../botEmotes.js';
 import { weightedPick } from '../waves.js';
 import { botPickCard } from '../bot.js';
 import { OK, fail, DELAYS } from './common.js';
+import { msg } from '../../../shared/i18n.js';
 
 /** Cards of the personal choice (PRTS 卫戍协议：盟约 下半 §法术 教鞭: "于3个战术特训的悬赏任务中选择一项"). */
 const PERSONAL_OFFER_SIZE = 3;
@@ -21,11 +22,13 @@ const PERSONAL_OFFER_SIZE = 3;
  * It is NOT one of the drafted cards: those are dealt once and `taken[idx]` makes them unique, while this one must stay
  * available to EVERY player at the table (「可被多人选择」). It therefore rides beside the cards as a fixed pseudo-card
  * with a negative index — `SP_PAYOFF_IDX` — so no card index can collide with it and `taken` never touches it.
+ *
+ * 业主 2026-10-30「扣1块钱是在下回合开始时扣」/「没钱也能选，下回合从收入里扣」: the pick checks and moves NO money — it books
+ * `ps.payoffDue`, and the NEXT round's start collects it (`settleSpPayoffs`) out of the income that just arrived. An empty
+ * purse may take it too: the debt is paid by the round that follows, not by the purse the player picked with.
  */
 const SP_PAYOFF_IDX = -1;
 const SP_PAYOFF_COST = 1;
-const SP_PAYOFF_ID = 'sp_payoff';
-const SP_PAYOFF_NAME = '破财消灾';
 
 export class MatchSpDraft {
   enterSpDraft() {
@@ -112,7 +115,11 @@ export class MatchSpDraft {
    * Choose card `idx`, or 破财消灾 with `idx === SP_PAYOFF_IDX`.
    *
    * 业主 2026-10-25「悬赏加个可被多人选择的－1块钱选项」: the payoff is NOT unique — `taken` never holds it, so every
-   * player in turn may take it. It costs `SP_PAYOFF_COST` 资金 and gives up this round's bounty (no card is taken).
+   * player in turn may take it. It costs `SP_PAYOFF_COST` 资金 — charged at the NEXT round's start, not here (业主
+   * 2026-10-30「扣1块钱是在下回合开始时扣」) — and gives up this round's bounty (no card is taken). 业主 2026-10-30
+   * 「没钱也能选，下回合从收入里扣」: there is NO funds gate on the pick. An empty purse may take it too; the debt is
+   * collected from the income the next round opens with (which lands before the settle), and only a round that opens
+   * with no income at all leaves it unpaid (written off, never a negative balance).
    */
   pickCard(ps, idx) {
     if (this.phase !== PHASE.SP_DRAFT || !this.sp) return fail(ERR.WRONG_PHASE);
@@ -121,7 +128,6 @@ export class MatchSpDraft {
     if (this.spTurn() !== ps.playerId) return fail(ERR.NOT_YOUR_TURN);
     if (idx === SP_PAYOFF_IDX) {
       if (!this.spPayoff()) return fail(ERR.BAD_TARGET);
-      if (!(ps.funds >= SP_PAYOFF_COST)) return fail(ERR.NO_FUNDS);
       this._applyPayoff(ps);
       return OK;
     }
@@ -132,18 +138,48 @@ export class MatchSpDraft {
   }
 
   /**
-   * 破财消灾: pay, take no card. The pick is recorded with the pseudo index so the turn advances and `views` can show
-   * that this player sat the round out; `taken` is untouched, which is what keeps the option open for everyone else.
+   * 破财消灾: book the price, take no card. 业主 2026-10-30「扣1块钱是在下回合开始时扣」— the pick moves NO money: it adds
+   * to `ps.payoffDue`, and the next round's start collects it (`settleSpPayoffs`), out of the income that just arrived.
+   * The pick is recorded with the pseudo index so the turn advances and `views` can show that this player sat the round
+   * out; `taken` is untouched, which is what keeps the option open for everyone else.
    */
   _applyPayoff(ps) {
     const s = this.sp;
     if (!s || s.picks[ps.playerId] != null) return;
-    ps.funds = Math.max(0, ps.funds - SP_PAYOFF_COST);
+    ps.payoffDue = Math.max(0, Math.trunc(ps.payoffDue || 0)) + 1;
     s.picks[ps.playerId] = SP_PAYOFF_IDX;
     ps.dirty();
     this.markPrivate(ps);
     this.markPublic();
     this.startSpTurn();
+  }
+
+  /**
+   * 破财消灾's other half (业主 2026-10-30「扣1块钱是在下回合开始时扣」): collect every debt booked by the PREVIOUS round's
+   * 悬赏决策. Called by MatchPhases.startRound once the round's income and every <每回合开始时> effect have landed, so the
+   * 1 资金 comes out of the money that just arrived instead of out of the purse the player picked with.
+   *
+   * It is a real payment, not a raw subtraction: `ps.spend()` + `_afterSpend` like a shop purchase, so it counts in the
+   * 战绩's 花费 and fires onSpend (源石红利「每消耗 5 资金」). The pick itself never checked the purse (业主 2026-10-30
+   * 「没钱也能选，下回合从收入里扣」), so this is the only place the money is looked at: a round that opens with income
+   * pays the 1 资金, and one that opens with nothing pays what it has — the rest is written off, the balance never goes
+   * negative, and the debt never rolls into the round after.
+   *
+   * @param {import('../PlayerState.js').PlayerState[]} [alive] the seats starting this round
+   */
+  settleSpPayoffs(alive) {
+    for (const ps of alive || this.alivePlayers()) {
+      const due = Math.max(0, Math.trunc(ps.payoffDue || 0));
+      if (!due) continue;
+      ps.payoffDue = 0;
+      const affordable = Math.floor(Math.max(0, ps.funds) / SP_PAYOFF_COST);
+      const amount = Math.min(due, affordable) * SP_PAYOFF_COST;
+      if (amount > 0 && ps.spend(amount)) {
+        ps._afterSpend(amount, 'payoff');
+        this.toast(ps, 'warn', msg('破财消灾：本回合开始支付 {cost} 资金', { cost: amount }));
+      }
+      ps.dirty();
+    }
   }
 
   _applyCard(ps, idx) {

@@ -1,33 +1,38 @@
-// shared/protocolLevels.js — 协议等级 1–18：叠加在「终极模拟」（ABYSS）之上的一条**数值难度轴**（业主 2026-10-18）。
+// shared/protocolLevels.js — 协议等级 1–19：叠加在「终极模拟」（ABYSS）之上的一条**数值难度轴**（业主 2026-10-18；
+// 19 级是业主 2026-10-29「把这个负面做成 n19」）。
 //
 // 为什么不做成第 5 个模式：那 4 个「难度」其实是四份不同的官方数据（回合表 / 敌池 / 盟约集合 / 首领回合），
-// 各做 18 份 = 72 套数据，无法维护。这里只做**一层乘数**，折进引擎已有的地方（敌方 mods / 首领池 / 收入 / 漏怪），
-// 于是：**等级 0（默认）= 引擎一个字节都不动**，golden 不移动。
+// 各做 19 份 = 76 套数据，无法维护。这里只做**一层乘数**，折进引擎已有的地方（敌方 mods / 首领池 / 收入 / 漏怪 /
+// 一回合获得资金的额度），于是：**等级 0（默认）= 引擎一个字节都不动**，golden 不移动。
 //
 // 口径（业主的决定）：
-//   * 只有最高难度（`difficulty === 'ABYSS'`）能开 1–18；其它难度上一律按 0（关闭）处理；
+//   * 只有最高难度（`difficulty === 'ABYSS'`）能开 1–19；其它难度上一律按 0（关闭）处理；
 //   * 1–18 同一条曲线，全部由 `node tools/balance.mjs --difficulty ABYSS --level N` 量过一轮
 //     （docs/BALANCE.md「协议等级」）：13–18 的「额外敌方源石 / 首领池 / 数量」按级**不回头**——任何一轴在同一级
 //     上都不会比上一级轻，于是曲线没有暗坑（12 级原先的 countAdd、16 级后的 extra 空档都已在 2026-10-18 这一轮修掉）；
+//     **19 级的敌方数值是 `[ASSUMED]`**：业主 2026-10-29 只点名了它的负面（`fundsGainCap`），数值沿用同一条曲线往上
+//     推一格，还没量过；
 //   * 匹配严格同级（server/matchmaking.js），战绩按等级分开记（server/matchRecords.js）。
 //
 // 每一级只动 1–2 个玩家能感知的量，乘法曲线（不是加法），每 3 级一个拐点：
 //   1–6   稳定区：只有敌方生命/攻击；
 //   7–12  危险区：加防御/法抗、漏怪、每波数量、收入；
-//   13–18 深潜区：首领池、额外敌方协议源石（第 1 / 3 / 5 回合分散发，见 PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS）。
+//   13–18 深潜区：首领池、额外敌方协议源石（第 1 / 3 / 5 回合分散发，见 PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS）；
+//   19    深潜区顶端：数值再抬一格，**并且是唯一带「一回合获得资金上限」的等级**（行里的 `fundsGainCap`）。
 //
 // 另外，**局内还有一条回合爬升**（业主 2026-10-24「削弱敌方前期加强后期」→「k = 1 落在第 6 回合」）：同一级的乘区
-// 在 R1–R5 打折、R6 起满额、R11 起加码（PROTOCOL_LEVEL_ROUND_RAMP）。18 行表值本身不为它改动。
+// 在 R1–R5 打折、R6 起满额、R11 起加码，**R13 / R14 / R15 三回合再各抬一档**（业主 2026-10-31「增加 n1-n19，13，14，15
+// 回合的敌人加成」）。表值本身不为它改动；首领轮的血池走表里的 `bossPoolMul`，那一列同期一起抬过。
 //
 // 读点（都从这里取，别在引擎里写第二份）：
-//   server/match/gamedata.js   income / bossPoolHp
+//   server/match/gamedata.js   income / bossPoolHp / fundsGainCapPerRound
 //   server/match/hextech.js    matchEnemyMods（敌方 mods 折入，预览=实战同一份）
 //   server/match/match/settle.js 漏怪损失
 //   server/match/match/hexDraft.js 额外敌方协议源石的发放（applyProtocolLevelEnemyHexes）
 //   server/match/Match.js      所有者：protocolLevel
 
 /** 最高等级。0 = 关闭。 */
-export const PROTOCOL_LEVEL_MAX = 18;
+export const PROTOCOL_LEVEL_MAX = 19;
 
 /**
  * 收入惩罚**豁免的前几个回合**（业主 2026-10-18：「n18 经济惩罚太重」，随后定为「从第 8 回合开始减少钱」）。
@@ -129,11 +134,13 @@ export function protocolLevelExtraBossAt(level, round, difficulty = 'ABYSS', see
 //
 //     有效乘区 = 1 + (表值 - 1) × k(回合)
 //
-// * **k = 1 落在第 6 回合**（业主指定）：R1–R5 是削弱窗口，R6 起与今天的对局逐回合相同，R11 起反过来加码，R14 / R15
-//   （首领轮 / 隐秘核心）最重。
-// * 按**增量**缩放而不是把乘区压回 1，等级之间的差别在任何回合都保得住：同一回合上 N1 < N2 < … < N18。
-// * 只作用于 `hpMul / atkMul / defMul / resMul`。`countAdd` 走另一条阶梯（protocolLevelCountAddAt）；`bossPoolMul`
-//   只在首领回合生效、本身就是后期杠杆，所以直接写在表里，**不吃 k**（否则与这次抬的那 0.15 重复计算）。
+// * **k = 1 落在第 6 回合**（业主指定）：R1–R5 是削弱窗口，R6 起与今天的对局逐回合相同，R11 起反过来加码，
+//   **R13 / R14 / R15 三回合再各抬一档**（业主 2026-10-30「增加 n1-n19，13，14，15 回合的敌人加成」）——
+//   R13 1.20 → 1.35、R14–15 1.35 → 1.55，于是最后三个回合（最后一个普通回合 + 最终攻势 + 隐秘核心）最重。
+// * 按**增量**缩放而不是把乘区压回 1，等级之间的差别在任何回合都保得住：同一回合上 N1 < N2 < … < N19。
+// * 只作用于 `hpMul / atkMul / atkMulRanged / defMul / resMul`。`countAdd` 走另一条阶梯（protocolLevelCountAddAt）；
+//   `bossPoolMul` 只在首领回合生效、本身就是后期杠杆，所以直接写在表里，**不吃 k**（否则与表值重复计算）——
+//   业主这次要求「首领轮」也跟着更硬，那是**改表里那几格**（13–19 的 `bossPoolMul`），不是给它乘 k。
 // * 回合非法（0 / 非整数）= 不在对局回合里 ⇒ k = 1，旧的平曲线（`matchEnemyMods` 在开局前就是这么被读的）。
 export const PROTOCOL_LEVEL_ROUND_RAMP = Object.freeze([
   Object.freeze({ from: 1, k: 0.45 }),
@@ -141,8 +148,16 @@ export const PROTOCOL_LEVEL_ROUND_RAMP = Object.freeze([
   Object.freeze({ from: 5, k: 0.8 }),
   Object.freeze({ from: 6, k: 1 }),
   Object.freeze({ from: 11, k: 1.2 }),
-  Object.freeze({ from: 14, k: 1.35 }),
+  Object.freeze({ from: 13, k: 1.35 }),
+  Object.freeze({ from: 14, k: 1.55 }),
 ]);
+
+/**
+ * 这条轴的最高档落在哪几个回合（业主 2026-10-30「增加 n1-n19，13，14，15 回合的敌人加成」）：
+ * **R13 是最后一个普通回合、R14 最终攻势、R15 隐秘核心**，三回合的 k 一起抬（R13 1.35 / R14–15 1.55）。
+ * 界面那份难度介绍拿它说「哪几个回合最重」，不要在文案里写死 13 / 15。
+ */
+export const PROTOCOL_LEVEL_SPIKE_ROUNDS = Object.freeze([13, 15]);
 
 /** k 第一次等于 1 的回合 —— 削弱窗口是 `1 .. FULL_ROUND - 1`，从这一回合起与今天的对局完全相同。 */
 export const PROTOCOL_LEVEL_FULL_ROUND = 6;
@@ -150,11 +165,11 @@ export const PROTOCOL_LEVEL_FULL_ROUND = 6;
 /** 从这一回合起反过来加码（k > 1）。 */
 export const PROTOCOL_LEVEL_LATE_ROUND = 11;
 
-/** 吃 k 的四个乘区（`countAdd` 与 `bossPoolMul` 不在此列，各有各的处理）。 */
-export const PROTOCOL_LEVEL_RAMPED_KEYS = Object.freeze(['hpMul', 'atkMul', 'defMul', 'resMul']);
+/** 吃 k 的那几个乘区（`countAdd` 与 `bossPoolMul` 不在此列，各有各的处理）。 */
+export const PROTOCOL_LEVEL_RAMPED_KEYS = Object.freeze(['hpMul', 'atkMul', 'atkMulRanged', 'defMul', 'resMul']);
 
 /**
- * 这一回合的爬升系数 k（R1–R2 = 0.45 … R6–R10 = 1 … R14+ = 1.35）。
+ * 这一回合的爬升系数 k（R1–R2 = 0.45 … R6–R10 = 1 … R11–R12 = 1.2 … R13 = 1.35 … R14+ = 1.55）。
  *
  * 纯函数、不改状态；`round` 缺失或非法（0 / 负数 / 非整数）⇒ **1**（不在对局回合里，按旧口径读整级强度）。
  * @param {number} round
@@ -185,29 +200,45 @@ export function protocolLevelCountAddAt(level, round) {
   return round >= PROTOCOL_LEVEL_LATE_ROUND ? base + 1 : base;
 }
 
-/** 每一级的数值。`hpMul/atkMul/defMul/resMul` 是**乘数**，`countAdd` 是每波额外敌人数（加法），其余是绝对增减。 */
+/**
+ * 每一级的数值。`hpMul/atkMul/atkMulRanged/defMul/resMul` 是**乘数**，`countAdd` 是每波额外敌人数（加法），`leakLp` /
+ * `incomeDelta` / `bossPoolMul` / `extraEnemyHexes` 是规则与绝对增减。
+ *
+ * `atkMulRanged`（业主 2026-10-30：「给 n1-n19 的远程怪攻击力曲线单独设置」）：**远程怪的攻击力另走一条曲线**，比通用
+ * `atkMul` 缓 —— 1–6 级与通用逐值相同（稳定区不动），7 级起增量砍半左右，19 级 1.46 对通用的 1.94。判定口径业主当场
+ * 定为**只算 `applyWay === 'RANGED'`**（92 个敌人；`ALL` 与 `MELEE` 仍吃通用那条）。折入见 `server/match/hextech.js`
+ * 的 `applyEnemyHexes`：远程怪的 `atkMul` 换成这一格（乘上敌方协议源石给的那份倍率），生命 / 防御 / 法抗 / 速度不变，
+ * **领袖（`tag === 'boss'`）不吃这一格** —— 首领轮的血与攻有自己的一整套（`bossPoolMul` + 共享血池）。
+ *
+ * `fundsGainCap`（业主 2026-10-29「把这个负面做成 n19」）：**一回合最多获得多少资金**，只有 19 级有这一格；没写的等级
+ * = 不设上限（`GameData.fundsGainCapPerRound` 返回 0，引擎逐字节回到从前）。它不是乘区、也不吃回合爬升：卡在
+ * `PlayerState.addFunds` 一处（全游戏的钱都从那个原语进），口径见 `docs/design/match.md`。
+ */
 export const PROTOCOL_LEVELS = Object.freeze([
-  { level: 1, tier: 'steady', label: 'I', enemy: { hpMul: 1.05, atkMul: 1.03 } },
-  { level: 2, tier: 'steady', label: 'II', enemy: { hpMul: 1.10, atkMul: 1.06 } },
-  { level: 3, tier: 'steady', label: 'III', enemy: { hpMul: 1.15, atkMul: 1.09 } },
-  { level: 4, tier: 'steady', label: 'IV', enemy: { hpMul: 1.20, atkMul: 1.12 } },
-  { level: 5, tier: 'steady', label: 'V', enemy: { hpMul: 1.26, atkMul: 1.16 } },
-  { level: 6, tier: 'steady', label: 'VI', milestone: true, enemy: { hpMul: 1.33, atkMul: 1.20 } },
-  { level: 7, tier: 'danger', label: 'VII', enemy: { hpMul: 1.40, atkMul: 1.25, defMul: 1.05, resMul: 1.03 } },
-  { level: 8, tier: 'danger', label: 'VIII', enemy: { hpMul: 1.48, atkMul: 1.30, defMul: 1.08, resMul: 1.05 } },
-  { level: 9, tier: 'danger', label: 'IX', leakLp: 1, enemy: { hpMul: 1.56, atkMul: 1.35, defMul: 1.10, resMul: 1.07 } },
-  { level: 10, tier: 'danger', label: 'X', incomeDelta: -1, enemy: { hpMul: 1.65, atkMul: 1.40, defMul: 1.12, resMul: 1.09 } },
-  { level: 11, tier: 'danger', label: 'XI', enemy: { hpMul: 1.74, atkMul: 1.45, defMul: 1.14, resMul: 1.11 } },
-  { level: 12, tier: 'danger', label: 'XII', milestone: true, incomeDelta: -1, enemy: { hpMul: 1.83, atkMul: 1.50, defMul: 1.16, resMul: 1.13 } },
-  { level: 13, tier: 'deep', label: 'XIII', incomeDelta: -1, bossPoolMul: 1.25, extraEnemyHexes: 1, enemy: { hpMul: 1.92, atkMul: 1.56, defMul: 1.17, resMul: 1.14 } },
-  { level: 14, tier: 'deep', label: 'XIV', incomeDelta: -2, bossPoolMul: 1.25, extraEnemyHexes: 1, enemy: { hpMul: 2.02, atkMul: 1.62, defMul: 1.18, resMul: 1.15 } },
-  { level: 15, tier: 'deep', label: 'XV', incomeDelta: -2, bossPoolMul: 1.40, extraEnemyHexes: 1, enemy: { hpMul: 2.12, atkMul: 1.68, defMul: 1.19, resMul: 1.16 } },
-  { level: 16, tier: 'deep', label: 'XVI', incomeDelta: -2, bossPoolMul: 1.40, extraEnemyHexes: 2, enemy: { hpMul: 2.23, atkMul: 1.74, defMul: 1.20, resMul: 1.17 } },
-  { level: 17, tier: 'deep', label: 'XVII', incomeDelta: -3, bossPoolMul: 1.55, extraEnemyHexes: 2, enemy: { hpMul: 2.34, atkMul: 1.80, defMul: 1.21, resMul: 1.18 } },
-  { level: 18, tier: 'deep', label: 'XVIII', milestone: true, incomeDelta: -3, bossPoolMul: 1.80, extraEnemyHexes: 3, leakLp: 2, enemy: { hpMul: 2.45, atkMul: 1.88, defMul: 1.22, resMul: 1.19, countAdd: 1 } },
+  { level: 1, tier: 'steady', label: 'I', enemy: { hpMul: 1.05, atkMul: 1.03, atkMulRanged: 1.03 } },
+  { level: 2, tier: 'steady', label: 'II', enemy: { hpMul: 1.10, atkMul: 1.06, atkMulRanged: 1.06 } },
+  { level: 3, tier: 'steady', label: 'III', enemy: { hpMul: 1.15, atkMul: 1.09, atkMulRanged: 1.09 } },
+  { level: 4, tier: 'steady', label: 'IV', enemy: { hpMul: 1.20, atkMul: 1.12, atkMulRanged: 1.12 } },
+  { level: 5, tier: 'steady', label: 'V', enemy: { hpMul: 1.26, atkMul: 1.16, atkMulRanged: 1.16 } },
+  { level: 6, tier: 'steady', label: 'VI', milestone: true, enemy: { hpMul: 1.33, atkMul: 1.20, atkMulRanged: 1.20 } },
+  { level: 7, tier: 'danger', label: 'VII', enemy: { hpMul: 1.40, atkMul: 1.25, atkMulRanged: 1.22, defMul: 1.05, resMul: 1.03 } },
+  { level: 8, tier: 'danger', label: 'VIII', enemy: { hpMul: 1.48, atkMul: 1.30, atkMulRanged: 1.24, defMul: 1.08, resMul: 1.05 } },
+  { level: 9, tier: 'danger', label: 'IX', leakLp: 1, enemy: { hpMul: 1.56, atkMul: 1.35, atkMulRanged: 1.26, defMul: 1.10, resMul: 1.07 } },
+  { level: 10, tier: 'danger', label: 'X', incomeDelta: -1, enemy: { hpMul: 1.65, atkMul: 1.40, atkMulRanged: 1.28, defMul: 1.12, resMul: 1.09 } },
+  { level: 11, tier: 'danger', label: 'XI', enemy: { hpMul: 1.74, atkMul: 1.45, atkMulRanged: 1.30, defMul: 1.14, resMul: 1.11 } },
+  { level: 12, tier: 'danger', label: 'XII', milestone: true, incomeDelta: -1, enemy: { hpMul: 1.83, atkMul: 1.50, atkMulRanged: 1.32, defMul: 1.16, resMul: 1.13 } },
+  { level: 13, tier: 'deep', label: 'XIII', incomeDelta: -1, bossPoolMul: 1.35, extraEnemyHexes: 1, enemy: { hpMul: 1.92, atkMul: 1.56, atkMulRanged: 1.34, defMul: 1.17, resMul: 1.14 } },
+  { level: 14, tier: 'deep', label: 'XIV', incomeDelta: -2, bossPoolMul: 1.35, extraEnemyHexes: 1, enemy: { hpMul: 2.02, atkMul: 1.62, atkMulRanged: 1.36, defMul: 1.18, resMul: 1.15 } },
+  { level: 15, tier: 'deep', label: 'XV', incomeDelta: -2, bossPoolMul: 1.50, extraEnemyHexes: 1, enemy: { hpMul: 2.12, atkMul: 1.68, atkMulRanged: 1.38, defMul: 1.19, resMul: 1.16 } },
+  { level: 16, tier: 'deep', label: 'XVI', incomeDelta: -2, bossPoolMul: 1.50, extraEnemyHexes: 2, enemy: { hpMul: 2.23, atkMul: 1.74, atkMulRanged: 1.40, defMul: 1.20, resMul: 1.17 } },
+  { level: 17, tier: 'deep', label: 'XVII', incomeDelta: -3, bossPoolMul: 1.70, extraEnemyHexes: 2, enemy: { hpMul: 2.34, atkMul: 1.80, atkMulRanged: 1.42, defMul: 1.21, resMul: 1.18 } },
+  { level: 18, tier: 'deep', label: 'XVIII', milestone: true, incomeDelta: -3, bossPoolMul: 2.00, extraEnemyHexes: 3, leakLp: 2, enemy: { hpMul: 2.45, atkMul: 1.88, atkMulRanged: 1.44, defMul: 1.22, resMul: 1.19, countAdd: 1 } },
+  // 19 级（业主 2026-10-29「把这个负面做成 n19」）：数值沿 18 级的增量再抬一格（[ASSUMED]，未量），多出来的那一格是
+  // 负面 `fundsGainCap` —— 一回合最多获得 30 资金，超出的作废。它是**唯一**带这一格的等级；0–18 级与其它难度照旧不限。
+  { level: 19, tier: 'deep', label: 'XIX', incomeDelta: -3, bossPoolMul: 2.10, extraEnemyHexes: 3, leakLp: 2, fundsGainCap: 30, enemy: { hpMul: 2.56, atkMul: 1.94, atkMulRanged: 1.46, defMul: 1.23, resMul: 1.20, countAdd: 1 } },
 ]);
 
-/** 等级是否是合法整数（0..18）。 */
+/** 等级是否是合法整数（0..19）。 */
 export function isProtocolLevel(level) {
   return Number.isInteger(level) && level >= 0 && level <= PROTOCOL_LEVEL_MAX;
 }
@@ -226,7 +257,7 @@ export function protocolLevelRow(level) {
 /**
  * 这一局的等级效果；关闭（0 / 非终极难度 / 非法值）⇒ null（引擎逐字节不变）。
  * @param {number} level @param {string} [difficulty]
- * @returns {{ level: number, enemy: Record<string, number>, bossPoolMul: number, incomeDelta: number, leakLp: number, extraEnemyHexes: number }|null}
+ * @returns {{ level: number, enemy: Record<string, number>, bossPoolMul: number, incomeDelta: number, leakLp: number, extraEnemyHexes: number, fundsGainCap: number }|null}
  */
 export function protocolLevelMods(level, difficulty = 'ABYSS') {
   if (!protocolLevelActive(level, difficulty)) return null;
@@ -239,19 +270,25 @@ export function protocolLevelMods(level, difficulty = 'ABYSS') {
     incomeDelta: Number.isFinite(row.incomeDelta) ? Math.trunc(row.incomeDelta) : 0,
     leakLp: Number.isFinite(row.leakLp) ? Math.max(0, Math.trunc(row.leakLp)) : 0,
     extraEnemyHexes: Number.isFinite(row.extraEnemyHexes) ? Math.max(0, Math.trunc(row.extraEnemyHexes)) : 0,
+    // 一回合获得资金的额度；0 = 不设上限（除 19 级以外每一级都是 0）
+    fundsGainCap: Number.isFinite(row.fundsGainCap) ? Math.max(0, Math.trunc(row.fundsGainCap)) : 0,
   };
 }
 
 /**
  * 只取敌方 mods 那半（喂给 shared/hextech.js 的 sumEnemyMods，形如 `{ mods }` 的记录）。
  *
- * **按回合折一次爬升**（业主 2026-10-24）：`hpMul/atkMul/defMul/resMul` 走 `1 + (表值 - 1) × k(round)`；
+ * **按回合折一次爬升**（业主 2026-10-24）：`hpMul/atkMul/atkMulRanged/defMul/resMul` 走 `1 + (表值 - 1) × k(round)`；
  * `countAdd` 换成 `protocolLevelCountAddAt(level, round)`（R1–R5 = 0、R6–R10 = 表值、R11 起 +1）。
  * `round` 不传 / 不合法 ⇒ k = 1、countAdd = 表值，与 2026-10-24 之前的输出逐字节相同。
  *
  * 返回值里**只带本回合真正要用的键**（`countAdd: 0` 会保留，让折入端知道「前期不加怪」而不是回落到卡牌的加成）——
  * 注意 `sumEnemyMods` 是乘法：N18 前 5 回合的 0 也会把【虫群】那张卡的 `countAdd` 一起压成 0，这是刻意的
  * 「前期不靠怪量堆难度」。
+ *
+ * `atkMulRanged` **不进 `mods`**：它不是引擎认识的乘区键（引擎只有 `atkMul`），混进去会被当成未知键一路带着走。
+ * 它单独作为 `rangedAtkMul` 返回，由 `server/match/hextech.js` 的 `matchEnemyMods` 换成「远程怪那一条曲线乘上卡牌
+ * 那份 atkMul」再交给 `applyEnemyHexes` 按 spawn 分流。
  * @param {number} level @param {string} [difficulty] @param {number} [round]
  */
 export function protocolLevelEnemyMods(level, difficulty = 'ABYSS', round = 0) {
@@ -259,13 +296,20 @@ export function protocolLevelEnemyMods(level, difficulty = 'ABYSS', round = 0) {
   if (!mods) return null;
   const k = protocolLevelRoundK(round);
   const enemy = {};
+  let rangedAtkMul = null;
   for (const [key, v] of Object.entries(mods.enemy)) {
     if (!Number.isFinite(v)) continue;
-    if (k !== 1 && PROTOCOL_LEVEL_RAMPED_KEYS.includes(key)) enemy[key] = Math.round((1 + (v - 1) * k) * 10000) / 10000;
-    else enemy[key] = v;
+    const val = k !== 1 && PROTOCOL_LEVEL_RAMPED_KEYS.includes(key) ? roundTo4(1 + (v - 1) * k) : v;
+    if (key === 'atkMulRanged') rangedAtkMul = val;
+    else enemy[key] = val;
   }
   if (Number.isFinite(enemy.countAdd) && enemy.countAdd > 0) enemy.countAdd = protocolLevelCountAddAt(level, round);
-  return { mods: enemy };
+  return { mods: enemy, rangedAtkMul };
+}
+
+/** 乘法乘区的四位小数口径（和表里的手写值同一个精度，避免 1.6524999 这类尾巴进日志/测试）。 */
+function roundTo4(v) {
+  return Math.round(v * 10000) / 10000;
 }
 
 // =====================================================================================================================
@@ -276,8 +320,9 @@ export function protocolLevelEnemyMods(level, difficulty = 'ABYSS', round = 0) {
 // （这个仓库里已经有过：等级表的注释写着「13–18 不再标 experimental」，而界面还在读一个没人写的字段）。
 // 这里把每一行翻成一组 `{ msgid, params }`，界面只负责 `t()` 和排版；数字永远从表里现算。
 //
-// 返回的每一条都对应表里的**一个字段**，顺序是「先数值、再规则」：玩家先看伤害，再看机制。18 级独有那条
-// （R10 的彩蛋首领）也在这里，因为它是 `PROTOCOL_LEVEL_EXTRA_BOSS_*` 的另一面。
+// 返回的每一条都对应表里的**一个字段**，顺序是「先数值、再规则」：玩家先看伤害，再看机制。「不是数值」的两条
+// （18 级起的 R10 彩蛋首领、19 级的一回合资金上限）也在这里，因为它们分别是 `PROTOCOL_LEVEL_EXTRA_BOSS_*` 与表的
+// `fundsGainCap` 的另一面。
 
 /** 深潜区门槛：从这里起才有首领池 / 额外敌方源石（表里第一个带 bossPoolMul 的等级）。 */
 export const PROTOCOL_LEVEL_DEEP_FROM = 13;
@@ -304,10 +349,18 @@ export function protocolLevelEffects(level) {
 
   // ---- 回合爬升（业主 2026-10-24：「削弱敌方前期加强后期」，k = 1 落在第 6 回合） ----
   // 这一条排在最前面：下面那些乘区**不是全程生效的**，先让玩家知道「第 6 回合起才是这个数」。
+  // 最后那几个回合再各抬一档（业主 2026-10-30「增加 n1-n19，13，14，15 回合的敌人加成」），所以这一句要说清楚
+  // 「哪几个回合最重」—— 回合号从 `PROTOCOL_LEVEL_SPIKE_ROUNDS` 现取，不在文案里写死。
   out.push({
     id: 'ramp',
-    msgid: '第 1–{end} 回合敌方数值低于本级标称值，第 {from} 回合起满额，第 {late} 回合起再加强',
-    params: { end: PROTOCOL_LEVEL_FULL_ROUND - 1, from: PROTOCOL_LEVEL_FULL_ROUND, late: PROTOCOL_LEVEL_LATE_ROUND },
+    msgid: '第 1–{end} 回合敌方数值低于本级标称值，第 {from} 回合起满额，第 {late} 回合起再加强，第 {spikeFrom}–{spikeTo} 回合最重',
+    params: {
+      end: PROTOCOL_LEVEL_FULL_ROUND - 1,
+      from: PROTOCOL_LEVEL_FULL_ROUND,
+      late: PROTOCOL_LEVEL_LATE_ROUND,
+      spikeFrom: PROTOCOL_LEVEL_SPIKE_ROUNDS[0],
+      spikeTo: PROTOCOL_LEVEL_SPIKE_ROUNDS[PROTOCOL_LEVEL_SPIKE_ROUNDS.length - 1],
+    },
   });
 
   // ---- 数值（敌方全局乘区） ----
@@ -316,6 +369,10 @@ export function protocolLevelEffects(level) {
   }
   if (Number.isFinite(enemy.atkMul) && enemy.atkMul > 1) {
     out.push({ id: 'atk', msgid: '敌方攻击力 {v}', params: { v: times(enemy.atkMul) } });
+  }
+  // 远程怪单走一条曲线（业主 2026-10-30）：只在它真的和通用那条不同时才列出来（1–6 级两条相同，写两遍是噪音）
+  if (Number.isFinite(enemy.atkMulRanged) && enemy.atkMulRanged > 1 && enemy.atkMulRanged !== enemy.atkMul) {
+    out.push({ id: 'atkRanged', msgid: '远程敌人攻击力 {v}（其余敌人按上面那条）', params: { v: times(enemy.atkMulRanged) } });
   }
   if (Number.isFinite(enemy.defMul) && enemy.defMul > 1) {
     out.push({ id: 'def', msgid: '敌方防御力 {v}', params: { v: times(enemy.defMul) } });
@@ -347,6 +404,14 @@ export function protocolLevelEffects(level) {
       params: { from: PROTOCOL_LEVEL_INCOME_FREE_ROUNDS + 1, n: Math.abs(Math.trunc(row.incomeDelta)) },
     });
   }
+  // 一回合获得资金的额度（业主 2026-10-29「把这个负面做成 n19」）：只有带这一格的等级（当前只有 19）才列出来
+  if (Number.isFinite(row.fundsGainCap) && row.fundsGainCap > 0) {
+    out.push({
+      id: 'fundsCap',
+      msgid: '一回合最多获得 {n} 资金，超出的部分作废',
+      params: { n: Math.trunc(row.fundsGainCap) },
+    });
+  }
   if (Number.isFinite(row.bossPoolMul) && row.bossPoolMul > 1) {
     out.push({ id: 'bossPool', msgid: '首领（最终攻势 / 隐秘核心）血量 {v}', params: { v: pct(row.bossPoolMul) } });
   }
@@ -359,7 +424,7 @@ export function protocolLevelEffects(level) {
     });
   }
 
-  // ---- 这一级独有的彩蛋（当前只有 18 级有） ----
+  // ---- 这一级的彩蛋（18 级起有） ----
   if (level >= PROTOCOL_LEVEL_EXTRA_BOSS_LEVEL) {
     out.push({
       id: 'extraBoss',
@@ -371,7 +436,7 @@ export function protocolLevelEffects(level) {
 }
 
 /**
- * 18 级那一档的「一句话卖点」—— 界面在等级条顶上用它当摘要（缺省等级返回 null）。
+ * 每一档的「一句话卖点」—— 界面在等级条顶上用它当摘要（缺省等级返回 null）。
  * 与 `protocolLevelEffects` 分开：摘要要短、要能一眼扫过，逐条列表才是细节。
  * @param {number} level
  * @returns {{ id: string, msgid: string, params: Record<string, string|number> }|null}
@@ -384,6 +449,13 @@ export function protocolLevelHeadline(level) {
 }
 
 /**
+ * 界面用「强调色 + ★」单独标出来的那几条效果 —— 它们**不是数值**（业主 2026-10-22 的难度介绍里，数值读起来都一样，
+ * 真正改变玩法的那两条要一眼看见）：R10 的彩蛋首领（18 级起）、19 级的一回合资金上限。
+ * 唯一真源：`public/js/screens/lobby.js` 与 `room.js` 都读它，别在界面里写第二份 id 列表。
+ */
+export const PROTOCOL_LEVEL_SPECIAL_EFFECT_IDS = Object.freeze(['extraBoss', 'fundsCap']);
+
+/**
  * `protocolLevelEffects` / `protocolLevelHeadline` 会发出的**全部 msgid**（i18n 的一份清单）。
  *
  * 为什么要有这张表：那些 msgid 在运行时按 `id` 拼出来，`tools/i18n.mjs extract` 只认字面量，看不到它们。
@@ -394,14 +466,16 @@ export const PROTOCOL_LEVEL_EFFECT_TEXT = Object.freeze([
   '稳定区：只有敌方生命与攻击',
   '危险区：追加防御、法抗、漏怪与收入',
   '深潜区：追加首领池、额外敌方协议源石',
-  '第 1–{end} 回合敌方数值低于本级标称值，第 {from} 回合起满额，第 {late} 回合起再加强',
+  '第 1–{end} 回合敌方数值低于本级标称值，第 {from} 回合起满额，第 {late} 回合起再加强，第 {spikeFrom}–{spikeTo} 回合最重',
   '敌方生命值 {v}',
   '敌方攻击力 {v}',
+  '远程敌人攻击力 {v}（其余敌人按上面那条）',
   '敌方防御力 {v}',
   '敌方法术抗性 {v}',
   '第 {from} 回合起每波敌人数量 +{n}，第 {late} 回合起 +{n2}',
   '每漏掉 1 个敌人，额外扣 {n} 点目标生命值',
   '第 {from} 回合起，每回合收入 −{n}',
+  '一回合最多获得 {n} 资金，超出的部分作废',
   '首领（最终攻势 / 隐秘核心）血量 {v}',
   '额外敌方协议源石 {n} 张，分别在第 {rounds} 回合发放',
   '第 {round} 回合（普通回合）会额外刷出「不死的黑蛇」或梅菲斯特之一，随机决定',

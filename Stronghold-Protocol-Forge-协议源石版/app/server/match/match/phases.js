@@ -15,10 +15,19 @@ import { botPickBand } from '../bot.js';
 import { OK, fail, DELAYS, BAND_TURN_SECONDS } from './common.js';
 
 /**
+ * The seed salt of a boss round's pairing draw: the Final Assault's 'boss-pairs' (unchanged since 0.2.5), the Hidden
+ * Core a stream of its own, 'boss-pairs:<round>' — it draws its pairs anew (GitHub #845 / upstream Forge 0.3.2 §37.27,
+ * superseding the 「kept partners」 reading of §32.12).
+ */
+export function bossPairSalt(gd, round) {
+  return round === gd.hiddenRound && round !== gd.bossRound ? 'boss-pairs:' + round : 'boss-pairs';
+}
+
+/**
  * 「试玩时直接发到手上」—— 哪些干员要在第一回合进手牌（业主 2026-10-08 提的开关）。
  *
- * 为什么只在试玩里生效：工坊/助战干员的正规来路是**商店**（0.5.0 起「不白送」，见 docs/WORKSHOP.md §2.3），
- * 直接把牌塞进手里会让正式对局的规则变形。作者真正要的是「试玩时立刻拿它开一局」，所以这里读的是编辑器
+ * 为什么只在试玩里生效：工坊干员的正规来路是**商店**（0.5.0 起「不白送」），直接把牌塞进手里会让正式对局的
+ * 规则变形。作者真正要的是「试玩时立刻拿它开一局」，所以这里读的是编辑器
  * spawn 出来的那个一次性服务器进程的环境变量（`SP_PLAYTEST=1`，editor/playtest.mjs 设的）：
  * **正式服务器一个都不发** —— 即使装了一个声明了这个开关的包，`SP_PLAYTEST` 也不是 `1`。
  *
@@ -63,12 +72,12 @@ export class MatchPhases {
   }
 
   maybeEndInfo() {
-    if (this.phase !== PHASE.INFO_CHECK || this.setupVote || this._infoAdvanceTimer) return;
+    if (this.phase !== PHASE.INFO_CHECK || this._infoAdvanceTimer) return;
     if (this.order.every((p) => p.isBot || p.left || p.infoReady)) {
       this.setDeadline(0);
       this._infoAdvanceTimer = this.later(0, () => {
         this._infoAdvanceTimer = null;
-        if (this.phase === PHASE.INFO_CHECK && !this.setupVote) this.enterBandDraft();
+        if (this.phase === PHASE.INFO_CHECK) this.enterBandDraft();
       });
     }
   }
@@ -332,6 +341,14 @@ export class MatchPhases {
     // round start: its recompute() checks the board on the field the player deploys on this round (deployFieldOf reads
     // the boss pairing), so R14 → R15 never re-checks a boss-field board against the normal field (user playtest #5
     // item 7). rngWaves is used only here, so the order leaves every random stream unchanged.
+    // 第16回合「木桩演练」: the owner's report 2026-10-30「16回合没有设置成boss回合，导致地图有问题」. It needs the boss
+    // DEPLOY FIELD (the players stand on bossL / bossR halves, the dummy stands where a leader would), NOT the boss
+    // FIGHT RULES: a real leader round would bring the shared pool (bloodPoint overrides the enemy row's maxHp), the
+    // per-hit 限伤 BOSS_HIT_LIMIT 300000 (a hit ≥ 300 k is CANCELLED whole in a kind==='boss' battle — it would silently
+    // eat every burst, which is the one thing this round exists to measure) and an end condition that only fires when
+    // the pool empties (a 325 亿 pool never does ⇒ the round could only end by the overtime LP drain, i.e. as a defeat on
+    // the last round). So the round stays a NORMAL combat and only registers into `bossWaves` — see `_planDummyField`.
+    // leader field, which is exactly what the round must not be.
     const isBoss = r === this.gd.bossRound || r === this.gd.hiddenRound;
     if (isBoss) {
       this._planBossWaves();
@@ -343,13 +360,10 @@ export class MatchPhases {
       // 抽签走种子哈希（protocolLevelExtraBossAt），**不消耗 rngWaves** —— R11–R14 的出怪表因此一动不动。
       const extraBoss = protocolLevelExtraBossAt(this.protocolLevel, r, this.difficulty, this.seed);
       if (extraBoss) this.wave = withExtraBoss(this.gd, this.wave, extraBoss, r);
+      // 木桩演练：把这一组玩家登记成「boss 场地布阵」（只有布阵区，没有血池/限伤/加时）
+      if (r === this.gd.dummyRound) this._planDummyField();
     }
     for (const ps of alive) ps.startRound(r);
-    // 助战 (shared/support.js): re-check what each player brought against the pool ONE more time at the first round's
-    // start and record what it really got (data/support.json can change between the lobby check and here). Nothing is
-    // handed out: the operators are in the shop (Match.supportSupply puts them in the pool), priced like any other
-    // piece — `granted` is what the player can actually buy, which is what the client echoes back.
-    if (r === 1) for (const ps of alive) ps.prepareSupports();
     // 「试玩时直接发到手上」（记录里的 `directToHand`，或 `pack.json.playtest.directToHand`，业主 2026-10-08）：
     // 只有编辑器 spawn 的试玩服务器会发牌（见 directToHandIds）
     if (r === 1) this.grantDirectToHand(alive);
@@ -364,6 +378,10 @@ export class MatchPhases {
       if (ps.alive) continue;
       try { this.dispatcher.dispatchEliminated(ps, 'onRoundStart', { round: r }); } catch (e) { this.reportError('dispatch onRoundStart (eliminated)', e); }
     }
+    // 破财消灾 (业主 2026-10-30「扣1块钱是在下回合开始时扣」): LAST round's 悬赏决策 booked `ps.payoffDue`; it is collected here,
+    // after the income of `ps.startRound` / the <每回合开始时> dispatch / 管理员's round hexes, so the 1 资金 comes out of the
+    // money that just arrived. Before the prep, so the shop never sees money that is already owed.
+    this.settleSpPayoffs(alive);
     for (const ps of alive) ps.recompute();
     this.setDeadline(DELAYS.ROUND_START / 1000, () => this.afterRoundStart(), { silent: this.soloUntimed });
     this.markPublic();
@@ -408,17 +426,49 @@ export class MatchPhases {
 
   /** Stable per-match pairs and their templates, generated before the prep preview / board validation. */
   _planBossWaves() {
+    // 木桩演练走自己的分支（见 _planDummyField）：不建血池、不抽首领、只用 this.wave
+    if (this.round === this.gd.dummyRound && this.wave) return this._planDummyField();
     const r = this.round;
-    const bossId = r === this.gd.hiddenRound && r !== this.gd.bossRound ? this.hiddenBossId : this.bossId;
-    // Pairing uses an independent seeded draw, consuming no shop, wave, draft or battle randomness.
-    const groups = pairPlayers(this.alivePlayers(), createRng(deriveSeed(this.seed, 'boss-pairs')), this.bossPairs);
+    const hidden = r === this.gd.hiddenRound && r !== this.gd.bossRound;
+    const bossId = hidden ? this.hiddenBossId : this.bossId;
+    // Pairing uses an independent seeded draw, consuming no shop, wave, draft or battle randomness. The Hidden Core
+    // draws its pairs anew (GitHub #845 / upstream Forge 0.3.2 §37.27, superseding the 「kept partners」 reading): the
+    // round's FIRST plan draws from a stream of its own (`boss-pairs:<round>`) and without `previous`, so R15's pairs are
+    // not the Final Assault's — the Final Assault's own draw is unchanged (`boss-pairs`, `previous`). Only that first
+    // plan: a re-plan after a departure in the same round (platform.js _quit → here, bossPairsRound === r) keeps the
+    // intact pairs and re-pairs only the orphan, exactly as the Final Assault does.
+    //
+    // [DEV] 业主 2026-10-16 (finalAssault.js:63-84): this fork pairs by SEAT and never shuffles — the client's own
+    // fallback when m.public.bossPairs is missing (public/js/ui/gameLogic/camera.js prepPair) pairs seat-adjacent seats
+    // too, so a random draw would flip a player's half and look like 「boss 波摆人会卡回道中」. Upstream's other half of
+    // #845 — 「重新抽左右」, a random side inside each pair — is therefore deliberately NOT ported: the seat decides L/R.
+    const fresh = hidden && this.bossPairsRound !== r;
+    const groups = pairPlayers(this.alivePlayers(), createRng(deriveSeed(this.seed, bossPairSalt(this.gd, r))), fresh ? null : this.bossPairs);
     this.bossPairs = groups.map(g => g.map(p => p.playerId));
+    this.bossPairsRound = r;
     this.bossWaves = groups.map((g) => ({
       players: g.map((p) => p.playerId),
       wave: buildBossWave(this.gd, this.rngWaves, this.factions, r, { bossId, solo: this.isSolo || g.length === 1 }, this.stageId),
     }));
   }
 
+
+  /**
+   * 第16回合「木桩演练」的「boss 场地」：只把这一组玩家登记进 `bossWaves`，让 `deployFieldOf` 给出 bossL / bossR、
+   * `m.public` 给出配对与预览，而这一场本身仍是 PHASE.COMBAT 的普通作战（敌人来自 `this.wave`）。
+   *
+   * **不**建共享血池（血条会来自 bosses.json 的 bloodPoint、把木桩的 325 亿覆写掉）、**不**跑 BOSS_HIT 限伤
+   * （kind === 'boss' 的战场上单发 ≥ 30 万的伤害会被整段取消 —— 那正是这一回合要量到的东西）、**不**开加时扣 LP
+   * （否则时间一到就判负，而这是最后一回合）。业主 2026-10-30「16回合没有设置成boss回合，导致地图有问题」要的
+   * 只是地图与布阵区。
+   */
+  _planDummyField() {
+    // 配对与首领回合同一个独立随机流，不消耗商店 / 出怪 / 抽卡的随机数。
+    const groups = pairPlayers(this.alivePlayers(), createRng(deriveSeed(this.seed, 'boss-pairs')), this.bossPairs);
+    this.bossPairs = groups.map((g) => g.map((p) => p.playerId));
+    // 每一组用的都是同一份 this.wave：木桩只有一只，两个半场看到的是同一只。
+    this.bossWaves = groups.map((g) => ({ players: g.map((p) => p.playerId), wave: this.wave }));
+  }
   afterRoundStart() {
     // 协议源石 (Hextech) first (DESIGN §29): the draws of data/hextech.json format.rounds (1 / 3 / 6 / 11) happen before the
     // prep phase, so the round's enemy hex is already known when the players shop for it. enterHexDraft continues the

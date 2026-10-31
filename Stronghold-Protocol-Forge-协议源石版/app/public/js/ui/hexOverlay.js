@@ -26,6 +26,10 @@
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, Button, Countdown, MicroLabel, HexBadge, Tooltip } from './components.js';
 import { t, N_ } from '../../../shared/i18n.js';
+import { PHASE } from '../../../shared/constants.js';
+// 第 6 回合「点卡刷新」的每局张数（业主口径：2 次）。只读：那一份是服务端初始化 `PlayerState.hexRecycleLeft` 的同一个
+// 常量，客户端拿它做「剩 n 次」的兜底初值与那颗菱形指示的格数。
+import { HEX_RECYCLE_BUDGET } from '../../../shared/hextech.js';
 import { data, localAsset } from '../data.js';
 import { Img } from './gameComponents.js';
 import { uiUrl } from './assetUrls.js';
@@ -394,6 +398,219 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
             : html`<b class="hxov__enemynum num">0</b>`}
         </span>
         <span class="hxov__hint">${t('敌人会获得同阶位的协议源石')}</span>
+      </footer>
+    </div>
+  </div>`;
+}
+
+// ---- 协议源石 · 刷新 (recycle) -----------------------------------------------------------------------------------
+// 业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的协议源石」；2026-10-31 改成界面：
+// 「不要按钮形式，你就搞个界面把有的协议源石放上去点击刷新。算力无限，搞美观些」「就是选完协议源石，这面板直接出现，
+// 用协议源石的界面也行」。
+//
+// 所以这一手**没有角落按钮**：窗口一开面板自己出现，把玩家已拥有的每一张协议源石铺成卡，**点哪张刷哪张** —— 点一次
+// 立刻发 `g.hexRecycle { ids: [那张] }`，没有确认、没有多选。每局共 `HEX_RECYCLE_BUDGET`（2）次，点一次花一次（可以
+// 点同一张两次，也可以点两张各一次）；换回的牌按 1/2/3 阶的抽取权重完全随机，被换掉那张已经给过的一次性收益不收回
+// （那是服务端的账）。服务端在 HEX_DRAFT 里受理时**不改 offer、不改 picks**（只摘自己身上的 `hex:<id>` ref 再发一张
+// 新的），所以抽卡界面本身不受影响。
+//
+// 窗口（`hexRecycleAvailable`）＝ 第 6 回合 && 存活 && 还有次数 && 至少拥有一张 && 下面两种时刻之一：
+//   * `HEX_DRAFT` 且自己**已经选完** —— 业主「选完协议源石，这面板直接出现」：抽卡是并行的，自己选完就不必等别人。
+//     同回合还有机变的难度（`spRounds` 含 6）例外：那一档等休整期再弹，否则面板只会闪一下、还会盖住机变；
+//   * `PREP` —— 机变回合夹在中间时（`spRounds` 含 6 的难度），休整期会再给一次。这一条还要「未准备」，而 `priv.ready`
+//     不在这个纯函数拿得到的帧里，所以由 screens/game.js 补在判据外面（`recycleWindow`）；纯函数只按契约来，于是能被
+//     单测逐条钉住。
+//
+// 状态留在 screens/game.js（按没按过「完成」、哪张在飞、哪张是新入场的），`HexRecyclePanel` 是不持有状态的纯视图 ——
+// 与 ui/damageReport.js 的面板同一条规矩，测试可以直接把它当函数调（test/ui/hexRecycle.test.js）。
+
+/** 这一手只在第 6 回合被受理（服务端的拒绝码 WRONG_PHASE）。 */
+export const HEX_RECYCLE_ROUND = 6;
+
+/** 「新卡入场闪一下」的时长（毫秒）。屏上只是给个确认：换回来的那张是新的，别让玩家以为点错了。 */
+export const RECYCLE_FLASH_MS = 1100;
+
+/**
+ * m.public.players[] 里属于自己那一行（`hexes` / `hexRecycleLeft` 都在这行上），观战 / 已淘汰没有这一行时返回 null。
+ * @param {any} pub m.public
+ * @param {string|null|undefined} myId
+ * @returns {any|null}
+ */
+export function playerRowOf(pub, myId) {
+  const list = Array.isArray(pub?.players) ? pub.players : [];
+  return list.find((p) => p && p.playerId === myId) || null;
+}
+
+/**
+ * 自己已拥有的协议源石 id（行上的 `hexes`），去重并丢掉非字符串 —— 这份列表既是面板铺卡的数据源，也是「至少拥有一张」
+ * 那条判据。
+ * @param {any} pub m.public
+ * @param {string|null|undefined} myId
+ * @returns {string[]}
+ */
+export function ownHexIds(pub, myId) {
+  const row = playerRowOf(pub, myId);
+  const list = Array.isArray(row?.hexes) ? row.hexes : [];
+  return [...new Set(list.filter((id) => typeof id === 'string' && id))];
+}
+
+/**
+ * 这一局还能刷几次（0…`HEX_RECYCLE_BUDGET`）。
+ *
+ * 服务端只在第 6 回合的帧里把余数写成行上的 `hexRecycleLeft`（其它回合不写）。**缺省按满额**：业主的口径是每局 2 次，
+ * 所以第 6 回合的帧里没有这个键时（老服务端 / 混合部署）按 2 起算，而不是一上来就显示「次数已用完」。
+ * @param {any} pub m.public
+ * @param {string|null|undefined} myId
+ * @returns {number}
+ */
+export function hexRecycleLeft(pub, myId) {
+  const row = playerRowOf(pub, myId);
+  if (!row) return 0;                                   // 观战席位没有自己那一行
+  const n = row.hexRecycleLeft;
+  if (Number.isFinite(n)) return Math.max(0, Math.min(HEX_RECYCLE_BUDGET, Math.trunc(n)));
+  return HEX_RECYCLE_BUDGET;
+}
+
+/**
+ * 抽卡阶段里「自己已经选完」：`picks[myId]` 落下了，也没有欠着的额外选牌（管理员的第一回合额外选牌 —— 欠着的时候
+ * 服务端换了一批新牌在等第二手，那时不算选完）。
+ * @param {any} pub m.public
+ * @param {string|null|undefined} myId
+ * @returns {boolean}
+ */
+export function draftPicked(pub, myId) {
+  const hex = pub?.hex;
+  const picks = hex && typeof hex === 'object' && hex.picks && typeof hex.picks === 'object' ? hex.picks : null;
+  if (!picks || picks[myId] == null) return false;      // 0 是合法槽位，所以不能写成 `if (!picks[myId])`
+  const extra = hex.extraPicksLeft && typeof hex.extraPicksLeft === 'object' ? Number(hex.extraPicksLeft[myId]) : 0;
+  return !(Number.isFinite(extra) && extra > 0);
+}
+
+/**
+ * 这一手的**阶段窗口**（不含次数）：第 6 回合、存活、至少拥有一张，并且是 `HEX_DRAFT`（自己已选完）或 `PREP` 之一。
+ * PREP 那条还要「未准备」，`priv.ready` 不在这个纯函数拿得到的帧里，由 screens/game.js 补（见文件头）。
+ *
+ * 与 `hexRecycleAvailable` 分开的理由是「次数用完那一刻」：业主 2026-10-31 要面板留在原地显示「次数已用完」、按「完成」
+ * 才走 —— 那一刻服务端已经不受理了（`hexRecycleAvailable` 假），但阶段窗口还在（这个函数真），面板于是留得住。
+ * @param {any} pub m.public
+ * @param {string|null|undefined} myId
+ * @returns {boolean}
+ */
+export function hexRecycleWindow(pub, myId) {
+  const row = playerRowOf(pub, myId);
+  if (!row || row.alive === false) return false;
+  if (!pub || pub.round !== HEX_RECYCLE_ROUND) return false;
+  if (ownHexIds(pub, myId).length < 1) return false;
+  if (pub.phase === PHASE.HEX_DRAFT) {
+    // 同回合还有机变（`spRounds` 含 6 的难度：标准 / 同盟标准）：选完协议源石后马上就是机变的整屏界面 —— 这时弹面板只会
+    // 闪一下（下一帧阶段就变了），而且它是同层的兄弟节点，压上去还会盖住机变。那一档等休整期再弹（同一回合、选完之后）。
+    if (pub.spRound === true) return false;
+    return draftPicked(pub, myId);
+  }
+  return pub.phase === PHASE.PREP;
+}
+
+/**
+ * 这一手「协议源石 · 刷新」此刻服务端会不会受理 —— 「还能不能换」的唯一判据（阶段窗口 + 还有次数）。
+ *
+ * 服务端仍然是权威（拒绝码 ALREADY / BAD_TARGET / WRONG_PHASE，`act()` 会自动 toast）；这里只是**不弹**一个注定被
+ * 拒绝的面板。
+ * @param {any} pub m.public
+ * @param {string|null|undefined} myId
+ * @returns {boolean}
+ */
+export function hexRecycleAvailable(pub, myId) {
+  return hexRecycleWindow(pub, myId) && hexRecycleLeft(pub, myId) > 0;
+}
+
+/**
+ * 一张卡此刻能不能点：还有次数，并且没有别的卡正在刷新（请求在途时整排都禁用，避免一次点击花掉两次）。
+ * @param {number} left 剩余次数
+ * @param {string|null} [busyId] 正在刷新的那张 id
+ * @returns {boolean}
+ */
+export function recycleCanRefresh(left, busyId = null) {
+  return !busyId && Number.isFinite(Number(left)) && Number(left) > 0;
+}
+
+/**
+ * 把「自己拥有的 id」换成卡面记录（HexCard 要的 `{ id, name, desc, rarity }`），保持行上的顺序。
+ *
+ * 记录来自 `data.get('hextech').playerHexes` —— 那是**以 id 为键的对象**（data/hextech.json；ui/guide.js 与
+ * ui/testArena.js hexesOf 都按 Object.values 读），不是数组；这里也接受数组形态，省得两处写法对不上。
+ * 查不到的 id **保留**（名字退回 id、阶位退回缺省）：玩家仍然必须能刷它，否则那一局就卡死了。
+ * @param {string[]|null|undefined} ownedIds
+ * @param {any} roster data.get('hextech')?.playerHexes
+ * @returns {{ id: string, idx: number, name: string, desc: string, rarity: string }[]}
+ */
+export function recycleCardsOf(ownedIds, roster) {
+  const list = Array.isArray(ownedIds) ? ownedIds.filter((id) => typeof id === 'string' && id) : [];
+  const recOf = (id) => {
+    if (Array.isArray(roster)) return roster.find((h) => h && h.id === id) || null;
+    return roster && typeof roster === 'object' ? roster[id] || null : null;
+  };
+  return list.map((id, idx) => {
+    const rec = recOf(id);
+    return {
+      id, idx,
+      name: typeof rec?.name === 'string' && rec.name ? rec.name : id,
+      desc: typeof rec?.desc === 'string' ? rec.desc : '',
+      rarity: typeof rec?.rarity === 'string' && rec.rarity ? rec.rarity : RARITY_DEFAULT,
+    };
+  });
+}
+
+/**
+ * 「协议源石 · 刷新」面板：业主 2026-10-31「把有的协议源石放上去点击刷新」。
+ *
+ * 外壳就是抽卡那套（`.spov` veil / inner / head / grid + `HexCard`），所以两个界面读起来是同一个游戏。纯视图 ——
+ * `cards` / `left` / `busyId` / `freshId` 都由 screens/game.js 给，关面板也由它决定（组件只回调 `onClose`：
+ * 「完成」按钮、点 veil、Esc 三处都走同一条）。
+ *
+ * 点卡即刷新（没有确认按钮）：`onRefresh(id)` 由屏幕立刻发 `g.hexRecycle`。请求在途时**整排卡都点不动**
+ * （`recycleCanRefresh`）—— 一次点击只该花一次次数。
+ *
+ * @param {{ cards?: any[], left?: number, busyId?: string|null, freshId?: string|null,
+ *   onRefresh?: ((id: string) => void)|null, onClose?: (() => void)|null }} props
+ */
+export function HexRecyclePanel({ cards = [], left = 0, busyId = null, freshId = null, onRefresh = null, onClose = null }) {
+  const list = Array.isArray(cards) ? cards : [];
+  const rest = Math.max(0, Math.min(HEX_RECYCLE_BUDGET, Math.trunc(Number(left) || 0)));
+  const canRefresh = recycleCanRefresh(rest, busyId);
+  // 一行状态：在飞 > 还有次数 > 用完了。业主 2026-10-31 要「剩 n 次」看得见，用完那一刻也要说清楚。
+  const status = busyId ? t('刷新中') : rest > 0 ? t('剩 {n} 次', { n: rest }) : t('次数已用完');
+  return html`<div class="spov hxrec" role="dialog" aria-label=${t('协议源石 · 刷新')} data-testid="hex-recycle-panel">
+    <div class="spov__veil" aria-hidden="true" onClick=${() => onClose?.()}></div>
+    <div class="spov__inner">
+      <header class="spov__head">
+        <div class="spov__titles">
+          <${MicroLabel} tone="gold">${t('PROTOCOL // 协议源石')}</${MicroLabel}>
+          <h2 class="spov__title hxov__title">${t('协议源石 · 刷新')}</h2>
+          <p class="spov__sub">${t('第 6 回合限定 · 每局 2 次 · 点击一张，随机换回一张')}</p>
+        </div>
+        <div class="spov__turn">
+          ${/* 剩余次数：几颗菱形（业主「算力无限，搞美观些」），数出来的那一行同时给出文字 */ ''}
+          <span class=${cx('hxrec__pips', rest > 0 && 'is-live', busyId && 'is-busy')} data-testid="hex-recycle-pips"
+            aria-hidden="true">${Array.from({ length: HEX_RECYCLE_BUDGET }, (_, i) => html`<i key=${i}
+              class=${cx('hxrec__pip', i < rest && 'is-on')}></i>`)}</span>
+          <span class=${cx('hxrec__left', rest > 0 && 'is-live')} data-testid="hex-recycle-left"
+            role="status" aria-live="polite">${status}</span>
+        </div>
+      </header>
+      ${/* 一张卡一个槽：卡自己仍是那个大按钮（点整张 = 刷新它），槽负责悬停抬升 / 点击波纹 / 新卡入场的那一下闪光。
+            `vanishing` 是抽卡确认时那套「化作数据流被吸走」的动画，这里借来表示「这张正在被换掉」。 */ ''}
+      <div class=${cx('spov__grid', list.length <= 3 ? 'spov__grid--3' : list.length > 6 && 'spov__grid--many')}
+        data-testid="hex-recycle-grid">
+        ${list.map((c) => html`<span key=${c.id}
+          class=${cx('hxcard-slot', 'hxrec__slot', freshId === c.id && 'is-fresh', busyId === c.id && 'is-refreshing')}>
+          <${HexCard} hex=${c} vanishing=${busyId === c.id} vanishDir=${c.idx % 3}
+            onClick=${canRefresh ? () => onRefresh?.(c.id) : null} />
+        </span>`)}
+      </div>
+      <footer class="hxov__foot">
+        <span class="hxov__hint hxrec__hint">${t('点击一张协议源石，随机换回一张')}</span>
+        <${Button} variant="secondary" size="md" icon="check" data-testid="hex-recycle-done"
+          onClick=${() => onClose?.()}>${t('完成')}<//>
       </footer>
     </div>
   </div>`;

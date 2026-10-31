@@ -23,12 +23,11 @@ import { isShopItem } from '../sim/simdata.js';
 import { mergeData } from '../../shared/plugins/dataUtils.js';
 import { standInRecord } from '../../shared/standIn.js';
 import { MAX_OFFER_SLOTS } from './player/common.js';
-import {
-  normalizeSupportConfig, supportSlotsFor, supportCapacity, supportPicker, isSupportChess, supportTierOf, supportPriceOf,
-  checkSupport as checkSupportSelection,
-} from '../../shared/support.js';
 // 策略轮选的重不重复开关（data/config.json bandDraft.duplicatesAllowed）：服务端与客户端读同一个定义。
 import { bandDuplicatesAllowed } from '../../shared/bandDraft.js';
+// 棋子的价格规则（mode 覆盖 → 记录自带 price → 阶级表 → 缺省）：**一份实现，两端共读** —— 测试场的干员面板
+// （业主 2026-10-26「可以购买任何干员」）要显示的就是这里会扣的那个数，面板没有别的渠道问服务端。
+import { chessPriceOf, TIER_CHESS_PRICE } from '../../shared/chessPrice.js';
 
 const own = (map, id) => (map && typeof map === 'object' && typeof id === 'string' && Object.hasOwn(map, id) && map[id] && typeof map[id] === 'object' ? map[id] : null);
 const numOr = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -37,7 +36,7 @@ const posIntOr = (v, d) => (Number.isInteger(v) && v > 0 ? v : d);
 export const DEFAULTS = Object.freeze({
   income: [0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 12, 12, 12, 12, 12],
   incomeCap: 12,
-  chessPrice: { 1: 2, 2: 3, 3: 3, 4: 3, 5: 4, 6: 4 },
+  chessPrice: TIER_CHESS_PRICE,
   sellPrice: 1,
   refreshPrice: 1,
   poolCopies: { 1: 12, 2: 14, 3: 18, 4: 16, 5: 8, 6: 5 },
@@ -173,7 +172,7 @@ export class GameData {
     this.seatCap = Number.isFinite(opts?.seatCap) && opts.seatCap >= 1 ? Math.floor(opts.seatCap) : MAX_SEATS;
     this.economy = this.config.economy && typeof this.config.economy === 'object' ? this.config.economy : {};
     /**
-     * 协议等级 (owner's call 2026-10-18): the 1–18 numeric axis on top of the HIGHEST difficulty only. 0 = off — and the
+     * 协议等级 (owner's call 2026-10-18): the 1–19 numeric axis on top of the HIGHEST difficulty only. 0 = off — and the
      * other difficulties normalize to 0 here, so a room that never picked a level reads byte-for-byte today's data.
      * @type {number}
      */
@@ -226,12 +225,6 @@ export class GameData {
     this.tuning = this.raw.tuning && typeof this.raw.tuning === 'object' ? this.raw.tuning : {};
     /** standIn memo: chess id → composed 补位 record | null */
     this._standIns = new Map();
-    /**
-     * 助战 (support operators, shared/support.js): the server-controlled pool declared by data/support.json. Disabled —
-     * and then refusing every non-empty selection — when the file is missing, malformed or has no usable tier, so a
-     * server without support.json behaves exactly as it did before this feature.
-     */
-    this.support = normalizeSupportConfig(this.raw.support);
   }
 
   /**
@@ -307,33 +300,6 @@ export class GameData {
   get choices() { return this.raw.choices && typeof this.raw.choices === 'object' ? this.raw.choices : {}; }
   get factions() { return this.raw.factions && typeof this.raw.factions === 'object' ? this.raw.factions : {}; }
 
-  // ---- 助战 (support operators; the server-controlled pool of data/support.json) -----------------------
-
-  /** Whether this server offers 助战 at all (a usable slot + pool pair exists). */
-  supportEnabled() { return this.support.enabled; }
-  /** How many tier-`tier` supports one player may bring (0 = the tier is off). */
-  supportSlots(tier) { return supportSlotsFor(this.support, tier); }
-  /** Total supports one player may bring. */
-  supportCapacity() { return supportCapacity(this.support); }
-  /** `{ tier, slots, ids }[]` — what a client may show in the picker (the only source of that list; never the client's). */
-  supportPicker() { return supportPicker(this.support); }
-  /** Whether the pool allows this operator as a support (fails closed; see shared/support.js isSupportChess). */
-  isSupportChess(id) { return isSupportChess(this.support, id, (x) => this.chess(x)); }
-  /** The tier this operator counts against, or null when the pool does not allow it. */
-  supportTierOf(id) { return supportTierOf(this.support, id, (x) => this.chess(x)); }
-  /**
-   * 助战干员在**带上它的那名玩家**商店里的标价（`data/support.json` 的 `prices`），没配就是 null。
-   * 没配时用它的阶级价（`chessPrice`）—— 助战是普通棋子，价格规则不另开一套。
-   * @param {string} id base chess id
-   */
-  supportPrice(id) { return supportPriceOf(this.support, id); }
-  /**
-   * Semantic check of a `room.support` selection against the pool (shared/support.js checkSupport — the same call the
-   * client makes before sending, so the picker and the match agree).
-   * @param {unknown} entries
-   */
-  checkSupport(entries) { return checkSupportSelection(entries, this.support, (x) => this.chess(x)); }
-
   /**
    * The 补位 record of chess `id` (normal or elite; DATA.md §18): shared/standIn.js standInRecord over data/backups.json
    * — the chess's identity (ids, tier, bonds, 特质, price, merge) with its official stand-in's body (stats, range, skills
@@ -404,16 +370,14 @@ export class GameData {
     return Math.max(0, Math.min(cap, 3 + round) + delta);
   }
 
+  /**
+   * The price of chess `id` in this match's mode. The rule itself lives in shared/chessPrice.js — ONE implementation,
+   * because the client's 测试场 干员 picker shows the same number before the tap (业主 2026-10-26). This method keeps its
+   * old signature and its old answer: mode override → the record's `price` → the economy table → the tier default.
+   * @param {string} id @returns {number}
+   */
   chessPrice(id) {
-    const c = this.chess(id);
-    const override = this.mode.economy?.chessPrice?.[this.tierOf(id)]?.[c?.isGolden ? 'golden' : 'normal'];
-    if (Number.isFinite(override) && override >= 0) return override;
-    if (c && Number.isFinite(c.price) && c.price >= 0) return c.price;
-    const tier = this.tierOf(id);
-    const row = this.economy.chessPrice && this.economy.chessPrice[tier];
-    const golden = c && c.isGolden;
-    if (row && typeof row === 'object') return numOr(golden ? row.golden : row.normal, DEFAULTS.chessPrice[tier] ?? 3);
-    return DEFAULTS.chessPrice[tier] ?? 3;
+    return chessPriceOf(this.chess(id), this.tierOf(id), this.mode.economy, this.economy);
   }
 
   sellPrice(id) {
@@ -445,6 +409,16 @@ export class GameData {
   get deployCap() { return this._deployCap ?? posIntOr(this.economy.deployCap, DEFAULTS.deployCap); }
   get equipPerChess() { return posIntOr(this.economy.equipPerChess, DEFAULTS.equipPerChess); }
   get maxArtsPerRound() { return posIntOr(this.economy.maxArtsPerRound, DEFAULTS.maxArtsPerRound); }
+  /**
+   * 一回合最多获得多少资金（业主 2026-10-29「把这个负面做成 n19」）。**它属于协议等级**：表里带 `fundsGainCap` 的
+   * 那一级（当前只有 19 级）给出数字，0 = 不设上限 —— 0–18 级、其它难度、以及等级关闭（0）时逐字回到从前的经济。
+   * 唯一的读取点：`PlayerState.addFunds`（全游戏的钱都从那个原语进）。
+   * @returns {number} 上限；0 = 不设上限
+   */
+  get fundsGainCapPerRound() {
+    const mods = this.protocolLevelMods;
+    return mods && Number.isFinite(mods.fundsGainCap) ? Math.max(0, Math.trunc(mods.fundsGainCap)) : 0;
+  }
   get goldenCopies() { return posIntOr(this.economy.goldenCopies, DEFAULTS.goldenCopies); }
   get itemMergeCount() { return posIntOr(this.economy.itemMergeCount, DEFAULTS.itemMergeCount); }
   get leftoverKeptBands() {
@@ -514,6 +488,15 @@ export class GameData {
   }
   get bossRound() { return Number.isInteger(this.mode.bossRound) && this.mode.bossRound > 0 ? this.mode.bossRound : this.lastRound; }
   get hiddenRound() { return Number.isInteger(this.mode.hiddenRound) && this.mode.hiddenRound > 0 ? this.mode.hiddenRound : null; }
+  /**
+   * 第16回合「木桩演练」(docs/research/17-dummy-round.json, Lead 2026-10-29): the round AFTER the Hidden Core — one dummy
+   * that does not fight back, does not move, has a very large HP pool and heals itself, so a player can measure their
+   * damage. `mode.dummyRound` is written by the data build next to `lastRound` / `bossRound` / `hiddenRound`, which stay
+   * untouched: this round is neither a regular round (lastRound is still 14) nor a leader round (bossRound is still 14),
+   * so server/match/results.js's roundsPassed — bossRound + hiddenCleared — cannot move because of it.
+   * null when the mode has no dummy round (mode_single_funny, mode_training_1, and every data set built before it).
+   */
+  get dummyRound() { return Number.isInteger(this.mode.dummyRound) && this.mode.dummyRound > 0 ? this.mode.dummyRound : null; }
   get maxShopLevel() { return posIntOr(this.mode.maxShopLevel, DEFAULTS.maxShopLevel); }
 
   roundCfg(r) {

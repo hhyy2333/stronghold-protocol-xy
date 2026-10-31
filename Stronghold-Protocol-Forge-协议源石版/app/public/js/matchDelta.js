@@ -10,7 +10,7 @@
 //   * APPLY A DELTA TO THE STATE YOU ALREADY HAVE. With no state — a fresh client, a reconnect, a delta before the
 //     first full frame — there is nothing to merge: `applyPublic` refuses, and the caller sends `g.publicFull` and waits
 //     for the full frame. Requirement: a joiner, a reconnect and a spectator always get a full frame first.
-//   * `null` IS A REAL VALUE for a TOP-LEVEL key (`bossId`, `rerollVote`, `uniteResult`) and is stored as it is. A
+//   * `null` IS A REAL VALUE for a TOP-LEVEL key (`bossId`, `uniteResult`) and is stored as it is. A
 //     top-level key that DISAPPEARED is named in the frame's `gone: [...]` and deleted. Inside a ROW the two are one
 //     state: an unset row field (`bandId`, `fieldId`, `progress.resolved`) is read as "unset" by every consumer, so a
 //     full frame's row null is materialized as `undefined` (`clonePublic` → `normalizeRow`) and a delta's row null means

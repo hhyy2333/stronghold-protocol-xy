@@ -93,8 +93,6 @@ export async function act(t, fields = {}, opts = {}) {
 export const actions = {
   infoReady: (setupRevision = 0) => act('g.infoReady', { setupRevision }),
   rerollSetup: (setupRevision) => act('room.rerollSetup', { setupRevision }, { sfx: 'confirm' }),
-  rerollVote: (voteId, agree) => act('g.rerollVote', { voteId, agree }, { sfx: agree ? 'confirm' : 'back' }),
-  cancelReroll: (voteId) => act('room.cancelReroll', { voteId }, { sfx: 'back' }),
   band: (bandId) => act('g.band', { bandId }),
   bandSkip: () => act('g.bandSkip'),
   buy: (slot) => act('g.buy', { slot }),
@@ -125,6 +123,11 @@ export const actions = {
   hex: (idx) => act('g.hex', { idx }, { sfx: 'pick', sfxUrl: hexCue('selectGold') }),
   // idx = 只刷新那一张（业主 2026-10-20「把刷新按钮改成分别刷新每个」）；不传 = 整批换三张（旧行为，请求逐字节不变）
   hexReroll: (idx) => act('g.hexReroll', idx === undefined ? {} : { idx }, { sfx: 'refresh', sfxUrl: hexCue('reroll') }),
+  // 协议源石 · 刷新（业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的协议源石」，2026-10-31 改成
+  // 「把有的协议源石放上去点击刷新」的界面）：`ids` 是 1–2 个自己已拥有的协议源石 id（界面点一张就发一张），服务端随机
+  // 换回相同数量；每局共 2 次。窗口在 HEX_DRAFT（自己选完之后）与 PREP（未准备），别的阶段回 WRONG_PHASE —— 由 act() 的
+  // toast 统一报。音效走协议源石自己的刷新声（本地有就放，没有就退回 'refresh'，见 hexCue 上面那段）。
+  hexRecycle: (ids) => act('g.hexRecycle', { ids }, { sfx: 'refresh', sfxUrl: hexCue('reroll') }),
   // 测试场 (the owner's request of 2026-10-11): the test panel's own intents — refused with WRONG_PHASE outside a test
   // field (server/match/match/testField.js `_testGate`), so a stale panel cannot change a normal match. The enemy-side
   // pair edits match-global state, so the server also requires a single human seat (`_testGateEnemy`).
@@ -135,6 +138,9 @@ export const actions = {
   testEnemyHexClear: () => act('g.testEnemyHexClear', {}, { sfx: 'back' }),
   // 测试场 直接到 boss 战（业主 2026-10-21）：skip to the leader round's prep; `bossId` picks the leader (absent keeps the draw)
   testBoss: (bossId) => act('g.testBoss', bossId ? { bossId } : {}, { sfx: 'levelup' }),
+  // 测试场 买任何干员（业主 2026-10-26「在测试场增加功能可以购买任何干员」）：按阶级价买一名商店这次没摇到的干员。
+  // 服务端走的是与 g.buy 同一条购买路径，所以音效也照购买来；PREP、未准备之外一律 WRONG_PHASE（面板会把按钮禁掉）。
+  testChess: (chessId) => act('g.testChess', { chessId }, { sfx: 'buy' }),
   ready: (ready) => act('g.ready', { ready }, { sfx: ready ? 'ready' : 'back' }),
   // 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12; the reference mod 休整期切换技能模组mod): re-equip ONE
   // operator from its detail card in PREP. `entries` is a per-operator increment (`{ [baseChessId]: { skill?, module? } }`)
