@@ -738,7 +738,7 @@ test('装甲破坏: the dice in a real pick+fight — allied physical hits shred
   const plain = fight([]);
   const withHex = fight(ps.battleInput().playerEffects);
   assert.ok(withHex.hits > 0, 'the allies landed physical hits (premise)');
-  assert.equal(withHex.def, plain.def - 20 * withHex.hits, `20 DEF per allied physical hit: ${plain.def} − 20×${withHex.hits}`);
+  assert.equal(withHex.def, Math.max(0, plain.def - 80 * withHex.hits), `80 DEF per allied physical hit (floored at 0): max(0, ${plain.def} − 80×${withHex.hits})`);
   h.invariants();
   m.dispose();
 });
@@ -1124,20 +1124,32 @@ test('a later pick never re-runs an owned card’s immediate part (owner report 
 
 test('后勤整备: the pick grants a Tier-1 进阶 (golden) item and the ladder climbs one tier every 2 rounds', () => {
   const { h, m, ps } = solo1(211);
+  // 2026-10-31: the round-1 draft pool gained cards (协议源石第二十三批), so seed 211's own first pick may deal this
+  // seat another card whose round-start half also grants items. Isolate 后勤整备: keep the items already in hand, drop
+  // every other hex effect. The assertions are DELTAS on this seat's golden items for the same reason.
+  ps.effects = ps.effects.filter((e) => !(typeof e.key === 'string' && e.key.startsWith('hex:')));
   /** The 进阶装备 this player holds right now (hand + overflow temp). */
   const goldens = () => [...(ps.hand || []), ...(ps.temp || [])].filter((p) => p && p.kind === 'item' && m.gd.isGolden(p.id));
   /** Their tiers, ascending — the hand keeps the newest first, so order is not the assertion. */
   const tiers = () => goldens().map((p) => m.gd.tierOf(p.id)).sort((a, b) => a - b);
+  const countOf = (list, tier) => list.filter((t) => t === tier).length;
+  const before = tiers();
   applyHex(m, ps, m.gd.hex('hex_logistics'));
-  assert.deepEqual(tiers(), [1], 'the pick itself grants one 1阶 进阶装备 (it used to grant nothing: gd.goldenIdOf never resolved an ITEM id)');
+  const picked = tiers();
+  assert.equal(picked.length, before.length + 1, 'the pick itself grants one more 进阶装备 (it used to grant nothing: gd.goldenIdOf never resolved an ITEM id)');
+  assert.equal(countOf(picked, 1), countOf(before, 1) + 1, 'and that one is a 1阶 item');
   assert.equal(ps.counters['hex:hex_logistics:goldenTier'], 1, 'the ladder remembers the tier it granted');
   m.dispatch(ps, 'onRoundStart', { round: 3 });
-  assert.deepEqual(tiers(), [1, 2], 'the first due round start grants one tier above the last one');
+  const r3 = tiers();
+  assert.equal(r3.length, picked.length + 1, 'the first due round start grants exactly one more');
+  assert.equal(countOf(r3, 2), countOf(picked, 2) + 1, 'one tier above the last one');
   m.dispatch(ps, 'onRoundStart', { round: 4 });
-  assert.deepEqual(tiers(), [1, 2], 'the interleaved round is what `everyRounds: 2` skips');
+  assert.deepEqual(tiers(), r3, 'the interleaved round is what `everyRounds: 2` skips');
   assert.equal(ps.counters['hex:hex_logistics:goldenTier'], 2, 'and a skipped round does not move the ladder');
   m.dispatch(ps, 'onRoundStart', { round: 5 });
-  assert.deepEqual(tiers(), [1, 2, 3], 'the next due round climbs a second time');
+  const r5 = tiers();
+  assert.equal(r5.length, r3.length + 1, 'the next due round climbs a second time');
+  assert.equal(countOf(r5, 3), countOf(r3, 3) + 1, 'to 3阶');
   h.invariants();
   m.dispose();
 });
@@ -1241,6 +1253,53 @@ test('升级刷新: the refresh costs 2, the private view agrees, and a 1-fund p
   ps.funds = 2;
   assert.deepEqual(ps.refresh(), { ok: true });
   assert.equal(ps.funds, 0, 'exactly 2 paid');
+  h.invariants();
+  m.dispose();
+});
+
+// 业主 report 2026-10-31:「三连透支有bug，会出现不给干员的情况」. 「场上人数最多盟约」 was ranked over EVERY bond in
+// `ps.bonds`, 绝技 included — and 绝技 (bonds.json countMode BOARD_ALL_CHESS) owns no operator at all: its member count is
+// the number of ELITE operators on the board, so from the second elite on it outranks every real bond, and
+// `rollChess({ bond: 'suntShip' })` can only answer null. The merge then paid nothing and the card never lapsed, so it
+// kept paying nothing for the rest of the round. The earlier reports of the same symptom (5684773 / bf62e26) only fixed
+// its pool-stock half (「抽到已抽空的干员」).
+test('三连透支: 绝技 — a bond that owns no operator — cannot swallow the grant', () => {
+  const { h, m, ps } = solo1(613);
+  applyHex(m, ps, m.gd.hex('hex_tripleoverdraft')); // 三连透支
+  // premises: two ELITE operators stand on the board ⇒ 绝技 counts 2, and no bond that owns an operator counts more
+  for (const id of ['chess_char_1_01_b', 'chess_char_1_02_b']) give(m, ps, id, 'board', legalTileFor(m, ps, id));
+  assert.equal(ps.bonds.suntShip.count, 2, 'premise: 绝技 counts the elite operators on the board');
+  const owned = Object.entries(ps.bonds).filter(([id, b]) => id !== 'suntShip' && b.count > 0).map(([, b]) => b.count);
+  assert.ok(owned.length > 0 && owned.every((c) => c < 2), `premise: 绝技 outranks every bond with an operator (${owned})`);
+
+  const elites = () => [...ps.board.values(), ...ps.hand, ...ps.temp].filter((p) => p && m.gd.isGolden(p.id)).length;
+  const before = elites();
+  const base = 'chess_char_2_01_a';
+  for (let i = 0; i < m.gd.mergeCount(base); i++) ps.acquireChess(base);
+  assert.equal(elites(), before + 2, 'the merge’s own elite AND the elite 三连透支 grants');
+  assert.equal(ps.counters[`hex:hex_tripleoverdraft:eliteGrant:${m.round}`], 1, 'and the card lapses for the round');
+  h.invariants();
+  m.dispose();
+});
+
+test('升级刷新: the guaranteed slot names a bond that owns an operator, not 绝技', () => {
+  const { h, m, ps } = solo1(617);
+  for (const id of ['chess_char_1_01_b', 'chess_char_1_02_b']) give(m, ps, id, 'board', legalTileFor(m, ps, id));
+  applyHex(m, ps, m.gd.hex('hex_upgraderefresh'));
+  assert.equal(ps.bonds.suntShip.count, 2, 'premise: 绝技 counts the elite operators on the board');
+  ps.shop.level = 6; // every bond's chess is below the shop level, so the guarantee can only miss on the bond itself
+  ps.funds = 10;
+  assert.deepEqual(ps.refresh(), { ok: true });
+  const slot = ps.shop.slots[0];
+  assert.ok(slot && slot.kind === 'chess', 'the first slot holds the guaranteed operator');
+  // the rule under test: the own bond with the most members, read among the bonds that own an operator (data order wins ties)
+  const top = (() => {
+    let best = null;
+    let count = 0;
+    for (const [id, b] of Object.entries(ps.bonds)) if (id !== 'suntShip' && b.count > count) { count = b.count; best = id; }
+    return best;
+  })();
+  assert.ok(pieceBonds(m.gd, { id: slot.id }).includes(top), `slot 0 belongs to ${top}`);
   h.invariants();
   m.dispose();
 });
@@ -1437,16 +1496,16 @@ test('盟约寄生: a second copy keeps its OWN partner and drains on its own (�
   m.dispose();
 });
 
-test('room.hexBans: each player’s own draft offer and reroll skip their ≤ 3 bans', () => {
+test('room.hexBans: each player’s own draft offer and reroll skip their ≤ 6 bans', () => {
+  const bans = ['hex_stipend', 'hex_echo', 'hex_recruit', 'hex_refresh', 'hex_bulwark', 'hex_massprod'];
   const seats = [
-    { seat: 0, playerId: 'p_0', name: 'P0', isBot: false, connected: true, hexBans: ['hex_stipend', 'hex_echo'] },
+    { seat: 0, playerId: 'p_0', name: 'P0', isBot: false, connected: true, hexBans: bans.slice() },
     { seat: 1, playerId: 'p_1', name: 'P1', isBot: false, connected: true, hexBans: [] },
   ];
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', seats, seed: 31, fake: true });
   h.start();
   toHexDraft(h, 1);
   const m = h.m;
-  const bans = ['hex_stipend', 'hex_echo'];
   assert.deepEqual(h.ps('p_0').hexBans, bans, 'the seat’s bans reach the player state');
   const offer = m.hexOfferOf('p_0');
   for (const id of bans) assert.ok(!offer.includes(id), `p_0 is never offered the banned ${id}`);

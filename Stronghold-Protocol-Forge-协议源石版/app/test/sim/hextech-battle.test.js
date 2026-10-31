@@ -191,7 +191,8 @@ test('装甲破坏 (armorBreak): allied PHYSICAL hits shred the enemy DEF, stack
   // the `hit` hook fires for BOTH directions, so only the ally→enemy physical hits count (that is what the hex reads)
   const hits = h.hooksOf('hit').filter((c) => c && c.source && c.source.side === 'ally' && c.target && c.target.side === 'enemy' && c.dmg && c.dmg.type === 'phys');
   assert.ok(hits.length > 0, 'the allies landed physical hits (premise)');
-  assert.equal(foe.s.def, plainDef - 20 * hits.length, `20 DEF per allied physical hit: ${plainDef} − 20×${hits.length}`);
+  // DEF never goes below 0, so with −80 a 150-DEF enemy hits the floor after 2 hits
+  assert.equal(foe.s.def, Math.max(0, plainDef - 80 * hits.length), `80 DEF per allied physical hit: max(0, ${plainDef} − 80×${hits.length})`);
   const st = buffsOf(foe, 'hex:armorbreak')[0];
   assert.equal(st.stacks, hits.length, 'one stack per allied physical hit');
   h.invariants();
@@ -605,7 +606,7 @@ test('先锋之势 (firstKillBy): the first knock-out by a 先锋 pays coins onc
   h.invariants();
 });
 
-test('先锋之势 (firstAttackBy): a 先锋’s own first attack buffs itself +30% ATK for 10 s, once', () => {
+test('先锋之势 (firstAttackExecute): each 先锋’s first attack executes a normal enemy, once', () => {
   const pioneer = guard({ profession: 'PIONEER' });
   const h = soloBattle({
     hexes: ['hex_vanguard'],
@@ -614,17 +615,14 @@ test('先锋之势 (firstAttackBy): a 先锋’s own first attack buffs itself +
     enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }],
     timeLimit: 40,
   });
-  h.run(1);
-  const u = one(h);
-  assert.equal(buffsOf(u, 'hex:vanguard').length, 0, 'nothing before its first attack');
-  assert.ok(h.runUntil(() => buffsOf(u, 'hex:vanguard').length > 0, 20), 'its first attack armed the buff');
-  const b = buffsOf(u, 'hex:vanguard')[0];
-  assert.ok(Math.abs(b.mods.atkPct - 0.3) < 1e-9, `+30% ATK (got ${b.mods && b.mods.atkPct})`);
-  assert.ok(Math.abs(b.timeLeft - 10) < 0.6, `10 s left at the grant (got ${b.timeLeft})`);
+  h.run(1); // the scheduled enemy is on the field before the predicate is checked (it is empty at t = 0)
+  assert.ok(h.runUntil(() => h.enemies().length === 0, 40), 'the first attack executes the 100000-HP dummy');
+  assert.equal(h.b._perPlayer.p1.coins, 4, 'the kill still pays the first-kill coins');
+  // the operator's one execute is spent: the next enemy takes normal damage and survives
+  h.spawn('enemy_dummy', { route: 0 });
   h.run(3);
-  assert.equal(buffsOf(u, 'hex:vanguard').length, 1, 'later attacks do not add a second entry');
-  h.run(8);
-  assert.equal(buffsOf(u, 'hex:vanguard').length, 0, 'it lapses after 10 s');
+  const e = h.enemies()[0];
+  assert.ok(e && e.hp > 0, 'the next enemy survives (no second execute)');
   h.invariants();
 });
 
@@ -2001,15 +1999,18 @@ test('神射法师 (spellArcher): an arts instance also deals an equal PHYS inst
   h.invariants();
 });
 
-test('惊惧 (dread): the FIRST ground-operator attack 战栗s the enemy for 2 s', () => {
-  // the enemy stands ON the operator's tile line (speed 0), so the melee guard blocks and attacks it
+test('惊惧 (dread): a ground operator’s skill start 战栗s the enemies in its 8 surrounding tiles for 3 s', () => {
+  // the enemy stands in the adjacent tile (pos [9, 7] beside the operator on [9, 6]); the skill start is emitted
+  // directly (the same way the 超载协议 test drives skillStart), so the assertion is about the card, not a kit.
   const h = soloBattle({ hexes: ['hex_dread'], enemies: [{ key: 'enemy_dummy', time: 0, route: 0, pos: [9, 7] }], timeLimit: 10 });
-  h.run(2);
+  h.run(0.5);
   const e = h.enemies()[0];
   assert.ok(e, 'an enemy is on the field (premise)');
+  const u = one(h);
+  h.battle.emit('skillStart', { unit: u, skill: { id: 'test', kind: 'duration' }, reason: 'manual' });
   const st = (e.buffs || []).filter((b) => b.status === 'tremble');
-  assert.equal(st.length, 1, 'one 战栗 instance');
-  assert.ok(st[0].timeLeft > 0 && st[0].timeLeft <= 2 + 1e-6, `2 s (got ${st[0].timeLeft})`);
+  assert.equal(st.length, 1, 'one 战栗 instance from the skill start');
+  assert.ok(st[0].timeLeft > 0 && st[0].timeLeft <= 3 + 1e-6, `3 s (got ${st[0].timeLeft})`);
   h.invariants();
 });
 

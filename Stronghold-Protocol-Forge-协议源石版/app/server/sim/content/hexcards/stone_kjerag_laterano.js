@@ -2,15 +2,18 @@
 // 谢拉格【冰雪消融】(hex_kjerag_thaw) 与 拉特兰【圣佑】(hex_laterano_sanctuary)。
 //
 // 设计稿：04-文档/协议源石-盟约专属协议-第7回合-设计稿-20261026.md §3.3 / §3.4（每张卡的原文在下面各自函数的注释里再抄一遍）。
+// 【圣佑】2026-10-31 调整（04-文档/协议源石-死亡之舞与四张卡调整-设计稿-20261031.md §3.2）：弹药治疗改成弹药护盾，
+// 并新增「累计子弹量每 3 秒狙击一次」。
 //
 // 与 drill / armor / batch16 等模块同一个 `hexHooks(battle)` 契约（见 hooks.js）：installX(hooks) 只注册 hook，
 // 安装时**不改**战斗状态；每段都先用 ownersOf(<hex id>) 判断「谁拥有这张卡」，再只对**拥有者自己的、属于对应盟约的**
 // 己方干员生效（多玩家场上别人的干员不算）。参数一律读卡面 effect（specOf），模块里只留设计稿口径的兜底值，方便后续调数。
 //
-// 确定性：没有 Math.random / Date / Node API；随机一律走 battle.rng()（这两张卡其实不需要随机）。
+// 确定性：没有 Math.random / Date / Node API；随机一律走 battle.rng()（圣佑的狙击用它挑目标），计时只用
+// battle.every / battle.after。
 
-import { isMember, bondLayers, passiveBuff, directMods } from '../support/index.js';
-import { isChained, isHpLoss, isRetaliation } from '../../damage.js';
+import { isMember, bondLayers, passiveBuff, directMods, battleStore } from '../support/index.js';
+import { isChained, isHpLoss, isRetaliation, makeDamageInfo } from '../../damage.js';
 
 /** 卡 id（模块自己的查表键）。 */
 const CARD_KJERAG = 'hex_kjerag_thaw';
@@ -27,6 +30,12 @@ const SPEC_LATERANO = 'lateranoSanctuary';
 const BOND_LATERANO = 'lateranoShip';
 /** 免死时那 1 层次数盾的 buff 键（同名刷新，最多 shieldHits 层）。 */
 const SHIELD_LATERANO = 'hex:laterano:shield';
+/** 每消耗 1 颗弹药给的护盾的 buff 键（同键累加；被打空后 buff 被引擎摘掉，下次重新挂）。 */
+const SHIELD_AMMO = 'hex:laterano:ammoShield';
+/** 狙击伤害的标签（伤害实例自己带，方便其它内容识别「这一发是圣佑的狙击」）。 */
+const SNIPE_TAG = 'hex:laterano:snipe';
+/** 每玩家本场累计子弹数的 per-battle store 命名空间（策略「管理员」复制出第二张卡时共享同一份计数）。 */
+const STORE_NS = 'hex:laterano:sanctuary';
 
 /** 共用的「卡片存在 + 包形状对」守卫：没有卡（或 hooks 不是 hexHooks 的返回对象）时是个 no-op。 */
 function ownersOfCard(hooks, hexId) {
@@ -179,20 +188,37 @@ export function installKjeragThaw(hooks) {
 /**
  * 【圣佑】hex_laterano_sanctuary（3 阶，requiresBond: lateranoShip）。
  *
- * 设计稿原文（§3.4，逐字）：
- *   「作战中：【拉特兰】干员攻击速度 +50、攻击力 +80%；【拉特兰】干员每消耗 1 颗弹药，回复所有【拉特兰】干员
- *    5% 最大生命；消耗子弹时额外消耗 1 发；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药，
- *    免疫本次伤害，并获得 1 层次数盾。」（前两句的攻速 / 攻击力与额外消耗为业主 2026-10-27 追加）
+ * 卡面原文（data/hextech.json desc，2026-10-31 调整后的口径）：
+ *   「仅【拉特兰】盟约激活时才会出现。作战中，【拉特兰】干员攻击速度 +50、攻击力 +80%；每消耗 1 颗弹药，所有
+ *    【拉特兰】干员获得相当于自身 5% 最大生命的护盾；消耗子弹时额外消耗 1 发；【拉特兰】干员受到致命伤害时，若仍有
+ *    弹药，消耗全部弹药免疫本次伤害，并获得 1 层次数盾。本场战斗累计统计【拉特兰】干员消耗的子弹量，每 3 秒对场上
+ *    随机一名敌人进行一次狙击，造成累计子弹量 ×325 的物理伤害。」
+ *   （攻速 / 攻击力与额外消耗为业主 2026-10-27 追加；「弹药护盾 + 累计子弹狙击」为 2026-10-31 调整，
+ *    设计稿 04-文档/协议源石-死亡之舞与四张卡调整-设计稿-20261031.md §3.2。）
  *
  * 口径：
  *   * **谁算【拉特兰】干员**：拥有者自己的己方干员 + `isMember(battle, u, 'lateranoShip')`（同上一张卡的成员资格判据）。
  *   * **弹药**：引擎的 `skill.ammoLeft`，消耗事件 `ammoUsed`（`{ unit, left, skill }`，skills.js
  *     `onAttackPerformed` 每发一发；一次攻击只算 1 发——引擎的普通路径就是一次一发）。
- *   * **回复 5% 最大生命**：`battle.heal(u, a, a.s.maxHp * healPct)`，对拥有者的**每一个在场拉特兰干员**（含自己）
- *     各结算一次，走正常治疗（吃治疗加成 / 禁疗规则，不额外造一套「无视禁疗」的回复）。
- *     [ASSUMED] 1)「回复…最大生命」= 各自最大生命上限的 5%，不是「治疗量的 5%」；2) 只算在场（活着、已部署、未隐匿）
- *     的拉特兰干员——被击倒的干员等重部署时按满血回来，不该被这条治疗「预存」；3) 一次 `ammoUsed` 只算 1 发（引擎的
- *     一发一事件），不是按 `left` 的差值补算。
+ *   * **弹药护盾（2026-10-31 取代原来的「回复 5% 最大生命」）**：每次 `ammoUsed`，给拥有者的**每一个在场拉特兰干员**
+ *     （含自己）挂 / 刷新同键护盾 buff `hex:laterano:ammoShield`：`shield = 现有护盾 + 自身 maxHp × shieldPct/100`。
+ *     「累加」= 读该干员当前那层护盾（`findBuff(SHIELD_AMMO).shield`）再加上新的一笔；护盾被伤害打空时引擎会摘掉这个
+ *     buff（damage.js `absorbShields`：`shield` 归零且没有 mods / flags / shieldHits 就 `_removeBuffAt`），于是下一次
+ *     `ammoUsed` 从 0 重新累加 —— 「被打掉后下次照常累加」。
+ *     [ASSUMED] 1)「相当于自身 5% 最大生命的护盾」= 各自**当前最大生命上限**的 5%（面板加成算完之后的 `s.maxHp`）；
+ *     2) 只算在场（活着、已部署、未隐匿）的拉特兰干员——被击倒的干员等重部署时按满血回来，不该被这条护盾「预存」；
+ *     3) 一次 `ammoUsed` 只算 1 发（引擎一发一事件），不是按 `left` 的差值补算；4) 卡面没写护盾上限，所以不封顶；
+ *     5) 护盾 buff 不 `persist`（与免死那 1 层次数盾同一口径）：干员被击倒 / 撤退时引擎只保留 persist buff，护盾随人走。
+ *   * **累计子弹狙击（2026-10-31 新增）**：每次 `ammoUsed` 给该玩家本场的子弹计数 +1（per-battle store，
+ *     `battleStore(battle, 'hex:laterano:sanctuary')`：策略「管理员」复制出第二张卡时共享同一份计数，不会算两遍）。
+ *     `battle.every(snipeEvery)`（默认 3 秒，第一个脉冲在 t = snipeEvery）对每个拥有者：计数 > 0 且场上有活着的敌人 ⇒
+ *     `battle.rng()` 随机挑一个活敌人，造成 `计数 × snipePerAmmo` 的**物理伤害**（`makeDamageInfo({ type:'phys',
+ *     canDodge: true, tags: ['hex', 'hex:laterano:snipe'] })`，来源 = 该玩家第一名在场拉特兰干员 ?? null），然后计数清零。
+ *     [ASSUMED] 1) 累计只算 `ammoUsed` 事件，**额外消耗的那 1 发不再计入**（与「额外消耗不再触发一次护盾」同一口径，
+ *     卡面把额外消耗写成代价）；2) 场上没有活敌人时**不发射、也不清零**——累计留着，等有敌人了下一脉冲整笔打出去
+ *     （卡面写「每 3 秒对场上随机一名敌人」，没有目标就无从狙击）；3) 狙击是一次普通伤害实例（`isAttack` 假）：
+ *     走减伤 / 闪避 / 护盾 / 受伤统计，但不算「攻击」，所以攻击类加成与「攻击时」的内容都不认它；
+ *     4) 每个拥有者各自计时（各读自己卡面的 `snipeEvery`），随机只用 `battle.rng()`。
  *   * **致命免死**：`fatal` 钩子（applyHpLoss 在 HP 归零之后、`battle.kill` 之前发出）里，若该拉特兰干员
  *     `skill.ammoLeft > 0`：`c.prevented = true`（引擎随后把 HP 抬到 1，本次伤害不再致死）、**清空弹药**（`ammoLeft = 0`，
  *     并在技能仍激活时 `skill.end('ammo')` 让它像打空弹药一样正常结束 —— 否则会留下一个「0 发仍在生效」的技能），
@@ -202,7 +228,8 @@ export function installKjeragThaw(hooks) {
  *     （本次伤害已经结算完），这与「获得 1 层次数盾」的字面读法一致；4) 护盾不叠加到 shieldHits 层以上（同名刷新到上限）。
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle
- * @returns {number|{owners:number,heals:number,prevented:number}} 0 when the card is absent, else the live handle
+ * @returns {number|{owners:number,shields:number,ammoCounted:number,pending:number,snipes:number,snipeAmount:number,prevented:number,extraAmmo:number}}
+ *          0 when the card is absent, else the live handle
  */
 export function installLateranoSanctuary(hooks) {
   const owners = ownersOfCard(hooks, CARD_LATERANO);
@@ -215,16 +242,20 @@ export function installLateranoSanctuary(hooks) {
     const spec = typeof specOf === 'function' ? specOf(pid, CARD_LATERANO, SPEC_LATERANO) : {};
     const num = (k, fb) => (typeof optNumber === 'function' ? optNumber(spec, k, fb) : fb);
     plan.set(pid, {
-      healPct: num('healPct', 5) / 100,
+      // 2026-10-31：弹药治疗 → 弹药护盾（自身最大生命上限的 shieldPct%）
+      shieldPct: num('shieldPct', 5) / 100,
       shieldHits: Math.max(1, Math.round(num('shieldHits', 1))),
       // 业主 2026-10-27 追加：拉特兰干员攻速 +50、攻击力 +80%
       aspd: num('aspd', 50),
       atkPct: num('atkPct', 80) / 100,
+      // 2026-10-31 新增：累计子弹量每 snipeEvery 秒狙击一次，伤害 = 累计 × snipePerAmmo
+      snipeEvery: num('snipeEvery', 3),
+      snipePerAmmo: num('snipePerAmmo', 325),
     });
   }
 
   const isCarrier = (u) => isOwnOp(u, owned) && isMember(battle, u, BOND_LATERANO);
-  /** 拥有者的在场拉特兰干员（治疗目标 / 免死判定都只认这些）。 */
+  /** 拥有者的在场拉特兰干员（护盾目标 / 免死判定都只认这些）。 */
   const carriersOnField = (pid) => battle.allyUnits.filter((u) => u.ownerId === pid && isCarrier(u) && u.alive && u.deployed && !u.hidden);
 
   // ---- 【拉特兰】干员：攻速 +50、攻击力 +80%（业主 2026-10-27） -----------------------------------------------
@@ -243,25 +274,38 @@ export function installLateranoSanctuary(hooks) {
   battle.on('battleStart', () => applyStats(), { priority: -10 });
   battle.on('deploy', (c) => { const u = c && c.unit; if (isCarrier(u)) applyStats(u.ownerId); });
 
-  // ---- 每消耗 1 颗弹药：回复所有己方【拉特兰】干员 5% 最大生命 ------------------------------------------------
-  let heals = 0;
+  // ---- 每消耗 1 颗弹药：所有在场己方【拉特兰】干员获得自身 shieldPct% 最大生命的护盾（同键累加） ------------------
+  // 2026-10-31 调整：原来的「回复 5% 最大生命」整条换成护盾；累加读的是该干员**当前**那一层护盾（被打空时引擎已经把
+  // buff 摘掉，于是从 0 重新加）。
+  const store = battleStore(battle, STORE_NS, () => ({ ammo: new Map() }));   // playerId → 本场累计子弹数
+  let shields = 0;      // 走完过几次弹药护盾结算（事件数，不看当时场上有几名干员）
+  let ammoCounted = 0;  // 累计子弹数（事件数，额外消耗的那 1 发不算）
   battle.on('ammoUsed', (c) => {
     const u = c && c.unit;
     if (!isCarrier(u)) return;
     const p = plan.get(u.ownerId);
-    if (!p || !(p.healPct > 0)) return;
-    heals++;
-    for (const a of carriersOnField(u.ownerId)) {
-      const maxHp = a.s ? a.s.maxHp : 0;
-      if (!(maxHp > 0)) continue;
-      battle.heal(u, a, maxHp * p.healPct, {});
+    if (!p) return;
+    // 1) 护盾：每个在场拉特兰干员各加「自己最大生命的 shieldPct%」，与它现有的那一层累加
+    if (p.shieldPct > 0) {
+      shields++;
+      for (const a of carriersOnField(u.ownerId)) {
+        const maxHp = a.s ? a.s.maxHp : 0;
+        const add = maxHp * p.shieldPct;
+        if (!(add > 0)) continue;
+        const cur = typeof a.findBuff === 'function' ? a.findBuff(SHIELD_AMMO) : null;
+        const have = cur && Number(cur.shield) > 0 ? Number(cur.shield) : 0;
+        battle.addBuff(a, { key: SHIELD_AMMO, shield: have + add, visible: true, refresh: 'replace', tags: ['hex'] });
+      }
     }
+    // 2) 本场累计子弹数（狙击用；额外消耗的那 1 发不再计入）
+    store.ammo.set(u.ownerId, (store.ammo.get(u.ownerId) ?? 0) + 1);
+    ammoCounted++;
   });
 
   // ---- 消耗子弹时额外消耗 1 发（业主 2026-10-27）：弹药烧得更快 ------------------------------------------------
   // 引擎在 `emit('ammoUsed')` 之后自己判 `if (ammoLeft <= 0) end('ammo')`（skills.js），所以这里只扣数、不重复收尾；
-  // 也不再补一次 `ammoUsed`（那会把治疗再算一遍、并且自己套自己）。[ASSUMED] 额外这一发**不**再触发一次「每消耗 1 颗
-  // 回复 5%」—— 卡面把「额外消耗」写成代价，治疗仍按每次消耗事件结算一次。
+  // 也不再补一次 `ammoUsed`（那会把护盾与累计再算一遍、并且自己套自己）。[ASSUMED] 额外这一发**不**再触发一次
+  // 「每消耗 1 颗弹药」的护盾与狙击累计 —— 卡面把额外消耗写成代价，护盾 / 累计仍按每次消耗事件结算一次。
   let extraAmmo = 0;
   battle.on('ammoUsed', (c) => {
     const u = c && c.unit;
@@ -271,6 +315,39 @@ export function installLateranoSanctuary(hooks) {
     sk.ammoLeft -= 1;
     extraAmmo++;
   });
+
+  // ---- 累计子弹狙击（2026-10-31 新增）：每 snipeEvery 秒把「累计子弹量 × snipePerAmmo」打到一个随机活敌人身上 ----
+  let snipes = 0;
+  let snipeAmount = 0;   // 发出去的伤害量合计（不是实际掉血：可能被闪避 / 减伤 / 护盾吃掉）
+  /**
+   * 一个拥有者的一次狙击脉冲：计数 > 0 且场上有活敌人时，`battle.rng()` 挑一个目标、打一发、然后清零。
+   * 没有活敌人时**不清零**（累计留着，下一脉冲整笔打出去）。
+   * @param {string} pid the owner
+   */
+  const snipeOnce = (pid) => {
+    const p = plan.get(pid);
+    if (!p || !(p.snipePerAmmo > 0)) return;
+    const n = store.ammo.get(pid) ?? 0;
+    if (!(n > 0)) return;
+    const targets = battle.enemies.filter((e) => e && e.alive && !e.removed);
+    if (!targets.length) return;
+    // 随机：只用 battle.rng()（确定性），上限夹一下防止 rng() 返回 1 时越界
+    const idx = Math.min(targets.length - 1, Math.floor(battle.rng() * targets.length));
+    const target = targets[idx];
+    // 来源 = 该玩家第一名在场拉特兰干员（没有就是无来源）；击杀归属照常记在它身上
+    const src = carriersOnField(pid)[0] ?? null;
+    const amount = n * p.snipePerAmmo;
+    store.ammo.set(pid, 0);
+    snipes++;
+    snipeAmount += amount;
+    battle.dealDamage(src, target, makeDamageInfo({ amount, type: 'phys', canDodge: true, tags: ['hex', SNIPE_TAG] }));
+  };
+  // 每个拥有者各自计时（各读自己卡面的 snipeEvery）：第一个脉冲在 t = snipeEvery
+  for (const pid of owners) {
+    const p = plan.get(pid);
+    if (!p) continue;
+    battle.every(p.snipeEvery, () => snipeOnce(pid));
+  }
 
   // ---- 受到致命伤害时：仍有弹药 ⇒ 清空弹药、免疫本次伤害、获得 shieldHits 层次数盾 --------------------------
   let prevented = 0;
@@ -297,7 +374,14 @@ export function installLateranoSanctuary(hooks) {
 
   return {
     get owners() { return owners.length; },
-    get heals() { return heals; },
+    /** 走完过几次「弹药护盾」结算（一次 `ammoUsed` 记一次，不看当时场上有几名干员）。 */
+    get shields() { return shields; },
+    /** 本场累计计入狙击的子弹数（= `ammoUsed` 事件数，额外消耗的那 1 发不算）。 */
+    get ammoCounted() { return ammoCounted; },
+    /** 每个拥有者当前还没打出去的累计子弹数。 */
+    get pending() { return owners.reduce((n, pid) => n + (store.ammo.get(pid) ?? 0), 0); },
+    get snipes() { return snipes; },
+    get snipeAmount() { return snipeAmount; },
     get prevented() { return prevented; },
     get extraAmmo() { return extraAmmo; },
   };

@@ -29,6 +29,14 @@ export const HEX_ROUNDS = Object.freeze([1, 3, 6, 7, 11]);
  */
 export const HEX_MAX_OFFER = 6;
 
+/**
+ * 第 6 回合「点卡刷新」的每局张数上限（业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的协议源石」，
+ * 2026-10-31 改成点哪张刷哪张的界面）：一局最多换 2 张 —— 点一次花一次，可以点同一张两次，也可以点两张各一次。
+ * 服务端按它初始化 `PlayerState.hexRecycleLeft` 并在用掉后把余数写进 `m.public.players[]`（`hexRecycleLeft`）；
+ * 客户端用它做「剩 n 次」的兜底初值。规则实现在 `server/match/match/hexDraft.js recycleHex`。
+ */
+export const HEX_RECYCLE_BUDGET = 2;
+
 /** The persistent effect-ref key of a player hex (parallel to `choice:<id>`). */
 export function hexEffectKey(id) {
   return `hex:${id}`;
@@ -220,6 +228,32 @@ export const ENEMY_VERBS = Object.freeze([
 /** Whether `id` is a known enemy verb (the build-time check and the sim's own guard). */
 export function isEnemyVerb(id) {
   return typeof id === 'string' && ENEMY_VERBS.includes(id);
+}
+
+/**
+ * The stat multipliers a verb card applies to the bodies it spawns INSIDE a battle (通厕大队's 「属性为原来的
+ * （1 + 5x）%」), or null when the card spawns them at their data stats. `mods` is the only channel a spawn's scaling
+ * survives on: a leak records `{ enemyKey, mods }` and 联防 rebuilds its field from that (deploy.js → unite.js →
+ * waves.js buildUniteWave), so a scale that rode a spawn-time `def` would be dropped and the body would re-enter at
+ * full stats (业主 2026-10-28:「前期通厕大队会出现联防2w5血700多攻的杰斯顿，数值异常bug」).
+ *
+ * Two readers must agree on these numbers and therefore share this function: the battle script that spawns the body
+ * (server/sim/content/hextech.js `jekyllSquad`) and the result validator, which rebuilds every leak from the spec
+ * instead of trusting the client (server/match/fields.js `specBounds` / `validateClientResult`).
+ * @param {string} verb the record's `verb`
+ * @param {Record<string, any>} params the record's `params`
+ * @param {number} round the round being fought (x in the card's wording)
+ * @returns {{ hpMul: number, atkMul: number, defMul: number, resMul: number } | null}
+ */
+export function verbSpawnMods(verb, params, round) {
+  if (verb !== 'jekyllSquad') return null;
+  const p = params && typeof params === 'object' ? params : {};
+  const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  // x = the round being fought; anything that is not a positive number reads as round 1, as the script does
+  const r = Number.isFinite(Number(round)) && Number(round) > 0 ? Number(round) : 1;
+  const pct = Math.max(1, num(p.basePct, 1) + num(p.perRoundPct, 5) * r) / 100;
+  // HP / ATK / DEF / RES scale; move speed and attack interval do not (they are not 「属性」 in the card's sense)
+  return { hpMul: pct, atkMul: pct, defMul: pct, resMul: pct };
 }
 
 /**

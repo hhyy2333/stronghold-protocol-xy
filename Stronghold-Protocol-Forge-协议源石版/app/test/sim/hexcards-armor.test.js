@@ -101,7 +101,7 @@ const hit = (h, target, amount = 300, over = {}) => h.battle.dealDamage(foeOf(h)
 // =====================================================================================================================
 // 1. the riposte itself
 
-test('反击装甲: a hit on the carrier deals 100 % of its CURRENT DEF back as TRUE damage, tagged and credited', () => {
+test('反击装甲: a hit on the carrier deals 200 % of its CURRENT DEF back as TRUE damage, tagged and credited', () => {
   const h = field('normal', [seat('p1', 0, { effects: [refOf(CARD)], units: [at(1, 9, 6)] })]);
   const inst = run(h);
   const u = ops(h)[0];
@@ -112,13 +112,13 @@ test('反击装甲: a hit on the carrier deals 100 % of its CURRENT DEF back as 
   const dealt = hit(h, u);
   assert.equal(dealt, 300, 'the incoming hit landed on the carrier in full (premise)');
   assert.equal(u.hp, 2000 - 300, 'the carrier lost the incoming 300');
-  assert.equal(hp0 - foe.hp, 200, 'the enemy lost exactly the riposte: 100 % of 200 DEF');
+  assert.equal(hp0 - foe.hp, 400, 'the enemy lost exactly the riposte: 200 % of 200 DEF');
   assert.equal(inst.fired, 1, 'one riposte');
 
   const r = ripostes(h);
   assert.equal(r.length, 1, 'one riposte instance reached the `damaged` hook');
   assert.equal(r[0].dmg.type, 'true', 'it is 真伤 — never cut a second time by the attacker’s DEF');
-  assert.equal(r[0].amount, 200, 'the amount equals the carrier’s DEF');
+  assert.equal(r[0].amount, 400, 'the amount equals twice the carrier’s DEF');
   assert.equal(r[0].source, u, 'the OPERATOR is the source (the knock-out credit and the stats land on it)');
   assert.equal(r[0].target, foe, 'the attacker is the target');
   assert.ok(r[0].dmg.isSkill, 'built as a skill instance, like the module contract says');
@@ -154,7 +154,7 @@ test('反击装甲: several hits in the same tick each answer — the riposte is
   hit(h, u, 100);
   assert.equal(h.battle.time, t0, 'premise: the tick never advanced between the three hits');
   assert.equal(inst.fired, 3, 'three hits → three ripostes');
-  assert.equal(hp0 - foe.hp, 3 * 200, 'each of the three answered with its own 200 DEF riposte');
+  assert.equal(hp0 - foe.hp, 3 * 400, 'each of the three answered with its own 200 % (400) riposte');
   assert.equal(2000 - u.hp, 300, 'and the carrier took the three incoming 100s');
   assert.equal(ripostes(h).length, 3, 'three instances reached the hook, all in that one tick');
   h.invariants();
@@ -248,7 +248,7 @@ test('反击装甲: two carriers do not ping-pong — the riposte is flagged and
   // p2's operator swings at p1's — a friendly hit, but the hooks do not care about the side here
   h.battle.dealDamage(b, a, { amount: 200, type: 'true', canDodge: false, tags: ['test'] });
   assert.equal(hpA0 - a.hp, 200, 'the swing landed on A (premise)');
-  assert.equal(hpB0 - b.hp, a.s.def, 'A answered with exactly one riposte of its own DEF');
+  assert.equal(hpB0 - b.hp, 2 * a.s.def, 'A answered with exactly one riposte of 200 % of its own DEF');
   assert.equal(inst.fired, 1, 'exactly ONE riposte — B did not answer the answer');
   assert.equal(ripostes(h).length, 1);
 
@@ -282,7 +282,7 @@ test('反击装甲: the riposte re-reads DEF at fire time — a DEF buff between
 
   const hp0 = foe.hp;
   hit(h, u, 100);
-  assert.equal(hp0 - foe.hp, 200, 'first riposte = the carrier’s 200 DEF');
+  assert.equal(hp0 - foe.hp, 400, 'first riposte = 200 % of the carrier’s 200 DEF');
 
   // +100 flat DEF lands between the two hits; `s` is lazily recomputed on the next read
   h.battle.addBuff(u, { key: 'test:def', mods: { defFlat: 100 } });
@@ -290,10 +290,10 @@ test('反击装甲: the riposte re-reads DEF at fire time — a DEF buff between
 
   const hp1 = foe.hp;
   hit(h, u, 100);
-  assert.equal(hp1 - foe.hp, 300, 'second riposte = the NEW 300 DEF');
+  assert.equal(hp1 - foe.hp, 600, 'second riposte = 200 % of the NEW 300 DEF');
   assert.equal(inst.fired, 2);
   const amounts = ripostes(h).map((c) => c.amount);
-  assert.deepEqual(amounts, [200, 300], 'the two instances read DEF at their own fire time');
+  assert.deepEqual(amounts, [400, 600], 'the two instances read DEF at their own fire time');
   h.invariants();
 });
 
@@ -321,7 +321,10 @@ test('反击装甲: only an owned OPERATOR is a carrier — another player’s o
   h.invariants();
 });
 
-test('反击装甲: damage TO an enemy (or any non-operator) is not a 受到伤害 of a carrier', () => {
+// The card the owner rebalanced on 2026-10-15 reads 「受到或造成伤害时对敌人造成 200% 防御力真伤」: the DEALT half
+// (`onDealt`) answers an own operator's hit on an enemy, so damaging an enemy DOES draw a riposte at the enemy it hit.
+// The taken half's guards (another player's operator, summons, 无来源, 流失, 元素损伤, knocked-out) are the tests around it.
+test('反击装甲: the DEALT half answers too — an own operator’s hit on an enemy adds 200 % of DEF', () => {
   const h = field('normal', [seat('p1', 0, { effects: [refOf(CARD)], units: [at(1, 9, 6)] })]);
   const inst = run(h);
   const u = ops(h)[0];
@@ -330,8 +333,8 @@ test('反击装甲: damage TO an enemy (or any non-operator) is not a 受到伤�
   const foeHp0 = foe.hp;
   const dealt = h.battle.dealDamage(u, foe, { amount: 300, type: 'phys', canDodge: false });
   assert.equal(dealt, 300, 'the operator’s own hit landed (premise)');
-  assert.equal(foeHp0 - foe.hp, 300, 'only the operator’s hit — the enemy is no carrier');
-  assert.equal(inst.fired, 0);
+  assert.equal(foeHp0 - foe.hp, 300 + 400, 'the hit plus the DEALT half: 200 % of the 200 DEF');
+  assert.equal(inst.fired, 1, 'the dealt half fired once');
   h.invariants();
 });
 
@@ -344,7 +347,7 @@ test('反击装甲: a knocked-out carrier fires nothing', () => {
   // alive: the riposte fires (premise)
   const live0 = foe.hp;
   h.battle.dealDamage(foe, u, { amount: 100, type: 'true', canDodge: false });
-  assert.equal(live0 - foe.hp, 200, 'the live carrier answers');
+  assert.equal(live0 - foe.hp, 400, 'the live carrier answers');
   assert.equal(inst.fired, 1);
 
   // knocked out: `damaged` only ever reaches a live unit, but the rule is guarded anyway
@@ -409,9 +412,9 @@ test('反击装甲 (hextech install): the +18 % DEF / +10 RES passive and the ri
 
   const hp0 = foe.hp;
   h.battle.dealDamage(foe, u, { amount: 100, type: 'phys', canDodge: false });
-  assert.equal(hp0 - foe.hp, 236, 'the riposte uses the buffed 236 DEF, not the base 200');
+  assert.equal(hp0 - foe.hp, 472, 'the riposte uses 200 % of the buffed 236 DEF, not the base 200');
   const r = ripostes(h);
   assert.equal(r.length, 1);
-  assert.equal(r[0].amount, 236);
+  assert.equal(r[0].amount, 472);
   h.invariants();
 });

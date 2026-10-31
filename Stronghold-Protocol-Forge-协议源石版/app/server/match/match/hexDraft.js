@@ -20,9 +20,10 @@ import { OK, fail, DELAYS } from './common.js';
  */
 const HEX_EXTRA_PICK_KEY = 'band_hex_extra_pick_r1';
 /**
- * 管理员2 / 管理员3 (业主 2026-10-25). One buff carries both halves: `bb.roundA` / `bb.roundB` are the two ROUNDS the
- * strategy pays on, and `bbStr.hexId` (optional) pins the card — 管理员3 names 潘多拉魔盒, 管理员2 leaves it out and the
- * card is rolled from the player's own pool. See `applyBandRoundHexes`.
+ * 管理员2 / 管理员3 (业主 2026-10-25). One buff carries both halves: `bb.roundA` / `bb.roundB` are the ROUNDS the
+ * strategy pays on (a strategy may name only `roundA` — 管理员3 became a single round on 2026-10-31), and
+ * `bbStr.hexId` (optional) pins the card — 管理员3 names 潘多拉魔盒, 管理员2 leaves it out and the card is rolled from
+ * the player's own pool. See `applyBandRoundHexes`.
  */
 const BAND_HEX_GRANT_ROUNDS_KEY = 'band_hex_grant_rounds';
 
@@ -31,7 +32,7 @@ export class MatchHexDraft {
   enterHexDraft() {
     const gd = this.gd;
     const alive = this.alivePlayers();
-    // 协议源石禁用 (业主 2026-10-21): each player's own ≤ 3 bans only narrow THAT player's pool — never a teammate's,
+    // 协议源石禁用 (业主 2026-10-21): each player's own ≤ 6 bans only narrow THAT player's pool — never a teammate's,
     // never the enemy pool, never a card another effect grants.
     // 核心盟约专属协议 (业主 2026-10-24): a card with `requiresBond` is only offered while that bond is ACTIVE for the
     // player — same per-player narrowing, hence the shared `hexPoolFor` (bans + requiresBond).
@@ -133,6 +134,10 @@ export class MatchHexDraft {
   _hexPicksLeft(playerId) {
     const s = this.hex;
     if (!s) return 0;
+    // 手里一张牌都没有就**不欠**这一次选牌：否则 phase 永远等不到 `hexDraftDone`，而单人 / 单人不限时的局没有超时兜底
+    // （`enterHexDraft` 在 `untimed` 时不 arm deadline），整局就卡死在 HEX_DRAFT。空 offer 现在只可能来自
+    // 「池子真的空了」（第 7 回合的专属池被抽干、工坊包的极小池子），这时该跳过他继续下一阶段。
+    if (!((s.offers && s.offers[playerId]) || []).length) return 0;
     const base = s.picks[playerId] == null ? 1 : 0;
     const extra = Number.isFinite((s.extraPicks || {})[playerId]) ? (s.extraPicks[playerId] || 0) : 0;
     return base + extra;
@@ -215,7 +220,12 @@ export class MatchHexDraft {
       next[idx] = rollOffers(this.rngHex, { pool, owned: [...hexIdsOf(ps), ...offered], weights, count: 1 })[0] || next[idx];
       this.hex.offers[ps.playerId] = next;
     } else {
-      this.hex.offers[ps.playerId] = rollOffers(this.rngHex, { pool, owned: [...hexIdsOf(ps), ...offered], weights, count: gd.hexOfferCount() });
+      // 池子被「已拥有 + 当前这一批」占满时（第 7 回合的专属池只有 1–2 张，很容易占满），整批刷新会抽到**空数组** ——
+      // 那会把手里还有牌的 offer 直接清空，于是玩家欠一次选牌却没有牌可选：限时的局靠超时兜底，单人 / 单人不限时的局
+      // 就永远卡在 HEX_DRAFT（fuzz seed 27 实测：R7 专属池只剩 1 张且正在 offer 里，整批刷新后 offer = []，无 deadline）。
+      // 抽不出新的一批就保留原来那一批；单张刷新早就是这个口径（`|| next[idx]`）。
+      const next = rollOffers(this.rngHex, { pool, owned: [...hexIdsOf(ps), ...offered], weights, count: gd.hexOfferCount() });
+      if (next.length) this.hex.offers[ps.playerId] = next;
     }
     this.markPrivate(ps);
     this.markPublic();
@@ -305,6 +315,88 @@ export class MatchHexDraft {
     ps.recompute();
     this.markPrivate(ps);
     return hex;
+  }
+
+  /**
+   * g.hexRecycle { ids } — 第 6 回合的「点卡刷新」：业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的
+   * 协议源石」，2026-10-31 改成「把有的协议源石铺上去，点哪张刷哪张」的界面（`04-文档` 与 docs/design/match.md 同一条口径）。
+   *
+   * 口径：
+   *   * **抽卡照常，另外给一次换牌机会** —— 第 6 回合的三选一照旧（`enterHexDraft`）。换牌在**自己选完之后**就能用：
+   *     抽卡阶段里 `picks[pid]` 已经落下（`_hexRecycleGate` 的 HEX_DRAFT 分支），或者进了休整期（PREP 且未准备）。
+   *     业主 2026-10-31「就是选完协议源石，这面板直接出现」—— 选完不必等别人、也不必等机变。
+   *   * **每局 2 张**（`HEX_RECYCLE_BUDGET`）—— 点一次花一次，可以点同一张两次，也可以点两张各一次；每次 `ids` 1–2 个。
+   *   * **完全随机、沿用抽取权重** —— 换回来的牌走 `rollOffers` 与 `gd.hexWeights()`（当前 1/2/3 阶 0.46/0.38/0.16），
+   *     池子是这个玩家自己的 `_hexPoolFor`（禁用 + 未激活盟约的专属卡都照旧收窄，第 7 回合的 exclusive 收窄在第 6 回合
+   *     不生效）。
+   *   * **不回收已经给过的一次性收益** —— 与测试场的 `g.testHexClear` 同一条口径：只摘掉 `hex:<id>` EffectRef（持续/战斗
+   *     那一半随之消失），`onPick` 已经发出去的资金 / 部署位 / 装备 / 干员留在原地。要逐卡写回滚是另一件事，业主明确不做。
+   *
+   * 另外两条 [ASSUMED]（业主没有点名，按最简单的读法实现）：
+   *   * **能换的是此刻拥有的一切**，包括本回合刚抽到的那张（每局只 2 张，不会变成无限刷新）。
+   *   * **换回的牌不会再是刚换掉的那张**，与刷新同一条「不会立刻回到手上」规则（`rollOffers` 的 `owned` 里带上它们）。
+   *     队友手上的同名**团队卡**副本不动：那是他们自己的 EffectRef，来源无法区分，摘掉会误伤独立抽到同一张的队友。
+   *
+   * 池子凑不出**同样数量**的替代牌时直接拒绝（BAD_TARGET）——「随机获得相同数量」是这条规则的原话，宁可不让用也不发半份；
+   * 被拒绝的请求一张牌都不动、次数也不扣。AI 座位不用它（bot 从不发意图，规则里也没有给它们的自动版本）。
+   * @param {any} ps
+   * @param {string[]} ids 1–2 个互不相同的、自己已拥有的协议源石 id（界面点一次只发一张）
+   */
+  recycleHex(ps, ids) {
+    if (!ps) return fail(ERR.BAD_TARGET);
+    const gate = this._hexRecycleGate(ps);
+    if (gate) return gate;
+    const list = Array.isArray(ids) ? [...new Set(ids.filter((id) => typeof id === 'string' && id))] : [];
+    if (list.length < 1 || list.length > 2) return fail(ERR.BAD_TARGET);
+    if (list.length > ps.hexRecycleLeft) return fail(ERR.BAD_TARGET, 'budget');
+    const owned = hexIdsOf(ps);
+    if (!list.every((id) => owned.includes(id))) return fail(ERR.BAD_TARGET, 'not owned');
+    // the pool the draft itself would offer this player (bans + 专属 cards of bonds that are not active)
+    const pool = this._hexPoolFor(ps);
+    const remaining = owned.filter((id) => !list.includes(id));
+    const weights = this.gd.hexWeights();
+    const replacements = rollOffers(this.rngHex, { pool, owned: [...remaining, ...list], weights, count: list.length });
+    if (replacements.length < list.length) return fail(ERR.BAD_TARGET, 'pool exhausted');
+    // 舍弃：只摘自己身上的 ref —— 复制（`hex:<id>#<n>`）也是同一张卡，一起走
+    ps.effects = (ps.effects || []).filter((e) => !(e && typeof e.key === 'string' && e.key.startsWith('hex:')
+      && list.includes(e.data && e.data.hexId)));
+    // 换回：走正式的发牌路径（`applyHex`），所以立即生效的那一半、持续 ref、战斗半段与各种额外（镜像协议 / 二次抽取）都照常
+    for (const id of replacements) {
+      const hex = this.gd.hex(id);
+      if (!hex) continue;
+      try { applyHex(this, ps, hex); } catch (e) { this.reportError(`recycleHex ${id}`, e); }
+    }
+    ps.hexRecycleLeft -= list.length;
+    ps.recompute();
+    this.markPrivate(ps);
+    this.markPublic();
+    return OK;
+  }
+
+  /**
+   * 第 6 回合换牌的闸门（`recycleHex` 的唯一受理条件，测试直接打它）。
+   *
+   * 两个窗口：
+   *   * **HEX_DRAFT 且自己已经选完** —— 业主 2026-10-31「选完协议源石，这面板直接出现」：抽卡是并行的，自己选完就不必
+   *     等别人；`picks[pid]` 已落下且没有欠的额外选牌（管理员的第一回合额外选牌不在第 6 回合，这里只是兜底）。
+   *     抽卡本身不受影响：只改自己身上的 `hex:<id>` ref，`offers` / `picks` 一个字节都不动。
+   *   * **PREP 且未准备** —— 与其它备战期动作同一条口径（准备之后再改牌等于改一份已经提交的阵地）。机变回合夹在中间时
+   *     （`spRounds` 含 6 的难度），休整期会再给一次。
+   *
+   * 其它阶段、其它回合、次数用完（`ALREADY`）都拒绝；`detail` 点名是哪一条。
+   * @param {any} ps @returns {object|null} `fail(...)` 或 null
+   */
+  _hexRecycleGate(ps) {
+    if (!ps || !ps.alive) return fail(ERR.ELIMINATED);
+    if (Number(this.round) !== 6) return fail(ERR.WRONG_PHASE, 'round 6');
+    if (!(ps.hexRecycleLeft > 0)) return fail(ERR.ALREADY);
+    if (this.phase === PHASE.PREP) return ps.ready ? fail(ERR.WRONG_PHASE, 'ready') : null;
+    if (this.phase === PHASE.HEX_DRAFT) {
+      if (!this.hex || this.hex.picks[ps.playerId] == null) return fail(ERR.WRONG_PHASE, 'pick first');
+      if (this._hexPicksLeft(ps.playerId) > 0) return fail(ERR.WRONG_PHASE, 'pick first');
+      return null;
+    }
+    return fail(ERR.WRONG_PHASE);
   }
 
   /** The bot's pick: the dearest rarity, with a small jitter (mirrors botPickCard's scoring style). */
@@ -426,6 +518,8 @@ export class MatchHexDraft {
   /**
    * 管理员2 / 管理员3 (业主 2026-10-25): the strategies' `band_hex_grant_rounds` entries as `{ rounds, hexId }`.
    * `hexId` is null for the "随机获得一枚" half (管理员2) and the pinned card for the "获得潘多拉" half (管理员3).
+   * A strategy names one or two rounds: an absent `roundB` (管理员3 since 2026-10-31, 「改成第5回合开始时获得」) is
+   * dropped by the integer filter instead of counting as round 0.
    * @param {any} ps @returns {Array<{ rounds: number[], hexId: string|null }>}
    */
   bandHexGrants(ps) {
@@ -466,7 +560,8 @@ export class MatchHexDraft {
    * Grant the strategies' round-start 协议源石 for this round.
    *
    * 业主 2026-10-25「增加策略『管理员2』：第一回合随机获得一个协议源石，第3回合随机获得一个协议源石」
-   * 「增加策略『管理员3』：第4，10 回合获得『潘多拉』」. Called once per round from `MatchPhases.startRound`, beside
+   * 「增加策略『管理员3』：第4，10 回合获得『潘多拉』」, 后者 2026-10-31「改成第5回合开始时，获得『潘多拉魔盒』」
+   * （单回合 ⇒ 只写 `roundA`）. Called once per round from `MatchPhases.startRound`, beside
    * `applyProtocolLevelEnemyHexes` (the enemy's half). The grant goes through `grantHex`, the production pick path, so
    * every immediate `onPick` part and every 获得时 extra runs exactly as if the card had been picked in a draft.
    *

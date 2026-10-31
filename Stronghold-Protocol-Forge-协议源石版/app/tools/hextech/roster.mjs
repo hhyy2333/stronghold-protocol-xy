@@ -294,9 +294,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_vanguard',
     name: '先锋之势',
-    desc: '每场战斗中，己方第一次击倒敌人时，若该次击杀来自先锋干员，你在结算后得到 4 资金；己方先锋干员首次攻击时攻击力 +30%，持续 10 秒。',
+    desc: '每场战斗中，己方第一次击倒敌人时，若该次击杀来自先锋干员，你在结算后得到 4 资金；每名己方先锋干员在本场战斗中的第一次攻击直接秒杀目标（精英与首领无效）。',
     rarity: 'gold',
-    effect: { battle: { firstKillBy: { profession: 'PIONEER', coins: 4 }, firstAttackBy: { profession: 'PIONEER', atkPct: 30, seconds: 10 } } },
+    effect: { battle: { firstKillBy: { profession: 'PIONEER', coins: 4 }, firstAttackExecute: { profession: 'PIONEER' } } },
   },
   {
     id: 'hex_mirror',
@@ -443,9 +443,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_armorbreak',
     name: '装甲破坏',
-    desc: '作战中，你的干员造成物理伤害时，使该敌人防御力 −20（本场战斗内叠加）。',
+    desc: '作战中，你的干员造成物理伤害时，使该敌人防御力 −80（本场战斗内叠加）。',
     rarity: 'gold',
-    effect: { armorBreak: { defFlat: 20 } },
+    effect: { armorBreak: { defFlat: 80 } },
   },
   {
     id: 'hex_allin',
@@ -1349,9 +1349,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_dread',
     name: '惊惧',
-    desc: '作战中，所有敌人第一次受到地面干员攻击后，战栗 2 秒。',
+    desc: '作战中，己方地面干员开启技能时，其周围八格内的敌人战栗 3 秒。',
     rarity: 'silver',
-    effect: { dread: { seconds: 2 } },
+    effect: { dread: { seconds: 3, radius: 1 } },
   },
   {
     id: 'hex_infernalconduit',
@@ -1458,10 +1458,10 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_laterano_sanctuary',
     name: '圣佑',
-    desc: '仅【拉特兰】盟约激活时才会出现。作战中，【拉特兰】干员攻击速度 +50、攻击力 +80%；每消耗 1 颗弹药，回复所有【拉特兰】干员 5% 最大生命；消耗子弹时额外消耗 1 发；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药免疫本次伤害，并获得 1 层次数盾。',
+    desc: '仅【拉特兰】盟约激活时才会出现。作战中，【拉特兰】干员攻击速度 +50、攻击力 +80%；每消耗 1 颗弹药，所有【拉特兰】干员获得相当于自身 5% 最大生命的护盾；消耗子弹时额外消耗 1 发；【拉特兰】干员受到致命伤害时，若仍有弹药，消耗全部弹药免疫本次伤害，并获得 1 层次数盾。本场战斗累计统计【拉特兰】干员消耗的子弹量，每 3 秒对场上随机一名敌人进行一次狙击，造成累计子弹量 ×325 的物理伤害。',
     rarity: 'prismatic',
     requiresBond: 'lateranoShip',
-    effect: { lateranoSanctuary: { healPct: 5, shieldHits: 1, aspd: 50, atkPct: 80 } },
+    effect: { lateranoSanctuary: { shieldPct: 5, shieldHits: 1, aspd: 50, atkPct: 80, snipeEvery: 3, snipePerAmmo: 325 } },
   },
   {
     id: 'hex_egir_symbiosis',
@@ -1492,6 +1492,138 @@ export const PLAYER_HEXES = [
       onPick: { item: { id: 'chess_item_9_98_e_a', count: 1 } },
       kazimierzKnight: { transferPct: 100, trueMul: 2, indomLayers: 5, lockSec: 5 },
     },
+  },
+  // ---- 第二十批（业主 2026-10-31）：维多利亚【衰朽的骄矜】与炎【炎百兽】，两张 2 阶（gold）专属协议 --------
+  // 设计稿：04-文档/协议源石-专属协议-衰朽的骄矜与炎百兽-设计稿-20261031.md。战斗半段在
+  // server/sim/content/hexcards/stone_victoria_decay.js / stone_yan_beasts.js（各自 gated by params.<key>）；
+  // 数值全部在 effect 参数里，调数不用改代码。
+  {
+    id: 'hex_victoria_decay',
+    name: '衰朽的骄矜',
+    desc: '仅【维多利亚】盟约激活时才会出现。<在场3名不同【维多利亚】干员>携带装备的【维多利亚】干员攻击时，无视目标的防御力与法术抗性；【维多利亚】干员每秒流失 0.5% 最大生命值。<在场5名不同【维多利亚】干员>生命值高于 80% 时，生命值 +50、防御力 +50、攻击力 +100（随层数增长）；每秒额外流失 0.5% 最大生命值，装备维式重锤时为 0%。<在场7名不同【维多利亚】干员>每秒额外流失 1% 最大生命值。【维多利亚】干员生命值首次降至 0 时不会撤退，锁血进入「衰朽」，持续 8 秒：阻挡数归零，攻击力 +100%，攻击速度 +7（随层数增长）；8 秒后若在衰朽期间累计击杀 3 名敌人，则回复 50% 生命值并脱离衰朽，否则强制撤退。',
+    rarity: 'gold',
+    requiresBond: 'victoriaShip',
+    effect: {
+      victoriaDecay: {
+        equipCount: 3,
+        drainPct: 0.5,
+        buffCount: 5,
+        buffHpPct: 80,
+        hpFlat: 50, hpPerLayer: 10,
+        defFlat: 50, defPerLayer: 3,
+        atkFlat: 100, atkPerLayer: 5,
+        aspd: 7, aspdPerLayer: 0.5,
+        extraDrainPct: 0.5,
+        hammerKeys: ['chess_item_1_01_e', 'chess_item_2_03_e', 'chess_item_3_09_e', 'chess_item_3_10_e', 'chess_item_4_09_e'],
+        highCount: 7,
+        highDrainPct: 1,
+        decaySec: 8,
+        decayKills: 3,
+        decayAtkPct: 100,
+        decayAspd: 7, decayAspdPerLayer: 0.5,
+        decayHealPct: 50,
+      },
+    },
+  },
+  {
+    id: 'hex_yan_beasts',
+    name: '炎百兽',
+    desc: '仅【炎】盟约激活时才会出现。【炎】干员技力消耗 +5%，装备天师古鼎的【炎】干员不受影响。战斗开始时为每名【炎】干员召唤一只与其生命共享的“炎佑”，该炎佑的攻击力、生命值为对应干员的 80%（随层数增长）。<在场5名不同【炎】干员>技力消耗额外 +5%；【炎】干员每秒回复 20 点生命（随层数增长）。<在场7名不同【炎】干员>技力消耗额外 +5%；【炎】佑的“祛恶之焰”改为锁定 2 个目标持续施法，最多持续 20 秒，每秒对目标周围半径 1 范围内的所有敌方单位造成攻击力 60%（随层数增长）的法术伤害。',
+    rarity: 'gold',
+    requiresBond: 'yanShip',
+    effect: {
+      yanBeasts: {
+        spCostPct: 5,
+        spCostTierPct: 5,
+        censerKey: 'chess_item_6_03_e',
+        summonPct: 80, summonPerLayerPct: 0.4,
+        regenCount: 5, regen: 20, regenPerLayer: 0.5,
+        flameCount: 7, flameTargets: 2, flameScale: 60, flameScalePerLayer: 0.2,
+      },
+    },
+  },
+  // 第二十一批（业主 2026-10-31）：谢拉格 ·【困毙之雪】（2 阶专属协议）。
+  // 设计稿：04-文档/协议源石-专属协议-困毙之雪-设计稿-20261031.md；战斗半段在
+  // server/sim/content/hexcards/stone_kjerag_frostdeath.js（gated by params.kjeragFrostDeath）。
+  {
+    id: 'hex_kjerag_frostdeath',
+    name: '困毙之雪',
+    desc: '仅【谢拉格】盟约激活时才会出现。【谢拉格】干员冻结敌人时获得 1 层霜寒；每层霜寒使防御力 +5%、攻击速度 −5。霜寒达到 5 层时消耗全部霜寒进入「冰封」5 秒：无法攻击、无法使用技能、无法被治疗，但阻挡数 +1 且免疫所有伤害。<在场3名不同【谢拉格】干员>每有 1 层霜寒，攻击时有 30% 概率施加寒冷；敌人冻结结束时未被击杀，则该敌人周围半径 1.5 内所有【谢拉格】干员获得 1 层霜寒；若场上没有任何敌人处于冻结状态，所有【谢拉格】干员每 5 秒累积 1 层霜寒；冰封干员阻挡的敌人每秒受到 100 点真实伤害（随【谢拉格】层数每层 +40）。<在场6名不同【谢拉格】干员>【谢拉格】干员死亡时，冻结全场敌人 5 秒，并为全体【谢拉格】干员移除 2 层霜寒；若场上所有【谢拉格】干员同时处于冰封状态，则对所有敌人每秒造成 100 点真实伤害（随【谢拉格】层数每层 +50）并施加寒冷，持续 15 秒。',
+    rarity: 'gold',
+    requiresBond: 'kjeragShip',
+    effect: {
+      kjeragFrostDeath: {
+        unlockCount: 3,
+        frostMax: 5,
+        defPctPerStack: 5,
+        aspdPerStack: 5,
+        sealSec: 5,
+        coldChancePerStack: 30,
+        coldSec: 5,
+        freezeEndRadius: 1.5,
+        idleFrostSec: 5,
+        sealedBlockDmg: 100, sealedBlockDmgPerLayer: 40,
+        highCount: 6,
+        deathFreezeSec: 5,
+        deathRemoveStacks: 2,
+        allSealedDmg: 100, allSealedDmgPerLayer: 50,
+        allSealedSec: 15,
+      },
+    },
+  },
+  // 第二十二批（业主 2026-10-31）：卡西米尔 ·【骑士金神】（2 阶专属协议）。
+  // 设计稿：04-文档/协议源石-专属协议-骑士金神-设计稿-20261031.md；战斗半段在
+  // server/sim/content/hexcards/stone_kazimierz_knightgold.js，金币伤害的备战半段在 applySpec 的 goldDamage。
+  {
+    id: 'hex_kazimierz_knightgold',
+    name: '骑士金神',
+    desc: '仅【卡西米尔】盟约激活时才会出现。【卡西米尔】干员击杀 4 个敌人时获得 1 金（每场战斗最多 1 金，卡西米尔每 50 层 +1，最多 +到 9）。<在场5名不同【卡西米尔】干员>战斗开始时敌人增加（随【卡西米尔】层数累计：少于 50 层额外 1 只无胄盟清扫小队，50–100 层再 +1 只，100–200 层再 +1 只烛骑士薇薇安娜，200–300 层再 +1 只腐败骑士，300–400 层再 +1 只凋零骑士）；等阶最高的【卡西米尔】干员攻击力 +30（每层 +1），攻击范围扩大 1 格。<在场7名不同【卡西米尔】干员>本回合每消耗 3 金，所有干员伤害提升 20%（可叠加，只在本回合有效）。',
+    rarity: 'gold',
+    requiresBond: 'kazimierzShip',
+    effect: {
+      kazimierzKnightGold: {
+        killStep: 4,
+        goldBase: 1, goldPerLayer: 50, goldCap: 9,
+        highCount: 5,
+        atkFlat: 30, atkPerLayer: 1,
+        rangeExtend: 1,
+        enemyTiers: [
+          { min: 0, key: 'enemy_1183_mlasrt', count: 1 },
+          { min: 50, key: 'enemy_1183_mlasrt', count: 1 },
+          { min: 100, key: 'enemy_1184_cadkgt_3', count: 1 },
+          { min: 200, key: 'enemy_1513_dekght', count: 1 },
+          { min: 300, key: 'enemy_1513_dekght_2', count: 1 },
+        ],
+        sevenCount: 7,
+      },
+      onSpend: { goldDamage: { per: 3, pct: 20 } },
+      onRoundStart: { goldDamageReset: true },
+    },
+  },
+  // 第二十三批（业主 2026-10-31）：普通协议源石 ·【突破极限】(3 阶) 与【特限恢复】(2 阶)。
+  // 设计稿：04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md。都不限盟约、只对拥有者生效。
+  {
+    id: 'hex_break_limit',
+    name: '突破极限',
+    desc: '获得时，你的盟约叠层上限从 999 提升到 9999（备战期加层、战斗内加层、回合结算与界面显示一起提升）。',
+    rarity: 'prismatic',
+    effect: { bondCap: { cap: 9999 } },
+  },
+  {
+    id: 'hex_mode_modules',
+    name: '特限恢复',
+    desc: '获得时，你的干员解锁 3 级模组（有模组的干员；普通形态也算）；特限模组（ISW / SO / RA）的专属效果在卫戍协议中生效。',
+    rarity: 'gold',
+    effect: { modeModules: { level: 3, types: ['ISW', 'SO', 'RA'] } },
+  },
+  // 第二十四批（业主 2026-10-31）：3 阶普通卡【死亡之舞】。
+  // 设计稿：04-文档/协议源石-死亡之舞与四张卡调整-设计稿-20261031.md。
+  {
+    id: 'hex_deathdance',
+    name: '死亡之舞',
+    desc: '作战中，己方干员受到的伤害改为在 3 秒内均匀扣除（每 0.5 秒一跳，可致死；护盾仍先抵挡）；己方干员周围八格内有敌人死亡时，该干员回复 5% 最大生命。',
+    rarity: 'prismatic',
+    effect: { deathDance: { delaySec: 3, tickSec: 0.5, healPct: 5 } },
   },
 ];
 

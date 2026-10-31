@@ -7,7 +7,7 @@
 //   4. 神射法师（2阶）：干员在造成法术伤害时造成等额的物理伤害
 //   5. 灵魂炸弹（3阶）：累计统计本局游戏内医疗干员造成的治疗量，每10s对所有敌人造成一次该记录数值的法术伤害
 //                        并给全体干员回复一次该记录值
-//   6. 惊惧（1阶）：所有敌人第一次受到地面干员攻击后战栗2s
+//   6. 惊惧（1阶）：地面干员开启技能时，其周围八格内的敌人战栗 3 秒（业主 2026-10-31 调整）
 //   7. 炼狱导管（3阶）：干员攻击额外附加一层每秒造成100点法术伤害持续5s的灼烧（无限叠加）同时造成该伤害30%的灼燃损伤
 //   8. 回响形态（老卡新增）：技力消耗-30%
 //
@@ -354,16 +354,18 @@ export function installSoulBomb(hooks) {
 }
 
 /**
- * 惊惧: 所有敌人第一次受到地面干员攻击后，战栗 2 秒。
+ * 惊惧: 己方地面干员开启技能时，其周围八格内的敌人战栗 3 秒（业主 2026-10-31 调整）。
  *
- * 业主原文（逐字）：「所有敌人第一次受到地面干员攻击后战栗2s」
+ * 业主原文（逐字）：「修改一阶惊惧，改为地面干员开启技能时战栗周围目标3s」
  *
- * 口径：`hit` 钩子里，出手的是拥有者的**地面干员**（`isGroundOp`）、目标是敌人、这一发是一次**攻击**
- * （`dmg.isAttack`，技能覆盖的攻击也算），且这个敌人本场还没被记过 —— 就 `applyStatus(e, 'tremble', 2)`。
+ * 口径：`skillStart` 钩子（skills.js 在技能开始/激活时发出 `{ unit, skill, reason, recast }`）里，`unit` 是拥有者的
+ * **地面干员**（`isGroundOp`）且不是被动技能（`skill.kind !== 'passive'`，「开启」不算常驻被动）⇒
+ * 以该干员所在格为中心、**周围八格**（切比雪夫距离 ≤ `radius`，默认 1）内的所有活着的敌人
+ * `applyStatus(e, 'tremble', { duration: seconds, source: unit })`。
  * 「战栗」是引擎目录状态（buffs.js STATUS.tremble：被阻挡后无法进行普通攻击），免疫与抵抗由引擎负责。
  *
- * [ASSUMED: 1)「第一次」= 每名敌人整场战斗一次（不是每秒 / 每次攻击）；2) 只认地面干员的攻击，法术技能 / 卡片伤害
- *   不算；3) 已经处于战栗的敌人不重置时长（applyStatus 同名规则）；4) 召唤物不算地面干员。]
+ * [ASSUMED: 1)「开启技能」= 非被动的技能开始（部署即开的被动不算）；2)「周围」= 周围八格（半径 1），按格心判定；
+ *   3) 同一名敌人重复落在范围内会按 applyStatus 的同名规则刷新；4) 召唤物不算地面干员。]
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle
  * @returns {number|{owners:number,applied:number}} 0 when the card is absent
@@ -373,22 +375,23 @@ export function installDread(hooks) {
   if (!owners) return 0;
   const { battle, specOf } = hooks;
   const owned = new Set(owners);
-  const seconds = pos(specOf(owners[0], 'hex_dread', 'dread').seconds, 2);
-  const seen = new Set();
+  const spec = specOf(owners[0], 'hex_dread', 'dread');
+  const seconds = pos(spec.seconds, 3);
+  const rawRadius = Number(spec.radius);
+  const radius = Number.isFinite(rawRadius) && rawRadius >= 0 ? Math.round(rawRadius) : 1;
   let applied = 0;
-  battle.on('hit', (c) => {
-    if (!c || !c.dmg || c.dmg.cancel) return;
-    if (!c.dmg.isAttack) return;
-    if (c.dmg.type === 'element' || isHpLoss(c.dmg) || isRetaliation(c.dmg)) return;
-    const src = c.source;
-    if (!isOwnOpOf(src, owned) || !isGroundOp(src)) return;
-    const tgt = c.target;
-    if (!tgt || tgt.side !== 'enemy' || !tgt.alive) return;
-    const id = tgt.id ?? tgt;
-    if (seen.has(id)) return;
-    seen.add(id);
-    applied++;
-    battle.applyStatus(tgt, 'tremble', { duration: seconds, source: src });
+  battle.on('skillStart', (c) => {
+    const unit = c && c.unit;
+    const skill = c && c.skill;
+    if (!unit || !isOwnOpOf(unit, owned) || !isGroundOp(unit)) return;
+    if (!skill || skill.kind === 'passive') return;      // 「开启技能」：被动不算
+    const ur = unit.tileR, uc = unit.tileC;
+    for (const e of livingEnemies(battle)) {
+      const er = Math.round(e.y), ec = Math.round(e.x);
+      if (Math.abs(er - ur) > radius || Math.abs(ec - uc) > radius) continue;
+      battle.applyStatus(e, 'tremble', { duration: seconds, source: unit });
+      applied++;
+    }
   });
   return { get owners() { return owners.length; }, get applied() { return applied; } };
 }

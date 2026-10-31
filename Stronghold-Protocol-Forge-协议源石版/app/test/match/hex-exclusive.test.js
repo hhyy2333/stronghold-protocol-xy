@@ -25,16 +25,16 @@ test('第 7 回合的抽卡池只放 requiresBond 的盟约专属协议；没有
     ps.bonds = bonds;
     return MatchHexDraft.prototype._hexPoolFor.call(m, ps);
   };
-  // 炎激活：池子只剩 requiresBond: 'yanShip'（当前只有【燎原】）
+  // 炎激活：池子只剩 requiresBond: 'yanShip'（【燎原】与 2 阶的【炎百兽】）
   const yan = poolOf(7, { yanShip: { active: true, count: 3, layers: 0 } });
   assert.ok(yan.length >= 1, '炎激活时至少有【燎原】');
   assert.ok(yan.every((r) => r.requiresBond === 'yanShip'), '只放炎专属');
-  // 两个核心盟约激活：两张专属都在
+  // 两个核心盟约激活：四张专属都在（炎 2 + 谢拉格 2）
   const both = poolOf(7, {
     yanShip: { active: true, count: 3, layers: 0 },
     kjeragShip: { active: true, count: 3, layers: 0 },
   });
-  assert.deepEqual(both.map((r) => r.id).sort(), ['hex_kjerag_thaw', 'hex_yan_ember']);
+  assert.deepEqual(both.map((r) => r.id).sort(), ['hex_kjerag_frostdeath', 'hex_kjerag_thaw', 'hex_yan_beasts', 'hex_yan_ember']);
   // 没有核心盟约：回退普通池（有非专属卡，且数量远大于 1）
   const fallback = poolOf(7, {});
   assert.ok(fallback.length > 10, '回退到普通池');
@@ -107,5 +107,45 @@ test('冰雪消融：获得时得到耶拉，谢拉格干员价格 −1（最低
   };
   assert.equal(priceOf(kj), Math.max(1, kj.price - 1), '谢拉格 −1');
   assert.equal(priceOf(other), other.price, '其他干员不变');
+  m.dispose();
+});
+
+test('骑士金神：本回合每消耗 3 金把伤害加成写进卡自己的 params.battle.dmgPct，新回合清零', () => {
+  const h = fresh();
+  const m = h.m;
+  const ps = h.ps('p_0');
+  applyHex(m, ps, DATA.hextech.playerHexes.hex_kazimierz_knightgold);
+  const ref = ps.effects.find((e) => e && e.data && e.data.hexId === 'hex_kazimierz_knightgold');
+  assert.ok(ref, '卡在 effects 里');
+  m.dispatch(ps, 'onSpend', { amount: 3, reason: 'buy' });
+  assert.equal(ref.params.battle.dmgPct, 20, '3 金 → +20%');
+  m.dispatch(ps, 'onSpend', { amount: 4, reason: 'buy' });
+  assert.equal(ref.params.battle.dmgPct, 40, '累计 7 金 → floor(7/3)×20 = 40');
+  m.dispatch(ps, 'onRoundStart', { round: 3 });
+  assert.equal(ref.params.battle.dmgPct, 0, '新回合清零');
+  m.dispose();
+});
+
+test('整批刷新不会把 offer 刷空；空 offer 也不再算「欠一次选牌」（第 7 回合专属池被占满时的卡死回归）', () => {
+  const h = fresh();
+  const m = h.m;
+  const ps = h.ps('p_0');
+  // 第 7 回合、炎激活：池子只有【燎原】+【炎百兽】两张，而它们正躺在 offer 里。整批刷新的 `owned` 同时带着
+  // 「已拥有 + 当前 offer」，旧代码于是抽到空数组、把 offer 清空 —— 玩家欠一次选牌却没有牌可选。限时的局靠超时兜底，
+  // 单人 / 单人不限时的局没有 deadline（enterHexDraft 在 untimed 时不 arm），整局永远卡在 HEX_DRAFT（fuzz seed 27 实测）。
+  m.round = 7;
+  m.phase = 'HEX_DRAFT';
+  ps.bonds = { yanShip: { active: true, count: 3, layers: 0 } };
+  const pool = [DATA.hextech.playerHexes.hex_yan_ember.id, DATA.hextech.playerHexes.hex_yan_beasts.id];
+  m.hex = {
+    offers: { p_0: pool }, picks: {}, rerolls: { p_0: 1 }, slotRerolls: { p_0: [1] }, extraPicks: { p_0: 0 },
+    untimed: true, turnDeadline: 0,
+  };
+  assert.deepEqual(m.rerollHex(ps), { ok: true });
+  assert.deepEqual(m.hexOfferOf('p_0'), pool, '抽不出新的一批就保留原来那一批');
+  // 真的空 offer（池子被抽干 / 工坊包的极小池子）不再算欠一次选牌，phase 不会永远等下去
+  m.hex.offers.p_0 = [];
+  assert.equal(m._hexPicksLeft('p_0'), 0);
+  assert.equal(m.hexDraftDone(), true);
   m.dispose();
 });

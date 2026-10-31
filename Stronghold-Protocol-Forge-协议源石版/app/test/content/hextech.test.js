@@ -40,12 +40,17 @@ test('roster: 124 player + 43 enemy hexes, unique ids, known rarities and an eff
   // seventeenth batch (业主 2026-10-24): 1 more — 核心盟约专属协议·维多利亚·锻炉 (122 -> 123).
   // eighteenth batch (业主 2026-10-25): 1 more — 协议源石「复制」(123 -> 124).
   // nineteenth batch (业主 2026-10-26): 7 more — 其余 7 个核心盟约的专属协议 (124 -> 131); 锻炉 itself is the 17th batch's 1.
-  assert.equal(PLAYER.length, 131);
+  // twentieth batch (业主 2026-10-31): 2 more — 2 阶专属协议 维多利亚【衰朽的骄矜】/ 炎【炎百兽】 (131 -> 133).
+  // twenty-first batch (业主 2026-10-31): 1 more — 2 阶专属协议 谢拉格【困毙之雪】 (133 -> 134).
+  // twenty-second batch (业主 2026-10-31): 1 more — 2 阶专属协议 卡西米尔【骑士金神】 (134 -> 135).
+  // twenty-third batch (业主 2026-10-31): 2 more — 普通卡 3 阶【突破极限】/ 2 阶【特限恢复】 (135 -> 137).
+  // twenty-fourth batch (业主 2026-10-31): 1 more — 3 阶普通卡【死亡之舞】 (137 -> 138).
+  assert.equal(PLAYER.length, 138);
   // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
   // fourteenth batch (业主 2026-10-19): 5 more enemy cards. 38 -> 43.
   assert.equal(ENEMY.length, 43);
   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
-  assert.equal(ids.size, 174);
+  assert.equal(ids.size, 181);
   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
   assert.deepEqual([...rarities], [...RARITY_ORDER]);
   for (const h of PLAYER) {
@@ -86,7 +91,7 @@ test('roster: 124 player + 43 enemy hexes, unique ids, known rarities and an eff
 test('every player hex has a registered hex: handler with onHexPick and onRoundStart (choices.test.js style)', () => {
   const reg = getDefaultRegistry();
   const ids = hexIds();
-  assert.equal(ids.length, 131);
+  assert.equal(ids.length, 138);
   for (const id of ids) {
     const h = reg.get(hexEffectKey(id));
     assert.ok(h, `hex:${id} handler`);
@@ -124,6 +129,23 @@ function ctxStub(over = {}) {
   };
   return s;
 }
+
+test('骑士金神: 本回合每消耗 3 金，所有干员伤害 +20%（params.battle.dmgPct），新回合清零', () => {
+  const reg = getDefaultRegistry();
+  const h = reg.get(hexEffectKey('hex_kazimierz_knightgold'));
+  const ref = { id: 'hex:hex_kazimierz_knightgold', params: { kazimierzKnightGold: {}, battle: { dmgPct: 0 } } };
+  const ctx = ctxStub({ effect: (id) => (id === ref.id ? ref : null), source: { ref } });
+  ctx.ev = { amount: 3 };
+  h.onSpend(ctx);
+  assert.equal(ctx.effects[ref.id].params.battle.dmgPct, 20, '3 金 → +20%');
+  ctx.ev = { amount: 7 };
+  h.onSpend(ctx); // 累计 10 金 → floor(10/3)×20 = 60
+  assert.equal(ctx.effects[ref.id].params.battle.dmgPct, 60, '累计 10 金 → +60%');
+  assert.equal(ctx.counter('hex:hex_kazimierz_knightgold:goldspent'), 10, '本回合累计消费');
+  h.onRoundStart(ctx);
+  assert.equal(ctx.effects[ref.id].params.battle.dmgPct, 0, '新回合清零');
+  assert.equal(ctx.counter('hex:hex_kazimierz_knightgold:goldspent'), 0, '计数器也清零');
+});
 
 test('源石红利: it accrues what the round spends and pays 1 per 5 at the next round start (remainder kept)', () => {
   const reg = getDefaultRegistry();
@@ -779,7 +801,7 @@ test('the eleventh batch: 79 player hexes, the owner’s names and tiers verbati
     assert.equal(rec.name, name, `${id} name`);
     assert.equal(rec.rarity, rarity, `${id} tier`);
   }
-  assert.equal(Object.keys(HEXTECH.playerHexes).length, 131, '131 player hexes after the nineteenth batch');
+  assert.equal(Object.keys(HEXTECH.playerHexes).length, 138, '138 player hexes after the twenty-fourth batch');
 });
 
 
@@ -1417,6 +1439,118 @@ test('第十九批：7 张盟约专属协议 —— 名称/阶位/requiresBond/�
   for (const id of ['chess_char_3_08_a', 'chess_char_2_10_a', 'chess_char_3_20_a', 'chess_char_5_20_a', 'chess_char_5_02_a', 'chess_item_6_07_e_a']) {
     assert.ok(DATA.chess[id] || DATA.items[id], `${id} 能在 data 里解析`);
   }
+});
+
+test('第二十批：2 张 2 阶盟约专属协议 —— 名称/阶位/requiresBond/战斗脚本 key 全部接上', () => {
+  const want = {
+    hex_victoria_decay: ['衰朽的骄矜', 'victoriaShip', 'victoriaDecay'],
+    hex_yan_beasts: ['炎百兽', 'yanShip', 'yanBeasts'],
+  };
+  for (const [id, [name, bond, key]] of Object.entries(want)) {
+    const rec = HEXTECH.playerHexes[id];
+    assert.ok(rec, `${id} 在 roster 里`);
+    assert.equal(rec.name, name, `${id} 名称`);
+    assert.equal(rec.rarity, 'gold', `${id} 2 阶`);
+    assert.equal(rec.requiresBond, bond, `${id} 专属盟约`);
+    assert.ok(rec.effect[key] && typeof rec.effect[key] === 'object', `${id} 带 ${key} 参数`);
+    assert.ok(BATTLE_SPEC_KEYS.includes(key), `${id}: ${key} 必须进 BATTLE_SPEC_KEYS，否则 ref 不会进战斗`);
+    assert.equal(HEX_SCRIPT_KEYS[id], key, `${id}: HEX_SCRIPT_KEYS 接线`);
+    assert.ok(rec.desc.includes('仅【'), `${id} 卡面写明只在对应盟约激活时出现`);
+  }
+  // 业主 2026-10-31 的每层增量写进卡面参数（调数只改数据，不改代码）
+  const v = HEXTECH.playerHexes.hex_victoria_decay.effect.victoriaDecay;
+  assert.deepEqual([v.hpFlat, v.hpPerLayer, v.defFlat, v.defPerLayer, v.atkFlat, v.atkPerLayer, v.aspd, v.aspdPerLayer], [50, 10, 50, 3, 100, 5, 7, 0.5]);
+  const y = HEXTECH.playerHexes.hex_yan_beasts.effect.yanBeasts;
+  assert.deepEqual([y.summonPct, y.summonPerLayerPct, y.regen, y.regenPerLayer, y.flameScale, y.flameScalePerLayer], [80, 0.4, 20, 0.5, 60, 0.2]);
+});
+
+test('第二十一批：谢拉格【困毙之雪】—— 2 阶专属协议，霜寒/冰封的参数全部在卡面', () => {
+  const rec = HEXTECH.playerHexes.hex_kjerag_frostdeath;
+  assert.ok(rec, 'hex_kjerag_frostdeath 在 roster 里');
+  assert.equal(rec.name, '困毙之雪');
+  assert.equal(rec.rarity, 'gold', '2 阶');
+  assert.equal(rec.requiresBond, 'kjeragShip', '专属盟约');
+  assert.ok(rec.effect.kjeragFrostDeath && typeof rec.effect.kjeragFrostDeath === 'object', '带 kjeragFrostDeath 参数');
+  assert.ok(BATTLE_SPEC_KEYS.includes('kjeragFrostDeath'), 'kjeragFrostDeath 必须进 BATTLE_SPEC_KEYS，否则 ref 不会进战斗');
+  assert.equal(HEX_SCRIPT_KEYS.hex_kjerag_frostdeath, 'kjeragFrostDeath', 'HEX_SCRIPT_KEYS 接线');
+  assert.ok(rec.desc.includes('仅【'), '卡面写明只在对应盟约激活时出现');
+  // 业主 2026-10-31 确认的口径：霜寒 5 层清零、冰封 5 秒；阻挡真伤按谢拉格层数 +40；全冰封 +50 / 15 秒；解冻回层半径 1.5
+  const p = rec.effect.kjeragFrostDeath;
+  assert.deepEqual([p.frostMax, p.sealSec, p.sealedBlockDmg, p.sealedBlockDmgPerLayer, p.allSealedDmg, p.allSealedDmgPerLayer, p.allSealedSec, p.freezeEndRadius],
+    [5, 5, 100, 40, 100, 50, 15, 1.5]);
+});
+
+test('第二十二批：卡西米尔【骑士金神】—— 2 阶专属协议，击杀金币 / 刷怪表 / 金币伤害全部在卡面', () => {
+  const rec = HEXTECH.playerHexes.hex_kazimierz_knightgold;
+  assert.ok(rec, 'hex_kazimierz_knightgold 在 roster 里');
+  assert.equal(rec.name, '骑士金神');
+  assert.equal(rec.rarity, 'gold', '2 阶');
+  assert.equal(rec.requiresBond, 'kazimierzShip', '专属盟约');
+  assert.ok(rec.effect.kazimierzKnightGold && typeof rec.effect.kazimierzKnightGold === 'object', '带 kazimierzKnightGold 参数');
+  assert.ok(BATTLE_SPEC_KEYS.includes('kazimierzKnightGold'), 'kazimierzKnightGold 必须进 BATTLE_SPEC_KEYS');
+  assert.equal(HEX_SCRIPT_KEYS.hex_kazimierz_knightgold, 'kazimierzKnightGold', 'HEX_SCRIPT_KEYS 接线');
+  assert.ok(rec.desc.includes('仅【'), '卡面写明只在对应盟约激活时出现');
+  // 业主 2026-10-31 确认的口径：4 杀 1 金、每场 min(9, 1+floor(L/50))；累计刷怪表；+30+1/L 与范围 +1；每 3 金 +20%
+  const p = rec.effect.kazimierzKnightGold;
+  assert.deepEqual([p.killStep, p.goldBase, p.goldPerLayer, p.goldCap, p.atkFlat, p.atkPerLayer, p.rangeExtend, p.highCount, p.sevenCount],
+    [4, 1, 50, 9, 30, 1, 1, 5, 7]);
+  assert.deepEqual(p.enemyTiers.map((t) => [t.min, t.key, t.count]), [
+    [0, 'enemy_1183_mlasrt', 1], [50, 'enemy_1183_mlasrt', 1], [100, 'enemy_1184_cadkgt_3', 1],
+    [200, 'enemy_1513_dekght', 1], [300, 'enemy_1513_dekght_2', 1],
+  ]);
+  assert.deepEqual(rec.effect.onSpend.goldDamage, { per: 3, pct: 20 }, '备战侧：每 3 金 +20%');
+  assert.equal(rec.effect.onRoundStart.goldDamageReset, true, '备战侧：新回合清零');
+});
+
+test('第二十三批：普通协议源石【突破极限】【特限恢复】—— 卡面/阶位/接线/参数', () => {
+  // 突破极限：3 阶普通卡，叠层上限 9999（备战/战斗/结算/客户端由 match 侧按玩家读 params.bondCap）
+  const bl = HEXTECH.playerHexes.hex_break_limit;
+  assert.ok(bl, 'hex_break_limit 在 roster 里');
+  assert.equal(bl.name, '突破极限');
+  assert.equal(bl.rarity, 'prismatic', '3 阶');
+  assert.equal(bl.requiresBond, undefined, '普通卡（不限盟约）');
+  assert.deepEqual(bl.effect.bondCap, { cap: 9999 });
+  // 特限恢复：2 阶普通卡，3 级模组 + ISW/SO/RA 特限模组效果
+  const mm = HEXTECH.playerHexes.hex_mode_modules;
+  assert.ok(mm, 'hex_mode_modules 在 roster 里');
+  assert.equal(mm.name, '特限恢复');
+  assert.equal(mm.rarity, 'gold', '2 阶');
+  assert.equal(mm.requiresBond, undefined, '普通卡（不限盟约）');
+  assert.deepEqual(mm.effect.modeModules, { level: 3, types: ['ISW', 'SO', 'RA'] });
+  assert.ok(BATTLE_SPEC_KEYS.includes('modeModules'), 'modeModules 必须进 BATTLE_SPEC_KEYS');
+  assert.equal(HEX_SCRIPT_KEYS.hex_mode_modules, 'modeModules', 'HEX_SCRIPT_KEYS 接线');
+  // 3 级模组数据文件存在且覆盖全部棋子的模组（data/moduleLevels.json 由 tools/build-data.mjs 生成）
+  const levels = JSON.parse(fs.readFileSync('data/moduleLevels.json', 'utf8'));
+  assert.ok(Object.keys(levels).length >= 170, `moduleLevels 覆盖 ${Object.keys(levels).length} 个模组`);
+  for (const rec of Object.values(levels)) assert.equal(rec.level, 3, `${rec.uniEquipId} 是 3 级`);
+});
+
+test('第二十四批：新增【死亡之舞】+ 四张卡调整 —— 卡面/阶位/参数全部到位', () => {
+  // 死亡之舞：3 阶普通卡，伤害延迟 3 秒 + 八格敌人死亡回 5% 最大生命
+  const dd = HEXTECH.playerHexes.hex_deathdance;
+  assert.ok(dd, 'hex_deathdance 在 roster 里');
+  assert.equal(dd.name, '死亡之舞');
+  assert.equal(dd.rarity, 'prismatic', '3 阶');
+  assert.equal(dd.requiresBond, undefined, '普通卡（不限盟约）');
+  assert.deepEqual(dd.effect.deathDance, { delaySec: 3, tickSec: 0.5, healPct: 5 });
+  assert.ok(BATTLE_SPEC_KEYS.includes('deathDance'), 'deathDance 必须进 BATTLE_SPEC_KEYS');
+  assert.equal(HEX_SCRIPT_KEYS.hex_deathdance, 'deathDance', 'HEX_SCRIPT_KEYS 接线');
+  // 圣佑：弹药治疗 → 护盾 + 累计子弹狙击
+  const san = HEXTECH.playerHexes.hex_laterano_sanctuary;
+  assert.equal(san.effect.lateranoSanctuary.healPct, undefined, '旧的治疗参数已移除');
+  assert.deepEqual(
+    [san.effect.lateranoSanctuary.shieldPct, san.effect.lateranoSanctuary.snipeEvery, san.effect.lateranoSanctuary.snipePerAmmo],
+    [5, 3, 325],
+  );
+  // 惊惧：地面干员开技能 → 周围八格战栗 3 秒
+  assert.deepEqual(HEXTECH.playerHexes.hex_dread.effect.dread, { seconds: 3, radius: 1 });
+  // 装甲破坏：−20 → −80
+  assert.equal(HEXTECH.playerHexes.hex_armorbreak.effect.armorBreak.defFlat, 80);
+  // 先锋之势：首次攻击秒杀（加钱保留），旧的 +30% 攻速 buff 参数已移除
+  const vg = HEXTECH.playerHexes.hex_vanguard.effect.battle;
+  assert.deepEqual(vg.firstKillBy, { profession: 'PIONEER', coins: 4 });
+  assert.deepEqual(vg.firstAttackExecute, { profession: 'PIONEER' });
+  assert.equal(vg.firstAttackBy, undefined, '旧的首次攻击加攻参数已移除');
 });
 
 test('三连透支: a merge that cannot grant (no stock) does not spend the round', () => {

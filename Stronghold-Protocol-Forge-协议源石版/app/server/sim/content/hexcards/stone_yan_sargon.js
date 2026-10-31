@@ -7,7 +7,7 @@
 // 确定性：无 Math.random / Date / Node API；本模块不需要随机。
 
 import { isMember, bondLayers, bondTier } from '../support/index.js';
-import { applyRedirectCut, redirectShare, isChained, isHpLoss, isRetaliation } from '../../damage.js';
+import { applyRedirectCut, isRedirectShare, isChained, isHpLoss, isRetaliation, redirectShare } from '../../damage.js';
 
 const CARD_YAN = 'hex_yan_ember';
 const SPEC_YAN = 'yanEmber';
@@ -96,7 +96,8 @@ export function installYanEmber(hooks) {
     const tgt = c && c.target;
     if (!dmg || !tgt || dmg.cancel) return;
     if (tgt.side !== 'ally' || tgt.kind !== 'op') return;
-    if (dmg.type === 'element' || dmg.yanEmberCut || (Array.isArray(dmg.redirectCuts) && dmg.redirectCuts.length)) return;
+    if (dmg.type === 'element' || dmg.yanEmberCut || dmg.redirectClaim || isRedirectShare(dmg)
+      || (Array.isArray(dmg.redirectCuts) && dmg.redirectCuts.length)) return;   // claimed / already-redirected hits are final
     const pid = tgt.ownerId;
     const p = plan.get(pid);
     if (!p || bondLayers(battle, pid, BOND_YAN) < p.steadLayer) return;

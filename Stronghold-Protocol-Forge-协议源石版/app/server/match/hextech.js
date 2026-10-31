@@ -14,9 +14,16 @@
 
 import { sumEnemyMods, rollOffers, fissionBondIds as sharedFissionBondIds, fissionCap, fissionMul } from '../../shared/hextech.js';
 import { protocolLevelEnemyMods } from '../../shared/protocolLevels.js';
+import { BOND_LAYER_CAP } from '../../shared/constants.js';
 import { hasBattlePart, DEBT_EFFECT_KEY } from '../sim/content/hextech.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
 import { bossPoolHp } from './finalAssault.js';
+
+/**
+ * 【突破极限】的卡 id (设计稿 §3)：`data/hextech.json` 的 `hex_break_limit`，效果 `effect.bondCap = { cap: 9999 }`。
+ * 备战 / 战斗 / 结算 / 校验四处读的都是同一个 id（`bondLayerCapOf` 是唯一的读法）。
+ */
+export const BREAK_LIMIT_HEX_ID = 'hex_break_limit';
 
 /**
  * 盟约寄生 (业主 2026-10-24): the key of the DISPLAY-ONLY watcher ref pushed onto the 被寄生者. It is deliberately not a
@@ -794,6 +801,36 @@ export function bondCapOf(ps) {
 }
 
 /**
+ * 【突破极限】(`hex_break_limit`, 3 阶 / prismatic, 设计稿 §3): the per-PLAYER 盟约叠层上限 of this player.
+ *
+ * 口径（只对拥有者）: 默认就是官方的 `BOND_LAYER_CAP`（999, shared/constants.js）。拥有带 `effect.bondCap.cap` 的卡
+ * （`data/hextech.json` 记录 → `addHexRef` 把它摊平进 `params`，所以 ref 上是 `params.bondCap = { cap: 9999 }`）时取
+ * `max(BOND_LAYER_CAP, cap)` —— 卡只会**抬高**上限，写一个更小的数不会把官方 999 压下来（同一格数值被别的内容写小是
+ * 配置错误，不该变成削弱）。没有这张卡、cap 不是正有限数、或 BOND_LAYER_CAP 本身是 0（无上限）时，原样返回默认。
+ *
+ * 谁读它：备战侧的每一次加层 / 预览 / 结算 / 校验（player/economy.js addLayers·layerGainOf·setLayers、
+ * bondsMeta.bondsWithGains、match/settle.js、fields.js 的客户端结果校验、invariants.js 的层数不变量），以及战斗侧
+ * `PlayerBattleInput.bondLayerCap`（player/round.js battleInput → sim/battle/economy.js addLayers）。全部走同一个
+ * 数值，所以 9999 的上限在备战、战斗、结算、客户端显示四处是同一个数（业主 2026-10-31「全部」）。
+ * @param {{ effects?: any[] } | null} ps
+ * @returns {number} the cap in layers (BOND_LAYER_CAP when nothing raises it)
+ */
+export function bondLayerCapOf(ps) {
+  const base = BOND_LAYER_CAP > 0 ? BOND_LAYER_CAP : Infinity;
+  let cap = base;
+  for (const e of (ps && ps.effects) || []) {
+    if (!e || typeof e !== 'object') continue;
+    // 认卡的两种写法：ref 的 `data.hexId`（addHexRef 的常规形状）与 `key === 'hex:hex_break_limit'`（手写 / 存档里的老
+    // ref，或者测试直接拼出来的 ref）—— 任一对上就算拥有
+    const id = e.data && e.data.hexId;
+    if (id !== BREAK_LIMIT_HEX_ID && e.key !== `hex:${BREAK_LIMIT_HEX_ID}`) continue;
+    const v = Number(e.params && e.params.bondCap && e.params.bondCap.cap);
+    if (Number.isFinite(v) && v > 0) cap = Math.max(cap, v);
+  }
+  return cap;
+}
+
+/**
  * 投资天才 (业主 2026-10-21): how many EXTRA 获得时 triggers a player's cards ask for (`gainTraitExtra`), 0 without
  * the card. Read by EffectDispatcher.investRepeat; the card's own `onGainTrait` banks the 投资人 layers separately.
  * @param {{ effects?: any[] }} ps
@@ -927,17 +964,51 @@ export function refreshPriceOverrideOf(ps) {
 }
 
 /**
- * The own bond with the most BOARD MEMBERS (ties → data order), or null when the board holds none. The 人数最多盟约
- * several cards of the eleventh batch talk about: 紧急拨款 / 三连透支 / 升级刷新, and the same notion `盟约之主` reads at
- * its own round start (server/sim/content/hextech.js mainBondCount). Counts members only, never layers.
+ * The bonds that own at least one OPERATOR (a visible base chess of their own), per GameData — the bonds a
+ * `rollChess({ bond })` can answer with. Memoised per data table: the scan is over ~200 chess, the readers are rare.
+ *
+ * WHY: 绝技 (bonds.json `countMode: BOARD_ALL_CHESS`, weight 0) is a real bond with no operator of its own — its member
+ * count is the number of ELITE operators on the board. Every card of the 人数最多盟约 family then hands out an OPERATOR
+ * of that bond (三连透支 grants one, 升级刷新 / 紧急拨款 guarantee one in the shop), so a bond that owns none can never
+ * answer. Ranking it as the top bond made those cards silently do nothing from the player's second elite on
+ * (业主 2026-10-31「三连透支有bug，会出现不给干员的情况」; the earlier reports, 5684773 / bf62e26, only fixed the
+ * pool-stock half of the same symptom). 绝技 is the only bond without operators in the shipped data today, so the filter
+ * is written against the data rather than against the id — a workshop pack's own bond is handled the same way.
+ * @type {WeakMap<object, Set<string>>}
+ */
+const bondOperatorCache = new WeakMap();
+function bondsWithOperators(gd) {
+  let set = bondOperatorCache.get(gd);
+  if (set) return set;
+  set = new Set();
+  for (const id of (gd && Array.isArray(gd.visibleChess) ? gd.visibleChess : [])) {
+    const rec = gd.chess(id);
+    for (const bondId of (rec && Array.isArray(rec.bonds) ? rec.bonds : [])) set.add(bondId);
+  }
+  bondOperatorCache.set(gd, set);
+  return set;
+}
+
+/**
+ * The own bond with the most BOARD MEMBERS (ties → data order), read among the bonds that OWN an operator (see
+ * `bondsWithOperators`), or null when the board holds none of those. The 人数最多盟约 several cards of the eleventh batch
+ * talk about: 紧急拨款 / 三连透支 / 升级刷新. 盟约之主 ranks the same member COUNT at its own round start
+ * (server/sim/content/hextech.js mainBondCount) but keeps 绝技 in the ranking on purpose — it hands out a −1 activation
+ * threshold, which a member-count bond like 绝技 can use (it activates on the elite count), so an operator is not needed
+ * there. Counts members only, never layers.
  * @param {any} ps @returns {string|null}
  */
 export function topMemberBondOf(ps) {
   let best = null;
   let bestCount = 0;
+  const gd = ps && ps.gd;
+  const withOperators = gd ? bondsWithOperators(gd) : null;
   for (const [id, b] of Object.entries((ps && ps.bonds) || {})) {
     const c = b && Number.isFinite(b.count) ? b.count : 0;
-    if (c > bestCount) { bestCount = c; best = id; }
+    if (c <= bestCount) continue;
+    if (withOperators && !withOperators.has(id)) continue;
+    bestCount = c;
+    best = id;
   }
   return best;
 }
@@ -1042,6 +1113,20 @@ export function enemyHexMods(m) {
   return sumEnemyMods(list.map((e) => m.gd.hex(e && e.id ? e.id : e)).filter(Boolean));
 }
 
+/** 远程怪的口径（业主 2026-10-30：「给 n1-n19 的远程怪攻击力曲线单独设置」）：**只看 `applyWay === 'RANGED'`**。
+ *
+ * 不采纳「`ALL` 也算」（官方图鉴口径，本仓库 op-thorns.js 的反伤判定用的就是那个）—— 业主当场选的是窄口径，于是
+ * 「能近能远」（`ALL`，16 个）与近战（`MELEE`）仍然吃通用那条 `atkMul`。数据缺 `applyWay` 时按 `MELEE` 处理，与
+ * `server/sim/simdata.js` 的归一化一致。
+ * @param {any} gd @param {string} [key] the wave's `enemyKey`
+ * @returns {boolean}
+ */
+export function isRangedEnemyKey(gd, key) {
+  if (!gd || typeof gd.enemy !== 'function' || typeof key !== 'string' || !key) return false;
+  const e = gd.enemy(key);
+  return String((e && e.applyWay) || '').toUpperCase() === 'RANGED';
+}
+
 /**
  * 这一局**全部**敌方 mods：敌方协议源石 + 协议等级（owner's call 2026-10-18）。战斗（combat.js）与预览（views.js）
  * 必须折同一份 —— 这就是「预览的敌人数量 = 实战出怪数量」那条纪律的延续。等级关闭时它与 enemyHexMods 逐字节相同。
@@ -1049,13 +1134,24 @@ export function enemyHexMods(m) {
  * 协议等级的乘区**按回合爬升**（业主 2026-10-24「削弱敌方前期加强后期」，k = 1 在第 6 回合）：所以这里必须把
  * `m.round` 传下去。三个调用点（combat / views / bossRounds）拿到的都是同一次 `this`，`this.round` 就是这一场
  * 战斗的回合 —— 预览不会因为回合不同而与实战分叉。
+ *
+ * **远程怪那一条曲线**（业主 2026-10-30）：等级的 `atkMulRanged` 不与 `atkMul` 相乘（那会把两条曲线叠起来），而是
+ * 换成「卡牌那份 `atkMul` × 等级的 `atkMulRanged`」，作为 `atkMulRanged` 一并带出。`applyEnemyHexes` 会给远程怪的
+ * spawn 用这一格替掉 `atkMul` —— 卡牌（敌方协议源石的攻击力加成）照旧落在远程怪身上，只是等级那一段走另一条曲线。
+ * 只有等级真的开着、且两级曲线不同时才带这一格，于是 0 级 / 其它难度 / 1–6 级（两条相同）逐字节不变。
  * @param {any} m
  */
 export function matchEnemyMods(m) {
-  const list = (Array.isArray(m.enemyHexes) ? m.enemyHexes : []).map((e) => m.gd.hex(e && e.id ? e.id : e)).filter(Boolean);
+  const cards = enemyHexMods(m);
   const level = protocolLevelEnemyMods(m.protocolLevel, m.difficulty, m.round);
-  if (level) list.push(level);
-  return sumEnemyMods(list);
+  if (!level) return cards;
+  const out = sumEnemyMods([{ mods: cards }, level]);
+  const ranged = level.rangedAtkMul;
+  if (Number.isFinite(ranged) && ranged !== 1 && ranged !== out.atkMul) {
+    const base = Number.isFinite(cards.atkMul) ? cards.atkMul : 1;
+    out.atkMulRanged = Math.round(base * ranged * 10000) / 10000;
+  }
+  return out;
 }
 
 /** The keys a leader's spawns may take: the shared leader HP pool is never scaled (waves.js:339). */
@@ -1070,10 +1166,16 @@ const NORMAL_MODS = Object.freeze(['hpMul', 'atkMul', 'defMul', 'resMul', 'speed
  *
  * `countAdd` (虫群, 0.3.0 playtest #2) is the one non-multiplier wrench: it adds that many enemies to every **normal**
  * spawn group (never a leader, never the 器物), before the preview is built — see `targetsOf` below.
+ *
+ * **远程怪的攻击力另走一条曲线**（业主 2026-10-30，`hexMods.atkMulRanged`）：`rangedOf(key)` 说这个 spawn 的敌人是不是
+ * 远程怪（`isRangedEnemyKey`）—— 是的话 `atkMul` 换成那一条（含卡牌那份倍率），生命/防御/法抗/速度照旧。领袖
+ * （`tag === 'boss'`）不换：首领轮有自己的 `bossPoolMul` 与共享血池，这条曲线是给「小怪 / 精英怪」的。
+ * 不给 `rangedOf`（旧的两参数调用、测试）⇒ 逐字节等于从前。
  * @param {Array<object>} spawns
- * @param {object} hexMods from enemyHexMods
+ * @param {object} hexMods from matchEnemyMods (or enemyHexMods)
+ * @param {((enemyKey: string) => boolean) | null} [rangedOf] 远程怪判定，缺省 ⇒ 不分流
  */
-export function applyEnemyHexes(spawns, hexMods) {
+export function applyEnemyHexes(spawns, hexMods, rangedOf = null) {
   if (!Array.isArray(spawns) || !hexMods) return spawns;
   const add = Number.isFinite(hexMods.countAdd) ? Math.max(0, Math.trunc(hexMods.countAdd)) : 0;
   // 精英化 (owner's list of 2026-10-15): fewer enemies per group. `countSub` is an ABSOLUTE subtraction (the owner
@@ -1081,15 +1183,18 @@ export function applyEnemyHexes(spawns, hexMods) {
   // feel), floored at 1: a group that reaches this fold with a count is a group the stage MEANT to spawn, and a card
   // that erased it outright would silently delete the round's content rather than thin it.
   const sub = Number.isFinite(hexMods.countSub) ? Math.max(0, Math.trunc(hexMods.countSub)) : 0;
-  if (!add && !sub && !NORMAL_MODS.some((k) => Number.isFinite(hexMods[k]))) return spawns;
+  const rangedAtk = typeof rangedOf === 'function' && Number.isFinite(hexMods.atkMulRanged) ? hexMods.atkMulRanged : null;
+  if (!add && !sub && rangedAtk === null && !NORMAL_MODS.some((k) => Number.isFinite(hexMods[k]))) return spawns;
   return spawns.map((sp) => {
     if (!sp || !sp.mods || typeof sp.mods !== 'object') return sp;
     const boss = sp.tag === 'boss';
     const keys = boss ? LEADER_MODS : NORMAL_MODS;
     const mods = { ...sp.mods };
     let changed = false;
+    // 远程怪：等级那一段换成本级 `atkMulRanged` 折出来的值（`atkMulRanged` 里已经含了卡牌那份 `atkMul`）
+    const ranged = !boss && rangedAtk !== null && rangedOf(sp.enemyKey);
     for (const k of keys) {
-      const v = hexMods[k];
+      const v = k === 'atkMul' && ranged ? rangedAtk : hexMods[k];
       if (!Number.isFinite(v) || v === 1) continue;
       mods[k] = (Number.isFinite(mods[k]) ? mods[k] : 1) * v;
       changed = true;

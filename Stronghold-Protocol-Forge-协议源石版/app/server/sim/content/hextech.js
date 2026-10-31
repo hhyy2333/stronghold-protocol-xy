@@ -19,7 +19,7 @@
 // Content is optional: a build without data/hextech.json registers nothing and install() finds no refs.
 
 import { gameData, directMods, passiveBuff, unitBonds, bondActive, bondLayers, isMember, isOp, fxOn } from './support/index.js';
-import { fissionBondIds as sharedFissionBondIds, fissionCap } from '../../../shared/hextech.js';
+import { fissionBondIds as sharedFissionBondIds, fissionCap, verbSpawnMods } from '../../../shared/hextech.js';
 import { elem, hurt, areaAlliesInTiles, spawnChildren, isHitCount, abOf, expectedFinal } from './enemies/helpers.js';
 // 战地医院 (业主 2026-10-24): the damage-kind predicates its `damaged` gate shares with 身负重担 (流失 / 反伤 / 链式伤害 are
 // not 「造成伤害」). Imported here because the install() reader lives in this file, not in a hexcards module.
@@ -102,6 +102,18 @@ import { reviveNow } from './items/battle.js';
 import { installKjeragThaw, installLateranoSanctuary } from './hexcards/stone_kjerag_laterano.js';
 import { installYanEmber, installSargonOasis } from './hexcards/stone_yan_sargon.js';
 import { installEgirSymbiosis, installSiracusaGodfather } from './hexcards/stone_egir_siracusa.js';
+// 第二十批（业主 2026-10-31）：维多利亚【衰朽的骄矜】与炎【炎百兽】（2 阶专属协议）的战斗半段。
+import { installVictoriaDecay } from './hexcards/stone_victoria_decay.js';
+import { installYanBeasts } from './hexcards/stone_yan_beasts.js';
+// 第二十一批（业主 2026-10-31）：谢拉格【困毙之雪】（2 阶专属协议）的战斗半段。
+import { installKjeragFrostDeath } from './hexcards/stone_kjerag_frostdeath.js';
+// 第二十二批（业主 2026-10-31）：卡西米尔【骑士金神】（2 阶专属协议）的战斗半段。
+import { installKazimierzKnightGold } from './hexcards/stone_kazimierz_knightgold.js';
+// 第二十三批（业主 2026-10-31）：【特限恢复】的 ISW / RA 特限模组效果（同一张卡，两个脚本文件）。
+import { installModeModulesIsw } from './hexcards/stone_mode_modules_isw.js';
+import { installModeModulesRa } from './hexcards/stone_mode_modules_ra.js';
+// 第二十四批（业主 2026-10-31）：3 阶普通卡【死亡之舞】。
+import { installDeathDance } from './hexcards/stone_deathdance.js';
 
 /** Player effect-ref key prefix (parallel to `choice:`). */
 export const HEX_KEY = 'hex:';
@@ -296,6 +308,16 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // 没有 params.battle；不在这里声明的话 addHexRef 会把 ref 标成 prep-only，战斗里静默无效。
   // 骑士徽章是装备行为（items/knightbadge.js，由装备记录驱动），卡本身只有 onPick 发装备，故不在此列。
   'yanEmber', 'sargonOasis', 'kjeragThaw', 'lateranoSanctuary', 'egirSymbiosis', 'siracusaGodfather',
+  // 第二十批（业主 2026-10-31）：2 阶专属协议 维多利亚【衰朽的骄矜】/ 炎【炎百兽】的战斗半段（hexcards/stone_*.js）。
+  'victoriaDecay', 'yanBeasts',
+  // 第二十一批（业主 2026-10-31）：谢拉格【困毙之雪】。
+  'kjeragFrostDeath',
+  // 第二十二批（业主 2026-10-31）：卡西米尔【骑士金神】。
+  'kazimierzKnightGold',
+  // 第二十三批（业主 2026-10-31）：【特限恢复】（ISW / RA 特限模组效果）。
+  'modeModules',
+  // 第二十四批（业主 2026-10-31）：【死亡之舞】。
+  'deathDance',
 ]);
 
 /**
@@ -536,6 +558,31 @@ function applySpec(ctx, spec, hex = null, hook = '') {
     if (n > 0) ctx.addFunds(n, 'hex');
     ctx.setCounter(`${HEX_KEY}${id}:spent`, spent % spec.rebatePay.per);
     did = true;
+  }
+  // 骑士金神 (业主 2026-10-31): 本回合每消耗 per 金，所有干员伤害 +pct%（可无限叠、只在本回合有效）。
+  // The pot rides the card's OWN EffectRef (`params.battle.dmgPct`) — the same place 传承 keeps its `bondAtk` — so the
+  // battle input carries it; the battle module gates it on 「在场 7 名不同【卡西米尔】」. The counter is namespaced by
+  // the ref id so 策略「管理员」's copy keeps its own pot (effectsMeta `addEffect` merges nested params).
+  if (spec.goldDamage && isPos(spec.goldDamage.per) && isPos(spec.goldDamage.pct)) {
+    const amt = Number(ctx.event()?.amount);
+    const ref = (ctx.source && ctx.source.ref) || ctx.effect(`hex:${id}`);
+    if (Number.isFinite(amt) && amt > 0 && ref && typeof ref.id === 'string') {
+      const spent = ctx.incCounter(`${ref.id}:goldspent`, Math.trunc(amt));
+      const pct = Math.floor(spent / spec.goldDamage.per) * spec.goldDamage.pct;
+      if (pct !== Number(ref.params?.battle?.dmgPct ?? 0)) {
+        ctx.addEffect({ id: ref.id, params: { battle: { ...(ref.params?.battle || {}), dmgPct: pct } } });
+      }
+      did = true;
+    }
+  }
+  // 骑士金神: a new round clears the pot — 「本回合」只在本回合有效。
+  if (spec.goldDamageReset) {
+    const ref = (ctx.source && ctx.source.ref) || ctx.effect(`hex:${id}`);
+    if (ref && typeof ref.id === 'string') {
+      ctx.setCounter(`${ref.id}:goldspent`, 0);
+      ctx.addEffect({ id: ref.id, params: { battle: { ...(ref.params?.battle || {}), dmgPct: 0 } } });
+      did = true;
+    }
   }
   // 调度直播: rewrite one shop slot with a random operator of the own board (normal price)
   if (spec.shopSlot && Number.isInteger(spec.shopSlot.index)) {
@@ -1290,9 +1337,9 @@ export function install(battle) {
       const mods = battleModsOf(ref.params);
       const bondAtk = ref.params && ref.params.battle && ref.params.battle.bondAtk ? ref.params.battle.bondAtk : null;
       const firstKillBy = ref.params && ref.params.battle && ref.params.battle.firstKillBy ? ref.params.battle.firstKillBy : null;
-      const firstAttackBy = ref.params && ref.params.battle && ref.params.battle.firstAttackBy ? ref.params.battle.firstAttackBy : null;
+      const firstAttackExecute = ref.params && ref.params.battle && ref.params.battle.firstAttackExecute ? ref.params.battle.firstAttackExecute : null;
       const extraCharges = ref.params && ref.params.battle && isPos(ref.params.battle.extraCharges) ? Math.trunc(ref.params.battle.extraCharges) : null;
-      if (mods || bondAtk || firstKillBy || firstAttackBy || extraCharges) refs.push({ pid: ps.playerId, ref, mods, bondAtk, firstKillBy, firstAttackBy, extraCharges });
+      if (mods || bondAtk || firstKillBy || firstAttackExecute || extraCharges) refs.push({ pid: ps.playerId, ref, mods, bondAtk, firstKillBy, firstAttackExecute, extraCharges });
     }
     if (set.size) owned.set(ps.playerId, set);
   }
@@ -1331,19 +1378,34 @@ export function install(battle) {
       if (killer && killer.def && killer.def.profession === firstKillBy.profession) battle.addCoins(pid, firstKillBy.coins);
     });
   }
-  // ---- 先锋之势 (the second half, owner 2026-10-12): each own operator of the profession buffs ITSELF +atkPct for
-  // `seconds` on its OWN first attack of the battle. The once-per-battle flag rides `u.mem` (the 不屈余烬 / 复活
-  // convention: it survives a death and a redeploy), so an operator that dies and comes back is not paid twice.
-  for (const { pid, firstAttackBy } of refs) {
-    if (!firstAttackBy || !isPos(firstAttackBy.atkPct) || typeof firstAttackBy.profession !== 'string') continue;
-    const seconds = isPos(firstAttackBy.seconds) ? firstAttackBy.seconds : 10;
-    battle.on('attack', ({ attacker }) => {
-      const u = attacker;
-      if (!u || !isOp(u) || u.ownerId !== pid) return;
-      if (!(u.def && u.def.profession === firstAttackBy.profession)) return;
-      if (u.mem.hexVanguardAtk) return;
-      u.mem.hexVanguardAtk = true;
-      battle.addBuff(u, { key: 'hex:vanguard', duration: seconds, mods: { atkPct: pct(firstAttackBy.atkPct) }, visible: true, tags: ['hex'] });
+  // ---- 先锋之势 (业主 2026-10-31 rework): each own PIONEER operator's FIRST attack of the battle executes its target
+  // (ELITE / BOSS immune; a leader's shared pool included). The once-per-battle flag rides `u.mem` (the 不屈余烬 /
+  // 复活 convention: it survives a death and a redeploy). The kill still credits the pioneer, so the `firstKillBy`
+  // coins above keep firing. The execute is exact: the hit's amount is first raised past the target's shields, then the
+  // `hpDamage` hook rewrites it to the target's current HP (so it lands as a normal lethal HP loss, with kill credit).
+  for (const { pid, firstAttackExecute } of refs) {
+    if (!firstAttackExecute || typeof firstAttackExecute.profession !== 'string') continue;
+    battle.on('hit', (c) => {
+      const u = c && c.source;
+      const d = c && c.dmg;
+      const t = c && c.target;
+      if (!d || d.cancel || !u || !isOp(u) || u.ownerId !== pid) return;
+      if (!(u.def && u.def.profession === firstAttackExecute.profession)) return;
+      if (!t || t.side !== 'enemy' || !t.alive) return;
+      if (!d.isAttack || d.type === 'element' || isHpLoss(d) || isRetaliation(d) || isChained(d)) return;
+      if (u.mem.hexVanguardExec) return;
+      u.mem.hexVanguardExec = true;
+      if (t.isBoss || t.bossPool || (t.def && (t.def.rank === 'ELITE' || t.def.rank === 'BOSS'))) return;
+      let shields = 0;
+      for (const b of t.buffs || []) if (b && b.shield > 0) shields += b.shield;
+      d.execute = true;
+      d.amount = Math.max(Number(d.amount) || 0, (Number(t.hp) || 0) + shields + 1);
+    });
+    battle.on('hpDamage', (c) => {
+      const d = c && c.dmg;
+      if (!d || !d.execute) return;
+      const t = c.target;
+      c.amount = t && t.alive ? Math.max(0, Number(t.hp) || 0) : c.amount;
     });
   }
 
@@ -1779,6 +1841,16 @@ export const HEX_SCRIPT_KEYS = Object.freeze({
     hex_yan_ember: 'yanEmber', hex_sargon_oasis: 'sargonOasis', hex_kjerag_thaw: 'kjeragThaw',
     hex_laterano_sanctuary: 'lateranoSanctuary', hex_egir_symbiosis: 'egirSymbiosis',
     hex_siracusa_godfather: 'siracusaGodfather',
+    // twentieth batch (业主 2026-10-31): the two 2 阶 exclusive cards
+    hex_victoria_decay: 'victoriaDecay', hex_yan_beasts: 'yanBeasts',
+    // twenty-first batch (业主 2026-10-31): 谢拉格 2 阶专属
+    hex_kjerag_frostdeath: 'kjeragFrostDeath',
+    // twenty-second batch (业主 2026-10-31): 卡西米尔 2 阶专属
+    hex_kazimierz_knightgold: 'kazimierzKnightGold',
+    // twenty-third batch (业主 2026-10-31): 特限恢复（ISW + RA 两个脚本共用这一个 key）
+    hex_mode_modules: 'modeModules',
+    // twenty-fourth batch (业主 2026-10-31): 死亡之舞
+    hex_deathdance: 'deathDance',
 });
 
 function installHexCards(battle) {
@@ -1860,6 +1932,18 @@ function installHexCards(battle) {
   installLateranoSanctuary(gated);
   installEgirSymbiosis(gated);
   installSiracusaGodfather(gated);
+  // twentieth batch (业主 2026-10-31) — same bundle, same gate
+  installVictoriaDecay(gated);
+  installYanBeasts(gated);
+  // twenty-first batch (业主 2026-10-31)
+  installKjeragFrostDeath(gated);
+  // twenty-second batch (业主 2026-10-31)
+  installKazimierzKnightGold(gated);
+  // twenty-third batch (业主 2026-10-31)
+  installModeModulesIsw(gated);
+  installModeModulesRa(gated);
+  // twenty-fourth batch (业主 2026-10-31)
+  installDeathDance(gated);
 }
 
 /**
@@ -2668,43 +2752,35 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
    * read as a PERCENTAGE of the original stats: (1 + 5x)%, so R1 → 6 %, R5 → 26 %, R14 → 71 %. x is the round being
    * fought (`battle.round`, the same reading 腐蚀领域 and 回响 use).
    *
-   * The scaling rides `spawnEnemy`'s inline `def` (it normalises a plain data-shaped record), so the official
-   * record is untouched. The three land on route 0 at its start. [ASSUMED: 1) 「1+5x%」 is a percent, not "1 + 5x
-   * times" — a literal ×(1 + 5x) at R1 would already be a boss-grade wall in the first round; 2) HP/ATK/DEF/RES scale, move
-   * speed and attack interval do not (they are not 「属性」 in the sense that would make the card stronger); 3) the
+   * The scale rides `spawnEnemy`'s `mods` (shared/hextech.js `verbSpawnMods`), NOT a spawn-time `def`: a leak records
+   * `{ enemyKey, mods }` and 联防 rebuilds its field from that alone, so a `def`-borne scale was silently dropped and
+   * the three came back into 联防 at their base 25000 HP / 700 ATK (业主 2026-10-28:「前期通厕大队会出现联防2w5血700多攻
+   * 的杰斯顿，数值异常bug」). `mods` is also what the result validator can recompute from the spec (fields.js), so the
+   * client and the server agree without either trusting the other's numbers.
+   *
+   * The three land on route 0 at its start. [ASSUMED: 1) 「1+5x%」 is a percent, not "1 + 5x
+   * times" — a literal ×(1 + 5x) at R1 would already be a boss-grade wall in the first round; 2) HP/ATK/DEF/RES scale,
+   * move speed and attack interval do not (they are not 「属性」 in the sense that would make the card stronger); 3) the
    * three are ordinary spawns: they can leak, be blocked and count toward the enemy total like any wave enemy.]
    */
   jekyllSquad(battle, p) {
     const count = Math.max(1, Math.min(20, Math.trunc(pnum(p.count, 3))));
     const key = typeof p.enemyKey === 'string' && p.enemyKey ? p.enemyKey : 'enemy_1516_jakill';
-    const basePct = Number.isFinite(Number(p.basePct)) ? Number(p.basePct) : 1;
-    const perRoundPct = Number.isFinite(Number(p.perRoundPct)) ? Number(p.perRoundPct) : 5;
     // content is installed AFTER `start()` emitted battleStart (server/sim/Battle.js), so a verb that must act at battle
     // start runs NOW when the battle has already started, and on the event otherwise (a harness, a future re-order).
     const atStart = (fn) => { if (battle.started) fn(); else battle.on('battleStart', fn); };
     atStart(() => {
       const round = Number.isFinite(Number(battle.round)) && Number(battle.round) > 0 ? Number(battle.round) : 1;
-      const pct = Math.max(1, basePct + perRoundPct * round) / 100;
+      const mods = verbSpawnMods('jekyllSquad', p, round);
+      if (!mods) return;
       // the battle's own data source (server/sim/Battle.js `this.data`): getEnemy is the accessor every content reader uses
       const rec = battle.data && typeof battle.data.getEnemy === 'function' ? battle.data.getEnemy(key) : null;
       if (!rec) return;   // no record (a stripped data set): nothing to scale, nothing to spawn
-      // `rec` is ALREADY normalised (simdata.js normalizeEnemy), so the inline record is built in the FLAT shape
-      // normalizeEnemy reads (`st = e.stats ?? e`) — keep every field, scale the four stat axes, publish them flat.
-      // `rec` is the NORMALISED record (simdata.js normalizeEnemy), and spawnEnemy takes an ALREADY-normalised record
-      // as-is when it sees one (`opts.def.immune instanceof Set`) — so the scaled fields go on the record ITSELF, not in
-      // a nested `stats` object, or the copy would be treated as final and the scaling silently ignored.
-      const n = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, v) : d);
-      const def = {
-        ...rec,
-        maxHp: Math.max(1, n(rec.maxHp, 1) * pct),
-        atk: n(rec.atk, 0) * pct,
-        def: n(rec.def, 0) * pct,
-        res: n(rec.res, 0) * pct,
-      };
       const route = battle._routeFor(0);
       const start = route && Array.isArray(route.start) ? route.start : [battle.rect.r0, battle.rect.c1];
       for (let i = 0; i < count; i++) {
-        battle.spawnEnemy(key, { pos: [start[0], start[1] + i * 0.2], routeIndex: 0, def });
+        // a fresh copy per unit: `spawnEnemy` stores `opts.mods` on the unit and a leak hands it on
+        battle.spawnEnemy(key, { pos: [start[0], start[1] + i * 0.2], routeIndex: 0, mods: { ...mods } });
       }
     });
   },
