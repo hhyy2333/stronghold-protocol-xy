@@ -32,7 +32,9 @@ import { FIELD, canPlace, placeClass, positionClass, parseKey } from './board.js
 import { computeBonds } from './bondsMeta.js';
 // 装备位语义（第 7 段）：不变量里「占几格 / 最多几件 / 最多一件变形同构体」读这一局的策略（缺省档 = 官方那条算术）。
 import { matchSlotPolicy } from '../../shared/morph.js';
-import { equipCapCeiling, bondLayerCapOf } from './hextech.js';
+import { equipCapCeiling, bondLayerCapOf, ownsHex } from './hextech.js';
+import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../shared/goalPoint.js';
+import { loadoutRecord, resolveRecordLoadout } from '../../shared/loadoutRecord.js';
 
 const PHASES = new Set(Object.values(PHASE));
 
@@ -174,13 +176,22 @@ export function collectViolations(m, { limit = 25 } = {}) {
     // a pure read (Match.deployMapFor: the field the player deploys on now) — PlayerState.deployMap() would update the
     // player's cached field / legality flag, and this checker must not change when a later recompute moves pieces
     const dmap = typeof m.deployMapFor === 'function' ? m.deployMapFor(ps) : ps.deployMap();
+    // 号角特限模组「可以部署在目标点」（shared/goalPoint.js）：保护目标点是 canPlace 的唯一例外；纯读，与
+    // PlayerState._mayStandOnGoalPoint 同一条规则。
+    const goalKeys = goalPointKeys(m.stage, typeof m.deployFieldOf === 'function' ? m.deployFieldOf(ps) : 'normal', m.layout);
+    const goalAllowed = (rec, r, c) => {
+      if (!goalKeys.has(`${r},${c}`) || !ownsHex(ps, MODE_MODULES_HEX_ID)) return false;
+      let body;
+      try { body = loadoutRecord(rec, resolveRecordLoadout(rec, ps.loadoutFor(rec))) || rec; } catch { body = rec; }
+      return canStandOnGoalPoint({ record: body, ownsModeModules: true });
+    };
     for (const [k, p] of ps.board) {
       const [r, c] = parseKey(k);
       if (!(r >= FIELD.r0 && r <= FIELD.r1 && c >= FIELD.c0 && c <= FIELD.c1)) fail(`${id}: piece outside the board at ${k}`);
       if (p.kind === 'item') { fail(`${id}: item ${p.id} stands on the board`); continue; }
       const rec = p.kind === 'token' ? pgd.token(p.id) : pgd.chess(p.id);
       const cls = p.kind === 'chess' ? placeClass(ps, rec) : positionClass(rec);
-      if (rec && !canPlace(dmap, cls, r, c)) fail(`${id}: ${p.id} on an illegal tile ${k}`);
+      if (rec && !canPlace(dmap, cls, r, c) && !(p.kind === 'chess' && goalAllowed(rec, r, c))) fail(`${id}: ${p.id} on an illegal tile ${k}`);
       // a "只能部署在召唤者攻击范围内" summon inside its owner's attack range (PlayerState.summonRange: a pure read)
       const range = p.kind === 'token' && typeof ps.summonRange === 'function' ? ps.summonRange(p) : null;
       if (range && !range.has(k)) fail(`${id}: ${p.id} on ${k}, outside its owner's attack range`);

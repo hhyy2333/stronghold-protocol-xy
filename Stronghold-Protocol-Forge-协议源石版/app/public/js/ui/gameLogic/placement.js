@@ -1,7 +1,8 @@
 // ui/gameLogic/placement.js — deploy maps and the canPlace mirror of the server rules. Re-exported from ../gameLogic.js.
 
 import { GEO } from '../../../../shared/constants.js';
-import { attackRangeGrid } from '../../../../shared/loadoutRecord.js';
+import { attackRangeGrid, loadoutRecord, resolveRecordLoadout } from '../../../../shared/loadoutRecord.js';
+import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../../../shared/goalPoint.js';
 import { meleeOnHighGround } from '../../../../shared/highGround.js';
 import { summonPlacementGrid } from '../../../../shared/summonPlacement.js';
 import { pieceDir, rangeTiles } from '../facing.js';
@@ -225,7 +226,10 @@ export function placementContext({ priv, stage, editable, field = 'normal', getC
   const deploy = field === 'bossL' || field === 'bossR'
     ? deploySets(stage, field, ov)
     : deploySets(effectiveStage(stage, ov, L));
-  return { priv, pieces, boardAt, handAt, deploy, cap, count, field, editable: !!editable, getChess, getToken, getItem, backups, layout: L, equipCap };
+  // 保护目标点（号角特限模组「可以部署在目标点」，shared/goalPoint.js）：平时不在 deploy 集合里，只有
+  // 号角 + ISW- 特限模组 + 拥有【特限恢复】才例外（tileAllows 里判）。
+  const goal = goalPointKeys(stage, field, L);
+  return { priv, pieces, boardAt, handAt, deploy, goal, cap, count, field, editable: !!editable, getChess, getToken, getItem, backups, layout: L, equipCap };
 }
 
 /**
@@ -258,8 +262,42 @@ export function tileAllows(ctx, piece, row, col) {
   const pos = piecePosition(ctx, piece);
   if (!pos) return false;
   const k = tileKey(row, col);
-  if (pos === 'HIGH') return ctx.deploy.ranged.has(k) && !ctx.deploy.melee.has(k);
-  return pos === 'MELEE' ? ctx.deploy.melee.has(k) : ctx.deploy.ranged.has(k);
+  if (pos === 'HIGH' ? ctx.deploy.ranged.has(k) && !ctx.deploy.melee.has(k) : pos === 'MELEE' ? ctx.deploy.melee.has(k) : ctx.deploy.ranged.has(k)) return true;
+  // 号角特限模组「可以部署在目标点」（shared/goalPoint.js）：保护目标点平时不可部署，这一条是唯一例外
+  return goalPointAllowed(ctx, piece, row, col);
+}
+
+/**
+ * The player owns 【特限恢复】`hex_mode_modules`? The private view's effects list is the client's only ownership
+ * source: a hex entry's `iconId` is the ref id (`hex:<cardId>` / `hex:<cardId>#<copySeq>`).
+ * @param {any} priv m.private
+ */
+function ownsModeModules(priv) {
+  for (const e of Array.isArray(priv?.effects) ? priv.effects : []) {
+    if (!isObj(e) || e.iconKind !== 'hex') continue;
+    const id = String(e.iconId || e.id || '').replace(/^hex:/, '').split('#')[0];
+    if (id === MODE_MODULES_HEX_ID) return true;
+  }
+  return false;
+}
+
+/**
+ * 号角特限模组「在集成战略中，可以部署在目标点」的客户端半边（服务端 server/match/player/placement.js
+ * `_mayStandOnGoalPoint` 的镜像）：目标点格子 + 拥有【特限恢复】+ 号角本人 + 当前模组是启用中的 ISW- 特限模组。
+ * @param {ReturnType<typeof placementContext>} ctx
+ */
+function goalPointAllowed(ctx, piece, row, col) {
+  if (!isObj(piece) || piece.kind !== 'chess') return false;
+  if (!ctx.goal || !ctx.goal.has(tileKey(row, col))) return false;
+  if (!ownsModeModules(ctx.priv)) return false;
+  const rec = ctx.getChess(piece.id);
+  if (!isObj(rec)) return false;
+  const lo = isObj(ctx.priv?.loadout) ? ctx.priv.loadout : null;
+  const base = typeof rec.baseId === 'string' ? rec.baseId : (typeof rec.chessId === 'string' ? rec.chessId.replace(/_b$/, '_a') : null);
+  const entry = lo && base && isObj(lo[base]) ? lo[base] : null;
+  let body;
+  try { body = loadoutRecord(rec, resolveRecordLoadout(rec, entry)) || rec; } catch { body = rec; }
+  return canStandOnGoalPoint({ record: body, ownsModeModules: true });
 }
 
 /**
@@ -479,11 +517,13 @@ export function equipMerges(ctx, uid, itemMergeCount = 2) {
 export function boardTargets(ctx, uid) {
   const legal = [];
   const illegal = [];
-  if (!ctx?.pieces?.get(uid)) return { legal, illegal };
+  const src = ctx?.pieces?.get(uid);
+  if (!src) return { legal, illegal };
   for (let r = GEO.FIELD.r0; r <= GEO.FIELD.r1; r++) {
     for (let c = GEO.FIELD.c0; c <= GEO.FIELD.c1; c++) {
       const k = tileKey(r, c);
-      if (!ctx.deploy.ranged.has(k) && !ctx.boardAt.has(k)) continue; // never-deployable scenery
+      // 保护目标点平时是「不可部署的地形」，不给高亮；号角特限模组「可以部署在目标点」生效时才进候选
+      if (!ctx.deploy.ranged.has(k) && !ctx.boardAt.has(k) && !goalPointAllowed(ctx, src.piece, r, c)) continue;
       (canPlace(ctx, uid, { area: 'board', row: r, col: c }).ok ? legal : illegal).push([r, c]);
     }
   }

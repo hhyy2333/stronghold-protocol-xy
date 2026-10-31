@@ -31,6 +31,9 @@ import { FakeBattle } from './fakeBattle.js';
 import { applyPublic } from '../../public/js/matchDelta.js';
 import { GEO } from '../../shared/constants.js';
 import { collectViolations } from '../../server/match/invariants.js';
+import { ownsHex } from '../../server/match/hextech.js';
+import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../shared/goalPoint.js';
+import { loadoutRecord, resolveRecordLoadout } from '../../shared/loadoutRecord.js';
 import { equipCapCeiling } from '../../server/match/hextech.js';
 import { attachSimClients } from './simClient.js';
 
@@ -242,6 +245,14 @@ function legacyInvariants(m) {
     for (const p of all) if (p.kind === 'chess') chessUids.add(p.uid);
     let deployed = 0;
     const dmap = m.deployMapFor(ps); // a pure read (as server/match/invariants.js): no PlayerState cache touched
+    // 号角特限模组「可以部署在目标点」（shared/goalPoint.js）：与 server/match/invariants.js 同一条例外
+    const goalKeys = goalPointKeys(m.stage, typeof m.deployFieldOf === 'function' ? m.deployFieldOf(ps) : 'normal', m.layout);
+    const goalAllowed = (rec, k) => {
+      if (!goalKeys.has(k) || !ownsHex(ps, MODE_MODULES_HEX_ID)) return false;
+      let body;
+      try { body = loadoutRecord(rec, resolveRecordLoadout(rec, ps.loadoutFor(rec))) || rec; } catch { body = rec; }
+      return canStandOnGoalPoint({ record: body, ownsModeModules: true });
+    };
     for (const [k, p] of ps.board) {
       const [r, c] = k.split(',').map(Number);
       assert.ok(r >= FIELD.r0 && r <= FIELD.r1 && c >= FIELD.c0 && c <= FIELD.c1, `piece outside the board ${k}`);
@@ -249,7 +260,7 @@ function legacyInvariants(m) {
       const rec = p.kind === 'token' ? pgd.token(p.id) : pgd.chess(p.id);
       assert.ok(rec, `unknown board piece ${p.id}`);
       const cls = p.kind === 'chess' ? placeClass(ps, rec) : positionClass(rec);
-      assert.ok(canPlace(dmap, cls, r, c), `illegal tile ${p.id} @ ${k}`);
+      assert.ok(canPlace(dmap, cls, r, c) || (p.kind === 'chess' && goalAllowed(rec, k)), `illegal tile ${p.id} @ ${k}`);
       assert.notEqual(p.kind, 'item', 'items never stand on the board');
       if (p.kind === 'chess') deployed++;
       if (p.kind === 'token') assert.ok(chessUids.has(p.ownerUid), `orphan token ${p.uid}`);

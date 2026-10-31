@@ -379,7 +379,12 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `data/moduleLevels.json`（`tools/build-data.mjs` 生成，按 `uniEquipId` 记录 equipLevel 3 的 attr / traitOverride /
   talentChanges），战斗与备战预览按 `loadout.moduleLevel = 3` 组合（普通形态用默认模组的 3 级数据）；
   ② **特限模组（ISW / SO / RA）** 的专属效果在战斗中生效（`hexcards/stone_mode_modules_isw.js` /
-  `stone_mode_modules_ra.js`，按 `u.def.module.type` 前缀逐干员实现）。
+  `stone_mode_modules_ra.js`，按 `u.def.module.type` 前缀逐干员实现）；
+  ③ **号角「号角特限证章」的「可以部署在目标点」**（2026-10-31 业主追加）：保护目标点（stage 图例 `tile_end`）平时
+  `buildable NONE`、谁都不能站；拥有本卡的玩家让号角装备 **ISW- 特限模组** 后，可以把她摆上去（`shared/goalPoint.js`
+  `goalPointKeys` / `canStandOnGoalPoint`；服务端 `player/placement.js _mayStandOnGoalPoint`、`invariants.js`、
+  客户端 `ui/gameLogic/placement.js` 读同一份）。`[ASSUMED]` 目标点不是阻挡地形：她站在那里不挡路，敌人照常漏；
+  补位形态 / 普通形态（没有模组）不适用。
 - 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md`（工作区级）。
 
 ## 协议源石：【死亡之舞】新增 + 四张卡调整（2026-10-31，业主裁定）

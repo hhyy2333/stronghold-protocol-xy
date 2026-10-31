@@ -9,6 +9,8 @@ import { msg, dn } from '../../../shared/i18n.js';
 import { tileKey, parseKey, inField, canPlace, placeClass, freeSlot, pieceDir, parseDir, ownerRangeKeys } from '../board.js';
 import { attackRangeGrid, loadoutRecord, resolveRecordLoadout } from '../../../shared/loadoutRecord.js';
 import { summonPlacementGrid } from '../../../shared/summonPlacement.js';
+import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../../shared/goalPoint.js';
+import { ownsHex } from '../hextech.js';
 import { OK, fail } from './common.js';
 
 export class PlayerPlacement {
@@ -52,12 +54,47 @@ export class PlayerPlacement {
    * with its own owner).
    */
   _legal(piece, r, c, owner = null) {
-    if (!canPlace(this.deployMap(), this._placementOf(piece), r, c)) return false;
+    // 号角特限模组「可以部署在目标点」（shared/goalPoint.js）：保护目标点平时不可部署，拥有【特限恢复】且号角装着
+    // ISW- 特限模组时是唯一的例外；其余规则（召唤物攻击范围 / 范围外限制）照旧。
+    if (!canPlace(this.deployMap(), this._placementOf(piece), r, c) && !this._mayStandOnGoalPoint(piece, r, c)) return false;
     const k = tileKey(r, c);
     const range = this.summonRange(piece, owner);
     if (range && !range.has(k)) return false;
     const out = this.summonExcluded(piece, owner);
     return !out || !out.has(k);
+  }
+
+  /**
+   * 保护目标点（'r,c'）的棋盘坐标：当前部署场的 stage 图例 `tile_end`（shared/goalPoint.js goalPointKeys）。
+   * 只依赖 stage / 部署场，按部署场缓存（地形机变改的是 buildable，不会把 tile_end 变成可部署）。
+   * @returns {Set<string>}
+   */
+  _goalPointKeys() {
+    const field = typeof this.m.deployFieldOf === 'function' ? this.m.deployFieldOf(this) : 'normal';
+    if (this._goalKeys && this._goalField === field) return this._goalKeys;
+    this._goalField = field;
+    this._goalKeys = goalPointKeys(this.m.stage, field, this.m.layout);
+    return this._goalKeys;
+  }
+
+  /**
+   * 号角特限模组「在集成战略中，可以部署在目标点」在卫戍协议里的落地：这名棋子（干员）能不能站上保护目标点。
+   * 条件 = 目标点格子 + 拥有【特限恢复】`hex_mode_modules` + 号角本人（charId char_4039_horn）+ 当前模组是启用中的
+   * ISW- 特限模组（普通形态没有模组 ⇒ 不适用；补位形态是别的角色记录 ⇒ 不适用）。规则本体在 shared/goalPoint.js，
+   * 客户端 ui/gameLogic/placement.js 读同一份。
+   * @param {any} piece 棋盘 / 手牌上的棋子
+   * @param {number} r @param {number} c
+   * @returns {boolean}
+   */
+  _mayStandOnGoalPoint(piece, r, c) {
+    if (!piece || piece.kind !== 'chess') return false;
+    if (!this._goalPointKeys().has(tileKey(r, c))) return false;
+    if (!ownsHex(this, MODE_MODULES_HEX_ID)) return false;
+    const rec = this.gd.chess(piece.id);
+    if (!rec) return false;
+    let body;
+    try { body = loadoutRecord(rec, resolveRecordLoadout(rec, this.loadoutFor(rec))) || rec; } catch { body = rec; }
+    return canStandOnGoalPoint({ record: body, ownsModeModules: true });
   }
 
   /**
