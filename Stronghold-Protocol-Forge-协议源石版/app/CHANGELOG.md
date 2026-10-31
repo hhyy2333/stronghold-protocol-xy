@@ -77,13 +77,20 @@
 
 ### 验证
 
-- 配音：`test/fetch-assets-voice-dubs.test.js` 3 条全绿（盘上已装的配音进清单、`--voice-langs` 仍只下载点名的、
+- 新卡 / 模块：`test/sim/hex-stone-*.test.js` + `test/sim/hex-mode-modules-{isw,ra}.test.js` **106/106**。
+- 对局与界面：`test/match/{setup-reroll,hex-recycle,funds-cap}.test.js` +
+  `test/content/chess_char_6_21_6_22-persona.test.js` + `test/ui/hexRecycle.test.js` **66/66**。
+- 配音：`test/fetch-assets-voice-dubs.test.js` **3/3**（盘上已装的配音进清单、`--voice-langs` 仍只下载点名的、
   默认配音不进 `voiceLangs`）。
 - 清单自洽：`hash == contentHash(body)`、`stats.files` 等于去重 URL 数、清单引用的 16225 条 URL 全在盘上；
   `test/ui/audio.test.js` / `test/ui/voice-prefs-023.test.js` / `test/assets.test.js` 的失败集合在改动前后逐条相同
   （12 条既有失败，未增未减）。
-- 版本与文档闸门：`test/version.test.js` / `test/docs-consistency.test.js` / `test/docs-paths.test.js`（见发版记录）。
-- 本 checkout 没有 `test/golden/`，golden 未复算；全量 `npm run ci` 未在本机跑（沙箱里 `node --test` 的 spawn 受限）。
+- 版本闸门：`test/version.test.js` **6/6**（`package.json` / `package-lock.json` / `APP_VERSION` / CHANGELOG 首节 / README 徽章）。
+- 工坊包：`test/workshop/` **43/44** —— 唯一失败是 `originium-exchange` 的 `interestOf(100)` 期望 12、实得 4000，
+  与本轮改动无关（交易所包的口径，待业主定）。
+- `test/docs-consistency.test.js` / `test/docs-paths.test.js` 在本机跑不了（它们要 spawn `git`，沙箱返回 EPERM），
+  出包脚本的文档闸门与 `test/version.test.js` 已过。
+- 本 checkout 没有 `test/golden/`，golden 未复算；全量 `npm run ci` 未在本机跑（同一原因）。
 
 ## 0.19.38 — 2026-10-30
 
