@@ -34,7 +34,7 @@ import { computeBonds } from './bondsMeta.js';
 import { matchSlotPolicy } from '../../shared/morph.js';
 import { equipCapCeiling, bondLayerCapOf, ownsHex } from './hextech.js';
 import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../shared/goalPoint.js';
-import { loadoutRecord, resolveRecordLoadout } from '../../shared/loadoutRecord.js';
+import { loadoutRecord, resolveRecordLoadout, selectedModuleOf } from '../../shared/loadoutRecord.js';
 
 const PHASES = new Set(Object.values(PHASE));
 
@@ -183,7 +183,8 @@ export function collectViolations(m, { limit = 25 } = {}) {
       if (!goalKeys.has(`${r},${c}`) || !ownsHex(ps, MODE_MODULES_HEX_ID)) return false;
       let body;
       try { body = loadoutRecord(rec, resolveRecordLoadout(rec, ps.loadoutFor(rec))) || rec; } catch { body = rec; }
-      return canStandOnGoalPoint({ record: body, ownsModeModules: true });
+      const chosen = selectedModuleOf(rec, ps.loadout, (id) => (ps.gd || gd).chess(id));
+      return canStandOnGoalPoint({ record: body, module: chosen, ownsModeModules: true });
     };
     for (const [k, p] of ps.board) {
       const [r, c] = parseKey(k);

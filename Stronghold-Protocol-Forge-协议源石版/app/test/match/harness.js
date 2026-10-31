@@ -33,7 +33,7 @@ import { GEO } from '../../shared/constants.js';
 import { collectViolations } from '../../server/match/invariants.js';
 import { ownsHex } from '../../server/match/hextech.js';
 import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../shared/goalPoint.js';
-import { loadoutRecord, resolveRecordLoadout } from '../../shared/loadoutRecord.js';
+import { loadoutRecord, resolveRecordLoadout, selectedModuleOf } from '../../shared/loadoutRecord.js';
 import { equipCapCeiling } from '../../server/match/hextech.js';
 import { attachSimClients } from './simClient.js';
 
@@ -251,7 +251,8 @@ function legacyInvariants(m) {
       if (!goalKeys.has(k) || !ownsHex(ps, MODE_MODULES_HEX_ID)) return false;
       let body;
       try { body = loadoutRecord(rec, resolveRecordLoadout(rec, ps.loadoutFor(rec))) || rec; } catch { body = rec; }
-      return canStandOnGoalPoint({ record: body, ownsModeModules: true });
+      const chosen = selectedModuleOf(rec, ps.loadout, (id) => (ps.gd || m.gd).chess(id));
+      return canStandOnGoalPoint({ record: body, module: chosen, ownsModeModules: true });
     };
     for (const [k, p] of ps.board) {
       const [r, c] = k.split(',').map(Number);

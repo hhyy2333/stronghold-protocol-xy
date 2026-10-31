@@ -9,6 +9,7 @@
 import { boardOrder, pieceDir, tileKey } from '../board.js';
 import { computeBonds, bondSnapshot, activatedLayers, bondsWithGains, pieceBonds } from '../bondsMeta.js';
 import { ownsHex, applyThiefIncomeCut, applyForgeFusion, indomEmberBonuses, bankIndomEmber, bondLayerCapOf } from '../hextech.js';
+import { selectedModuleOf } from '../../../shared/loadoutRecord.js';
 
 export class PlayerRound {
   startRound(r) {
@@ -209,9 +210,22 @@ export class PlayerRound {
           u.standIn = true;
         } else {
           // DESIGN §16: the equipped skill / module (elite only) from the loadout (defaults when absent)
-          const lo = this.loadoutFor(this.gd.chess(piece.id));
+          const rec = this.gd.chess(piece.id);
+          const lo = this.loadoutFor(rec);
           u.skillIndex = lo.skillIndex;
           u.moduleId = lo.moduleId;
+          // 【特限恢复】普通形态（棋盘上还没有精锐棋子）：干员调配里选的模组也要生效（业主 2026-10-31「不生效对没有
+          // 精锐的干员」）。普通记录没有 modules 列表（模组只挂在精锐记录上），resolveLoadout 会把选择丢掉 —— 这里按
+          // 精锐记录的模组表校验后补上，战斗侧再按 moduleLevel: 3 换成 3 级数据（simdata getChess → withModuleLevel3）。
+          if (modeModules && rec && !rec.isGolden) {
+            const base = this.gd.baseIdOf(piece.id);
+            const raw = this.loadout && Object.hasOwn(this.loadout, base) ? this.loadout[base].module : null;
+            if (raw === 'none') u.moduleId = 'none'; // 选了「不装备」：默认模组的 3 级也不套
+            else {
+              const chosen = selectedModuleOf(rec, this.loadout, (id) => this.gd.chess(id));
+              if (chosen) u.moduleId = chosen.id;
+            }
+          }
         }
         // 0.2.2: the potential / 练度 of an operator the player owns (the chess as itself, an owned 自选 pick — the player's
         // 干员调配 settings, 潜能 6 / 精英2 Lv.60 by default and for bots; never a stand-in's nor a prototype pick's)

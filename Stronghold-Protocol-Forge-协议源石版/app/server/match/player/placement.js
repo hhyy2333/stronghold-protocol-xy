@@ -7,7 +7,7 @@
 import { ERR } from '../../../shared/constants.js';
 import { msg, dn } from '../../../shared/i18n.js';
 import { tileKey, parseKey, inField, canPlace, placeClass, freeSlot, pieceDir, parseDir, ownerRangeKeys } from '../board.js';
-import { attackRangeGrid, loadoutRecord, resolveRecordLoadout } from '../../../shared/loadoutRecord.js';
+import { attackRangeGrid, loadoutRecord, resolveRecordLoadout, selectedModuleOf } from '../../../shared/loadoutRecord.js';
 import { summonPlacementGrid } from '../../../shared/summonPlacement.js';
 import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../../shared/goalPoint.js';
 import { ownsHex } from '../hextech.js';
@@ -94,7 +94,9 @@ export class PlayerPlacement {
     if (!rec) return false;
     let body;
     try { body = loadoutRecord(rec, resolveRecordLoadout(rec, this.loadoutFor(rec))) || rec; } catch { body = rec; }
-    return canStandOnGoalPoint({ record: body, ownsModeModules: true });
+    // 普通形态（没有精锐棋子）没有 modules 列表：玩家在干员调配里选的模组由 selectedModuleOf 按精锐的模组表给出
+    const chosen = selectedModuleOf(rec, this.loadout, (id) => this.gd.chess(id));
+    return canStandOnGoalPoint({ record: body, module: chosen, ownsModeModules: true });
   }
 
   /**

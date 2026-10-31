@@ -384,7 +384,12 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `buildable NONE`、谁都不能站；拥有本卡的玩家让号角装备 **ISW- 特限模组** 后，可以把她摆上去（`shared/goalPoint.js`
   `goalPointKeys` / `canStandOnGoalPoint`；服务端 `player/placement.js _mayStandOnGoalPoint`、`invariants.js`、
   客户端 `ui/gameLogic/placement.js` 读同一份）。`[ASSUMED]` 目标点不是阻挡地形：她站在那里不挡路，敌人照常漏；
-  补位形态 / 普通形态（没有模组）不适用。
+  补位形态不适用。
+  ④ **普通形态（棋盘上还没有精锐棋子）也用干员调配里选的模组**（2026-10-31 业主报「特限恢复有问题，不生效对没有
+  精锐的干员」）：普通记录没有 `modules` 列表，模组选择原来被 `resolveLoadout` 丢掉 ⇒ `PlayerState.battleInput`
+  用 `shared/loadoutRecord.js selectedModuleOf` 按**精锐记录的模组表**校验后补 `moduleId`，战斗按该模组的 3 级数据打，
+  特限模组（ISW）的专属效果与「可以部署在目标点」对普通形态同样生效；没选 / 选默认模组 ⇒ 默认模组的 3 级；选
+  「不装备」⇒ 一个模组都不套。补位干员仍不适用（它打的是另一名干员的身体与模组）。
 - 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md`（工作区级）。
 
 ## 协议源石：【死亡之舞】新增 + 四张卡调整（2026-10-31，业主裁定）

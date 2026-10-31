@@ -698,3 +698,40 @@ test('特限恢复 ISW: 生产链路（真实棋子 + 选中 ISW 模组，模组
   card.h.invariants();
   ctl.h.invariants();
 });
+
+test('特限恢复 ISW: 生产链路 — 普通形态（没有精锐棋子）也吃选中的特限模组（业主 2026-10-31 报的 bug）', () => {
+  // 普通记录（chess_char_5_08_a）本来没有模组；协议源石【特限恢复】下，干员调配里选的模组由 PlayerState.battleInput
+  // 补成 moduleId + moduleLevel: 3（server/match/player/round.js），这里直接把同样的 unit 字段交给战斗 —— 模组类型
+  // 必须是 ISW-A，四条效果才会在普通形态上生效。
+  const realField = (withCard) => {
+    const h = makeBattle({
+      content: 'generic',
+      units: [{ chessId: 'chess_char_5_08_a', moduleId: 'uniequip_004_horn', moduleLevel: 3, row: 9, col: 4 }],
+      defs: { enemies: ENEMIES },
+      enemies: [{ key: 'enemy_dummy', time: 0, route: 0, pos: [12, 2] }],
+      autoFinish: false,
+      timeLimit: 20,
+      captureNoisy: true,
+      hooks: ['hit', 'battleStart', 'deploy'],
+    });
+    if (withCard) h.battle.getPlayer(h.battle.players[0].playerId).playerEffects.push(refOf());
+    const inst = installModeModulesIsw(hexHooks(h.battle));
+    h.run(0.1);
+    return { h, inst };
+  };
+  const ctl = realField(false);
+  const card = realField(true);
+  const horn = (r) => r.h.battle.allyUnits.find((u) => u.defId === 'chess_char_5_08_a');
+  const ctlHorn = horn(ctl);
+  const cardHorn = horn(card);
+  assert.equal(ctl.inst, 0, '对照场没有卡');
+  assert.ok(card.inst && typeof card.inst === 'object', '有卡 ⇒ 返回活句柄');
+  assert.equal(cardHorn.def.raw.module.type, 'ISW-A', '普通形态也带选中模组（ISW-A）');
+  assert.equal(cardHorn.def.raw.module.level, 3, '而且是 3 级');
+  assert.equal(card.inst.carriers, 1, '普通形态也算「带着 ISW 模组的拥有者干员」');
+  assert.equal(cardHorn.s.flags.seeStealth, true, '普通形态也「可以攻击隐匿敌人」');
+  assert.ok(!ctlHorn.s.flags.seeStealth, '没有卡 ⇒ 没有 seeStealth');
+  assert.ok(near(cardHorn.s.atk, ctlHorn.s.atk * 1.08), `普通形态也吃重装光环（${ctlHorn.s.atk} → ${cardHorn.s.atk}）`);
+  card.h.invariants();
+  ctl.h.invariants();
+});

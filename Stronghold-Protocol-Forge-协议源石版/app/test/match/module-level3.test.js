@@ -255,3 +255,73 @@ test('预览与战斗一致：g.unitStats 的数值就是实战 def 的 3 级数
   withCard.m.dispose();
   without.m.dispose();
 });
+
+// 业主 2026-10-31「特限恢复有问题，不生效对没有精锐的干员」：普通形态（棋盘上还没有精锐棋子）在干员调配里选的模组
+// 原来会被 resolveLoadout 丢掉（普通记录没有 modules 列表），于是 3 级模组与特限模组的专属效果都落不到普通形态上。
+// 现在拥有【特限恢复】时，普通形态也带上那个模组（moduleId）并按 3 级数据打。
+const HORN_A = 'chess_char_5_08_a';   // 号角 普通形态
+const HORN_ISW = 'uniequip_004_horn'; // 号角特限证章（ISW-A）
+const HORN_FORX = 'uniequip_002_horn'; // “典范之人”（FOR-X，默认模组）
+const HORN_FORY = 'uniequip_003_horn'; // 旧日新装（FOR-Y，非默认）
+
+test('【特限恢复】普通形态也用干员调配里选的模组：battleInput 补 moduleId、def 是该模组的 3 级（含 ISW 特限模组）', REAL, () => {
+  /** 同一块棋盘；`loadout` = 干员调配里的选择，`card` 决定是否发这张卡。 */
+  const board = (loadout, card) => {
+    const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed: 53, fake: true }).start();
+    h.toPrep(1);
+    const m = h.m;
+    const ps = h.ps('p_0');
+    for (const p of [...ps.board.values(), ...ps.hand.filter(Boolean)]) if (p.kind === 'chess') ps.returnCopies(p);
+    ps.board.clear();
+    ps.hand.fill(null);
+    ps.recompute();
+    assert.equal(ps.setLoadout(loadout), true, `setLoadout ${JSON.stringify(loadout)}`);
+    const piece = give(m, ps, HORN_A, 'board', legalTileFor(m, ps, HORN_A));
+    if (card) applyHex(m, ps, DATA.hextech.playerHexes.hex_mode_modules);
+    return { h, m, ps, piece };
+  };
+  const unitOf = (s) => s.ps.battleInput({ side: 'L', colOffset: 0 }).units.find((u) => u.kind === 'chess' && u.uid === s.piece.uid);
+  // 没卡：普通形态仍是「没有模组」（选择被丢掉，与改动前逐字段一致）
+  const plain = board({ [HORN_A]: { module: HORN_ISW } }, false);
+  const u0 = unitOf(plain);
+  assert.equal(u0.moduleId, null, '没有卡：普通形态没有模组');
+  assert.ok(!('moduleLevel' in u0), '没有卡：不带 moduleLevel');
+  plain.m.dispose();
+  // 有卡：选中的特限模组补上，战斗 def 是 ISW-A 的 3 级
+  const owned = board({ [HORN_A]: { module: HORN_ISW } }, true);
+  const u1 = unitOf(owned);
+  assert.equal(u1.moduleId, HORN_ISW, '有卡：普通形态也带选中的模组');
+  assert.equal(u1.moduleLevel, 3);
+  const def = owned.m.ds.getChess(HORN_A, { ...u1 });
+  assert.deepEqual([def.module.id, def.module.type, def.module.level], [HORN_ISW, 'ISW-A', 3]);
+  const l3 = DATA.moduleLevels[HORN_ISW];
+  assert.deepEqual(
+    [def.stats.maxHp, def.stats.atk],
+    [DATA.chess[HORN_A].stats.maxHp + l3.attr.maxHp, DATA.chess[HORN_A].stats.atk + l3.attr.atk],
+    'stats = 普通形态基础值 + 3 级 attr',
+  );
+  assert.equal(def.trait, l3.traitOverride.desc, 'trait = 3 级 traitOverride');
+  assert.ok(Array.isArray(def.raw.modules) && def.raw.modules[0]?.uniEquipId === HORN_ISW, '普通形态也补一条 modules（kits / 攻击范围读它）');
+  // 选 FOR-Y（非默认）：普通形态用的是 FOR-Y 的 3 级，不是特限模组
+  const fory = board({ [HORN_A]: { module: HORN_FORY } }, true);
+  const u2 = unitOf(fory);
+  assert.equal(u2.moduleId, HORN_FORY);
+  const def2 = fory.m.ds.getChess(HORN_A, { ...u2 });
+  assert.deepEqual([def2.module.id, def2.module.type, def2.module.level], [HORN_FORY, 'FOR-Y', 3]);
+  fory.m.dispose();
+  // 没选（或选的正是默认 FOR-X，setLoadout 会把它当默认丢掉）：普通形态仍按默认模组的 3 级数据（改动前的行为）
+  const dflt = board({}, true);
+  const u4 = unitOf(dflt);
+  assert.equal(u4.moduleId, null, '默认模组不写进 loadout');
+  const def4 = dflt.m.ds.getChess(HORN_A, { ...u4 });
+  assert.deepEqual([def4.module.id, def4.module.type, def4.module.level], [HORN_FORX, 'FOR-X', 3]);
+  dflt.m.dispose();
+  // 选了「不装备」：没有模组（默认模组的 3 级也不套）
+  const none = board({ [HORN_A]: { module: 'none' } }, true);
+  const u3 = unitOf(none);
+  assert.equal(u3.moduleId, 'none', '「不装备」原样带给战斗');
+  const def3 = none.m.ds.getChess(HORN_A, { ...u3 });
+  assert.deepEqual([def3.module.active, def3.module.level], [false, 0]);
+  none.m.dispose();
+  owned.m.dispose();
+});

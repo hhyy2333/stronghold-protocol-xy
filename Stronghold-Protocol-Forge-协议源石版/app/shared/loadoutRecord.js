@@ -108,8 +108,7 @@ export function composeTalents(base, changes) {
  * @param {object} lo resolveRecordLoadout(rec0, …)
  */
 export function loadoutRecord(rec0, lo) {
-  if (!rec0 || !lo || lo.isDefault) return rec0;
-  const rec = lo.potentialIsDefault === false ? atPotential(rec0, lo.potential) : rec0;
+  if (!rec0 || !lo || lo.isDefault) return rec0;  const rec = lo.potentialIsDefault === false ? atPotential(rec0, lo.potential) : rec0;
   const out = { ...rec };
   if (!lo.moduleIsDefault && Array.isArray(rec.modules)) {
     const m = lo.moduleId === 'none' ? null : rec.modules.find((x) => x.uniEquipId === lo.moduleId) ?? null;
@@ -132,6 +131,29 @@ export function loadoutRecord(rec0, lo) {
     }
   }
   return out;
+}
+
+/**
+ * 玩家在**干员调配**里给这名干员选的模组（`{ id, name, type, level, active }`），普通形态也认（协议源石【特限恢复】，
+ * 业主 2026-10-31「不生效对没有精锐的干员」）。普通记录（`_a`）没有 `modules` 列表 —— 模组只挂在精锐记录上 ——
+ * 所以按**精锐记录的模组表**校验这个选择；精锐记录直接用自己那条。`loadout` 是原始形状
+ * `{ [baseChessId]: { skill, module } }`（服务端的 `PlayerState.loadout` / 客户端的 `m.private.loadout`），
+ * 与 `resolveLoadout` 的入参同一个形状。没选 / 选了「不装备」/ 精锐没有这个模组 ⇒ null。
+ * @param {object|null} rec data/chess.json 的普通或精锐记录
+ * @param {Record<string, { module?: string }>|null} loadout
+ * @param {(id: string) => any} [getChess]
+ * @returns {{ id: string, name: string|null, type: string|null, level: number, active: true }|null}
+ */
+export function selectedModuleOf(rec, loadout, getChess = () => null) {
+  if (!rec || typeof rec !== 'object' || !loadout || typeof loadout !== 'object') return null;
+  const baseId = rec.baseId || rec.chessId;
+  const entry = typeof baseId === 'string' && Object.hasOwn(loadout, baseId) ? loadout[baseId] : null;
+  const chosen = entry && typeof entry.module === 'string' ? entry.module : null;
+  if (!chosen || chosen === 'none') return null;
+  const golden = rec.isGolden ? rec : (rec.upgradeChessId ? getChess(rec.upgradeChessId) : null);
+  const mod = (golden && Array.isArray(golden.modules) ? golden.modules : []).find((m) => m && m.uniEquipId === chosen) || null;
+  if (!mod) return null;
+  return { id: mod.uniEquipId, name: mod.name ?? null, type: mod.typeName ?? null, level: mod.level ?? 0, active: true };
 }
 
 /**
@@ -175,6 +197,10 @@ export function withModuleLevel3(rec, moduleLevels, moduleId = null) {
   };
   if (Array.isArray(rec.modules)) {
     out.modules = rec.modules.map((x) => (x && typeof x === 'object' && x.uniEquipId === want ? { ...x, ...m } : x));
+  } else {
+    // 普通形态（没有精锐棋子）本来没有模组列表：把 3 级记录作为唯一一条塞进去，kits 的 moduleRangeGrid / 本文件的
+    // attackRangeGrid 以及别的「按 module.id 找模组记录」的读者才找得到 —— 否则会出现「模组效果生效、攻击范围却不跟着变」。
+    out.modules = [{ ...m }];
   }
   return out;
 }
@@ -226,7 +252,8 @@ export function attackRangeGrid(rec) {
   const m = rec.module;
   if (skillCarriesOwnRange(sk)) {
     g = sk.rangeGrid;
-  } else if (rec.isGolden && m && m.active && m.id && moduleWidensRange(rec.trait)) {
+  } else if (m && m.active && m.id && moduleWidensRange(rec.trait)) {
+    // 精锐用它的模组；普通形态在【特限恢复】下也带着一个启用中的模组（withModuleLevel3 会补一条 modules），同样生效
     const mod = (Array.isArray(rec.modules) ? rec.modules : []).find((x) => x && x.uniEquipId === m.id);
     const mg = (mod?.talentChanges || []).find((t) => t && t.talentIndex === -1 && Array.isArray(t.rangeGrid) && t.rangeGrid.length)?.rangeGrid;
     if (mg) g = mg;

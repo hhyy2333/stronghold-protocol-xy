@@ -160,3 +160,20 @@ test('client：高亮与 canPlace 和服务端一致 —— 只有「号角 + �
   assert.equal(clientCanPlace(ctx3, horn2.uid, board(9, 2)).ok, false, '没有【特限恢复】不点亮');
   b.m.dispose();
 });
+
+test('server：普通形态（没有精锐棋子）也认干员调配里选中的特限模组 —— 可以摆到 (9,2)', () => {
+  const { m, ps } = prep();
+  const horn = give(m, ps, HORN_N);
+  assert.equal(ps.setLoadout({ [HORN_N]: { module: ISW } }), true);
+  applyHex(m, ps, DATA.hextech.playerHexes.hex_mode_modules);
+  assert.deepEqual(move(m, horn.uid, board(9, 2), 'UP'), { ok: true }, '普通形态也可以部署在目标点');
+  assert.equal(ps.board.get(GOAL), horn);
+  checkInvariants(m);
+  m.dispose();
+  // 没卡 ⇒ 拒绝
+  const b = prep();
+  const horn2 = give(b.m, b.ps, HORN_N);
+  assert.equal(b.ps.setLoadout({ [HORN_N]: { module: ISW } }), true);
+  assert.equal(move(b.m, horn2.uid, board(9, 2)).error, ERR.BAD_TILE, '没有【特限恢复】不行');
+  b.m.dispose();
+});

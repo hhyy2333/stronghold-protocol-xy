@@ -710,14 +710,19 @@ export class DataSource {
     // 3 级模组（协议源石【特限恢复】）：只有 loadout 明说 moduleLevel === 3 才套，别的值当作没开；补位干员（standIn）
     // 不套 —— 它打的是 data/backups.json 里另一名干员的身体与模组，不是「你的干员」（[ASSUMED]，见模块头注释）。
     const lv = loadout && loadout.moduleLevel === 3 && loadout.standIn !== true ? 3 : null;
-    const key = id + loadoutKey(lo) + moduleLevelKey(lv);
+    // 普通形态（没有精锐棋子）在干员调配里选的模组：resolveLoadout 会把它丢掉（普通记录没有 modules 列表），所以
+    // 3 级这一档自己记住它 —— 既进缓存 key（同一 id 的两个不同模组不能共用一份 def），也交给 withModuleLevel3
+    // （'none' 原样传进去：选了「不装备」就连默认模组的 3 级也不套）。
+    const explicit = lv === 3 && loadout && typeof loadout.moduleId === 'string' ? loadout.moduleId : null;
+    const key = id + loadoutKey(lo) + moduleLevelKey(lv) + (explicit ? `|m:${explicit}` : '');
     if (this._chess.has(key)) return this._chess.get(key);
     let d = null;
     if (r) {
       const base = loadoutRecord(r, lo);
-      const rec = lv === 3 ? withModuleLevel3(base, this.rawModuleLevels()) : base;
+      // withModuleLevel3 按 data/moduleLevels.json 的组合表套 3 级数据，不需要记录里有模组列表。
+      const rec = lv === 3 ? withModuleLevel3(base, this.rawModuleLevels(), explicit) : base;
       d = normalizeChess({ chessId: id, ...rec });
-      d.loadout = lv === 3 ? { ...lo, moduleLevel: 3 } : lo;
+      d.loadout = lv === 3 ? { ...lo, ...(explicit ? { moduleId: explicit } : null), moduleLevel: 3 } : lo;
       freezeDef(d);
     }
     this._chess.set(key, d);

@@ -1,7 +1,7 @@
 // ui/gameLogic/placement.js — deploy maps and the canPlace mirror of the server rules. Re-exported from ../gameLogic.js.
 
 import { GEO } from '../../../../shared/constants.js';
-import { attackRangeGrid, loadoutRecord, resolveRecordLoadout } from '../../../../shared/loadoutRecord.js';
+import { attackRangeGrid, loadoutRecord, resolveRecordLoadout, selectedModuleOf } from '../../../../shared/loadoutRecord.js';
 import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../../../shared/goalPoint.js';
 import { meleeOnHighGround } from '../../../../shared/highGround.js';
 import { summonPlacementGrid } from '../../../../shared/summonPlacement.js';
@@ -297,7 +297,9 @@ function goalPointAllowed(ctx, piece, row, col) {
   const entry = lo && base && isObj(lo[base]) ? lo[base] : null;
   let body;
   try { body = loadoutRecord(rec, resolveRecordLoadout(rec, entry)) || rec; } catch { body = rec; }
-  return canStandOnGoalPoint({ record: body, ownsModeModules: true });
+  // 普通形态（没有精锐棋子）没有 modules 列表：玩家在干员调配里选的模组由 selectedModuleOf 按精锐的模组表给出
+  const chosen = selectedModuleOf(rec, lo, ctx.getChess);
+  return canStandOnGoalPoint({ record: body, module: chosen, ownsModeModules: true });
 }
 
 /**
