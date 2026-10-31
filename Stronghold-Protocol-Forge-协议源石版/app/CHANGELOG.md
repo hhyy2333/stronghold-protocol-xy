@@ -22,7 +22,7 @@
 - **服务端**：删掉 `data/support.json` 的卡池与每阶名额、`shared/support.js` 的配置归一化与选择校验、
   `server/match/player/support.js`、`room.support` 消息与席位存储、共享池里为助战多加的那一份（`supportSupply`）、
   开局再校验与 `m.private` 里的助战回显；`data/support.json` 这个文件本身也删掉了。
-- **接口**：`GET /api/packs/support` 改成 `GET /api/packs`；`/api/support/toggle`、`/api/support/price`、
+- **接口（编辑器包管理页，不是对局服务器）**：`GET /api/packs/support` 改成 `GET /api/packs`；`/api/support/toggle`、`/api/support/price`、
   `POST /api/packs/:id/support` 三条路由删除。
 - **工坊**：作者不再需要声明或维护 `pack.json.support`，编辑器里也没有对应的页面与开关（第八页中栏、干员页开关、
   商店售价格子一并撤掉）。旧包里写着的 `"support": […]` **不会让包装不上**：键仍在 `PACK_FIELDS` 闭集里，
