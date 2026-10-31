@@ -41,8 +41,15 @@ function toHiddenCore({ mode = 'coop', difficulty = 'NORMAL', humans = 1, client
   h.drive(() => m.phase === PHASE.HIDDEN_CORE || h.ended != null);
   assert.equal(m.phase, PHASE.HIDDEN_CORE, 'reached the Hidden Core');
   if (onHidden) onHidden(h);
+  // the hidden core's pool is RELEASED when 第16回合「木桩演练」 starts (bossRounds.js `_finishFinal` sets `bossPool = null`,
+  // so a leader's HP bar cannot carry into the dummy round) — take its size while the hidden core is still live.
+  const hiddenPoolMax = m.bossPool ? m.bossPool.maxHp : null;
+  // 第16回合「木桩演练」(docs/research/17-dummy-round.json): the Hidden Core is no longer the match's last round — one
+  // more round follows it. A solo PREP is untimed by convention (prep.js prepDeadlineSeconds), so nothing presses Ready
+  // on its own and `runToEnd` alone would sit in PREP R16 forever. Do what a player does: one Ready on the new map.
+  if (m.gd.dummyRound != null) h.drive(() => h.ended != null, { maxSteps: 6e6 });
   const end = h.runToEnd({ maxSteps: 6e6 });
-  return { h, m, end, hits };
+  return { h, m, end, hits, hiddenPoolMax };
 }
 
 /** The threshold a BOSS_HIT ticker announces (its config param, from the text: "超过N%"). */
@@ -65,7 +72,7 @@ function assertTruthful(hits, phase, players) {
 test('C1 (solo 绝境, server-run fields): the Hidden Core\'s first hit announces nothing — the Final Assault\'s damage is not damage to the hidden leader', () => {
   // the reported case: a Final Assault pool larger than half the hidden leader's — solo 绝境 (HARD): 盐风主教昆图斯 525000,
   // 75 % of 假想敌：铳's 700000, so the old share announced 超过50% at the hidden leader's first hit
-  const { m, end, hits } = toHiddenCore({ mode: 'solo', difficulty: 'HARD', bossId: 'boss_4', hiddenBossId: 'boss_9', hiddenDps: 0.01 });
+  const { m, end, hits, hiddenPoolMax } = toHiddenCore({ mode: 'solo', difficulty: 'HARD', bossId: 'boss_4', hiddenBossId: 'boss_9', hiddenDps: 0.01 });
   assert.equal(end.hiddenReached, true);
   const fa = assertTruthful(hits, PHASE.FINAL_ASSAULT, ['p_0']);
   assert.deepEqual(fa.map(stepOf), [0.8], 'the Final Assault cleared by one hit: 80 %');
@@ -73,7 +80,7 @@ test('C1 (solo 绝境, server-run fields): the Hidden Core\'s first hit announce
   assert.deepEqual(hidden.map(stepOf), BOSS_HIT_STEPS, 'the Hidden Core announces its own 20 / 50 / 80 % as they are reached');
   assert.ok(hidden[0].leaderHpPct <= 0.8 + 1e-9, `the first hidden ticker comes after 20 % of the hidden leader (leader at ${(hidden[0].leaderHpPct * 100).toFixed(2)} %)`);
   // the result screen's 领袖伤害 keeps the whole match: the Final Assault's pool plus the hidden one
-  assert.ok(end.players[0].stats.bossDamage > m.bossPool.maxHp, `领袖伤害 ${end.players[0].stats.bossDamage}`);
+  assert.ok(end.players[0].stats.bossDamage > hiddenPoolMax, `领袖伤害 ${end.players[0].stats.bossDamage}`);
   checkInvariants(m);
   m.dispose();
 });

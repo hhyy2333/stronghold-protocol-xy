@@ -62,10 +62,10 @@
 
 | | |
 |---|---|
-| **现在报什么** | `EMPTY_PACK: content must name at least one of: chess, units, items, enemies, stages, waves, tokens, bosses, factions, garrisons, bands, bonds, effects, choices — or the pack must declare voices / voiceLangs / bondIcons / itemIcons / art / skins / operators / assets / client / server.preDispatch / server.meta / server.battle / server.room / server.modules / server.transport / routes / i18n / notices / forms / fx (note: "support" is NOT a contribution — a pack that declares it alone brings nothing into a match)` |
+| **现在报什么** | `EMPTY_PACK: content must name at least one of: chess, units, items, enemies, stages, waves, tokens, bosses, factions, garrisons, bands, bonds, effects, choices — or the pack must declare voices / voiceLangs / bondIcons / itemIcons / art / skins / operators / assets / client / server.preDispatch / server.meta / server.battle / server.room / server.modules / server.transport / routes / i18n / notices / forms / fx (note: the keys that are NOT contributions are named here — e.g. "playtest" and "variants" are NOT a contribution — a pack that declares them alone brings nothing into a match)` |
 | **在哪** | `Stronghold-Protocol/shared/workshop.js:2396` |
 | **小白会怎么想** | 这是**全文档最难读的一条**。33 个候选名、混合大小写与点号、还带一段 `NOT a contribution` 的辩解。小白读不完，也不知道自己「想干的那件事」对应哪个词 |
-| **改成什么** | **「这个包什么都没带，装上去不会有任何变化，所以引擎不收。它至少要带一样东西。你想做什么？换素材（立绘 / 图标 / 语音）→ 用 `art`；改数据（干员 / 装备）→ 用 `content`；加界面 → 用 `client`；发公告 → 用 `notices`。另外：只写 `support` 不算 —— 那只是说「谁能进助战池」，不是内容本身。」** |
+| **改成什么** | **「这个包什么都没带，装上去不会有任何变化，所以引擎不收。它至少要带一样东西。你想做什么？换素材（立绘 / 图标 / 语音）→ 用 `art`；改数据（干员 / 装备）→ 用 `content`；加界面 → 用 `client`；发公告 → 用 `notices`。」** |
 | **修法** | ① 想清你这个包到底要带来什么<br>② 按上面的对照挑一个字段补上<br>③ 如果做的是「换立绘」这类素材包，用 `art` 并**同时**建 `assets/` 文件夹（见第 1 条与第 6 条）<br>④ 重跑校验 |
 
 ### 6. `ART_NEEDS_ASSETS` —— 有 `art` 但没有 `assets/` 文件夹

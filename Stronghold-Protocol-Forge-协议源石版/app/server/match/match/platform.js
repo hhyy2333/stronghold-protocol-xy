@@ -136,26 +136,6 @@ export class MatchPlatform {
   }
 
   /**
-   * room.support during the match (助战, shared/support.js): only while INFO_CHECK runs, exactly like the loadout. The
-   * lobby already checked it against the server's pool; PlayerState.setSupport re-checks it, because the pool is the
-   * authority and a stale selection (the operator left data/support.json between the check and now) must not grant.
-   * @param {string} playerId
-   * @param {string[] | null} entries checked support ids
-   * @returns {{ ok: true } | { error: string, detail?: string }}
-   */
-  setSupport(playerId, entries) {
-    const ps = this.players.get(playerId);
-    if (!ps || ps.isBot || ps.left) return fail(ERR.NOT_IN_ROOM);
-    if (this.disposed || this.ended || this.phase !== PHASE.INFO_CHECK) return fail(ERR.WRONG_PHASE, 'support locked for this match');
-    let res = OK;
-    this.guard(() => {
-      if (!ps.setSupport(entries)) { res = fail(ERR.BAD_TARGET, 'support does not match the server pool'); return; }
-      this.markPrivate(ps);
-    });
-    return res;
-  }
-
-  /**
    * 休整期自由更换技能 / 模组 (the owner's request of 2026-10-12; the reference mod 休整期切换技能模组mod): re-equip ONE
    * operator's skill / elite module between rounds. Deliberately different from setLoadout (INFO_CHECK only, a whole
    * roster replacement): this takes a per-operator increment and merges it into the seat's current 配发, so a single
@@ -214,8 +194,6 @@ export class MatchPlatform {
     if (!ps || ps.isBot || this.disposed) return;
     this.guard(() => {
       ps.connected = false;
-      // A disconnected human's silence is never consent to a new setup.
-      this.cancelSetupVote();
       // a paused solo battle resumes (the server takes the field over; nobody is left to resume it)
       this._resume();
       if (this.clientCombat) this._authorityLost(ps, 'disconnect');
@@ -293,7 +271,6 @@ export class MatchPlatform {
     if (!ps || ps.isBot || ps.left || this.disposed) return;
     this.guard(() => {
       ps.left = true;
-      this.cancelSetupVote();
       ps.connected = false;
       ps.autoplay = false;
       this.watchers.delete(playerId);

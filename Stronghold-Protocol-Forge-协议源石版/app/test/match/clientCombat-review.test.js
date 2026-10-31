@@ -130,6 +130,32 @@ test('validation: 通缉令\'s extra 惊变 enemy may leak (it is content-spawne
   assert.ok(!specBounds(bare, gd).derived.has(hex));
 });
 
+test('validation: a leaked 通厕大队 Jesselton keeps its (1 + 5x)% scale into 联防', () => {
+  // 业主 2026-10-28「前期通厕大队会出现联防2w5血700多攻的杰斯顿，数值异常bug」: the three Jesseltons are content-spawned,
+  // so no spec spawn carries their mods. The old rebuild wrote `mods: null` and 联防 re-entered them at the data stats
+  // (25000 HP / 700 ATK). The card's scale is deterministic for a spec (params + round), so it is recomputed here —
+  // from the card, not from the wire, which can only make the result match the card or fall back.
+  const jak = 'enemy_1516_jakill';
+  assert.ok(gd.enemy(jak), 'the Jesselton is a real enemy');
+  const spec = buildBattleSpec({ battleId: 'vj', fieldId: 'n:p', kind: 'normal', seed: 1, round: 1, timeLimit: 60,
+    players: [{ playerId: 'p', units: [], bonds: {} }], spawns: [{ enemyKey: plainKey, count: 1, time: 1 }],
+    flags: { enemyHexIds: ['ehex_jekyll'] } });
+  assert.ok(!specBounds(spec, gd).keyCounts.has(jak), 'premise: the wave does not schedule it');
+  const pct = (1 + 5 * 1) / 100;   // round 1 → 6 %
+  const scaled = { hpMul: pct, atkMul: pct, defMul: pct, resMul: pct };
+  const raw = (mods) => ({ reason: 'timeout', time: 30, errors: 0,
+    perPlayer: { p: perPlayer({ total: 1, perfect: false, leaked: [{ enemyKey: plainKey, counted: true }, { enemyKey: jak, counted: true, mods }] }) } });
+  const honest = validateClientResult(spec, raw(scaled), { gd });
+  assert.ok(honest.ok, 'the honest content leak is accepted: ' + honest.reason);
+  assert.deepEqual(honest.result.perPlayer.p.leaked.find((l) => l.enemyKey === jak).mods, scaled,
+    'the leak carries the card scale, so 联防 re-enters the body at 6 % of its stats');
+  // the wire's numbers are not taken as given: a forged (tiny) scale comes back as the card's own
+  const tiny = { hpMul: 0.01, atkMul: 0.01, defMul: 0.01, resMul: 0.01 };
+  assert.deepEqual(validateClientResult(spec, raw(tiny), { gd }).result.perPlayer.p.leaked.find((l) => l.enemyKey === jak).mods, scaled);
+  // a spec without the card does not admit the body at all
+  assert.deepEqual(validateClientResult(buildBattleSpec({ ...spec, flags: {} }), raw(scaled), { gd }), { ok: false, reason: 'leak key' });
+});
+
 test('validation: IN_BATTLE layer gains only on bonds the lineup / band / effects / items name', () => {
   const chess = Object.values(DATA.chess).find((c) => c.visible && !c.isGolden && Array.isArray(c.bonds) && c.bonds.length);
   assert.ok(chess);

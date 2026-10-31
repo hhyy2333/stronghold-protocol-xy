@@ -202,10 +202,23 @@ pay **1 资金** to take **no bounty** this round (`match/spDraft.js SP_PAYOFF_I
 attached to the draft only when `draft.family === 'bounty'` (道具补给 / 机密商店 / 战术决策 rounds never show it), it goes
 through `g.choice { idx: -1 }` rather than a card index — `shared/protocol.js` widens `idx`'s lower bound to −1 for this
 and nothing else — and it deliberately **skips `taken`**: several players in one room may each buy it while the shared
-draft keeps its remaining cards for everyone else. Funds are checked, not assumed: `ps.funds < cost` answers `NO_FUNDS`
-instead of silently dropping the pick. The public view carries it as `v.sp.payoff { idx, cost }`, so the client renders
+draft keeps its remaining cards for everyone else. Money is **not** checked on the pick (superseding 0.19.25's
+`NO_FUNDS`, 业主 2026-10-30「没钱也能选，下回合从收入里扣」): the 1 资金 is a debt settled at the next round's start, so an
+empty purse may take it too. The public view carries it as `v.sp.payoff { idx, cost }`, so the client renders
 the button only on those rounds; a player who takes it is recorded as having picked (the turn moves on) even though no
-card was removed.
+card was removed. The client draws it as one button under the card grid (`ui/choiceOverlay.js payoffPickable`), two taps
+like a card.
+
+**扣款时机 (业主 2026-10-30「扣1块钱是在下回合开始时扣」).** Pressing the button moves **no** money: the pick books
+`ps.payoffDue += 1` (PlayerState), and the **next** round's start collects it —
+`MatchPhases.startRound` calls `MatchSpDraft.settleSpPayoffs(alive)` *after* `ps.startRound` (income) and the
+`onRoundStart` / 管理员 round-hex dispatch, so the 1 资金 comes out of the money that just arrived instead of out of the
+purse the player picked with, and the prep never sees money that is already owed. The collection is a real payment —
+`ps.spend()` + `_afterSpend`, so it counts in `stats.gold` (战绩's 花费) and fires `onSpend` (源石红利「每消耗 5 资金」);
+a round that opens with nothing in the purse pays what it has and the rest is **written off** (never a negative balance,
+never a debt carried into the round after) — since the pick no longer checks money and the round's income lands before
+the settle, that is the only way a pick goes unpaid. The collector gets a toast (`破财消灾：本回合开始支付 {cost} 资金`),
+and the button's own text says the money leaves at the next round's start.
 
 ### 1.3 Disconnects, AI takeover
 * Local multi-window recovery (#431, DESIGN §30.27) sends optional `hello.noReplace` for a tentative shared token,
@@ -863,6 +876,12 @@ Any `choice:` handler whose EffectRef reuses its own key must guard like this (o
 * **Economy**: income `config.economy.income[r]` (= min(3+r, 12)); bounty coins / pending funds credited at the next
   round start; leftover funds lost at prep end except `leftoverFundsKeptByBands`. Chess price by tier (2/3/3/3/4/4),
   items by `price`, refresh 1 (free refreshes first), sell +1 (elite too; items cannot be sold, only destroyed).
+  **Protocol level 19 caps the funds a seat may GAIN in one round at 30** (业主 2026-10-29「增加限制玩家一回合最多获得30块」
+  →「把这个负面做成 n19」): every positive gain counts (round income, effect payouts, sell refunds, debt repayments), the
+  overflow is discarded rather than banked, and the counter `round.fundsGained` resets at round start. The number is the
+  `fundsGainCap` field of the level's row in `shared/protocolLevels.js`, read through `GameData.fundsGainCapPerRound`
+  (0 = off — every level 0–18 and every other difficulty is uncapped, so the old economy is byte-for-byte unchanged);
+  the single choke point is `PlayerState.addFunds`, and `force: true` is the 测试场's tool money. See `docs/design/match.md`.
 * **Shop**: `shopSlots[level]` chess slots + item slot(s), copy-weighted rolls over remaining pool copies of unbanned,
   visible chess with tier ≤ level; item slot: tier by the same shares, uniform item within the tier. Level-up price =
   base per mode, −1 each round start (floor 0), reset to the next base after upgrading; an upgrade opens the new level's
@@ -1092,7 +1111,7 @@ leaker's own capsule / row (`ui/hud.js uniteRemaining`) and the leakers' team ro
 
 ## 5. Views (DESIGN §8.2 / §8.3) and deviations
 
-`m.public` (throttled ≤ 10/s, only sent when it changed) carries the DESIGN fields plus: `drawnDisabledBonds` (the 3+4drawn set; `disabledBonds` = drawn ∪ the mode's static list), `hiddenBossId`, `bossRound`, `hiddenRound`, `spRound`,
+`m.public` (throttled ≤ 10/s, only sent when it changed) carries the DESIGN fields plus: `drawnDisabledBonds` (the 3+4drawn set; `disabledBonds` = drawn ∪ the mode's static list), `hiddenBossId`, `bossRound`, `hiddenRound`, `dummyRound` (the fork's round-16 木桩演练; `null` in a mode without one), `spRound`,
 `combatMode` (`'client'` | `'server'`), `fields[].progress { killed, total, done }` (teammates' progress UI), `paused`
 (solo pause, §1.3a),
 `players[].autoplay`, `players[].uniteLeft` (UNITE, leakers only: their enemies still standing, uncapped — §4),
@@ -1261,11 +1280,11 @@ round was over. The official 1 s `broadcastBeginDelay` is not modelled.
 
 ## Opening rerolls and bot reactions (0.2.3)
 
-`match/setupVote.js` owns the INFO_CHECK vote and transactional opening replacement; `Lobby.rerollSetup` checks host
-permission for `room.rerollSetup {setupRevision}` and `room.cancelReroll {voteId}`. Participants send
-`g.rerollVote {voteId, agree}`; `g.infoReady {setupRevision?}` accepts an omitted revision only before the first reroll.
-`m.public` includes `setupRevision` and `rerollVote` (null or `{id, proposerId, voters, agreed}`). Old vote/revision
-requests cannot affect a new opening. See DESIGN §28.21 for cancellation and timer behavior.
+`match/setupReroll.js` owns the host-only INFO_CHECK reroll and its transactional opening replacement (业主 2026-10-30:
+no consent vote). `Lobby.rerollSetup` checks host permission for `room.rerollSetup {setupRevision}`; the former
+`room.cancelReroll` / `g.rerollVote` are gone. `g.infoReady {setupRevision?}` accepts an omitted revision only before the
+first reroll, and `m.public` includes `setupRevision`. Old revision requests cannot affect a new opening, and a queued
+all-ready transition is cancelled only when the redraw succeeds. See DESIGN §28.21 for the timer behavior.
 
 `botEmotes.js` is isolated from bot decisions and RNG. It sends the existing `m.emote` only in mixed matches, under
 normal cooldown/whitelist rules; `SP_BOT_EMOTES=0` disables it. The cooperation score in `bot.js` and these cosmetic

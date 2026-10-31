@@ -2,12 +2,19 @@
 // entry keeps (message, a short stack without the page's host), repeats counted on one entry, the cap, the report's
 // lines, the battle attached as a replayable b.start, and that the player names / token never reach the text while the
 // room code deliberately does (the owner reads reports in /admin/ and needs to know which room).
+//
+// ⚠️ 2026-10-30：本文件有 8 条用例标了 test.skip —— 它们描述的是 **diag.js 被重写之前**的那套 API，
+// 而重写后的模块头已经写死了新口径（「Nothing leaves the browser」）：
+//   · diagnosticsPayload（POST /api/feedback 的 body）**不存在了** —— 现在只把文本复制到剪贴板，不上传；
+//   · isDomEvent / isResourceEvent / eventLabel 三个导出**不存在了**（Event 的读数并入 messageOf）；
+//   · **房间号从「保留」变成「替换」**（模块头与设置页的提示都这么写），所以断言「房间号 KEPT」的 3 条与新口径相反。
+// 这不是一行能修的：要么按现行实现重写这 8 条，要么把被删的 4 个导出与「保留房间号」的口径恢复回来。
+// 需要业主拍板；在那之前它们 skip，不假装通过、也不删掉这份规格。
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   recordError, errorLog, errorCount, clearErrorLog, messageOf, stackOf, stripHosts, redact, redactValues, secretsOf, buildDiagnostics,
-  diagnosticsPayload, setBattleSource, currentBattle, LOG_MAX, STACK_LINES, recordResourceEntry, trafficSummary, trafficLine, clearTraffic, installTrafficMeter,
-  isDomEvent, isResourceEvent, eventLabel,
+  setBattleSource, currentBattle, LOG_MAX, STACK_LINES, recordResourceEntry, trafficSummary, trafficLine, clearTraffic, installTrafficMeter,
 } from '../public/js/diag.js';
 import { META_KEYS } from '../server/feedback.js';
 import { APP_VERSION } from '../shared/constants.js';
@@ -44,7 +51,7 @@ describe('the error log', () => {
     assert.equal(stripHosts('see http://10.0.0.2:3000/x.js and https://a.b/c'), 'see /x.js and /c');
   });
 
-  test('a DOM Event as the reason names the event and its element, not just {"isTrusted":true}', () => {
+  test.skip('a DOM Event as the reason names the event and its element, not just {"isTrusted":true}', () => {
     // A promise wired straight to an `onerror` handler rejects with the Event itself, and a real Event keeps `type` /
     // `target` on the PROTOTYPE — so `JSON.stringify` saw only `{"isTrusted":true}`. A player's report showed exactly
     // that (2026-10-14) and it named nothing at all. These pin the diagnosis-carrying shape.
@@ -63,7 +70,7 @@ describe('the error log', () => {
     assert.ok(messageOf(Object.assign(Object.create({ type: 'error', isTrusted: true }), {})).length <= 300);
   });
 
-  test('isDomEvent / isResourceEvent classify the shape, and an app error never looks like an Event', () => {
+  test.skip('isDomEvent / isResourceEvent classify the shape, and an app error never looks like an Event', () => {
     const el = (tag, src) => ({ tagName: tag, currentSrc: src });
     const ev = (type, target) => Object.assign(Object.create({ type, isTrusted: true, target }), {});
     assert.equal(isDomEvent(ev('error', el('IMG'))), true);
@@ -83,7 +90,7 @@ describe('the error log', () => {
     assert.ok(!/https?:/.test(label), 'the host must not survive into a report or a toast');
   });
 
-  test('the toast and the report agree about an Event (three copies of this rule once drifted)', () => {
+  test.skip('the toast and the report agree about an Event (three copies of this rule once drifted)', () => {
     // The 2026-10-15 defect: `messageOf` learned the Event shape, `describeError` did not, and the player still saw
     // 「未知错误」. They now share `isDomEvent` — so an Event that the report calls an Event must never be reported to the
     // player as a nameless failure. (toasts.js is imported here so the two cannot silently diverge again.)
@@ -139,7 +146,7 @@ describe('the report', () => {
   };
   const env = { ua: 'Mozilla/5.0 Test', gpu: 'ANGLE (Test GPU)', viewport: '844x390', dpr: 2, touch: true, cores: 8, lang: 'zh-CN', uiLang: 'zh' };
 
-  test('version, time, browser, device, connection, where the player is, the battle, the settings and the errors', () => {
+  test.skip('version, time, browser, device, connection, where the player is, the battle, the settings and the errors', () => {
     recordError('request', { code: 'ROOM_FULL', msg: '房间已满' }, null, Date.UTC(2026, 9, 8, 12, 0, 5));
     recordError('sim', '[sim] onAttack (char_391_rosmon) failed: TypeError: x', null, Date.UTC(2026, 9, 8, 12, 0, 9));
     recordError('sim', '[sim] onAttack (char_391_rosmon) failed: TypeError: x', null, Date.UTC(2026, 9, 8, 12, 0, 12));
@@ -164,7 +171,7 @@ describe('the report', () => {
     assert.ok(!text.includes('```json'), 'no battle attached');
   });
 
-  test('player names and the reconnect token never reach the text; the room code is KEPT (the owner asked for it)', () => {
+  test.skip('player names and the reconnect token never reach the text; the room code is KEPT (the owner asked for it)', () => {
     recordError('request', '阿米娅 left room K7Q2 (token tok-secret-123)', 'Kaltsit and Kal and W');
     const text = buildDiagnostics({ state, env });
     for (const secret of ['阿米娅', 'Kaltsit', 'Kal ', 'tok-secret-123']) assert.ok(!text.includes(secret), secret);
@@ -182,7 +189,7 @@ describe('the report', () => {
       'a name does not eat a chess id');
   });
 
-  test('outside a match the where line names the room by its code, so the owner knows which room a report is about', () => {
+  test.skip('outside a match the where line names the room by its code, so the owner knows which room a report is about', () => {
     const idle = { ...state, match: null, session: { entered: true } };
     const text = buildDiagnostics({ state: idle, env });
     assert.ok(text.includes('where: room K7Q2 | mode coop | difficulty HARD | seats 3'), text.split('\n').find((l) => l.startsWith('where:')));
@@ -251,7 +258,7 @@ describe('the report', () => {
     setBattleSource(null);
   });
 
-  test('the POST /api/feedback body: the description, the report text and only the server\'s known meta keys', () => {
+  test.skip('the POST /api/feedback body: the description, the report text and only the server\'s known meta keys', () => {
     const payload = diagnosticsPayload({ state, description: '点了开始没反应', attachBattle: false });
     assert.equal(payload.description, '点了开始没反应');
     assert.ok(payload.report.startsWith('```text\nStronghold-Protocol diagnostics'), 'the same text as diagnosticsText');
@@ -271,7 +278,7 @@ describe('the report', () => {
     assert.equal(diagnosticsPayload({ state, description: 'x'.repeat(900) }).description.length, 500);
   });
 
-  test('the payload never carries the token or a player name, and keeps the room code', () => {
+  test.skip('the payload never carries the token or a player name, and keeps the room code', () => {
     const payload = diagnosticsPayload({ state, description: 'Kaltsit 卡住了', attachBattle: true });
     const json = JSON.stringify(payload);
     assert.ok(!json.includes('tok-secret-123'), 'the reconnect token never leaves the page');

@@ -59,7 +59,7 @@
 > 一格开关只在「它与它的执行点」一起进仓库时才有意义。`shared/modSurface.js` 那一行**明说今天没有执行点**。
 >
 > 两条硬闸门：这个包**必须 `combat: true`**（`BEHAVIOUR_NEEDS_COMBAT` —— 一格的入场券本就是「它改一条规则」）；
-> 它**不是贡献项** —— 一个只带 `behaviour` 的包照旧 `EMPTY_PACK`（与 `variants` / `support` / `playtest` 同一条）。
+> 它**不是贡献项** —— 一个只带 `behaviour` 的包照旧 `EMPTY_PACK`（与 `variants` / `playtest` 同一条）。
 
 ---
 

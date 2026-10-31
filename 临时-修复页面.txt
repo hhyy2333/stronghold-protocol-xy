@@ -1,0 +1,8 @@
+(async () => {
+  const regs = await navigator.serviceWorker.getRegistrations();
+  for (const r of regs) { await r.unregister(); console.log('unregistered', r.scope); }
+  const names = await caches.keys();
+  for (const n of names) { await caches.delete(n); console.log('deleted cache', n); }
+  console.log('done — reloading');
+  location.reload(true);
+})();

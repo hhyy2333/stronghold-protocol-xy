@@ -10,7 +10,7 @@ import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 import { onSettle, resetRoundCounters } from '../botEmotes.js';
 import { creditedKillsOf } from '../../sim/spec.js';
-import { bankThiefPenalty, enemyHexPayoutFor, bountyMultiplier, lpLockedIn } from '../hextech.js';
+import { bankThiefPenalty, enemyHexPayoutFor, bountyMultiplier, lpLockedIn, bondLayerCapOf } from '../hextech.js';
 
 export class MatchSettle {
   settle(plan, uniteResult) {
@@ -96,12 +96,14 @@ export class MatchSettle {
       if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }
       for (const b of ps.bounties) b.roundsLeft--;
       ps.bounties = ps.bounties.filter((b) => b.roundsLeft > 0);
-      // IN_BATTLE layer gains (normal battles only), at most the room left under BOND_LAYER_CAP (999, as the battle's
-      // live copy: Battle.addLayers); a bond at the cap gains nothing and dispatches nothing
+      // IN_BATTLE layer gains (normal battles only), at most the room left under THIS player's cap (BOND_LAYER_CAP 999 —
+      // 9999 with 【突破极限】, hextech.js bondLayerCapOf; the battle's live copy clamped the same way, Battle.addLayers);
+      // a bond at the cap gains nothing and dispatches nothing
+      const layerCap = bondLayerCapOf(ps);
       for (const [bondId, n] of Object.entries(r.layerGains || {})) {
         if (!this.gd.bond(bondId) || !(n > 0)) continue;
         const before = ps.layers[bondId] || 0;
-        const add = layerGainRoom(before, Math.floor(n));
+        const add = layerGainRoom(before, Math.floor(n), layerCap);
         if (!(add > 0)) continue;
         ps.layers[bondId] = before + add;
         this.dispatch(ps, 'onLayers', { bondId, from: before, to: ps.layers[bondId], reason: 'battle' });
@@ -153,6 +155,16 @@ export class MatchSettle {
 
   afterSettle() {
     if (!this.alivePlayers().length) { this.finish({ victory: false, reason: 'eliminated' }); return; }
+    // 第16回合「木桩演练」(docs/research/17-dummy-round.json, Lead 2026-10-29): the round after the Hidden Core is the
+    // match's LAST round, so its settlement ends the match instead of starting round 17. The result is the one the team
+    // already earned — a victory with the hidden core cleared (that is the only way into this round; bossRounds.js
+    // _finishFinal sets `hiddenCoreCleared`) — so roundsPassed stays bossRound + 1 = 15 (results.js), and the rewards /
+    // trophies / medals do not see the dummy round at all. A team that loses every seat in the dummy round is
+    // eliminated by the branch above and gets the ordinary defeat, exactly like a normal round.
+    if (this.gd.dummyRound != null && this.round === this.gd.dummyRound) {
+      this.finish({ victory: true, hiddenCleared: this.hiddenCoreCleared === true, reason: 'victory' });
+      return;
+    }
     resetRoundCounters(this); // AI bot merge-counter resets each round (server/match/botEmotes.js)
     this.startRound(this.round + 1);
   }

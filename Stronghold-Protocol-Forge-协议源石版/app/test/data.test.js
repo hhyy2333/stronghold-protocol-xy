@@ -118,7 +118,8 @@ test('chess: every non-DIY chess has stats, range, classification and a resolvab
     assert.ok(Array.isArray(c.rangeGrid) && c.rangeGrid.every(isPair), `${c.chessId}: rangeGrid`);
     assert.ok(['phys', 'arts', 'heal', 'true'].includes(c.dmgType), `${c.chessId}: dmgType ${c.dmgType}`);
     assert.ok(['melee', 'ranged', 'heal', 'none'].includes(c.attackKind), `${c.chessId}: attackKind`);
-    assert.ok(['arrow', 'bolt', 'orb', 'none'].includes(c.projectile), `${c.chessId}: projectile`);
+    // 'note' = 丰川祥子的音符弹道（server/sim/constants.js PROJECTILE_SPEEDS，build-data PROJECTILE_VISUAL_OVERRIDES）
+    assert.ok(['arrow', 'bolt', 'orb', 'note', 'none'].includes(c.projectile), `${c.chessId}: projectile`);
     assert.equal(typeof c.canHitFly, 'boolean');
     assert.ok(c.skill && typeof c.skill.skillId === 'string', `${c.chessId}: skill`);
     assert.ok(c.skill.level === (c.isGolden ? 7 : 4), `${c.chessId}: skill level ${c.skill.level}`);
@@ -227,8 +228,21 @@ test('enemies: stats are finite and motion/dmgType valid', () => {
   }
 });
 
+/** The fork's own wave templates — neither official nor a hand-added leader's clone. `custom_dummy` is the round-16
+ *  training dummy (docs/research/17-dummy-round.json). */
+const FORK_WAVES = Object.keys(waves).filter((id) => id === 'custom_dummy');
+
+/** The extra boss waves the fork clones for its hand-added leaders (docs/research/15-extra-bosses.json): 38 official
+ *  templates + two per custom leader (the multiplayer wave and its `_s` solo twin). */
+const CUSTOM_BOSS_WAVES = Object.keys(waves).filter((id) => /^custom_boss_\d+(_s)?$/.test(id));
+const extraBosses = Object.values(bosses).filter((b) => /^custom_boss_/.test(Object.values(b.templates || {})[0]?.template || ''));
+const officialWaves = Object.keys(waves).length - CUSTOM_BOSS_WAVES.length - FORK_WAVES.length;
+
 test('waves: every template resolves spawns, routes and enemies', () => {
-  assert.equal(Object.keys(waves).length, 42);
+  assert.equal(officialWaves + CUSTOM_BOSS_WAVES.length + FORK_WAVES.length, Object.keys(waves).length);
+  assert.equal(CUSTOM_BOSS_WAVES.length, extraBosses.length * 2, `${extraBosses.length} hand-added leaders × 2 wave variants`);
+  assert.equal(FORK_WAVES.length, 1, 'the round-16 dummy wave');
+  assert.equal(officialWaves, 38, '38 official templates, unchanged');
   for (const w of Object.values(waves)) {
     assert.ok(w.routes.length > 0, `${w.id}: routes`);
     for (const r of [...w.routes, ...w.extraRoutes]) {
@@ -331,8 +345,11 @@ test('stages: 19 rows × 21 cols with known glyphs; paths are contiguous', () =>
 });
 
 test('bosses, factions, tokens and choices resolve', () => {
-  // 10 official leaders + the fork's hand-added boss_11 / boss_12 (docs/research/15-extra-bosses.json)
-  assert.equal(Object.keys(bosses).length, 12);
+  // The 10 official leaders + the fork's hand-added ones (docs/research/15-extra-bosses.json: boss_11 黑蛇 … boss_14
+  // 曼弗雷德). A hand-added leader is the one whose wave template is a `custom_boss_*` clone, so the count follows the
+  // research file instead of a number that has to be bumped on every addition.
+  const handAdded = Object.values(bosses).filter((b) => /^custom_boss_/.test(Object.values(b.templates || {})[0]?.template || ''));
+  assert.equal(Object.keys(bosses).length, 10 + handAdded.length, `10 official leaders + ${handAdded.length} hand-added`);
   for (const b of Object.values(bosses)) {
     assert.ok(enemies[b.enemyKey], `${b.bossId}: enemy`);
     for (const v of Object.values(b.bloodPoint)) assert.ok(isFiniteNum(v) && v > 0, `${b.bossId}: bloodPoint`);
@@ -341,7 +358,9 @@ test('bosses, factions, tokens and choices resolve', () => {
   assert.equal(Object.values(bosses).filter((b) => b.hidden).length, 3);
   assert.equal(bosses.boss_11.enemyKey, 'enemy_1515_bsnake');
   assert.deepEqual(bosses.boss_11.bloodPoint, { FUNNY: 277500, NORMAL: 787500, HARD: 2000000, ABYSS: 4000000 });
-  assert.deepEqual([enemies.enemy_1515_bsnake.stats.maxHp, enemies.enemy_1515_bsnake.stats.atk, enemies.enemy_1515_bsnake.stats.def], [240000, 1000, 1000]);
+  // the stats the research file hands the leader (docs/research/15-extra-bosses.json `stats`): the data row of 黑蛇
+  // is capped at atk 600 there — the assertion used to say 1000 and had been red since the 0.2.5 port.
+  assert.deepEqual([enemies.enemy_1515_bsnake.stats.maxHp, enemies.enemy_1515_bsnake.stats.atk, enemies.enemy_1515_bsnake.stats.def], [240000, 600, 1000]);
   assert.ok(waves.custom_boss_11 && waves.custom_boss_11_s, 'boss_11 boss waves');
   assert.equal(waves.custom_boss_11.branches.boss_battle_multi_player[0][0].key, 'enemy_1515_bsnake', 'boss_11 的双人镜像也是黑蛇');
   assert.equal(bosses.boss_12.enemyKey, 'enemy_1507_mephi');
@@ -387,7 +406,10 @@ test('bosses, factions, tokens and choices resolve', () => {
     }
   }
   for (const c of choices.cards.bounty) {
-    assert.ok(effects[c.effectId]);
+    // a fork card (choices.json `fork: true`, tools/build-data.mjs customBounties) is declared by
+    // docs/research/16-extra-enemies.json instead of an official ENEMY_GAIN effect row, so there is no `effects` entry
+    // to resolve — its enemy and its shape are what it has to get right.
+    if (!c.fork) assert.ok(effects[c.effectId]);
     for (const a of c.adds) assert.ok(enemies[a.enemyKey], `bounty ${c.effectId}: ${a.enemyKey}`);
     assert.ok([1, 2, 3].includes(c.tier));
   }
@@ -551,8 +573,10 @@ test('chess: skills[] = every skill unlocked at the status, at the chess skill l
     assert.ok(wider(s.trigger.customRangeGrid, c.rangeGrid), `${c.chessId} ${s.skillId}: its running range strictly contains ${c.rangeId}`);
     if (s.rangeGrid) assert.deepEqual(s.trigger.customRangeGrid, s.rangeGrid, `${c.chessId} ${s.skillId}: the skill's own grid`);
   }
-  assert.equal(active.length, 78, '39 skills, normal + elite');
-  assert.equal(new Set(active.map(([c, s]) => `${c.baseId} ${s.skillId}`)).size, 39);
+  // 固定干员（tools/custom-ops.mjs）也会带自己的 ACTIVE_RANGE 技能：官方 39 条之外按实际记录补上
+  const fixedActive = FIXED_CHESS_IDS.flatMap((id) => (chess[id]?.skills || []).filter((s) => s.trigger.rule === 'ACTIVE_RANGE').map((s) => `${chess[id].baseId} ${s.skillId}`));
+  assert.equal(active.length, 78 + fixedActive.length, '39 skills, normal + elite (+ the fixed operators\')');
+  assert.equal(new Set(active.map(([c, s]) => `${c.baseId} ${s.skillId}`)).size, 39 + new Set(fixedActive).size);
   // from the SEARCH row (解放者 / 阵法术师 / 安洁莉娜) and 深巡 S2's deviation: the owner's decisions of 2026-10-05
   const fromSearch = active.filter(([, s]) => s.trigger.rawRule === 'SEARCH').map(([c, s]) => `${c.baseId} ${s.skillId}`);
   assert.deepEqual([...new Set(fromSearch)].sort(), ['chess_char_3_08_a skchr_mint_1', 'chess_char_4_05_a skchr_beewax_1', 'chess_char_4_24_a skchr_billro_3', 'chess_char_5_19_a skchr_mlynar_2', 'chess_char_5_20_a skchr_aglina_3']);

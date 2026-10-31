@@ -40,7 +40,7 @@ built. The wire rules (`server/viewsDelta.js` builds a delta, `public/js/matchDe
 - **FULL frame** (no `delta` key): the whole view. The first frame of a match, and every frame after a reset point (below).
 - **DELTA frame** (`delta: true`): only what changed. Top-level keys appear only when their value changed; `gone: ["teamLp"]`
   names the top-level keys that DISAPPEARED (the client deletes them — `undefined` is not a JSON value, and `null` is a
-  real value up here: `rerollVote`, `bossId`, `uniteResult`); `players` carries one patch per changed row
+  real value up here: `bossId`, `uniteResult`); `players` carries one patch per changed row
   `{ playerId, <field>: <value> }` (`playerId` always, so the client finds the row), `{ playerId, gone: true }` for a seat
   that left `order`, and only the fields that changed; `fields` carries one patch per changed entry `{ fieldId, … }` — only
   what changed — a whole entry for one that appeared, and `{ fieldId, gone: true }` for one that left the list. A frame
@@ -333,10 +333,11 @@ removed. It also clears tasks when leaving the match or losing its connection.
 
 ### Opening reroll messages and local seat recovery
 
-C→S adds host-only `room.rerollSetup {setupRevision}` / `room.cancelReroll {voteId}` and participant
-`g.rerollVote {voteId, agree}`. `m.public` carries `setupRevision` and nullable `rerollVote {id, proposerId, voters, agreed}`.
-Ready must reference the current revision; omission means revision 0 for old clients. The server blocks Ready while
-voting, refuses stale ids and cancels on disconnect/leave; DESIGN §28.21 / META.md describe the complete contract.
+C→S adds host-only `room.rerollSetup {setupRevision}` (业主 2026-10-30: no vote — the host redraws at once; the former
+`room.cancelReroll` and `g.rerollVote` were removed). `m.public` carries `setupRevision`; Ready must reference the current
+revision, and omission means revision 0 for old clients. The server refuses a non-host sender, a stale revision, a bot or
+a disconnected seat, and a second request inside 300 ms; a queued all-ready transition is cancelled only when the redraw
+succeeds. DESIGN §28.21 / META.md describe the complete contract.
 
 Explicit local recovery (§28.20) reuses saved hello tokens after a fresh live-tab claim check. Display names and room
 codes are UI metadata only, never authentication. No new network message or nickname/IP matching is introduced.

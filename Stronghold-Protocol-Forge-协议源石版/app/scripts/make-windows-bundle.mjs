@@ -598,7 +598,7 @@ export function bundleReadme({ version, withNode, withVoices = false, voiceLangs
     ? `
 **角色语音台词已经在包里**（行动出发 / 行动开始 / 选中 / 部署 / 作战中 1-4，以及结算时各自队伍 MVP 的那一句）。
 **默认就能听见**：音量在 **设置 → 干员语音（VOICE）**（默认 0.8）—— 音效与语音是两条独立通道，调一个不会影响另一个。
-工坊包也能自带语音（助战干员的配音），装包后走同一条链路，见 \`app\\docs\\WORKSHOP.md\`。
+工坊包也能自带语音（包内干员的配音），装包后走同一条链路，见 \`app\\docs\\WORKSHOP.md\`。
 ${dubLine}`
     : '';
   const tree = withNode
@@ -662,7 +662,7 @@ ${voiceNote}
 干员、地图、怪物、出怪、装备、行为层 kit 六个页面。给 AI 用的官方 prompt 在 \`app\\docs\\prompts\\\`。
 
 - **默认只绑本机**（编辑器可以写文件，没有登录与权限控制），端口 3311；换端口：\`启动编辑器.bat --port 3400\`。
-- 它只写两处：\`app\\workshop\\**\`（工坊源文件与生成产物）与 \`app\\data\\support.json\`（只在你动「是否助战」开关时）；
+- 它只写一处：\`app\\workshop\\**\`（工坊源文件与生成产物）；
   \`tools/build-data.mjs\` 生成的其它 \`data\\*.json\` 永不改动。
 - **保存后要重启游戏服务器**（关掉 \`启动游戏.bat\` 的窗口，再双击一次）才会出现在游戏里。
 - **不用开游戏服务器也能用编辑器**，它不需要素材也不需要联网。

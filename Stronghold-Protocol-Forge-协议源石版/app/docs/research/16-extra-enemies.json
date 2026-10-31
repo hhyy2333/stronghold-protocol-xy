@@ -18,7 +18,13 @@
       "第三批：沃尔夫之影（enemy_10109_mjcgst）抽出模型并写完 kit 后按业主要求撤下（2026-10-25「去掉沃尔夫之影」），key 不再进波次池，也不再有 kit。",
       "第二批：畸变体傀儡（enemy_1130_infstr）抽出模型并写完 kit 后按业主要求撤下（2026-10-26「删除畸变体傀儡」），key 不再进波次池，也不再有 kit —— 它唯一的一条机制就是死亡分裂，而分裂会把它落到的那个池子的身体数翻倍，业主不要这个效果。",
       "悬赏（业主 2026-10-25「搞点强怪加入悬赏」）：bounties[] 让这批强怪以「下场作战 + 击杀得资金」的悬赏卡出现；官方 effect 表没有它们的 ENEMY_GAIN 行，所以卡片由 tools/build-data.mjs 的 customBounties() 现造，R9 悬赏决策里单独一张 fork 列表（不写进官方 6 组，那 6 组是实机记录）。",
-      "第四批 share：研究行带 share: 0.25 的敌人只占同类池位的 1/4（业主 2026-10-25「凶豕兽作战里少放点，冰晶射手作战里少放点」），tools/build-data.mjs 的 attachWaveEnemies 按 share 抽签。"
+      "第四批 share：研究行带 share: 0.25 的敌人只占同类池位的 1/4（业主 2026-10-25「凶豕兽作战里少放点，冰晶射手作战里少放点」），tools/build-data.mjs 的 attachWaveEnemies 按 share 抽签。",
+      "第五批（2026-10-29，业主「黑流树海的大狗、大象、吐水羊、瞬移老鼠；孤星的大炮动力甲和打拳动力甲、交通厅」）：业主按外形/演出点名，按 PRTS 图鉴 + 客户端模型逐个核对后落成 BF0、BF2–BF4 / SWP / RO13–RO16 / LT15–LT17 这几行。「大象」= 撼地遗众（长鼻兽形，占用 4 阻挡数），「大狗」= 猎犬proto，「吐水羊」= 颂水贤者（受击向后 Blink，收录后按业主要求撤下，见本列表最后一条），「瞬移老鼠」= 聆风猎手（受击传送到攻击者身边），「交通厅」= “交通亭”量产型。",
+      "第五批的狂躁损伤（猎犬proto「攻击额外造成狂躁损伤」）本模式不建模：server/sim/constants.js 的 ELEMENTS 只有 burn / neural / necrosis / apoptosis / erosion，没有狂躁（rampage）这一种元素损伤。按「机制必须能用引擎已有原语表达」的老规矩，这一条不实现，代码注释写 [ASSUMED]。",
+      "第五批引入了 `noWave: true`（tools/build-data.mjs 的 attachWaveEnemies 跳过它）：只登记数据行与模型、不进波次池。用于强化版本（_2 / 交通警察）与领袖数据行（爱国者 / 狂躁异质裂兽）。",
+      "悬赏（业主 2026-10-29「增加悬赏：爱国者、主线狂躁大熊、无马巨像」）：forkbounty_10 爱国者 / forkbounty_11 狂躁异质裂兽 / forkbounty_12 迷路的巨像。第三个是重复登记 —— 官方本来就有 enemyeffect_b_18「迷路的巨像·悬赏」，但 tools/build-data.mjs 的 bountyDraftExclusion 把它判成 unseen（「66 张官方抽选截图里从没出现过」），于是它永远不进 R9 抽选；业主这次要它可抽，所以在 fork 列表里再给一张（fork 卡走官方 6 组之外的第 7 组，不动那 6 组实机记录）。",
+      "悬赏强怪在波次里是普通敌人，官方是领袖：它们的形态化机制在 forkwave.js 里按「强怪悬赏」简化（保留标志性机制，去掉依赖关卡脚本 / 专属系统的部分，每处 [ASSUMED] 都写在代码注释里）。",
+      "第五批：颂水贤者（enemy_2134_shrshep）收录后按业主要求撤下（2026-10-31「删除颂水贤者这个怪」），key 不再进波次池，也不再有 kit。"
     ]
   },
   "batches": [
@@ -656,6 +662,216 @@
           "share": 0.25
         }
       ]
+    },
+    {
+      "id": "b5",
+      "note": "第五批（2026-10-29，业主「黑流树海的大狗、大象、吐水羊、瞬移老鼠；孤星的大炮动力甲和打拳动力甲、交通厅」）：黑流树海 4 个 + 孤星 3 个。业主用外形/演出称呼它们，对应的图鉴条目按 PRTS 与客户端模型逐个核对过：大狗 = 猎犬proto（BF4）、大象 = 撼地遗众（BF3，长鼻兽形）、吐水羊 = 颂水贤者（BF1，受击后向后 Blink —— 收录后按业主要求撤下，见 _meta.notes）、瞬移老鼠 = 聆风猎手（BF2，受击后瞬移到攻击者身边）、交通厅 = “交通亭”量产型（LT15）；大炮动力甲 = R-11突击动力装甲（RO15，远程四目标）、打拳动力甲 = R-31重型动力装甲（RO13，Punch 晕眩）。另外带上同批同族的 空值体（BF0）与 恶笼草（SWP），免得「黑流树海」这一批只有 3 个新面孔。",
+      "enemies": [
+        {
+          "key": "enemy_2133_shdopl",
+          "rank": "NORMAL",
+          "name": "空值体",
+          "handbookIndex": "BF0",
+          "hp": 5000,
+          "atk": 320,
+          "def": 100,
+          "res": 20,
+          "attrPower": 6960,
+          "why": "初始伪装成一个单位，受到伤害后现身（本模式没有伪装系统 → 只作普通近战，[ASSUMED]）"
+        },
+        {
+          "key": "enemy_2135_shkrbt",
+          "rank": "ELITE",
+          "name": "聆风猎手",
+          "handbookIndex": "BF2",
+          "hp": 15000,
+          "atk": 600,
+          "def": 300,
+          "res": 20,
+          "attrPower": 18960,
+          "why": "受到攻击时传送到攻击者身边（业主说的「瞬移老鼠」）",
+          "kit": "server/sim/content/enemies/forkwave.js"
+        },
+        {
+          "key": "enemy_2137_shsdgo",
+          "rank": "ELITE",
+          "name": "猎犬proto",
+          "handbookIndex": "BF4",
+          "hp": 18000,
+          "atk": 280,
+          "def": 300,
+          "res": 20,
+          "attrPower": 20360,
+          "why": "周期性附着于一个单位上持续撕咬（Jump）；狂躁损伤本模式无该元素 → 不建模（业主说的「大狗」）",
+          "kit": "server/sim/content/enemies/forkwave.js"
+        },
+        {
+          "key": "enemy_2152_shezlc",
+          "rank": "ELITE",
+          "name": "恶笼草",
+          "handbookIndex": "SWP",
+          "hp": 10000,
+          "atk": 600,
+          "def": 500,
+          "res": 30,
+          "attrPower": 14590,
+          "why": "进入保护目标后偷取源石锭（本模式没有源石锭窃取 → 纯数值，[ASSUMED]）"
+        }
+      ]
+    },
+    {
+      "id": "b5b",
+      "note": "第五批的强化版本（业主 2026-10-29 同批）：只登记数据行与模型，不进波次池（`noWave: true` —— 每个池的 fork key 有上限，进它们会把基础版挤掉）。猎犬proto / 撼地遗众 / 空值体 / 恶笼草 没有 _2 版本。",
+      "enemies": [
+        {
+          "key": "enemy_1256_lyacpa_2",
+          "rank": "ELITE",
+          "name": "R-11a突击动力装甲",
+          "handbookIndex": "RO16",
+          "hp": 32500,
+          "atk": 1350,
+          "def": 1500,
+          "res": 20,
+          "attrPower": 43810,
+          "why": "R-11 的强化型",
+          "band": "wide",
+          "noWave": true
+        },
+        {
+          "key": "enemy_1255_lybgpa_2",
+          "rank": "ELITE",
+          "name": "R-31a重型动力装甲",
+          "handbookIndex": "RO14",
+          "hp": 32500,
+          "atk": 2000,
+          "def": 1500,
+          "res": 20,
+          "attrPower": 47060,
+          "why": "R-31 的强化型",
+          "band": "wide",
+          "noWave": true
+        },
+        {
+          "key": "enemy_1332_cbterm_2",
+          "rank": "ELITE",
+          "name": "“交通亭”试做型",
+          "handbookIndex": "LT16",
+          "hp": 22000,
+          "atk": 1500,
+          "def": 4800,
+          "res": 90,
+          "attrPower": 44170,
+          "why": "交通亭的强化型",
+          "band": "wide",
+          "noWave": true
+        },
+        {
+          "key": "enemy_1333_cbbgen",
+          "rank": "ELITE",
+          "name": "“交通警察”",
+          "handbookIndex": "LT17",
+          "hp": 5500,
+          "atk": 600,
+          "def": 300,
+          "res": 40,
+          "attrPower": 9520,
+          "why": "交通亭被摧毁后弹射出来的驾驶员（不在波次里单独刷，只由交通亭的死召唤出来）",
+          "band": "wide",
+          "noWave": true
+        }
+      ]
+    },
+    {
+      "id": "b5c",
+      "note": "第五批领袖数据行（业主 2026-10-29「增加悬赏：爱国者、主线狂躁大熊」）：爱国者与狂躁异质裂兽在官方是领袖，本模式的领袖只走 boss 池、不进波次。为了让「强怪悬赏」卡能在 data/enemies.json 里解析到它们，这里补数据行；`noWave: true` 保证它们不会被挂进任何波次池（它们只从悬赏卡里出来）。数值取官方 enemy_database level 0（爱国者 45000/1600/500/45，狂躁异质裂兽 150000/1000/300/40）。此外，第五批里一只 P 值远超任何波次池强度带的精英也移到这里：撼地遗众（P 136210，最强的 ELITE 池锚点只有 33810 ≈ 4 倍）、R-11/R-31 动力装甲（P 34660/36660）与“交通亭”（P 39725）。按 [0.7, 1.5] 的宽带上限，它们进波次池只能靠 overCap 硬塞，会把一整个池的数量分布推翻；改为只走「强怪悬赏」卡（forkbounty_13 / forkbounty_14），由玩家自己选择接不接。",
+      "enemies": [
+        {
+          "key": "enemy_1506_patrt",
+          "rank": "BOSS",
+          "name": "爱国者",
+          "handbookIndex": "PT",
+          "hp": 45000,
+          "atk": 1600,
+          "def": 500,
+          "res": 45,
+          "attrPower": 54635,
+          "why": "行军姿态（攻+50%/防+200%/法抗+100%/嘲讽+2、4连击）→ 首次击倒后 60s 生命献祭重生 → 毁灭姿态（免三控、间隔 3.6、投矛狙击最远远程位）",
+          "band": "wide",
+          "noWave": true,
+          "kit": "server/sim/content/enemies/forkwave.js"
+        },
+        {
+          "key": "enemy_1571_mirbst",
+          "rank": "BOSS",
+          "name": "狂躁异质裂兽",
+          "handbookIndex": "KD",
+          "hp": 150000,
+          "atk": 1000,
+          "def": 300,
+          "res": 40,
+          "attrPower": 156020,
+          "why": "两连击 + 狂怒（受伤减免、攻速移速大幅提升）+ 落石晕眩 + 第二形态（主线 16-12 的领袖 = 业主说的「主线狂躁大熊」）",
+          "band": "wide",
+          "noWave": true,
+          "kit": "server/sim/content/enemies/forkwave.js"
+        },
+        {
+          "key": "enemy_2136_shcolo",
+          "rank": "ELITE",
+          "name": "撼地遗众",
+          "handbookIndex": "BF3",
+          "hp": 120000,
+          "atk": 2000,
+          "def": 2000,
+          "res": 70,
+          "attrPower": 136210,
+          "why": "占用4阻挡数 + 累计受击获得生命流失 + 每进入新地块对周围造成物理伤害（业主说的「大象」）",
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "noWave": true
+        },
+        {
+          "key": "enemy_1256_lyacpa",
+          "rank": "ELITE",
+          "name": "R-11突击动力装甲",
+          "handbookIndex": "RO15",
+          "hp": 25000,
+          "atk": 1200,
+          "def": 1200,
+          "res": 20,
+          "attrPower": 34660,
+          "why": "同时攻击四个目标 + 远程攻击伤害 ×0.5（业主说的「大炮动力甲」）",
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "noWave": true
+        },
+        {
+          "key": "enemy_1332_cbterm",
+          "rank": "ELITE",
+          "name": "“交通亭”量产型",
+          "handbookIndex": "LT15",
+          "hp": 20000,
+          "atk": 1200,
+          "def": 4500,
+          "res": 75,
+          "attrPower": 39725,
+          "why": "只能被阻挡数≥4 阻挡 + 每次受击削 DEF/RES + 被摧毁后弹射“交通警察”并自爆（业主说的「交通厅」）",
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "noWave": true
+        },
+        {
+          "key": "enemy_1255_lybgpa",
+          "rank": "ELITE",
+          "name": "R-31重型动力装甲",
+          "handbookIndex": "RO13",
+          "hp": 25000,
+          "atk": 1600,
+          "def": 1200,
+          "res": 20,
+          "attrPower": 36660,
+          "why": "【超负载】连续攻击造成 ATK×0.75 物理并晕眩（业主说的「打拳动力甲」）",
+          "kit": "server/sim/content/enemies/forkwave.js",
+          "noWave": true
+        }
+      ]
     }
   ],
   "bounties": [
@@ -739,6 +955,51 @@
       "desc": "为自身下场作战添加1个搏命养家者，将其击倒者获得3资金",
       "coin": 3,
       "tier": 3
+    },
+    {
+      "effectId": "forkbounty_10",
+      "group": "strong",
+      "enemyKey": "enemy_1506_patrt",
+      "name": "爱国者·悬赏",
+      "coin": 5,
+      "tier": 3,
+      "desc": "为自身下场作战添加1个爱国者，将其击倒者获得5资金"
+    },
+    {
+      "effectId": "forkbounty_11",
+      "group": "strong",
+      "enemyKey": "enemy_1571_mirbst",
+      "name": "狂躁异质裂兽·悬赏",
+      "coin": 5,
+      "tier": 3,
+      "desc": "为自身下场作战添加1个狂躁异质裂兽，将其击倒者获得5资金"
+    },
+    {
+      "effectId": "forkbounty_12",
+      "group": "strong",
+      "enemyKey": "enemy_2003_rockman",
+      "name": "迷路的巨像·悬赏（可抽选）",
+      "coin": 5,
+      "tier": 3,
+      "desc": "为自身下场作战添加1个迷路的巨像，将其击倒者获得5资金"
+    },
+    {
+      "effectId": "forkbounty_13",
+      "group": "strong",
+      "enemyKey": "enemy_2136_shcolo",
+      "name": "撼地遗众·悬赏",
+      "coin": 4,
+      "tier": 3,
+      "desc": "为自身下场作战添加1个撼地遗众，将其击倒者获得4资金"
+    },
+    {
+      "effectId": "forkbounty_14",
+      "group": "strong",
+      "enemyKey": "enemy_1332_cbterm",
+      "name": "“交通亭”量产型·悬赏",
+      "coin": 4,
+      "tier": 3,
+      "desc": "为自身下场作战添加1个“交通亭”量产型，将其击倒者获得4资金"
     }
   ]
 }

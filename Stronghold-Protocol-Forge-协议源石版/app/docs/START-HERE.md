@@ -257,7 +257,7 @@ VALID: the engine accepts this content.
 | 真症状 | 真正的原因 | 怎么改 |
 |---|---|---|
 | 包装上了，游戏里一切照旧，日志也干干净净 | `content` 里没写 `chess` —— 引擎**只读声明过的文件**，`chess.json` 在磁盘上但一个字节都不读。**症状全是静默的** | 在 `pack.json` 里写 `"content": ["chess"]` |
-| 校验说「什么都没带」，可我明明写了 `support` | `support` / `playtest` / `variants` / `behaviour` / `dependencies` / `conflicts` / `callBudget` / `matchKinds` **都不算内容**（八样）—— 它们说的是「怎么跑」，不往对局里带东西 | 至少补一样真的：`content` / `art` / `client` / `notices` / `routes` / 素材之一 |
+| 校验说「什么都没带」，可我明明写了 `playtest` | `playtest` / `variants` / `behaviour` / `dependencies` / `conflicts` / `callBudget` / `matchKinds` **都不算内容**（七样）—— 它们说的是「怎么跑」，不往对局里带东西 | 至少补一样真的：`content` / `art` / `client` / `notices` / `routes` / 素材之一 |
 | 明明有图，包被拒了 | 有 `assets/` 文件夹却**没写 `license`** | 加一行 `"license": "CC-BY-4.0"` |
 | 文件夹名和 `"id"` 不一致，包消失了 | 引擎按 `<workshop 文件夹>/<包 id>/pack.json` 找包，名字对不上就**整包跳过** | 让文件夹名 = `pack.json` 的 `"id"` |
 | 两个包都加了同一个干员，先装的那个没了 | 两个包抢同一个 id：**包 id 字典序小的赢**，而且与扫描顺序无关 | 改包名，或者让其中一个包别放这条 |

@@ -1,0 +1,2359 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 57b408f9..beacfb0e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,28 @@
+ ## 0.3.0 — 2026-10-13
+ 
++### 修复
++- **莱茵护甲把敌人的生命值改成了 3**（业主 2026-10-16 报「莱茵护甲怎么把怪的生命值改了」）：
++  协议源石 `server/sim/content/hextech.js hitShield` 用的是 `hitCount` + `setHits`，而 `setHits`
++  （`enemies/helpers.js`）会把 `base.maxHp` **整个覆盖**成"次数"（它的注释就写着 `maxHp := hits`）——
++  于是**每个敌人**（十万血的首领也一样）变成 **3 点血**、血条直接消失。那套机制是给**器物 / 频次怪**用的
++  （它们本来就是"打 N 次才倒"，没有血量可言），而卡面写的是「敌人**获得一层**次数盾（可抵挡 3 次攻击）」
++  = **额外**一层。引擎里本来就有真正的"一层盾"：`ab.hitShield`（`enemies.js onHitIn`：整段物理/法术伤害被
++  `cancel`、扣 1 层、破盾放 `shieldBreak`），官方莱茵生命防卫科高级成员与假想敌：再生用的都是它 ——
++  卡名「莱茵护甲」正来自前者。现在改为写 `ab.hitShield`（已有的层取较大者、不重置），血量一字不动。
++  顺带删掉无人使用的 `p.artsOnly` 分支，并给 `setHits` 补了一条「它会覆盖 maxHp，只该给器物/频次怪用」
++  的警告。这张卡此前**一条测试都没有**，因此新增回归用例（`test/sim/hextech-battle.test.js`）：
++  血量保持、三层各挡下一次（整段返回 0）、破盾特效、第四下正常落地。
++  相关：`server/sim/content/hextech.js`、`server/sim/content/enemies/helpers.js`、`test/sim/hextech-battle.test.js`。
++- **自制干员的战斗模型（`spineLocal`）从来不会生效**（业主 2026-10-16 报「娅娜的立绘不对」时顺带查到的第二条）：
++  `public/js/assets.js localSpineEntry` 要求「`skel` 去掉 `.skel` 就是 `atlas`」（pixi-spine 按骨架名找图集），
++  但那条校验比对的是**带内容哈希段的 URL**。服务端 `server/http/assetViews.js` 只给 `spine/…` **组**里的文件
++  一个共享的模型哈希；自制干员的模型挂在 `char/<charId>` 组下（`tools/custom-spine.mjs customCharArtGroup`），
++  三个文件各拿**自己的**哈希 —— 于是 `.skel` 与 `.atlas` 的哈希不同、校验永远不成立，`spineLocal` 对
++  **恰好是它存在的理由的那些干员**是死代码（模型静默回落到别名）。现在比对**去掉哈希段**后的两个名字
++  （`shared/assetPaths.js unhashedUrl`，正是为「派生名」准备的助手）；名字真的对不上、或文件缺一个，照旧拒绝。
++  官方敌人的 `spineLocal` 不受影响（它们本来就在 `spine/enemy/…` 组里，拿的是共享哈希）。
++  相关：`public/js/assets.js`、`test/custom-art.test.js`（+1 条：哈希不同的 skel/atlas 仍解析、真不匹配仍拒绝、缺文件仍拒绝）。
++
+ ### 合并上游
+ 
+ - **并入官方 0.2.5**（2026-10-12 发布，113 个文件：111 改 + 2 新增）。上游那一段的完整内容见下方 `## 0.2.5` 条目，此处只记本次合并本身与本树自己的改动。
+@@ -33,6 +56,7 @@
+ - **协议源石六条数值 / 规则调整**（业主指示 2026-10-14，两条当日更正；§29.36）：**技能层涌**加「单场战斗**每个盟约**最多通过此效果叠 **40 层**」的上限（**按盟约**记账，施法者同时属于三个盟约时三个各自都能到 40、互不消耗；未激活的盟约不喂也不占额度）；**因小失大**从 1 阶提到 **2 阶**（机制不动，于是它从"常常出现"变成"偶尔出现即值得围绕"）；**战损回收**改成**漏怪 1 金**、本回合**联防失败且真的被扣了目标生命值**时每个漏怪 **2 金**（上限仍是 12，于是 2 金时 6 个漏怪封顶）；**回响**的分裂变成 **10%+10x%** 的概率（x = 当前回合数，R9 起饱和到必定分裂；掷骰一次一具尸体，没中也记账）；**不屈余烬**改为 **6 秒阻挡数 +2** 并**去掉锁血**（业主追加「不屈余烬去掉锁血」：删掉 `unit.mem.hexEmberUntil` 窗口与 `fatal` 钩子，只留阻挡加成，卡面文案同步；这是这张卡自己的 `fatal` 处理器，与维多利亚坚固锤 / 史尔特尔余烬 / 不屈自身等其它锁血来源不共享状态，不受影响）；**boss 血量在基础上 ×（总协议源石阶数 ÷ 人数 ÷ 2）**，下限 1，只数玩家侧、只数开战时存活的人（与官方池的分母是同一个集合）。新公共读取器 `bossHexTierMul` / `bossPoolHpFor`（`server/match/hextech.js`）——**建池与审计复算共用同一个调用**，否则客户端上报的 boss 战场会被判成伪造。两条 **[ASSUMED]**（详见 §29.36）：战损回收的「协防失败」= 该回合打过联防且 `lpLoss > 0`；「每个 +2 金」按**替换**（不是 1+2=3）实现。相关：`tools/hextech/roster.mjs`、`data/hextech.json`、`public/i18n/en.json`、`server/sim/content/hextech.js`、`server/match/{hextech,finalAssault,audit,fields}.js`、`server/match/match/bossRounds.js`，以及 `test/sim/hextech-battle.test.js`（+2 条、回响 9 条改用 R9）、`test/content/hextech.test.js`（战损回收 5 分支）、`test/match/boss-hp-scaling.test.js`、`test/match/{bosshp,finalAssault,connection}.test.js`。
+ - **两条追加更正**（业主指示 2026-10-14；§29.37）：**三连透支**从「整局只发一次」改成「**每次合成精锐都发，但本回合失效**」（业主：「你合成精锐干员时，随机获得一名你场上人数最多盟约的精锐干员然后本回合失效」）——计数器键改成 `…:eliteGrant:<round>`，额度自己每回合重置（与配给制的卖卡上限同一手法，卡上不需要 `onRoundStart`），于是同一回合再合成不发、下一回合的第一次合成又照发；发放本身没动（`topMemberBond` 选场上人数最多的盟约 → 不占共享库存的 `rollChess({ bond, ignoreCounts: true })` → `grantChess({ golden: true })`），就地升华照旧不触发。**腐蚀领域**的每回合斜率从 40 降到 **25**（`80+25x`：R6 = 230 / R11 = 355 / R14 = 430，原来 320 / 520 / 640）——只改数据里的 `damagePerRound`，引擎那段一直只读 `params`；`docs/BALANCE.md` 引用这两个数的段落一并改。相关：`tools/hextech/roster.mjs`、`data/hextech.json`、`public/i18n/en.json`、`server/sim/content/hextech.js`、`docs/BALANCE.md`，以及 `test/content/hextech.test.js`（三连透支的按回合用例）、`test/sim/hextech-battle.test.js`（80+25x + 2 条数据来源断言）。
+ - **均衡盟约不再均摊「不显示层数」的盟约**（业主指示 2026-10-14；§29.38）：业主原话「均衡盟约不应该均衡绝技和独行这种层数没意义的」。这张卡此前按字面「所有已激活盟约」把**每一张**已激活盟约都算进分子与分母，其中 **独行 / 绝技 / 调和 / 协防干员** 是 `bonds.json` 的 `noStack` 盟约——卡面是纯人数句子、没有 `baseParams` / `perStackParams` / `layerMilestones`，客户端也从不显示层数（结果页 `hideLayers`、盟约栏「层数不显示」）。它们又极易激活（独行 1 名、绝技 2 名精锐），于是把分母抬高、把总值摊薄，而分到的那份**玩家看不见、任何规则也不读**——在最该用它的盘面上是纯亏。现在引擎侧加一个 `holdsLayers` 谓词（读数据里已有的 `noStack`），把这类盟约从**分子与分母两侧**一起排除；其余行为一字未改（参与者仍须「已激活」、`ceil`、绝对写 `setLayers`、只激活 1 个时不动），调和的 +1 人数与独行的「恰好 1 名」是人数规则、未被触碰。卡面文案补「不显示层数的盟约不参与」并重生成 `data/hextech.json`。相关：`server/sim/content/hextech.js`、`tools/hextech/roster.mjs`、`data/hextech.json`、`public/i18n/en.json`、`docs/BALANCE.md`、`docs/META.md`，以及 `test/content/hextech.test.js`（+1 条）与 `test/match/hextech.test.js`（+1 条）。
++- **状态预览不再改动对局：盟约寄生「点一次干员就叠一次」**（业主报告 2026-10-15；§29.40）：业主原话「盟约寄生会在点击干员后多次触发」。备战期点开自己场上干员的详情卡，客户端会向服务器要它「下场战斗开始时的属性」（`g.unitStats` → `m.unitStats`，user playtest #4 item 7），服务端 `_unitStatsOf` 的做法是**真的派发一遍 `onBattleStart`**、交给一场不步进的战斗读一遍就丢掉。而 `盟约寄生`（§29.34）在这条钩子上会**真的写层数**（`ctx.addLayers` 进 `ps.layers`，并补进这一场的输入快照），于是每点开一次干员卡就白拿一次层数（实测 10 → 14 → 18 → 22）；**群蛇形态**同病——它在钩子里花掉攒的整数点，第一次点开就把攒的敌人预支光（3 → 0）。`docs/META.md` 早已写明契约（`ev.preview` 为真时处理器**不得**改动对局状态、不得掷对局骰），但那只是散文、没有任何一层在拦——与 §29.8 同一形状，只不过这次是按**处理器**分别落实。现在把它放到**唯一一个所有处理器必经的地方**执行：`makeCtx` 见到 `ev.preview` 就给 ctx 装上 `applyPreviewGuard`，每个**持久化写入口**都变成**干跑**（返回真调用会返回的值，什么都不写），计数器走影子覆盖层（处理器能读回自己的写入），`ctx.rng` 换成按 `preview:<seat>` 派生的私有流，`teammates()` / `player()` 返回的也是被同样包裹的 ctx；`addLayers` 的干跑走新增的 `PlayerState.layerGainOf`（只算不写，同一套前置条件 / 999 上限 / 层数倍率），所以**预览里看到的层数依然是对的**（实测预览快照 14 层、存储仍是 10 层）。**不动任何一张卡**，真实战斗路径一行未改。相关：`server/match/effectsMeta.js`、`server/match/player/economy.js`、`docs/META.md`、`docs/history/0.3.0.md` §29.40，以及 `test/match/meta.test.js`（+1 条，调度器层）+ `test/match/hextech.test.js`（+1 条，真路径）。
+ - 黄金结果（`test/golden/*.json`）按 0.2.5 的有意规则改动整体重新生成；**均衡盟约**那条再让 `matches` 的 `coop2-NORMAL-3` / `coop2-NORMAL-8-serverrun` 两个种子位移（AI 席位恰好持有这张卡，独行不再被写层数，§29.38.4）。
+ - **管理面板：封禁 UI、另一个槽、删除反馈**（业主需求 2026-10-14）：
+   - **封禁 IP 有了面板 UI**：新增一节，填 IP/CIDR + 可选理由 + 可选时长（分钟，留空＝永久）即可封禁，名单随 2 秒轮询刷新，每行一个「解封」按钮（先确认）。此前只有接口、没有界面（`docs/DEPLOY.md` §8.3）。
+diff --git a/data/hextech.json b/data/hextech.json
+index c8b77bbf..d2390039 100644
+--- a/data/hextech.json
++++ b/data/hextech.json
+@@ -1 +1 @@
+-{"version":1,"generator":"tools/build-hextech.mjs","format":{"rounds":[1,6,11],"offer":3,"rerolls":1,"timerSec":30,"timeout":"random","enemyPerDraw":1,"enemyPersist":"match"},"rarities":[{"id":"silver","name":"1阶","weight":0.6,"tier":1},{"id":"gold","name":"2阶","weight":0.3,"tier":2},{"id":"prismatic","name":"3阶","weight":0.1,"tier":3}],"playerHexes":{"hex_stipend":{"id":"hex_stipend","name":"战备津贴","desc":"获得时立即得到 3 资金；之后每回合开始时额外得到 2 资金。","rarity":"silver","effect":{"onPick":{"funds":3},"onRoundStart":{"funds":2}}},"hex_logistics":{"id":"hex_logistics","name":"后勤整备","desc":"获得时立即得到 1 件随机 1 阶进阶装备；之后每 2 回合开始时再得到 1 件进阶装备，其阶级比上次获得的装备高 1 阶（最高 6 阶）。","rarity":"silver","effect":{"onPick":{"goldenItem":{"tier":1,"count":1}},"onRoundStart":{"everyRounds":2,"goldenItem":{"tier":"next","count":1}}}},"hex_echo":{"id":"hex_echo","name":"盟约回响","desc":"每回合开始时，所有已激活盟约 +5 层。","rarity":"silver","effect":{"onRoundStart":{"allActiveLayers":5}}},"hex_refresh":{"id":"hex_refresh","name":"免费刷新","desc":"获得时立即得到 6 次免费刷新；之后每回合开始时再得到 2 次。","rarity":"silver","effect":{"onPick":{"freeRefresh":6},"onRoundStart":{"freeRefresh":2}}},"hex_recruit":{"id":"hex_recruit","name":"精锐预兆","desc":"获得时立即得到 3 张同一名当前等级阶的干员。","rarity":"silver","effect":{"onPick":{"chess":{"tier":"level","count":3,"same":true}}}},"hex_bulwark":{"id":"hex_bulwark","name":"坚壁","desc":"获得时目标生命值上限 +10。","rarity":"silver","effect":{"onPick":{"lp":10}}},"hex_massprod":{"id":"hex_massprod","name":"量产线","desc":"每回合开始时，随机获得 1 名当前等级阶的干员。","rarity":"gold","effect":{"onRoundStart":{"chess":{"tier":"level","count":1}}}},"hex_drill":{"id":"hex_drill","name":"精锐训练","desc":"作战中，己方所有干员攻击力 +20%、攻击速度 +10；并根据当前回合 x 额外获得 5x% 攻击力与 4x 攻击速度。","rarity":"gold","effect":{"battle":{"atkPct":20,"aspd":10},"drill":{"atkPerRound":5,"aspdPerRound":4}}},"hex_armor":{"id":"hex_armor","name":"反击装甲","desc":"作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害后对伤害来源造成 100% 防御力的真实伤害。","rarity":"gold","effect":{"battle":{"defPct":18,"resFlat":10},"armor":{"defRatio":100}}},"hex_overlord":{"id":"hex_overlord","name":"盟约之主","desc":"每回合开始时，所有已激活盟约 +5 层，且你人数最多的盟约所需人数 −1。","rarity":"prismatic","effect":{"onRoundStart":{"allActiveLayers":5,"mainBondCount":1}}},"hex_immortal":{"id":"hex_immortal","name":"不灭壁垒","desc":"作战中，己方所有干员生命值上限 +12%；每场战斗中，己方每名干员各有 1 次复活机会。","rarity":"prismatic","effect":{"battle":{"maxHpPct":12},"immortalRevive":{"count":1}}},"hex_dividend":{"id":"hex_dividend","name":"源石红利","desc":"你每消耗 5 资金，下回合开始时额外得到 1 资金。","rarity":"silver","effect":{"onSpend":{"rebateAccrue":true},"onRoundStart":{"rebatePay":{"per":5,"gain":1}}}},"hex_recovery":{"id":"hex_recovery","name":"战损回收","desc":"每场战斗每漏掉 1 个敌人，下回合开始时额外得到 1 资金；若该回合的联防失败并扣除了你的目标生命值，则每漏掉 1 个敌人额外得到 2 资金（每回合最多 12）。","rarity":"silver","effect":{"onBattleResult":{"perLeak":1,"perLeakAfterLoss":2,"cap":12}}},"hex_heritage":{"id":"hex_heritage","name":"传承","desc":"你每出售 1 名干员，场上拥有其任一盟约的干员永久 +2% 攻击力。","rarity":"silver","effect":{"onSold":{"bondAtkPct":2}}},"hex_broadcast":{"id":"hex_broadcast","name":"调度直播","desc":"每回合开始时，把商店的第一格换成 1 名你场上随机的干员。","rarity":"gold","effect":{"onRoundStart":{"shopSlot":{"index":0,"pick":"board"}}}},"hex_vanguard":{"id":"hex_vanguard","name":"先锋之势","desc":"每场战斗中，己方第一次击倒敌人时，若该次击杀来自先锋干员，你在结算后得到 4 资金；己方先锋干员首次攻击时攻击力 +30%，持续 10 秒。","rarity":"gold","effect":{"battle":{"firstKillBy":{"profession":"PIONEER","coins":4},"firstAttackBy":{"profession":"PIONEER","atkPct":30,"seconds":10}}}},"hex_mirror":{"id":"hex_mirror","name":"镜像协议","desc":"获得时，随机复制一名队友已拥有的一枚协议源石（优先阶位更高的一枚）；若队友尚未拥有，则在之后其获得时补上。","rarity":"gold","effect":{"onPick":{"copyAllyHex":true}}},"hex_double":{"id":"hex_double","name":"二次抽取","desc":"获得时，额外随机获得两枚协议源石。","rarity":"prismatic","effect":{"onPick":{"randomHexes":2}}},"hex_resonance":{"id":"hex_resonance","name":"共鸣协议","desc":"每回合开始时，你和所有队友各获得 2 次免费刷新。","rarity":"prismatic","effect":{"team":true,"onRoundStart":{"freeRefresh":2}}},"hex_bondresonance":{"id":"hex_bondresonance","name":"盟约共鸣","desc":"你战场上的干员与其上下左右相邻的干员共享彼此的盟约。","rarity":"prismatic","effect":{"bondShare":true}},"hex_layershift":{"id":"hex_layershift","name":"层数转移","desc":"战斗开始时，你层数最低的已激活盟约把一半层数转移给层数最高的已激活盟约。","rarity":"silver","effect":{"onBattleStart":{"layerTransfer":true}}},"hex_pyrrhic":{"id":"hex_pyrrhic","name":"因小失大","desc":"本局中，附加盟约（调和与独行除外）的激活条件减少 1 名干员，核心盟约的激活条件增加 1 名干员。","rarity":"gold","effect":{"onPick":{"bondCountShift":{"small":1,"big":-1}}}},"hex_deepdevour":{"id":"hex_deepdevour","name":"深度吞噬","desc":"〖阿戈尔〗干员吞噬时，其攻击目标数 +1。","rarity":"gold","effect":{"devourTarget":{"maxTargets":1}}},"hex_indomember":{"id":"hex_indomember","name":"不屈余烬","desc":"〖不屈〗盟约效果触发后，该干员获得 6 秒阻挡数 +2。","rarity":"silver","effect":{"indomEmber":{"seconds":6,"block":2}}},"hex_traitspread":{"id":"hex_traitspread","name":"特质扩散","desc":"战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给相邻一格的干员（优先右边）。","rarity":"gold","effect":{"traitSpread":true}},"hex_killgift":{"id":"hex_killgift","name":"击倒馈赠","desc":"作战中，你的干员每击倒 1 个敌人，该干员攻击力 +10%（本场战斗内叠加）。","rarity":"silver","effect":{"killGift":{"atkPct":10}}},"hex_skillflow":{"id":"hex_skillflow","name":"技能层涌","desc":"作战中，你的干员每次开启技能时，其所属的已激活盟约层数 +1（单场战斗中每个盟约最多通过此效果叠加 40 层）。","rarity":"silver","effect":{"skillFlow":{"layers":1,"maxLayersPerBond":40}}},"hex_eliteresonance":{"id":"hex_eliteresonance","name":"精英共鸣","desc":"场上每有 1 名精锐干员（数量 x），你购买干员时有 5x% 概率直接获得其精锐形态。","rarity":"gold","effect":{"onBuy":{"eliteBuy":{"pctPerElite":5}}}},"hex_bountytriple":{"id":"hex_bountytriple","name":"悬赏倍增","desc":"本局中，你获得的悬赏资金 ×3。","rarity":"gold","effect":{"bountyMul":3}},"hex_shopcontract":{"id":"hex_shopcontract","name":"商店契约","desc":"获得时立即得到 3 次免费刷新；每次刷新后你购买的第一名干员价格 −1（最低 0 费）。","rarity":"gold","effect":{"onPick":{"freeRefresh":3},"onRefresh":{"shopContractArm":true},"onPrice":{"shopContractDiscount":1},"onBuy":{"shopContractSpend":true}}},"hex_itemrefund":{"id":"hex_itemrefund","name":"装备转化","desc":"你弃置装备时，返还其购买价格。","rarity":"silver","effect":{"onDestroy":{"itemRefund":true}}},"hex_fullkit":{"id":"hex_fullkit","name":"整装待发","desc":"干员可装备 3 个装备（装备变形同构体与两个阵营装备时，两边的阵营盟约都会生效）。","rarity":"prismatic","effect":{"equipSlots":3}},"hex_northwall":{"id":"hex_northwall","name":"北境长城","desc":"战斗开始时，你最右一列的干员获得可吸收相当于其最大生命值 50% 的护盾；此后每秒增加 5%，最多到其最大生命值的 100%。","rarity":"silver","effect":{"northWall":{"shieldPct":50,"stepPct":5,"capPct":100}}},"hex_armorbreak":{"id":"hex_armorbreak","name":"装甲破坏","desc":"作战中，你的干员造成物理伤害时，使该敌人防御力 −20（本场战斗内叠加）。","rarity":"gold","effect":{"armorBreak":{"defFlat":20}}},"hex_allin":{"id":"hex_allin","name":"孤注一掷","desc":"获得后的 4 个回合内，己方所有干员攻击力 +200%，随后失效。","rarity":"prismatic","effect":{"battleForRounds":{"rounds":4,"battle":{"atkPct":200}}}},"hex_bondfission":{"id":"hex_bondfission","name":"盟约裂变","desc":"本局中你只能激活 2 个盟约（层数最高的优先），但这 2 个盟约的叠层速度提升 200%。","rarity":"prismatic","effect":{"bondFission":{"cap":2,"mul":3}}},"hex_foresightdebt":{"id":"hex_foresightdebt","name":"远见透支","desc":"本局中〖远见〗购买价格降低效果所需层数减半，但你每次通过〖远见〗折扣购买干员时消耗 1 点目标生命值（不会降至 0 以下）。","rarity":"silver","effect":{"foresightHalve":true,"onBuy":{"foresightDebt":{"lp":1}}}},"hex_precisionpen":{"id":"hex_precisionpen","name":"精准穿透","desc":"〖精准〗每叠加 10 层，〖精准〗干员及你所有远程干员的攻击额外无视目标 2% 的防御力与法术抗性。","rarity":"silver","effect":{"precisionPen":{"perLayers":10,"pct":2}}},"hex_merit":{"id":"hex_merit","name":"战功簿","desc":"作战结束时，每击倒 5 名敌人，下回合开始时额外得到 1 资金（每回合至多 4）。","rarity":"silver","effect":{"onBattleResult":{"perKill":{"per":5,"gain":1,"cap":4}}}},"hex_rationing":{"id":"hex_rationing","name":"配给制","desc":"你出售干员时，额外得到 1 资金（每回合至多额外 5）。","rarity":"silver","effect":{"onSold":{"sellBonus":{"gain":1,"cap":5}}}},"hex_quartermaster":{"id":"hex_quartermaster","name":"军需官","desc":"每次提升调度中心等级时，返还该次升级费用的一半（向下取整）。","rarity":"silver","effect":{"onLevelUp":{"levelRefund":{"pct":50}}}},"hex_drillsergeant":{"id":"hex_drillsergeant","name":"教官批注","desc":"作战中，己方所有干员每秒额外回复 0.3 点技力。","rarity":"silver","effect":{"battle":{"spRecoveryFlat":0.3}}},"hex_holdline":{"id":"hex_holdline","name":"浴血","desc":"作战中，己方干员每损失 25% 生命值，防御力 +40（本场战斗内叠加，最多 4 层）。","rarity":"silver","effect":{"holdLine":{"stepPct":25,"def":40,"max":4}}},"hex_firingline":{"id":"hex_firingline","name":"火力延伸","desc":"作战中，己方狙击干员的攻击距离 +1。","rarity":"gold","effect":{"rangedExtend":{"profession":"SNIPER","extend":1}}},"hex_shieldwall":{"id":"hex_shieldwall","name":"盾墙","desc":"作战中，己方所有干员阻挡数 +1，生命值上限 +20%；相邻的己方单位受到的伤害与治疗，按 50% 分摊给每个相邻的【重装】干员。","rarity":"gold","effect":{"battle":{"blockCnt":1,"maxHpPct":20},"shieldwall":{"ratio":50}}},"hex_arsenal":{"id":"hex_arsenal","name":"军械库","desc":"每回合开始时，随机获得 1 件不高于你调度中心等级的装备。","rarity":"gold","effect":{"onRoundStart":{"item":{"pool":"pool_equip_normal","count":1}}}},"hex_laststand":{"id":"hex_laststand","name":"先驱","desc":"作战中，战斗开始后的前 30 秒，己方所有干员生命值不会降至 1 以下。","rarity":"gold","effect":{"lastStand":{"seconds":30}}},"hex_overdrive":{"id":"hex_overdrive","name":"超载协议","desc":"作战中，己方干员的技能消耗技力 −3；每次开启技能后，该干员失去自身最大生命值的 4% 生命。","rarity":"gold","effect":{"battle":{"spCostFlat":-3},"overdrive":{"selfDmgPct":4}}},"hex_fieldhospital":{"id":"hex_fieldhospital","name":"战地医院","desc":"作战中，你的干员每击倒 1 名敌人，为当前生命值比例最低的己方干员回复其最大生命值的 10%。","rarity":"gold","effect":{"fieldHospital":{"healPct":10}}},"hex_lossamp":{"id":"hex_lossamp","name":"损伤加强","desc":"作战中，敌人受到的元素损伤 +50%；场上所有敌人每秒额外受到 100 点侵蚀损伤。","rarity":"gold","effect":{"elemAmp":{"elemTakenMul":1.5,"erosionPerSec":100}}},"hex_warmachine":{"id":"hex_warmachine","name":"战争机器","desc":"获得时：你和所有队友的目标生命值 +5；作战中，你和所有队友的干员攻击力 +16%；联防时，团队所有干员攻击力 +30%、防御力 +30%、生命值上限 +30%。","rarity":"prismatic","effect":{"team":true,"onPick":{"lp":5},"battle":{"atkPct":16},"warmachine":{"atkPct":30,"defPct":30,"hpPct":30}}},"hex_humanrite":{"id":"hex_humanrite","name":"人祭","desc":"作战中，己方干员阵亡时，根据自身攻击力（0.5）和生命上限（0.8）召唤一只炎佑，场上最多同时存在 9 只。","rarity":"prismatic","effect":{"humanRite":{"atkPct":50,"hpPct":80,"cap":9}}},"hex_debt":{"id":"hex_debt","name":"债务","desc":"获得时选取一名队友，队友金钱+3，3回合内队友购买干员时你获得一个相同干员。","rarity":"prismatic","effect":{"onPick":{"debt":{"funds":3,"rounds":3}}}},"hex_rangedist":{"id":"hex_rangedist","name":"近大远小","desc":"干员造成伤害时根据和敌人距离，伤害提升至180%－80%（最近时伤害最高，2格时伤害不变，3格时80%）。","rarity":"gold","effect":{"rangedist":{"nearPct":180,"midPct":100,"farPct":80}}},"hex_minefield":{"id":"hex_minefield","name":"雷区","desc":"战斗开始时，在6个随机可部署地块，放置多萝西的2技能的召唤物地雷（地雷攻击力1000，命中后束缚5秒；只命中1名敌人时束缚10秒）。","rarity":"silver","effect":{"minefield":{"count":6,"atk":1000,"bind":5,"bindSingle":10}}},"hex_breaker":{"id":"hex_breaker","name":"破隐","desc":"敌人隐匿效果失效","rarity":"silver","effect":{"breaker":true}},"hex_neurotoxin":{"id":"hex_neurotoxin","name":"神经毒素","desc":"干员攻击使目标中毒，在3秒内每秒受到115+2％目标最大生命（不可叠加，伤害最高为1万）点法术伤害。","rarity":"gold","effect":{"neurotoxin":{"flat":115,"pct":2,"seconds":3,"cap":10000}}},"hex_ricochet":{"id":"hex_ricochet","name":"跳弹","desc":"远程干员的远程攻击在命中敌人后，会弹射到最近的敌人，每次弹射伤害衰减30%。弹射次数等于已激活精准盟约层数÷20+1（向下取整，上限6次）。","rarity":"gold","effect":{"ricochet":{"falloffPct":30,"layersPerBounce":20,"maxBounces":6}}},"hex_echoform":{"id":"hex_echoform","name":"回响形态","desc":"作战中，己方所有干员的技能额外获得 1 次充能上限；原本不能蓄力的技能也可以蓄力 1 次。","rarity":"prismatic","effect":{"battle":{"extraCharges":1}}},"hex_voidform":{"id":"hex_voidform","name":"虚空形态","desc":"获得时立即清空你的资金；从下回合开始，每回合第一次花费资金时不消耗。","rarity":"prismatic","effect":{"onPick":{"zeroFunds":true},"onRoundStart":{"freeSpendArm":true},"onSpend":{"freeSpendRefund":true}}},"hex_demonform":{"id":"hex_demonform","name":"恶魔形态","desc":"获得时立即得到装备【恶魔之契】。每隔一回合，休整期的资金由瓦库接管：优先升级调度中心（有钱就升），再购买干员并刷新，直到没钱为止。作战中，装备【恶魔之契】的己方干员每过一秒攻击力 +10%（本场战斗内叠加，无上限）。","rarity":"prismatic","effect":{"onPick":{"item":{"id":"chess_item_9_91_e_a","count":1}},"onPrepStart":{"everyPreps":2,"demonTakeover":true},"demonForm":{"atkPctPerSec":10}}},"hex_heavenform":{"id":"hex_heavenform","name":"天人形态","desc":"每回合开始时免费升级调度中心：第一次 +1 级，此后每次比上次多 1 级（+2、+3…），直到满级。","rarity":"prismatic","effect":{"onPrepStart":{"freeLevelUps":{"step":1}}}},"hex_serpentform":{"id":"hex_serpentform","name":"群蛇形态","desc":"每卖出一个干员累积 0.5 个敌人；战斗开始时，按累积的整数部分每 1 个敌人杀死 1 个敌人，并扣掉这部分累积。","rarity":"prismatic","effect":{"onSold":{"serpentPoints":{"per":0.5}},"onBattleStart":{"serpentArm":true},"serpentKills":{"perPoint":1}}},"hex_ghostform":{"id":"hex_ghostform","name":"幽魂形态","desc":"获得时立即得到装备【幽魂】：阻挡数变为 0，每次受到的伤害不超过 100。","rarity":"prismatic","effect":{"onPick":{"item":{"id":"chess_item_9_90_e_a","count":1}}}},"hex_logos":{"id":"hex_logos","name":"逻各斯","desc":"作战中，己方干员的攻击范围内，生命值低于该干员攻击力 120% 的敌人立刻倒下：造成 9999999 点无来源真实斩杀伤害，无法被闪避、格挡或未命中取消。此效果为光环效果，不依赖攻击行为。","rarity":"prismatic","effect":{"logos":{"atkPct":120,"damage":9999999}}},"hex_onebody":{"id":"hex_onebody","name":"你我一体","desc":"作战中，你场上相同的干员生命上限叠加、生命共享；这些干员攻击同一名敌人时，伤害提高至 150%。","rarity":"prismatic","effect":{"oneBody":{"dmgPct":150}}},"hex_covenantecho":{"id":"hex_covenantecho","name":"圣约回响","desc":"你的「盟约」叠层在判定阈值奖励时额外视为 +50%（不改变实际层数）。","rarity":"prismatic","effect":{"bondLayerViewPct":50}},"hex_meterflip":{"id":"hex_meterflip","name":"电表倒转·改","desc":"当你触发「奇迹」（免费刷新）时，有 15% 概率使本次刷新出现的干员费用变为 0。","rarity":"gold","effect":{"onRefresh":{"miracleZeroCostPct":15}}},"hex_bondprism":{"id":"hex_bondprism","name":"盟约棱镜","desc":"每回合开始时，你场上非核心盟约每有一个不同阵营，你的核心盟约层数 +3。","rarity":"gold","effect":{"onRoundStart":{"prismLayers":{"per":3}}}},"hex_emergencygrant":{"id":"hex_emergencygrant","name":"紧急拨款","desc":"每当你卖出一名精锐（三星）干员，立刻获得 6 资金；下一次刷新必定出现你场上人数最多盟约的干员。","rarity":"gold","effect":{"onSold":{"eliteGrant":{"funds":6}},"onRefresh":{"eliteGrantRefresh":true}}},"hex_bondequalize":{"id":"hex_bondequalize","name":"均衡盟约","desc":"每回合开始时，所有已激活盟约的层数均摊（总值 ÷ 已激活数量，向上取整；不显示层数的盟约不参与）。","rarity":"gold","effect":{"onRoundStart":{"bondEqualize":true}}},"hex_lastditch":{"id":"hex_lastditch","name":"背水一战","desc":"目标生命值低于 5 时，所有盟约的叠层速度翻倍，且每回合第一次刷新免费。","rarity":"gold","effect":{"lastDitch":{"lpBelow":5,"layerMul":2,"freeRefresh":true},"onRoundStart":{"lastDitchRefresh":true},"onBattleStart":{"lastDitchArm":true}}},"hex_bondparasite":{"id":"hex_bondparasite","name":"盟约寄生","desc":"战斗开始时，你的整备区每有一名干员，你层数最高的已激活盟约 +2 层。","rarity":"silver","effect":{"onBattleStart":{"parasiteLayers":{"per":2}}}},"hex_tripleoverdraft":{"id":"hex_tripleoverdraft","name":"三连透支","desc":"你合成精锐干员时，随机获得一名你场上人数最多盟约的精锐干员，然后本回合失效。","rarity":"gold","effect":{"onMerge":{"eliteBondGrant":true}}},"hex_upgraderefresh":{"id":"hex_upgraderefresh","name":"升级刷新","desc":"刷新费用变为 2 资金；购买干员所需费用 −1；每回合第一次刷新必定出现一名你场上人数最多盟约的干员。","rarity":"gold","effect":{"shopTune":{"refreshPrice":2,"buyDiscount":1,"firstRefreshTopBond":true},"onRefresh":{"shopTuneRefresh":true},"onPrice":{"shopTunePrice":true}}},"hex_mastermorph":{"id":"hex_mastermorph","name":"转职大师","desc":"获得时立即得到 3 件【变形同构体】（转职球）。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_6_09_e_a","count":3}}}},"hex_mastergamble":{"id":"hex_mastergamble","name":"赌狗大师","desc":"获得时立即得到 2 件【拟态物质】。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_5_05_e_a","count":2}}}},"hex_hrsupply":{"id":"hex_hrsupply","name":"人力部资源","desc":"获得时立即得到 1 件【人事部文档】。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_6_08_e_a","count":1}}}},"hex_docproject":{"id":"hex_docproject","name":"博士投影","desc":"获得时立即得到 1 件【博士投影】。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_5_06_e_a","count":1}}}}},"enemyHexes":{"ehex_corrode":{"id":"ehex_corrode","name":"腐蚀甲壳","desc":"敌人最大生命值 +8%。","rarity":"silver","mods":{"hpMul":1.08}},"ehex_fang":{"id":"ehex_fang","name":"尖牙","desc":"敌人攻击力 +8%。","rarity":"silver","mods":{"atkMul":1.08}},"ehex_swift":{"id":"ehex_swift","name":"疾行","desc":"敌人移动速度 +8%。","rarity":"silver","mods":{"speedMul":1.08}},"ehex_hard":{"id":"ehex_hard","name":"硬化外壳","desc":"敌人防御力 +15%。","rarity":"silver","mods":{"defMul":1.15}},"ehex_ward":{"id":"ehex_ward","name":"源石抗性","desc":"敌人法术抗性 +15%。","rarity":"silver","mods":{"resMul":1.15}},"ehex_rations":{"id":"ehex_rations","name":"补给充盈","desc":"本回合的器物需要更多次击打才能击破。","rarity":"silver","mods":{"supplyHpMul":1.1}},"ehex_blood":{"id":"ehex_blood","name":"血怒","desc":"敌人最大生命值 +15%。","rarity":"gold","mods":{"hpMul":1.15}},"ehex_fury":{"id":"ehex_fury","name":"狂攻","desc":"敌人攻击力 +15%。","rarity":"gold","mods":{"atkMul":1.15}},"ehex_siege":{"id":"ehex_siege","name":"攻城训练","desc":"敌人最大生命值 +10%、防御力 +20%。","rarity":"gold","mods":{"hpMul":1.1,"defMul":1.2}},"ehex_hunt":{"id":"ehex_hunt","name":"猎杀本能","desc":"敌人攻击力 +10%、移动速度 +10%。","rarity":"gold","mods":{"atkMul":1.1,"speedMul":1.1}},"ehex_abyss":{"id":"ehex_abyss","name":"深渊灌注","desc":"敌人最大生命值 +25%、攻击力 +15%。","rarity":"prismatic","mods":{"hpMul":1.25,"atkMul":1.15}},"ehex_colossus":{"id":"ehex_colossus","name":"巨兽之魂","desc":"敌人最大生命值 +35%、移动速度 +10%，器物需要更多次击打。","rarity":"prismatic","mods":{"hpMul":1.35,"speedMul":1.1,"supplyHpMul":1.2}},"ehex_swarm":{"id":"ehex_swarm","name":"虫群","desc":"敌人数量增加，但最大生命值 −8%。","rarity":"gold","mods":{"countAdd":1,"hpMul":0.92}},"ehex_toll":{"id":"ehex_toll","name":"过路费","desc":"敌人最大生命值 +20%；你每漏掉 1 个敌人，下回合开始时得到 1 资金。","rarity":"prismatic","mods":{"hpMul":1.2},"payout":{"perLeak":1}},"ehex_deathrattle":{"id":"ehex_deathrattle","name":"亡语","desc":"敌人被击倒时，对周围四格内的我方干员造成其攻击力 120% 的法术伤害。","rarity":"silver","verb":"deathrattle","params":{"ratio":1.2,"shape":"plus","radius":1}},"ehex_armorbreak":{"id":"ehex_armorbreak","name":"破甲弹","desc":"敌人的物理攻击命中我方干员时，使该干员防御力 −25，本场战斗内叠加，最多 8 层。","rarity":"silver","verb":"armorbreak","params":{"flat":25,"max":8}},"ehex_venom":{"id":"ehex_venom","name":"淬毒","desc":"敌人的攻击额外附带其攻击力 8% 的侵蚀元素损伤。","rarity":"silver","verb":"venom","params":{"ratio":0.08,"element":"erosion"}},"ehex_ironwall":{"id":"ehex_ironwall","name":"铁壁","desc":"敌人受到物理伤害时，向攻击者反弹其攻击力 20% 的伤害。","rarity":"silver","verb":"ironwall","params":{"ratio":0.2}},"ehex_corrodefield":{"id":"ehex_corrodefield","name":"腐蚀领域","desc":"每 4 秒在我方一名干员脚下生成腐蚀区域，2 秒后爆炸，对范围内我方干员造成 80+25x 点真实伤害（x 为当前回合数）。","rarity":"gold","verb":"corrode","params":{"period":4,"fuse":2,"radius":1.5,"damage":80,"damagePerRound":25}},"ehex_bloodthirst":{"id":"ehex_bloodthirst","name":"嗜血","desc":"敌人造成伤害时，回复该次伤害量 40% 的生命值。","rarity":"gold","verb":"bloodthirst","params":{"ratio":0.4}},"ehex_frenzy":{"id":"ehex_frenzy","name":"狂化","desc":"敌人生命值低于 50% 时，攻击速度 +70。","rarity":"gold","verb":"frenzy","params":{"thresholdPct":50,"aspd":70}},"ehex_stealth":{"id":"ehex_stealth","name":"隐匿","desc":"仅地面非首领敌人开场处于隐匿状态；被阻挡时解除，脱离阻挡 3 秒后恢复。","rarity":"gold","verb":"stealth","params":{"restore":3}},"ehex_echo":{"id":"ehex_echo","name":"回响","desc":"敌人被击倒时，有 10%+10x% 的概率分裂成 2 个生命值为其 50% 的同种敌人，并继续沿原路线前进（x 为当前回合数；器物不受影响）。","rarity":"prismatic","verb":"echo","params":{"count":2,"hpRatio":0.5,"chance":0.1,"chancePerRound":0.1}},"ehex_banner":{"id":"ehex_banner","name":"军旗","desc":"每有 1 名敌人被击倒，其余敌人的攻击力 +2%（本场战斗内叠加，最多 +40%）。","rarity":"prismatic","verb":"banner","params":{"atkPct":2,"max":40}}}}
++{"version":1,"generator":"tools/build-hextech.mjs","format":{"rounds":[1,6,11],"offer":3,"rerolls":1,"timerSec":30,"timeout":"random","enemyPerDraw":1,"enemyPersist":"match"},"rarities":[{"id":"silver","name":"1阶","weight":0.6,"tier":1},{"id":"gold","name":"2阶","weight":0.3,"tier":2},{"id":"prismatic","name":"3阶","weight":0.1,"tier":3}],"playerHexes":{"hex_stipend":{"id":"hex_stipend","name":"战备津贴","desc":"获得时立即得到 3 资金；之后每回合开始时额外得到 2 资金。","rarity":"silver","effect":{"onPick":{"funds":3},"onRoundStart":{"funds":2}}},"hex_logistics":{"id":"hex_logistics","name":"后勤整备","desc":"获得时立即得到 1 件随机 1 阶进阶装备；之后每 2 回合开始时再得到 1 件进阶装备，其阶级比上次获得的装备高 1 阶（最高 6 阶）。","rarity":"silver","effect":{"onPick":{"goldenItem":{"tier":1,"count":1}},"onRoundStart":{"everyRounds":2,"goldenItem":{"tier":"next","count":1}}}},"hex_echo":{"id":"hex_echo","name":"盟约回响","desc":"每回合开始时，所有已激活盟约 +5 层。","rarity":"silver","effect":{"onRoundStart":{"allActiveLayers":5}}},"hex_refresh":{"id":"hex_refresh","name":"免费刷新","desc":"获得时立即得到 6 次免费刷新；之后每回合开始时再得到 2 次。","rarity":"silver","effect":{"onPick":{"freeRefresh":6},"onRoundStart":{"freeRefresh":2}}},"hex_recruit":{"id":"hex_recruit","name":"精锐预兆","desc":"获得时立即得到 3 张同一名当前等级阶的干员。","rarity":"silver","effect":{"onPick":{"chess":{"tier":"level","count":3,"same":true}}}},"hex_bulwark":{"id":"hex_bulwark","name":"坚壁","desc":"获得时目标生命值上限 +10。","rarity":"silver","effect":{"onPick":{"lp":10}}},"hex_massprod":{"id":"hex_massprod","name":"量产线","desc":"每回合开始时，随机获得 1 名当前等级阶的干员。","rarity":"gold","effect":{"onRoundStart":{"chess":{"tier":"level","count":1}}}},"hex_drill":{"id":"hex_drill","name":"精锐训练","desc":"作战中，己方所有干员攻击力 +20%、攻击速度 +10；并根据当前回合 x 额外获得 5x% 攻击力与 4x 攻击速度。","rarity":"gold","effect":{"battle":{"atkPct":20,"aspd":10},"drill":{"atkPerRound":5,"aspdPerRound":4}}},"hex_armor":{"id":"hex_armor","name":"反击装甲","desc":"作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害或造成伤害时，对伤害来源造成 200% 防御力的真实伤害。","rarity":"gold","effect":{"battle":{"defPct":18,"resFlat":10},"armor":{"defRatio":200,"onDealt":true}}},"hex_overlord":{"id":"hex_overlord","name":"盟约之主","desc":"每回合开始时，所有已激活盟约 +5 层，且你人数最多的盟约所需人数 −1。","rarity":"prismatic","effect":{"onRoundStart":{"allActiveLayers":5,"mainBondCount":1}}},"hex_immortal":{"id":"hex_immortal","name":"不灭壁垒","desc":"作战中，己方所有干员生命值上限 +12%；每场战斗中，己方每名干员各有 1 次复活机会。","rarity":"prismatic","effect":{"battle":{"maxHpPct":12},"immortalRevive":{"count":1}}},"hex_dividend":{"id":"hex_dividend","name":"源石红利","desc":"你每消耗 5 资金，下回合开始时额外得到 1 资金。","rarity":"silver","effect":{"onSpend":{"rebateAccrue":true},"onRoundStart":{"rebatePay":{"per":5,"gain":1}}}},"hex_recovery":{"id":"hex_recovery","name":"战损回收","desc":"每场战斗每漏掉 1 个敌人，下回合开始时额外得到 1 资金；若该回合的联防失败并扣除了你的目标生命值，则每漏掉 1 个敌人额外得到 2 资金（每回合最多 12）。","rarity":"silver","effect":{"onBattleResult":{"perLeak":1,"perLeakAfterLoss":2,"cap":12}}},"hex_heritage":{"id":"hex_heritage","name":"传承","desc":"你每出售 1 名干员，场上拥有其任一盟约的干员永久 +2% 攻击力。","rarity":"silver","effect":{"onSold":{"bondAtkPct":2}}},"hex_broadcast":{"id":"hex_broadcast","name":"调度直播","desc":"每回合开始时，把商店的第一格换成 1 名你场上随机的干员。","rarity":"gold","effect":{"onRoundStart":{"shopSlot":{"index":0,"pick":"board"}}}},"hex_vanguard":{"id":"hex_vanguard","name":"先锋之势","desc":"每场战斗中，己方第一次击倒敌人时，若该次击杀来自先锋干员，你在结算后得到 4 资金；己方先锋干员首次攻击时攻击力 +30%，持续 10 秒。","rarity":"gold","effect":{"battle":{"firstKillBy":{"profession":"PIONEER","coins":4},"firstAttackBy":{"profession":"PIONEER","atkPct":30,"seconds":10}}}},"hex_mirror":{"id":"hex_mirror","name":"镜像协议","desc":"获得时，随机复制一名队友已拥有的一枚协议源石（优先阶位更高的一枚）；若队友尚未拥有，则在之后其获得时补上。","rarity":"gold","effect":{"onPick":{"copyAllyHex":true}}},"hex_double":{"id":"hex_double","name":"二次抽取","desc":"获得时，额外随机获得两枚协议源石。","rarity":"prismatic","effect":{"onPick":{"randomHexes":2}}},"hex_resonance":{"id":"hex_resonance","name":"共鸣协议","desc":"每回合开始时，你和所有队友各获得 2 次免费刷新。","rarity":"prismatic","effect":{"team":true,"onRoundStart":{"freeRefresh":2}}},"hex_bondresonance":{"id":"hex_bondresonance","name":"盟约共鸣","desc":"你战场上的干员与其上下左右相邻的干员共享彼此的盟约。","rarity":"prismatic","effect":{"bondShare":true}},"hex_layershift":{"id":"hex_layershift","name":"层数转移","desc":"战斗开始时，你层数最低的已激活盟约把一半层数转移给层数最高的已激活盟约。","rarity":"silver","effect":{"onBattleStart":{"layerTransfer":true}}},"hex_pyrrhic":{"id":"hex_pyrrhic","name":"因小失大","desc":"本局中，附加盟约（调和与独行除外）的激活条件减少 1 名干员，核心盟约的激活条件增加 1 名干员。","rarity":"gold","effect":{"onPick":{"bondCountShift":{"small":1,"big":-1}}}},"hex_deepdevour":{"id":"hex_deepdevour","name":"深度吞噬","desc":"〖阿戈尔〗干员吞噬时，其攻击目标数 +1。","rarity":"gold","effect":{"devourTarget":{"maxTargets":1}}},"hex_indomember":{"id":"hex_indomember","name":"不屈余烬","desc":"〖不屈〗盟约效果触发后，该干员获得 6 秒阻挡数 +2。","rarity":"silver","effect":{"indomEmber":{"seconds":6,"block":2}}},"hex_traitspread":{"id":"hex_traitspread","name":"特质扩散","desc":"战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给相邻一格的干员（优先右边）。","rarity":"gold","effect":{"traitSpread":true}},"hex_killgift":{"id":"hex_killgift","name":"击倒馈赠","desc":"作战中，你的干员每击倒 1 个敌人，该干员攻击力 +10%（本场战斗内叠加）。","rarity":"silver","effect":{"killGift":{"atkPct":10}}},"hex_skillflow":{"id":"hex_skillflow","name":"技能层涌","desc":"作战中，你的干员每次开启技能时，其所属的已激活盟约层数 +1（单场战斗中每个盟约最多通过此效果叠加 40 层）。","rarity":"silver","effect":{"skillFlow":{"layers":1,"maxLayersPerBond":40}}},"hex_eliteresonance":{"id":"hex_eliteresonance","name":"精英共鸣","desc":"场上每有 1 名精锐干员（数量 x），你购买干员时有 5x% 概率直接获得其精锐形态。","rarity":"gold","effect":{"onBuy":{"eliteBuy":{"pctPerElite":5}}}},"hex_bountytriple":{"id":"hex_bountytriple","name":"悬赏倍增","desc":"本局中，你获得的悬赏资金 ×3。","rarity":"gold","effect":{"bountyMul":3}},"hex_shopcontract":{"id":"hex_shopcontract","name":"商店契约","desc":"获得时立即得到 3 次免费刷新；每次刷新后你购买的第一名干员价格 −1（最低 0 费）。","rarity":"gold","effect":{"onPick":{"freeRefresh":3},"onRefresh":{"shopContractArm":true},"onPrice":{"shopContractDiscount":1},"onBuy":{"shopContractSpend":true}}},"hex_itemrefund":{"id":"hex_itemrefund","name":"装备转化","desc":"你弃置装备时，返还其购买价格。","rarity":"silver","effect":{"onDestroy":{"itemRefund":true}}},"hex_fullkit":{"id":"hex_fullkit","name":"整装待发","desc":"干员可装备 3 个装备（装备变形同构体与两个阵营装备时，两边的阵营盟约都会生效）。","rarity":"prismatic","effect":{"equipSlots":3}},"hex_northwall":{"id":"hex_northwall","name":"北境长城","desc":"战斗开始时，你最右一列的干员获得可吸收相当于其最大生命值 50% 的护盾；此后每秒增加 5%，最多到其最大生命值的 100%。","rarity":"silver","effect":{"northWall":{"shieldPct":50,"stepPct":5,"capPct":100}}},"hex_armorbreak":{"id":"hex_armorbreak","name":"装甲破坏","desc":"作战中，你的干员造成物理伤害时，使该敌人防御力 −20（本场战斗内叠加）。","rarity":"gold","effect":{"armorBreak":{"defFlat":20}}},"hex_allin":{"id":"hex_allin","name":"孤注一掷","desc":"获得后的 4 个回合内，己方所有干员攻击力 +200%，随后失效。","rarity":"prismatic","effect":{"battleForRounds":{"rounds":4,"battle":{"atkPct":200}}}},"hex_bondfission":{"id":"hex_bondfission","name":"盟约裂变","desc":"本局中你只能激活 2 个盟约（层数最高的优先），但这 2 个盟约的叠层速度提升 200%。","rarity":"prismatic","effect":{"bondFission":{"cap":2,"mul":3}}},"hex_foresightdebt":{"id":"hex_foresightdebt","name":"远见透支","desc":"本局中〖远见〗购买价格降低效果所需层数减半，但你每次通过〖远见〗折扣购买干员时消耗 1 点目标生命值（不会降至 0 以下）。","rarity":"silver","effect":{"foresightHalve":true,"onBuy":{"foresightDebt":{"lp":1}}}},"hex_precisionpen":{"id":"hex_precisionpen","name":"精准穿透","desc":"〖精准〗每叠加 10 层，〖精准〗干员及你所有远程干员的攻击额外无视目标 2% 的防御力与法术抗性。","rarity":"silver","effect":{"precisionPen":{"perLayers":10,"pct":2}}},"hex_merit":{"id":"hex_merit","name":"战功簿","desc":"作战结束时，每击倒 5 名敌人，下回合开始时额外得到 1 资金（每回合至多 4）。","rarity":"silver","effect":{"onBattleResult":{"perKill":{"per":5,"gain":1,"cap":4}}}},"hex_rationing":{"id":"hex_rationing","name":"配给制","desc":"你出售干员时，额外得到 1 资金（每回合至多额外 5）。","rarity":"silver","effect":{"onSold":{"sellBonus":{"gain":1,"cap":5}}}},"hex_quartermaster":{"id":"hex_quartermaster","name":"军需官","desc":"每次提升调度中心等级时，返还该次升级费用的一半（向下取整）。","rarity":"silver","effect":{"onLevelUp":{"levelRefund":{"pct":50}}}},"hex_drillsergeant":{"id":"hex_drillsergeant","name":"教官批注","desc":"作战中，己方所有干员每秒额外回复 0.3 点技力。","rarity":"silver","effect":{"battle":{"spRecoveryFlat":0.3}}},"hex_holdline":{"id":"hex_holdline","name":"浴血","desc":"作战中，己方干员每损失 25% 生命值，防御力 +40（本场战斗内叠加，最多 4 层）。","rarity":"silver","effect":{"holdLine":{"stepPct":25,"def":40,"max":4}}},"hex_firingline":{"id":"hex_firingline","name":"火力延伸","desc":"作战中，己方狙击干员的攻击距离 +1。","rarity":"gold","effect":{"rangedExtend":{"profession":"SNIPER","extend":1}}},"hex_shieldwall":{"id":"hex_shieldwall","name":"盾墙","desc":"作战中，己方所有干员阻挡数 +1，生命值上限 +20%；相邻的己方单位受到的伤害与治疗，按 50% 分摊给每个相邻的【重装】干员。","rarity":"gold","effect":{"battle":{"blockCnt":1,"maxHpPct":20},"shieldwall":{"ratio":50}}},"hex_arsenal":{"id":"hex_arsenal","name":"军械库","desc":"每回合开始时，随机获得 1 件不高于你调度中心等级的装备。","rarity":"gold","effect":{"onRoundStart":{"item":{"pool":"pool_equip_normal","count":1}}}},"hex_laststand":{"id":"hex_laststand","name":"先驱","desc":"作战中，战斗开始后的前 30 秒，己方所有干员生命值不会降至 1 以下。","rarity":"gold","effect":{"lastStand":{"seconds":30}}},"hex_overdrive":{"id":"hex_overdrive","name":"超载协议","desc":"作战中，己方干员的技能消耗技力 −3；每次开启技能后，该干员失去自身最大生命值的 4% 生命。","rarity":"gold","effect":{"battle":{"spCostFlat":-3},"overdrive":{"selfDmgPct":4}}},"hex_fieldhospital":{"id":"hex_fieldhospital","name":"战地医院","desc":"作战中，你的干员每击倒 1 名敌人，为当前生命值比例最低的己方干员回复其最大生命值的 10%。","rarity":"gold","effect":{"fieldHospital":{"healPct":10}}},"hex_lossamp":{"id":"hex_lossamp","name":"损伤加强","desc":"作战中，敌人受到的元素损伤 +50%；场上所有敌人每秒额外受到 100 点侵蚀损伤。","rarity":"gold","effect":{"elemAmp":{"elemTakenMul":1.5,"erosionPerSec":100}}},"hex_warmachine":{"id":"hex_warmachine","name":"战争机器","desc":"获得时：你和所有队友的目标生命值 +5；作战中，你和所有队友的干员攻击力 +16%；联防时，团队所有干员攻击力 +30%、防御力 +30%、生命值上限 +30%。","rarity":"prismatic","effect":{"team":true,"onPick":{"lp":5},"battle":{"atkPct":16},"warmachine":{"atkPct":30,"defPct":30,"hpPct":30}}},"hex_humanrite":{"id":"hex_humanrite","name":"人祭","desc":"作战中，己方干员阵亡时，根据自身攻击力（0.5）和生命上限（0.8）召唤一只炎佑，场上最多同时存在 9 只。","rarity":"prismatic","effect":{"humanRite":{"atkPct":50,"hpPct":80,"cap":9}}},"hex_debt":{"id":"hex_debt","name":"债务","desc":"获得时选取一名队友，队友金钱+3，3回合内队友购买干员时你获得一个相同干员。","rarity":"prismatic","effect":{"onPick":{"debt":{"funds":3,"rounds":3}}}},"hex_rangedist":{"id":"hex_rangedist","name":"近大远小","desc":"干员造成伤害时根据和敌人距离，伤害提升至180%－80%（最近时伤害最高，2格时伤害不变，3格时80%）。","rarity":"gold","effect":{"rangedist":{"nearPct":180,"midPct":100,"farPct":80}}},"hex_minefield":{"id":"hex_minefield","name":"雷区","desc":"战斗开始时，在6个随机可部署地块，放置多萝西的2技能的召唤物地雷（地雷攻击力1000，命中后束缚5秒；只命中1名敌人时束缚10秒）。","rarity":"silver","effect":{"minefield":{"count":6,"atk":1000,"bind":5,"bindSingle":10}}},"hex_breaker":{"id":"hex_breaker","name":"破隐","desc":"敌人隐匿效果失效","rarity":"silver","effect":{"breaker":true}},"hex_neurotoxin":{"id":"hex_neurotoxin","name":"神经毒素","desc":"干员攻击使目标中毒，在3秒内每秒受到115+2％目标最大生命（不可叠加，伤害最高为1万）点法术伤害。","rarity":"gold","effect":{"neurotoxin":{"flat":115,"pct":2,"seconds":3,"cap":10000}}},"hex_ricochet":{"id":"hex_ricochet","name":"跳弹","desc":"远程干员的远程攻击在命中敌人后，会弹射到最近的敌人，每次弹射伤害衰减30%。弹射次数等于已激活精准盟约层数÷20+1（向下取整，上限6次）。","rarity":"gold","effect":{"ricochet":{"falloffPct":30,"layersPerBounce":20,"maxBounces":6}}},"hex_echoform":{"id":"hex_echoform","name":"回响形态","desc":"作战中，己方所有干员的技能额外获得 1 次充能上限；原本不能蓄力的技能也可以蓄力 1 次。","rarity":"prismatic","effect":{"battle":{"extraCharges":1}}},"hex_voidform":{"id":"hex_voidform","name":"虚空形态","desc":"获得时立即清空你的资金；从下回合开始，每回合第一次花费资金时不消耗。","rarity":"prismatic","effect":{"onPick":{"zeroFunds":true},"onRoundStart":{"freeSpendArm":true},"onSpend":{"freeSpendRefund":true}}},"hex_demonform":{"id":"hex_demonform","name":"恶魔形态","desc":"获得时立即得到装备【恶魔之契】。每隔一回合，休整期的资金由瓦库接管：优先升级调度中心（有钱就升），再购买干员并刷新，直到没钱为止。作战中，装备【恶魔之契】的己方干员每过一秒攻击力 +10%（本场战斗内叠加，无上限）。","rarity":"prismatic","effect":{"onPick":{"item":{"id":"chess_item_9_91_e_a","count":1}},"onPrepStart":{"everyPreps":2,"demonTakeover":true},"demonForm":{"atkPctPerSec":10}}},"hex_heavenform":{"id":"hex_heavenform","name":"天人形态","desc":"每回合开始时免费升级调度中心：第一次 +1 级，此后每次比上次多 1 级（+2、+3…），直到满级。","rarity":"prismatic","effect":{"onPrepStart":{"freeLevelUps":{"step":1}}}},"hex_serpentform":{"id":"hex_serpentform","name":"群蛇形态","desc":"每卖出一个干员累积 0.5 个敌人；战斗开始时，按累积的整数部分每 1 个敌人杀死 1 个敌人，并扣掉这部分累积。","rarity":"prismatic","effect":{"onSold":{"serpentPoints":{"per":0.5}},"onBattleStart":{"serpentArm":true},"serpentKills":{"perPoint":1}}},"hex_ghostform":{"id":"hex_ghostform","name":"幽魂形态","desc":"获得时立即得到装备【幽魂】：阻挡数变为 0，每次受到的伤害不超过 100。","rarity":"prismatic","effect":{"onPick":{"item":{"id":"chess_item_9_90_e_a","count":1}}}},"hex_logos":{"id":"hex_logos","name":"逻各斯","desc":"作战中，己方干员的攻击范围内，生命值低于该干员攻击力 120% 的敌人立刻倒下：造成 9999999 点无来源真实斩杀伤害，无法被闪避、格挡或未命中取消。此效果为光环效果，不依赖攻击行为。","rarity":"prismatic","effect":{"logos":{"atkPct":120,"damage":9999999}}},"hex_onebody":{"id":"hex_onebody","name":"你我一体","desc":"作战中，你场上相同的干员生命上限叠加、生命共享；这些干员攻击同一名敌人时，伤害提高至 150%。","rarity":"prismatic","effect":{"oneBody":{"dmgPct":150}}},"hex_covenantecho":{"id":"hex_covenantecho","name":"圣约回响","desc":"你的「盟约」叠层在判定阈值奖励时额外视为 +50%（不改变实际层数）。","rarity":"prismatic","effect":{"bondLayerViewPct":50}},"hex_meterflip":{"id":"hex_meterflip","name":"电表倒转·改","desc":"当你触发「奇迹」（免费刷新）时，有 15% 概率使本次刷新出现的干员费用变为 0。","rarity":"gold","effect":{"onRefresh":{"miracleZeroCostPct":15}}},"hex_bondprism":{"id":"hex_bondprism","name":"盟约棱镜","desc":"每回合开始时，你场上非核心盟约每有一个不同阵营，你的核心盟约层数 +3。","rarity":"gold","effect":{"onRoundStart":{"prismLayers":{"per":3}}}},"hex_emergencygrant":{"id":"hex_emergencygrant","name":"紧急拨款","desc":"每当你卖出一名精锐（三星）干员，立刻获得 2 资金；下一次刷新必定出现你场上人数最多盟约的干员。","rarity":"gold","effect":{"onSold":{"eliteGrant":{"funds":2}},"onRefresh":{"eliteGrantRefresh":true}}},"hex_bondequalize":{"id":"hex_bondequalize","name":"均衡盟约","desc":"每回合开始时，所有已激活盟约的层数均摊（总值 ÷ 已激活数量，向上取整；不显示层数的盟约不参与）。","rarity":"gold","effect":{"onRoundStart":{"bondEqualize":true}}},"hex_lastditch":{"id":"hex_lastditch","name":"背水一战","desc":"目标生命值低于 5 时，所有盟约的叠层速度翻倍，且每回合第一次刷新免费。","rarity":"gold","effect":{"lastDitch":{"lpBelow":5,"layerMul":2,"freeRefresh":true},"onRoundStart":{"lastDitchRefresh":true},"onBattleStart":{"lastDitchArm":true}}},"hex_bondparasite":{"id":"hex_bondparasite","name":"盟约寄生","desc":"战斗开始时，你的整备区每有一名干员，你层数最高的已激活盟约 +2 层。","rarity":"silver","effect":{"onBattleStart":{"parasiteLayers":{"per":2}}}},"hex_tripleoverdraft":{"id":"hex_tripleoverdraft","name":"三连透支","desc":"你合成精锐干员时，随机获得一名你场上人数最多盟约的精锐干员，然后本回合失效。","rarity":"gold","effect":{"onMerge":{"eliteBondGrant":true}}},"hex_upgraderefresh":{"id":"hex_upgraderefresh","name":"升级刷新","desc":"刷新费用变为 2 资金；购买干员所需费用 −1；每回合第一次刷新必定出现一名你场上人数最多盟约的干员。","rarity":"gold","effect":{"shopTune":{"refreshPrice":2,"buyDiscount":1,"firstRefreshTopBond":true},"onRefresh":{"shopTuneRefresh":true},"onPrice":{"shopTunePrice":true}}},"hex_mastermorph":{"id":"hex_mastermorph","name":"转职大师","desc":"获得时立即得到 3 件【变形同构体】（转职球）。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_6_09_e_a","count":3}}}},"hex_mastergamble":{"id":"hex_mastergamble","name":"赌狗大师","desc":"获得时立即得到 2 件【拟态物质】。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_5_05_e_a","count":2}}}},"hex_hrsupply":{"id":"hex_hrsupply","name":"人力部资源","desc":"获得时立即得到 1 件【人事部文档】。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_6_08_e_a","count":1}}}},"hex_docproject":{"id":"hex_docproject","name":"博士投影","desc":"获得时立即得到 1 件【博士投影】。","rarity":"gold","effect":{"onPick":{"item":{"id":"chess_item_5_06_e_a","count":1}}}},"hex_weaponmaster":{"id":"hex_weaponmaster","name":"武器大师","desc":"获得时立即得到装备【天马之盔】与【天马之枪】各一件。","rarity":"gold","effect":{"onPick":{"item":{"ids":["chess_item_5_09_e_a","chess_item_6_01_e_a"]}}}},"hex_beacon":{"id":"hex_beacon","name":"共享信标","desc":"获得时你和所有队友各得到装备【信标】一件。","rarity":"silver","effect":{"team":true,"onPick":{"item":{"id":"chess_item_5_04_e_a","count":1}}}},"hex_pandora":{"id":"hex_pandora","name":"潘多拉魔盒","desc":"获得时，将你已拥有的所有协议源石（含本张）随机更换为 3 阶协议源石。","rarity":"prismatic","effect":{"onPick":{"pandora":true}}},"hex_blockwall":{"id":"hex_blockwall","name":"挡挡","desc":"不屈盟约的层数超过 100 层后，不屈干员阻挡数 +1；此后每多出 150 层，阻挡数再 +1。","rarity":"silver","effect":{"blockwall":{"base":100,"step":150}}},"hex_sharepain":{"id":"hex_sharepain","name":"不区区！","desc":"作战中，不屈干员会为其他干员分担 50% 的伤害。","rarity":"gold","effect":{"sharePain":{"pct":50}}},"hex_terramourn":{"id":"hex_terramourn","name":"泰拉在上","desc":"作战中，己方干员阵亡时对周围 8 格造成其攻击力 200% 的法术伤害，并附加灼燃损伤。","rarity":"gold","effect":{"deathBlast":{"atkPct":200,"radius":1}}},"hex_directive":{"id":"hex_directive","name":"指令之意","desc":"作战开始时随机指定一种职业，该职业的己方干员攻击力 +50%。","rarity":"gold","effect":{"directiveAtk":{"atkPct":50}}},"hex_directive2":{"id":"hex_directive2","name":"指令之意·改","desc":"作战开始时随机指定一种伤害类型，己方干员造成该类型伤害时提升至 150%。","rarity":"prismatic","effect":{"directiveType":{"mul":150}}},"hex_bigdiscount":{"id":"hex_bigdiscount","name":"可露希尔大降价","desc":"获得时，本回合内接下来 3 次刷新免费，且购买干员与装备免费。","rarity":"gold","effect":{"onPick":{"discount":{"refreshes":3,"buys":3}}}},"hex_rabbithead":{"id":"hex_rabbithead","name":"兔头","desc":"作战中，己方攻击力最高的干员攻击力 +50%，攻击力最低的干员攻击力 −30%。","rarity":"silver","effect":{"rabbitHead":{"top":50,"bottom":-30}}},"hex_profresonance":{"id":"hex_profresonance","name":"职业共鸣","desc":"作战中，每有一名与自身相同职业的己方干员，该干员攻击力与防御力 +10%。","rarity":"silver","effect":{"profResonance":{"pct":10}}}},"enemyHexes":{"ehex_corrode":{"id":"ehex_corrode","name":"腐蚀甲壳","desc":"敌人最大生命值 +8%。","rarity":"silver","mods":{"hpMul":1.08}},"ehex_fang":{"id":"ehex_fang","name":"尖牙","desc":"敌人攻击力 +8%。","rarity":"silver","mods":{"atkMul":1.08}},"ehex_swift":{"id":"ehex_swift","name":"疾行","desc":"敌人移动速度 +8%。","rarity":"silver","mods":{"speedMul":1.08}},"ehex_hard":{"id":"ehex_hard","name":"硬化外壳","desc":"敌人防御力 +15%。","rarity":"silver","mods":{"defMul":1.15}},"ehex_ward":{"id":"ehex_ward","name":"源石抗性","desc":"敌人法术抗性 +15%。","rarity":"silver","mods":{"resMul":1.15}},"ehex_rations":{"id":"ehex_rations","name":"补给充盈","desc":"本回合的器物需要更多次击打才能击破。","rarity":"silver","mods":{"supplyHpMul":1.1}},"ehex_blood":{"id":"ehex_blood","name":"血怒","desc":"敌人最大生命值 +15%。","rarity":"gold","mods":{"hpMul":1.15}},"ehex_fury":{"id":"ehex_fury","name":"狂攻","desc":"敌人攻击力 +15%。","rarity":"gold","mods":{"atkMul":1.15}},"ehex_siege":{"id":"ehex_siege","name":"攻城训练","desc":"敌人最大生命值 +10%、防御力 +20%。","rarity":"gold","mods":{"hpMul":1.1,"defMul":1.2}},"ehex_hunt":{"id":"ehex_hunt","name":"猎杀本能","desc":"敌人攻击力 +10%、移动速度 +10%。","rarity":"gold","mods":{"atkMul":1.1,"speedMul":1.1}},"ehex_abyss":{"id":"ehex_abyss","name":"深渊灌注","desc":"敌人最大生命值 +25%、攻击力 +15%。","rarity":"prismatic","mods":{"hpMul":1.25,"atkMul":1.15}},"ehex_colossus":{"id":"ehex_colossus","name":"巨兽之魂","desc":"敌人最大生命值 +35%、移动速度 +10%，器物需要更多次击打。","rarity":"prismatic","mods":{"hpMul":1.35,"speedMul":1.1,"supplyHpMul":1.2}},"ehex_swarm":{"id":"ehex_swarm","name":"虫群","desc":"敌人数量增加，但最大生命值 −8%。","rarity":"gold","mods":{"countAdd":1,"hpMul":0.92}},"ehex_toll":{"id":"ehex_toll","name":"过路费","desc":"敌人最大生命值 +20%；你每漏掉 1 个敌人，下回合开始时得到 1 资金。","rarity":"prismatic","mods":{"hpMul":1.2},"payout":{"perLeak":1}},"ehex_deathrattle":{"id":"ehex_deathrattle","name":"亡语","desc":"敌人被击倒时，对周围四格内的我方干员造成其攻击力 120% 的法术伤害。","rarity":"silver","verb":"deathrattle","params":{"ratio":1.2,"shape":"plus","radius":1}},"ehex_armorbreak":{"id":"ehex_armorbreak","name":"破甲弹","desc":"敌人的物理攻击命中我方干员时，使该干员防御力 −25，本场战斗内叠加，最多 8 层。","rarity":"silver","verb":"armorbreak","params":{"flat":25,"max":8}},"ehex_venom":{"id":"ehex_venom","name":"淬毒","desc":"敌人的攻击额外附带其攻击力 8% 的侵蚀元素损伤。","rarity":"silver","verb":"venom","params":{"ratio":0.08,"element":"erosion"}},"ehex_ironwall":{"id":"ehex_ironwall","name":"铁壁","desc":"敌人受到物理伤害时，向攻击者反弹其攻击力 20% 的伤害。","rarity":"silver","verb":"ironwall","params":{"ratio":0.2}},"ehex_corrodefield":{"id":"ehex_corrodefield","name":"腐蚀领域","desc":"每 4 秒在我方一名干员脚下生成腐蚀区域，2 秒后爆炸，对范围内我方干员造成 80+25x 点真实伤害（x 为当前回合数）。","rarity":"gold","verb":"corrode","params":{"period":4,"fuse":2,"radius":1.5,"damage":80,"damagePerRound":25}},"ehex_bloodthirst":{"id":"ehex_bloodthirst","name":"嗜血","desc":"敌人造成伤害时，回复该次伤害量 40% 的生命值。","rarity":"gold","verb":"bloodthirst","params":{"ratio":0.4}},"ehex_frenzy":{"id":"ehex_frenzy","name":"狂化","desc":"敌人生命值低于 50% 时，攻击速度 +70。","rarity":"gold","verb":"frenzy","params":{"thresholdPct":50,"aspd":70}},"ehex_stealth":{"id":"ehex_stealth","name":"隐匿","desc":"仅地面非首领敌人开场处于隐匿状态；被阻挡时解除，脱离阻挡 3 秒后恢复。","rarity":"gold","verb":"stealth","params":{"restore":3}},"ehex_echo":{"id":"ehex_echo","name":"回响","desc":"敌人被击倒时，有 10%+10x% 的概率分裂成 2 个生命值为其 50% 的同种敌人，并继续沿原路线前进（x 为当前回合数；器物不受影响）。","rarity":"prismatic","verb":"echo","params":{"count":2,"hpRatio":0.5,"chance":0.1,"chancePerRound":0.1}},"ehex_banner":{"id":"ehex_banner","name":"军旗","desc":"每有 1 名敌人被击倒，其余敌人的攻击力 +2%（本场战斗内叠加，最多 +40%）。","rarity":"prismatic","verb":"banner","params":{"atkPct":2,"max":40}},"ehex_mosaic":{"id":"ehex_mosaic","name":"情报部抑制","desc":"给画面加一层马赛克滤镜。","rarity":"prismatic","verb":"mosaic"},"ehex_records":{"id":"ehex_records","name":"记录部抑制","desc":"每 4 回合，修整期部署干员时减少 1 点策略生命。","rarity":"prismatic","verb":"records","params":{"everyRounds":4,"lp":1}},"ehex_leine":{"id":"ehex_leine","name":"莱茵护甲","desc":"敌人获得一层次数盾（可抵挡 3 次攻击）。","rarity":"silver","verb":"hitShield","params":{"hits":3}},"ehex_unstoppable":{"id":"ehex_unstoppable","name":"势不可挡","desc":"敌人所需的阻挡数 +1，但移动速度降低 50%。","rarity":"prismatic","verb":"blockDemand","params":{"add":1},"mods":{"speedMul":0.5}},"ehex_scavenge":{"id":"ehex_scavenge","name":"食尸","desc":"敌人死亡时，治疗附近敌人其最大生命值 5% 的生命。","rarity":"gold","verb":"cannibalize","params":{"pct":5,"radius":1}},"ehex_hush":{"id":"ehex_hush","name":"静默","desc":"每过 35 秒，我方随机 1 名干员受到 1000 点凋亡损伤。","rarity":"prismatic","verb":"silence","params":{"period":35,"damage":1000}},"ehex_gravewound":{"id":"ehex_gravewound","name":"重伤","desc":"敌人的攻击使我方干员受到的受治疗量降低 20%，持续 4 秒。","rarity":"gold","verb":"healCut","params":{"pct":20,"seconds":4}},"ehex_elite":{"id":"ehex_elite","name":"精英化","desc":"敌人数量减少 10%，但攻击力、防御力和生命力上升 30%。","rarity":"silver","mods":{"atkMul":1.3,"defMul":1.3,"hpMul":1.3,"countSub":1}},"ehex_adaptive":{"id":"ehex_adaptive","name":"自适应","desc":"敌人每次受到攻击提高 2% 防御力，最高 30%。","rarity":"silver","verb":"adaptive","params":{"perHit":2,"max":30}},"ehex_transmute":{"id":"ehex_transmute","name":"物转法","desc":"物理敌人攻击力降低 30%，但是造成法术伤害。","rarity":"gold","verb":"transmute","mods":{"atkMul":0.7}},"ehex_brittle":{"id":"ehex_brittle","name":"易碎铠甲","desc":"出场敌人防御力提高 50%，移动速度降低 20%，每次受到攻击降低 5% 防御力（至多降低至原值）。","rarity":"silver","verb":"brittleArmor","params":{"defPct":50,"speedPct":20,"shavePct":5}},"ehex_restless":{"id":"ehex_restless","name":"无头苍蝇","desc":"敌人移动速度增加 50%，但是每过 10 秒受到一次 2 秒恐惧（boss 和隐匿敌人除外）。","rarity":"silver","verb":"restless","params":{"period":10,"seconds":2},"mods":{"speedMul":1.5}},"ehex_drowse":{"id":"ehex_drowse","name":"zzz","desc":"每过 20 秒，我方随机 1 名干员陷入沉睡 2 秒。","rarity":"gold","verb":"drowse","params":{"period":20,"seconds":2}},"ehex_originium":{"id":"ehex_originium","name":"源石附身","desc":"敌人获得活性原石效果。","rarity":"silver","verb":"originium","params":{"duration":200,"atkPct":50,"aspd":40,"dps":40}}}}
+diff --git a/docs/META.md b/docs/META.md
+index 6a5d45ee..647789bc 100644
+--- a/docs/META.md
++++ b/docs/META.md
+@@ -484,7 +484,7 @@ Every handler method is `(ctx, ev)`; `ev` is shared by all handlers of one dispa
+ | `onMerge` | chess or item merge | `{ kind, piece, baseId|itemId, consumed:[uid], area? }` — a chess merge's `area` is where its elite went: 'board' (a consumed copy's tile) \| 'hand' \| 'temp' |
+ | `onLevelUp` | shop level up | `{ level, price }` |
+ | `onSpend` | a payment's action is complete (buy / refresh / levelUp / reward / effect) | `{ amount, reason, total }` (`total` = funds spent this match) |
+-| `onBattleStart` | a battle input is built (normal / unite / boss / hidden); also for the stats preview (`g.unitStats`, DESIGN §18.5) | `{ input: PlayerBattleInput, kind, round, spawns?, routes?, side?, preview? }` — mutate/replace `ev.input`; `ev.spawns` (the field's spawn list, shared by a boss field's players) may be edited in place. Boss / hidden fields also carry the wave's `routes` and the player's `side` ('L' / 'R' on a pair field — its half is the routes ending left / right of the middle column — null on a one-player field), so a handler can edit only the player's own enemies (鸭爵's swap). With `ev.preview` true (no `ev.spawns`) a handler must NOT change match state or draw match rng: the preview only reads the input |
++| `onBattleStart` | a battle input is built (normal / unite / boss / hidden); also for the stats preview (`g.unitStats`, DESIGN §18.5) | `{ input: PlayerBattleInput, kind, round, spawns?, routes?, side?, preview? }` — mutate/replace `ev.input`; `ev.spawns` (the field's spawn list, shared by a boss field's players) may be edited in place. Boss / hidden fields also carry the wave's `routes` and the player's `side` ('L' / 'R' on a pair field — its half is the routes ending left / right of the middle column — null on a one-player field), so a handler can edit only the player's own enemies (鸭爵's swap). With `ev.preview` true (no `ev.spawns`) a handler must NOT change match state or draw match rng: the preview only reads the input. **The dispatcher enforces this, not the handler**: under a preview every persistent mutator on the ctx is a dry run that returns what the real call would have returned (funds / LP / layers / counters / grants / rolls / shop / effects / toasts), counters get a shadow overlay so a handler still reads back its own write, and `ctx.rng` is a private stream. A handler may therefore keep patching `ev.input` with the numbers it computed — 盟约寄生's layers must SHOW in the preview — while nothing is written. Until 2026-10-15 the contract was prose only: 盟约寄生 banked its bench layers PERMANENTLY on every `g.unitStats` (one per operator card opened) and 群蛇形态 spent its whole banked counter on the first one |
+ | `onBattleResult` | SETTLE (normal rounds) and after boss fields | `{ result, lpLoss, perfect, unite?|boss? }` |
+ | `onChoicePick` | a 机变 card was applied (the card's own `choice:` handler runs first, then every source observes) | `{ card, family, picker, forTeammate }` |
+ | `onEquip` | `g.equip` (item handler only) | `{ item, target, golden, consumed, keep, error }` — see §2.5 |
+diff --git a/docs/history/0.3.0.md b/docs/history/0.3.0.md
+index 68d1e2a8..0ebc83ae 100644
+--- a/docs/history/0.3.0.md
++++ b/docs/history/0.3.0.md
+@@ -2251,6 +2251,86 @@ const back = atk * ratio;                                    // 以前是 c.amou
+ 
+ ---
+ 
++### 29.40 状态预览不再改动对局：盟约寄生「点一次干员就叠一次」（业主报告，2026-10-15）
++
++业主原话：「**盟约寄生会在点击干员后多次触发**」。
++
++#### 29.40.1 问题
++
++备战期点开自己场上干员的详情卡，客户端会问服务器要它「下场战斗开始时的属性」——`g.unitStats` → `m.unitStats`
++（user playtest #4 item 7，`docs/design/client.md`）。服务端 `Match._unitStatsOf`（`server/match/match/intents.js`）
++的算法是：**真的构造一份战斗输入、真的派发一遍 `onBattleStart`**，把它交给一场**不步进**的战斗读一遍就丢掉。
++
++问题在于 `onBattleStart` 的处理器是**真代码**，而 `盟约寄生`（§29.34）在这条钩子上做的两件事里有一件**写对局状态**：
++
++```js
++const add = ctx.addLayers(top, bench * per, { reason: 'hex' });   // 写进 ps.layers，永久
++snap.layers = (Number(snap.layers) || 0) + add;                    // 补进这一场的输入快照
++```
++
++于是**每点开一次干员卡就白拿一次层数**。实测（单人局 R1，整备区 2 名干员、已激活的层数盟约 10 层）：
++
++| 动作 | 存储层数 |
++|---|---|
++| 打开前 | 10 |
++| 打开 1 次 | 14 |
++| 打开 2 次 | 18 |
++| 打开 3 次 | 22 |
++
++同一类问题还波及 **群蛇形态**（`onBattleStart.serpentArm`）：它在钩子里把攒下的整数点**花掉**（`ctx.setCounter(k, pts - whole)`），
++所以第一次点开干员卡就把攒的敌人「预支」光了（实测 3 → 0），真正的战斗反而什么都吃不到。
++
++`docs/META.md` 早就把契约写清楚了——「With `ev.preview` true (no `ev.spawns`) a handler must NOT change match state or
++draw match rng: the preview only reads the input」——但它**只是散文**：没有任何一层在拦。这正是 §29.8 那类坑的同一形状
++（「按站点分别落实的规则，加一个新站点就悄悄失效」），只不过这次按**处理器**分别落实。
++
++#### 29.40.2 改法
++
++把契约放到**唯一一个所有处理器都必经的地方**去执行：`makeCtx`。`ev.preview === true` 时，ctx 上每一个**持久化写入口**
++都换成**干跑**——返回「真调用会返回的那个值」，但什么都不写：
++
++```js
++// server/match/effectsMeta.js
++if (ev && typeof ev === 'object' && ev.preview === true) applyPreviewGuard(ctx, ps, m, source, hook);
++```
++
++* **干跑要「像真的」**，否则处理器算出来的数就不对，`ev.input` 里的预览也就不准。所以：
++  * `addLayers` 走新增的 `PlayerState.layerGainOf(bondId, n, { requireActive })`——**只算不写**，同一套前置条件、
++    同一套 `layerGainRoom`（999 上限）与 `layerGainMulOf` 倍率。`盟约寄生` 拿到这个数照样补进 `ev.input`，所以
++    **预览里看到的层数仍然是对的**（实测：预览快照 14 层，存储仍是 10 层）。
++  * `spendLp` 返回当前 LP、`grantFreeRefresh` 返回当前免费刷新数、`addDeployCap` 返回当前上限——读起来都合理。
++  * 计数器走**影子覆盖层**：处理器写进计数器再读回来能看到自己的写入（预览表现得像「第一次真实运行」），
++    但 `ps.counters` 一个字节都没动。
++  * `ctx.rng` 换成按 `preview:<seat>` 派生的**私有流**，与对局自己的 `rngMeta` 无关，所以掷骰既不推进真实流、
++    也不因缓存而错位。
++  * `ctx.teammates()` / `ctx.player()` 返回的也是**被同样包裹**的 ctx（处理器不能绕过自己这一层去写队友）。
++* **写入口逐个列举**，没有用 Proxy：这样每个名字都在代码里看得见、`grep` 得到，也不会把将来新增的只读 getter 误伤。
++* **不动任何一张卡**：卡还是原来那张卡，它在真实战斗里做什么，在预览里就「算」什么。§29.8 的教训是别让内容自己记得检查标志。
++
++#### 29.40.3 测试
++
++* **`test/match/meta.test.js`** 新增 **1 条**（调度器层）：注册一个只认 `preview` 的探针处理器，把
++  `addFunds / spendLp / addLayers / grantChess / grantItem / rollChess / rollPool / setShopSlot / incCounter /
++  triggerGarrisons / destroyPiece / rng` 全调一遍，断言①返回值都是「真调用会返回的那种值」（`addLayers` 报 7、
++  其余为 0/null/false/当前值），②影子计数器能读回自己的写入（0 → +2 → 2），③对局的 `funds / lp / layers / hand /
++  counters / rng 状态`**全部原地不动**。
++* **`test/match/hextech.test.js`** 新增 **1 条**（真路径）：持有 `盟约寄生` + `群蛇形态`，整备区 2 名干员、攒 3 点、
++  层数盟约 10 层；连问 **3 次** `g.unitStats` 后断言存储层数仍是 10、攒的点仍是 3；再断言预览快照里**确实**带着
++  14 层（干跑要「像真的」）；最后走一次**不带** `preview` 的真实 `onBattleStart`，断言层数真的变成 14、点真的清零。
++
++#### 29.40.4 回归范围
++
++* **golden**：六族**全部与修复前逐字节一致**（`matches` 的 3 条位移是 **HEAD 里既有的**——0.2.6 合并提交带来的，
++  与本节无关；用「两处改动都还原成 HEAD」与「带本次修复」分别跑一遍 `--family matches`，两份报告除耗时行外完全相同）。
++* 这条修复**只会让预览少写东西**，真实战斗路径一行未动。
++
++| area | files |
++|---|---|
++| 引擎 | `server/match/effectsMeta.js`（`applyPreviewGuard` + `makeCtx` 里的挂载）、`server/match/player/economy.js`（`layerGainOf` 抽出，`addLayers` 复用） |
++| 文档 / 测试 | `docs/META.md`（onBattleStart 行写明「由调度器执行」）、`test/match/meta.test.js`、`test/match/hextech.test.js`、`CHANGELOG.md`、本节 |
++
++---
++
+ ## 33. 运维策略两条：独立模拟的重连窗口、全服 AI 上限（业主指示，2026-10-13）
+ 
+ 业主指示原文：「单人局断线 24 小时改成 10 分钟。限制人机最大数量。」
+diff --git a/public/i18n/en.json b/public/i18n/en.json
+index a9c82b0f..4b76a6c2 100644
+--- a/public/i18n/en.json
++++ b/public/i18n/en.json
+@@ -1597,5 +1597,57 @@
+   "版本 {version} · {date}": "Version {version} · {date}",
+   "本次更新 {n} 条": "{n} changes in this update",
+   "关闭后不会再弹出；等下次有新的更新内容时才会再显示一次。": "This will not pop up again once you close it. The next batch of changes shows it once more.",
+-  "查看更新公告": "View update notes"
++  "查看更新公告": "View update notes",
++  "武器大师": "Weapon Master",
++  "获得时立即得到装备【天马之盔】与【天马之枪】各一件。": "On pick you immediately receive one 【Pegasus Helm】 and one 【Pegasus Lance】.",
++  "共享信标": "Shared Beacon",
++  "获得时你和所有队友各得到装备【信标】一件。": "On pick you and every teammate each receive one 【Beacon】.",
++  "潘多拉魔盒": "Pandora's Box",
++  "获得时，将你已拥有的所有协议源石（含本张）随机更换为 3 阶协议源石。": "On pick, every Protocol Originium you own (this card included) is randomly replaced by a 3rd-tier one.",
++  "挡挡": "Block Block",
++  "不屈盟约的层数超过 100 层后，不屈干员阻挡数 +1；此后每多出 150 层，阻挡数再 +1。": "Once the 不屈 bond passes 100 layers its operators gain +1 block; every further 150 layers adds another +1.",
++  "不区区！": "No Small Feat!",
++  "作战中，不屈干员会为其他干员分担 50% 的伤害。": "In battle, 不屈 operators soak 50% of the damage other operators take.",
++  "泰拉在上": "Terra Above",
++  "作战中，己方干员阵亡时对周围 8 格造成其攻击力 200% 的法术伤害，并附加灼燃损伤。": "In battle, when an own operator falls, the 8 tiles around it take 200% of its ATK as arts damage, plus Burn.",
++  "指令之意": "Will to Command",
++  "作战开始时随机指定一种职业，该职业的己方干员攻击力 +50%。": "At battle start one profession is chosen at random; its own operators gain +50% ATK.",
++  "指令之意·改": "Will to Command·Alter",
++  "作战开始时随机指定一种伤害类型，己方干员造成该类型伤害时提升至 150%。": "At battle start one damage type is chosen at random; own operators deal 150% of it.",
++  "可露希尔大降价": "Closure's Big Sale",
++  "获得时，本回合内接下来 3 次刷新免费，且购买干员与装备免费。": "On pick, the next 3 refreshes this round are free, and operators and equipment cost nothing.",
++  "兔头": "Rabbit Head",
++  "作战中，己方攻击力最高的干员攻击力 +50%，攻击力最低的干员攻击力 −30%。": "In battle, your highest-ATK operator gains +50% ATK and your lowest-ATK operator loses 30% ATK.",
++  "职业共鸣": "Class Resonance",
++  "作战中，每有一名与自身相同职业的己方干员，该干员攻击力与防御力 +10%。": "In battle, each own operator gains +10% ATK and DEF for every other own operator sharing its profession.",
++  "情报部抑制": "Intelligence Suppression",
++  "给画面加一层马赛克滤镜。": "Adds a mosaic filter over the screen.",
++  "记录部抑制": "Records Suppression",
++  "每 4 回合，修整期部署干员时减少 1 点策略生命。": "Every 4 rounds, deploying an operator during prep costs 1 Strategy Life.",
++  "莱茵护甲": "Rhine Armor",
++  "敌人获得一层次数盾（可抵挡 3 次攻击）。": "Enemies gain a hit shield (blocks 3 attacks).",
++  "势不可挡": "Unstoppable",
++  "敌人所需的阻挡数 +1，但移动速度降低 50%。": "Enemies require +1 block, but move 50% slower.",
++  "食尸": "Cannibalize",
++  "敌人死亡时，治疗附近敌人其最大生命值 5% 的生命。": "When an enemy dies, nearby enemies are healed for 5% of its max HP.",
++  "静默": "Silence",
++  "每过 35 秒，我方随机 1 名干员受到 1000 点凋亡损伤。": "Every 35 seconds, a random own operator takes 1000 Necrosis damage.",
++  "重伤": "Grave Wound",
++  "敌人的攻击使我方干员受到的受治疗量降低 20%，持续 4 秒。": "An enemy's hit reduces the struck operator's healing received by 20% for 4 seconds.",
++  "精英化": "Elite Promotion",
++  "敌人数量减少 10%，但攻击力、防御力和生命力上升 30%。": "10% fewer enemies, but +30% ATK, DEF and HP.",
++  "自适应": "Adaptive",
++  "敌人每次受到攻击提高 2% 防御力，最高 30%。": "Each hit an enemy takes raises its DEF by 2%, up to 30%.",
++  "物转法": "Physical to Arts",
++  "物理敌人攻击力降低 30%，但是造成法术伤害。": "Physical enemies deal 30% less ATK but deal arts damage.",
++  "易碎铠甲": "Brittle Armor",
++  "出场敌人防御力提高 50%，移动速度降低 20%，每次受到攻击降低 5% 防御力（至多降低至原值）。": "Spawned enemies gain +50% DEF and move 20% slower; each hit taken shaves 5% DEF (never below the original value).",
++  "无头苍蝇": "Headless Fly",
++  "敌人移动速度增加 50%，但是每过 10 秒受到一次 2 秒恐惧（boss 和隐匿敌人除外）。": "Enemies move 50% faster, but every 10 seconds suffer 2 seconds of Fear (bosses and hidden enemies excepted).",
++  "zzz": "zzz",
++  "每过 20 秒，我方随机 1 名干员陷入沉睡 2 秒。": "Every 20 seconds, a random own operator falls asleep for 2 seconds.",
++  "源石附身": "Originium Possession",
++  "敌人获得活性原石效果。": "Enemies gain the Active Originium effect.",
++  "作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害或造成伤害时，对伤害来源造成 200% 防御力的真实伤害。": "In battle all of your operators gain +18 % DEF and +10 RES; when taking or dealing damage, they deal true damage equal to 200 % of their DEF to the source.",
++  "每当你卖出一名精锐（三星）干员，立刻获得 2 资金；下一次刷新必定出现你场上人数最多盟约的干员。": "Every time you sell an elite (three-star) operator you gain 2 funds at once, and the next refresh is guaranteed to show an operator of your most numerous bond."
+ }
+diff --git a/public/i18n/ja.json b/public/i18n/ja.json
+index ede29bd0..eee8191d 100644
+--- a/public/i18n/ja.json
++++ b/public/i18n/ja.json
+@@ -1342,5 +1342,57 @@
+   "版本 {version} · {date}": "バージョン {version} · {date}",
+   "本次更新 {n} 条": "今回の更新 {n} 件",
+   "关闭后不会再弹出；等下次有新的更新内容时才会再显示一次。": "閉じると次回以降は表示されません。新しい更新内容があったときに一度だけ再表示されます。",
+-  "查看更新公告": "更新情報を見る"
++  "查看更新公告": "更新情報を見る",
++  "武器大师": "ウェポンマスター",
++  "获得时立即得到装备【天马之盔】与【天马之枪】各一件。": "獲得時に装備【ペガサスヘルム】と【ペガサスランス】を1つずつ得る。",
++  "共享信标": "共有ビーコン",
++  "获得时你和所有队友各得到装备【信标】一件。": "獲得時に自分と全味方が装備【ビーコン】を1つずつ得る。",
++  "潘多拉魔盒": "パンドラの箱",
++  "获得时，将你已拥有的所有协议源石（含本张）随机更换为 3 阶协议源石。": "獲得時、所持している全てのプロトコル源石（このカードを含む）をランダムに3階のものへ交換する。",
++  "挡挡": "ブロックブロック",
++  "不屈盟约的层数超过 100 层后，不屈干员阻挡数 +1；此后每多出 150 层，阻挡数再 +1。": "不屈の絆が100層を超えると、不屈のオペレーターのブロック数 +1。以降150層ごとにさらに +1。",
++  "不区区！": "大したものだ！",
++  "作战中，不屈干员会为其他干员分担 50% 的伤害。": "戦闘中、不屈のオペレーターは他のオペレーターの受けるダメージの50%を肩代わりする。",
++  "泰拉在上": "テラよ",
++  "作战中，己方干员阵亡时对周围 8 格造成其攻击力 200% 的法术伤害，并附加灼燃损伤。": "戦闘中、味方オペレーターが倒れると周囲8マスに攻撃力200%の術ダメージと灼燃損傷を与える。",
++  "指令之意": "指令の意",
++  "作战开始时随机指定一种职业，该职业的己方干员攻击力 +50%。": "戦闘開始時、ランダムな職種を1つ指定し、その職種の味方オペレーターの攻撃力 +50%。",
++  "指令之意·改": "指令の意・改",
++  "作战开始时随机指定一种伤害类型，己方干员造成该类型伤害时提升至 150%。": "戦闘開始時、ランダムなダメージタイプを1つ指定し、味方オペレーターがそのタイプで与えるダメージが150%になる。",
++  "可露希尔大降价": "クロージャーの大セール",
++  "获得时，本回合内接下来 3 次刷新免费，且购买干员与装备免费。": "獲得時、このターン中の次の3回のリフレッシュが無料になり、オペレーターと装備の購入も無料になる。",
++  "兔头": "ウサギ頭",
++  "作战中，己方攻击力最高的干员攻击力 +50%，攻击力最低的干员攻击力 −30%。": "戦闘中、味方で最も攻撃力が高いオペレーターの攻撃力 +50%、最も低いオペレーターの攻撃力 −30%。",
++  "职业共鸣": "職種共鳴",
++  "作战中，每有一名与自身相同职业的己方干员，该干员攻击力与防御力 +10%。": "戦闘中、自身と同じ職種の味方オペレーター1名につき、そのオペレーターの攻撃力と防御力 +10%。",
++  "情报部抑制": "情報部抑制",
++  "给画面加一层马赛克滤镜。": "画面にモザイクフィルターを一枚かける。",
++  "记录部抑制": "記録部抑制",
++  "每 4 回合，修整期部署干员时减少 1 点策略生命。": "4ターンごと、整備期にオペレーターを配置すると戦略ライフが1減少する。",
++  "莱茵护甲": "ラインアーマー",
++  "敌人获得一层次数盾（可抵挡 3 次攻击）。": "敵が回数シールドを1枚得る（3回の攻撃を防ぐ）。",
++  "势不可挡": "止まらない",
++  "敌人所需的阻挡数 +1，但移动速度降低 50%。": "敵の必要なブロック数 +1、ただし移動速度が50%低下する。",
++  "食尸": "屍食い",
++  "敌人死亡时，治疗附近敌人其最大生命值 5% 的生命。": "敵が死亡した時、周囲の敵をその最大HPの5%回復する。",
++  "静默": "静黙",
++  "每过 35 秒，我方随机 1 名干员受到 1000 点凋亡损伤。": "35秒ごとに、味方のランダムなオペレーター1名が1000の凋亡損傷を受ける。",
++  "重伤": "重傷",
++  "敌人的攻击使我方干员受到的受治疗量降低 20%，持续 4 秒。": "敵の攻撃を受けた味方オペレーターの被回復量が20%低下する。4秒間持続。",
++  "精英化": "精鋭化",
++  "敌人数量减少 10%，但攻击力、防御力和生命力上升 30%。": "敵の数が10%減るが、攻撃力・防御力・生命力が30%上昇する。",
++  "自适应": "適応",
++  "敌人每次受到攻击提高 2% 防御力，最高 30%。": "敵が攻撃を受けるたびに防御力が2%上昇する。最大30%。",
++  "物转法": "物理転術",
++  "物理敌人攻击力降低 30%，但是造成法术伤害。": "物理の敵の攻撃力が30%低下するが、術ダメージを与える。",
++  "易碎铠甲": "壊れやすい鎧",
++  "出场敌人防御力提高 50%，移动速度降低 20%，每次受到攻击降低 5% 防御力（至多降低至原值）。": "出現する敵の防御力 +50%、移動速度 −20%、攻撃を受けるたびに防御力が5%低下する（元の値まで）。",
++  "无头苍蝇": "頭のない蠅",
++  "敌人移动速度增加 50%，但是每过 10 秒受到一次 2 秒恐惧（boss 和隐匿敌人除外）。": "敵の移動速度 +50%、ただし10秒ごとに2秒の恐怖を受ける（ボスと隠匿の敵を除く）。",
++  "zzz": "zzz",
++  "每过 20 秒，我方随机 1 名干员陷入沉睡 2 秒。": "20秒ごとに、味方のランダムなオペレーター1名が2秒間眠る。",
++  "源石附身": "源石憑依",
++  "敌人获得活性原石效果。": "敵が活性源石効果を得る。",
++  "作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害或造成伤害时，对伤害来源造成 200% 防御力的真实伤害。": "戦闘中、味方全オペレーターの防御力 +18%、術耐性 +10。ダメージを受けたり与えたりした時、その相手に防御力200%の確定ダメージを与える。",
++  "每当你卖出一名精锐（三星）干员，立刻获得 2 资金；下一次刷新必定出现你场上人数最多盟约的干员。": "精鋭（3つ星）オペレーターを売却するたびに資金2を即座に得る。次のリフレッシュでは最も人数の多い絆のオペレーターが必ず出現する。"
+ }
+diff --git a/public/i18n/ko.json b/public/i18n/ko.json
+index d3d86cbf..875d0a8b 100644
+--- a/public/i18n/ko.json
++++ b/public/i18n/ko.json
+@@ -1344,7 +1344,57 @@
+   "上一条": "이전 팁",
+   "下一条": "다음 팁",
+   "项目仓库": "저장소",
+-  "官方伤害数字": "공식 대미지 수치",
+-  "只显示达到官方暴击条件的红色数字。关闭时仍显示每一次命中。": "공식 치명타 조건을 만족하는 빨간 숫자만 표시합니다. 끄면 지금까지처럼 모든 타격에 숫자가 표시됩니다.",
+-  "正在刷新…": "갱신 중…"
++  "正在刷新…": "갱신 중…",
++  "武器大师": "무기 마스터",
++  "获得时立即得到装备【天马之盔】与【天马之枪】各一件。": "획득 시 장비 【페가수스 헬름】과 【페가수스 랜스】를 각 1개 얻는다.",
++  "共享信标": "공유 비컨",
++  "获得时你和所有队友各得到装备【信标】一件。": "획득 시 자신과 모든 아군이 장비 【비컨】을 각 1개 얻는다.",
++  "潘多拉魔盒": "판도라의 상자",
++  "获得时，将你已拥有的所有协议源石（含本张）随机更换为 3 阶协议源石。": "획득 시 보유한 모든 프로토콜 원석(이 카드 포함)을 무작위 3티어로 교체한다.",
++  "挡挡": "블록 블록",
++  "不屈盟约的层数超过 100 层后，不屈干员阻挡数 +1；此后每多出 150 层，阻挡数再 +1。": "불굴 인연이 100층을 넘으면 불굴 오퍼레이터의 블록 수 +1. 이후 150층마다 추가 +1.",
++  "不区区！": "대단한걸!",
++  "作战中，不屈干员会为其他干员分担 50% 的伤害。": "전투 중 불굴 오퍼레이터가 다른 오퍼레이터가 받는 피해의 50%를 대신 받는다.",
++  "泰拉在上": "테라시여",
++  "作战中，己方干员阵亡时对周围 8 格造成其攻击力 200% 的法术伤害，并附加灼燃损伤。": "전투 중 아군 오퍼레이터가 쓰러지면 주변 8칸에 공격력 200%의 법술 피해와 소연 손상을 입힌다.",
++  "指令之意": "지령의 뜻",
++  "作战开始时随机指定一种职业，该职业的己方干员攻击力 +50%。": "전투 시작 시 무작위로 직업 하나를 지정하고, 그 직업의 아군 오퍼레이터 공격력 +50%.",
++  "指令之意·改": "지령의 뜻·개",
++  "作战开始时随机指定一种伤害类型，己方干员造成该类型伤害时提升至 150%。": "전투 시작 시 무작위로 피해 유형 하나를 지정하고, 아군 오퍼레이터가 그 유형으로 주는 피해가 150%가 된다.",
++  "可露希尔大降价": "클로저의 대할인",
++  "获得时，本回合内接下来 3 次刷新免费，且购买干员与装备免费。": "획득 시 이번 라운드의 다음 3회 리프레시가 무료이며, 오퍼레이터와 장비 구매도 무료다.",
++  "兔头": "토끼 머리",
++  "作战中，己方攻击力最高的干员攻击力 +50%，攻击力最低的干员攻击力 −30%。": "전투 중 아군 중 공격력이 가장 높은 오퍼레이터 공격력 +50%, 가장 낮은 오퍼레이터 공격력 −30%.",
++  "职业共鸣": "직업 공명",
++  "作战中，每有一名与自身相同职业的己方干员，该干员攻击力与防御力 +10%。": "전투 중 자신과 같은 직업의 아군 오퍼레이터 1명당 그 오퍼레이터의 공격력과 방어력 +10%.",
++  "情报部抑制": "정보부 억제",
++  "给画面加一层马赛克滤镜。": "화면에 모자이크 필터를 한 겹 입힌다.",
++  "记录部抑制": "기록부 억제",
++  "每 4 回合，修整期部署干员时减少 1 点策略生命。": "4라운드마다 정비 기간에 오퍼레이터를 배치하면 전략 생명 1을 잃는다.",
++  "莱茵护甲": "라인 아머",
++  "敌人获得一层次数盾（可抵挡 3 次攻击）。": "적이 횟수 실드를 1겹 얻는다 (공격 3회 방어).",
++  "势不可挡": "거침없음",
++  "敌人所需的阻挡数 +1，但移动速度降低 50%。": "적이 필요한 블록 수 +1, 단 이동 속도 50% 감소.",
++  "食尸": "시체 먹기",
++  "敌人死亡时，治疗附近敌人其最大生命值 5% 的生命。": "적이 사망하면 주변 적을 그 최대 HP의 5% 회복시킨다.",
++  "静默": "정적",
++  "每过 35 秒，我方随机 1 名干员受到 1000 点凋亡损伤。": "35초마다 아군 오퍼레이터 1명이 무작위로 1000의 조망 손상을 받는다.",
++  "重伤": "중상",
++  "敌人的攻击使我方干员受到的受治疗量降低 20%，持续 4 秒。": "적의 공격을 받은 아군 오퍼레이터의 받는 회복량이 20% 감소한다. 4초 지속.",
++  "精英化": "정예화",
++  "敌人数量减少 10%，但攻击力、防御力和生命力上升 30%。": "적 수가 10% 줄지만 공격력, 방어력, 생명력이 30% 상승한다.",
++  "自适应": "적응",
++  "敌人每次受到攻击提高 2% 防御力，最高 30%。": "적이 공격을 받을 때마다 방어력이 2% 상승한다. 최대 30%.",
++  "物转法": "물리→법술",
++  "物理敌人攻击力降低 30%，但是造成法术伤害。": "물리 적의 공격력이 30% 감소하지만 법술 피해를 준다.",
++  "易碎铠甲": "부서지기 쉬운 갑옷",
++  "出场敌人防御力提高 50%，移动速度降低 20%，每次受到攻击降低 5% 防御力（至多降低至原值）。": "등장하는 적의 방어력 +50%, 이동 속도 −20%, 공격을 받을 때마다 방어력 5% 감소 (원래 값까지).",
++  "无头苍蝇": "머리 없는 파리",
++  "敌人移动速度增加 50%，但是每过 10 秒受到一次 2 秒恐惧（boss 和隐匿敌人除外）。": "적의 이동 속도 +50%, 단 10초마다 2초간 공포에 빠진다 (보스와 은닉 적 제외).",
++  "zzz": "zzz",
++  "每过 20 秒，我方随机 1 名干员陷入沉睡 2 秒。": "20초마다 아군 오퍼레이터 1명이 무작위로 2초간 잠든다.",
++  "源石附身": "원석 빙의",
++  "敌人获得活性原石效果。": "적이 활성 원석 효과를 얻는다.",
++  "作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害或造成伤害时，对伤害来源造成 200% 防御力的真实伤害。": "전투 중 아군 모든 오퍼레이터의 방어력 +18%, 법술 저항 +10. 피해를 받거나 줄 때 상대에게 방어력 200%의 확정 피해를 준다.",
++  "每当你卖出一名精锐（三星）干员，立刻获得 2 资金；下一次刷新必定出现你场上人数最多盟约的干员。": "정예(3성) 오퍼레이터를 판매할 때마다 자금 2를 즉시 얻는다. 다음 리프레시에는 인원이 가장 많은 인연의 오퍼레이터가 반드시 등장한다."
+ }
+diff --git a/public/i18n/zh-TW.json b/public/i18n/zh-TW.json
+index 4eddb95d..3b01ec47 100644
+--- a/public/i18n/zh-TW.json
++++ b/public/i18n/zh-TW.json
+@@ -1353,5 +1353,57 @@
+   "版本 {version} · {date}": "版本 {version} · {date}",
+   "本次更新 {n} 条": "本次更新 {n} 條",
+   "关闭后不会再弹出；等下次有新的更新内容时才会再显示一次。": "關閉後不會再彈出；等下次有新的更新內容時才會再顯示一次。",
+-  "查看更新公告": "查看更新公告"
++  "查看更新公告": "查看更新公告",
++  "武器大师": "武器大師",
++  "获得时立即得到装备【天马之盔】与【天马之枪】各一件。": "獲得時立即得到裝備【天馬之盔】與【天馬之槍】各一件。",
++  "共享信标": "共享信標",
++  "获得时你和所有队友各得到装备【信标】一件。": "獲得時你和所有隊友各得到裝備【信標】一件。",
++  "潘多拉魔盒": "潘多拉魔盒",
++  "获得时，将你已拥有的所有协议源石（含本张）随机更换为 3 阶协议源石。": "獲得時，將你已擁有的所有協議源石（含本張）隨機更換為 3 階協議源石。",
++  "挡挡": "擋擋",
++  "不屈盟约的层数超过 100 层后，不屈干员阻挡数 +1；此后每多出 150 层，阻挡数再 +1。": "不屈盟約的層數超過 100 層後，不屈幹員阻擋數 +1；此後每多出 150 層，阻擋數再 +1。",
++  "不区区！": "不區區！",
++  "作战中，不屈干员会为其他干员分担 50% 的伤害。": "作戰中，不屈幹員會為其他幹員分擔 50% 的傷害。",
++  "泰拉在上": "泰拉在上",
++  "作战中，己方干员阵亡时对周围 8 格造成其攻击力 200% 的法术伤害，并附加灼燃损伤。": "作戰中，己方幹員陣亡時對周圍 8 格造成其攻擊力 200% 的法術傷害，並附加灼燃損傷。",
++  "指令之意": "指令之意",
++  "作战开始时随机指定一种职业，该职业的己方干员攻击力 +50%。": "作戰開始時隨機指定一種職業，該職業的己方幹員攻擊力 +50%。",
++  "指令之意·改": "指令之意·改",
++  "作战开始时随机指定一种伤害类型，己方干员造成该类型伤害时提升至 150%。": "作戰開始時隨機指定一種傷害類型，己方幹員造成該類型傷害時提升至 150%。",
++  "可露希尔大降价": "可露希爾大降價",
++  "获得时，本回合内接下来 3 次刷新免费，且购买干员与装备免费。": "獲得時，本回合內接下來 3 次刷新免費，且購買幹員與裝備免費。",
++  "兔头": "兔頭",
++  "作战中，己方攻击力最高的干员攻击力 +50%，攻击力最低的干员攻击力 −30%。": "作戰中，己方攻擊力最高的幹員攻擊力 +50%，攻擊力最低的幹員攻擊力 −30%。",
++  "职业共鸣": "職業共鳴",
++  "作战中，每有一名与自身相同职业的己方干员，该干员攻击力与防御力 +10%。": "作戰中，每有一名與自身相同職業的己方幹員，該幹員攻擊力與防禦力 +10%。",
++  "情报部抑制": "情報部抑制",
++  "给画面加一层马赛克滤镜。": "給畫面加一層馬賽克濾鏡。",
++  "记录部抑制": "記錄部抑制",
++  "每 4 回合，修整期部署干员时减少 1 点策略生命。": "每 4 回合，整備期部署幹員時減少 1 點策略生命。",
++  "莱茵护甲": "萊茵護甲",
++  "敌人获得一层次数盾（可抵挡 3 次攻击）。": "敵人獲得一層次數盾（可抵擋 3 次攻擊）。",
++  "势不可挡": "勢不可擋",
++  "敌人所需的阻挡数 +1，但移动速度降低 50%。": "敵人所需的阻擋數 +1，但移動速度降低 50%。",
++  "食尸": "食屍",
++  "敌人死亡时，治疗附近敌人其最大生命值 5% 的生命。": "敵人死亡時，治療附近敵人其最大生命值 5% 的生命。",
++  "静默": "靜默",
++  "每过 35 秒，我方随机 1 名干员受到 1000 点凋亡损伤。": "每過 35 秒，我方隨機 1 名幹員受到 1000 點凋亡損傷。",
++  "重伤": "重傷",
++  "敌人的攻击使我方干员受到的受治疗量降低 20%，持续 4 秒。": "敵人的攻擊使我方幹員受到的受治療量降低 20%，持續 4 秒。",
++  "精英化": "精英化",
++  "敌人数量减少 10%，但攻击力、防御力和生命力上升 30%。": "敵人數量減少 10%，但攻擊力、防禦力和生命力上升 30%。",
++  "自适应": "自適應",
++  "敌人每次受到攻击提高 2% 防御力，最高 30%。": "敵人每次受到攻擊提高 2% 防禦力，最高 30%。",
++  "物转法": "物轉法",
++  "物理敌人攻击力降低 30%，但是造成法术伤害。": "物理敵人攻擊力降低 30%，但是造成法術傷害。",
++  "易碎铠甲": "易碎鎧甲",
++  "出场敌人防御力提高 50%，移动速度降低 20%，每次受到攻击降低 5% 防御力（至多降低至原值）。": "出場敵人防禦力提高 50%，移動速度降低 20%，每次受到攻擊降低 5% 防禦力（至多降低至原值）。",
++  "无头苍蝇": "無頭蒼蠅",
++  "敌人移动速度增加 50%，但是每过 10 秒受到一次 2 秒恐惧（boss 和隐匿敌人除外）。": "敵人移動速度增加 50%，但是每過 10 秒受到一次 2 秒恐懼（boss 和隱匿敵人除外）。",
++  "zzz": "zzz",
++  "每过 20 秒，我方随机 1 名干员陷入沉睡 2 秒。": "每過 20 秒，我方隨機 1 名幹員陷入沉睡 2 秒。",
++  "源石附身": "源石附身",
++  "敌人获得活性原石效果。": "敵人獲得活性原石效果。",
++  "作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害或造成伤害时，对伤害来源造成 200% 防御力的真实伤害。": "作戰中，己方所有幹員防禦力 +18%、法術抗性 +10；受到傷害或造成傷害時，對傷害來源造成 200% 防禦力的真實傷害。",
++  "每当你卖出一名精锐（三星）干员，立刻获得 2 资金；下一次刷新必定出现你场上人数最多盟约的干员。": "每當你賣出一名精銳（三星）幹員，立刻獲得 2 資金；下一次重新整理必定出現你場上人數最多盟約的幹員。"
+ }
+diff --git a/public/js/assets.js b/public/js/assets.js
+index a4c7b2c8..cd95f7e9 100644
+--- a/public/js/assets.js
++++ b/public/js/assets.js
+@@ -42,6 +42,9 @@
+ // so it can be unit tested without a browser. Helpers never throw on unknown ids — they return null and the
+ // caller falls back (docs/ASSETS.md "Other fallbacks").
+ 
++// The content-hash segment of a served URL (localSpineEntry compares two derived names; shared/assetPaths.js).
++import { unhashedUrl } from '../../shared/assetPaths.js';
++
+ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+ const str = (v) => (typeof v === 'string' && v ? v : null);
+ const get = (o, k) => (isObj(o) && Object.hasOwn(o, k) ? o[k] : undefined);
+@@ -216,7 +219,12 @@ export function localSpineEntry(sl, local, web) {
+   const skel = url(sl.skel), atlas = url(sl.atlas);
+   const textures = Array.isArray(sl.textures) ? sl.textures.map(url) : [];
+   let entry = null;
+-  if (skel && atlas && skel.replace(/\.skel$/, '.atlas') === atlas && textures.length && textures.every(Boolean)) {
++  // The name check compares the two URLs **without their content-hash segment**. An operator's self-made model lives in
++  // its own \`char/<charId>\` group, not a \`spine/…\` one, so assetViews.js hashes its three files separately instead of
++  // giving them one shared model hash — comparing the raw URLs would never match, and \`spineLocal\` would be dead code
++  // for exactly the operators it exists for (owner 2026-10-16). \`unhashedUrl\` is that helper (shared/assetPaths.js:
++  // "a URL derived from a hashed one names another file").
++  if (skel && atlas && unhashedUrl(skel).replace(/\.skel$/, '.atlas') === unhashedUrl(atlas) && textures.length && textures.every(Boolean)) {
+     entry = { skel, atlas, textures, pma: !!sl.pma, anims: sl.anims, animations: sl.animations, events: sl.events, hits: sl.hits, bounds: sl.bounds, local: true, fallback: web || null };
+     if (!validSpine(entry)) entry = null;
+   }
+diff --git a/public/js/diag.js b/public/js/diag.js
+index b4b9567c..c2de7194 100644
+--- a/public/js/diag.js
++++ b/public/js/diag.js
+@@ -42,17 +42,94 @@ export function messageOf(err) {
+   if (err == null) s = String(err);
+   else if (typeof err === 'string') s = err;
+   else if (typeof err === 'object') {
+-    const name = typeof err.name === 'string' && err.name && err.name !== 'Error' ? `${err.name}: ` : '';
+-    const text = typeof err.message === 'string' && err.message ? err.message : typeof err.msg === 'string' ? err.msg : '';
+-    const code = typeof err.code === 'string' || typeof err.code === 'number' ? String(err.code) : '';
+-    if (text) s = `${name}${text}${code && !text.includes(code) ? ` (${code})` : ''}`;
+-    else if (code) s = `${name}${code}`;
+-    else { try { s = JSON.stringify(err); } catch { s = Object.prototype.toString.call(err); } }
++    // A DOM Event that reached us as a rejection reason / thrown value (see `isDomEvent`; the predicate is shared with
++    // the toast and the global handler so all three agree on the shape). Without this branch it fell through to
++    // JSON.stringify, which sees only own enumerable properties: a real Event keeps `type` / `target` / `currentTarget`
++    // on the PROTOTYPE, so the whole message collapsed to `{"isTrusted":true}` — a player's report showed exactly that
++    // (2026-10-14) and it named nothing: not the event, not the element, not the phase. Read the event by name.
++    if (isDomEvent(err)) {
++      s = `Event(${eventLabel(err)})`;
++    } else {
++      const name = typeof err.name === 'string' && err.name && err.name !== 'Error' ? `${err.name}: ` : '';
++      const text = typeof err.message === 'string' && err.message ? err.message : typeof err.msg === 'string' ? err.msg : '';
++      const code = typeof err.code === 'string' || typeof err.code === 'number' ? String(err.code) : '';
++      if (text) s = `${name}${text}${code && !text.includes(code) ? ` (${code})` : ''}`;
++      else if (code) s = `${name}${code}`;
++      else { try { s = JSON.stringify(err); } catch { s = Object.prototype.toString.call(err); } }
++      if (s === '{}' || s === '{"isTrusted":true}') {
++        // Nothing enumerable and nothing nameable: at least say WHAT it is, so a report is not a dead end.
++        const ctor = err.constructor?.name;
++        if (ctor && ctor !== 'Object') s = `${ctor} {}`;
++      }
++    }
+   } else s = String(err);
+   s = s.replace(/\s+/g, ' ').trim();
+   return s.length > MESSAGE_MAX ? `${s.slice(0, MESSAGE_MAX - 1)}…` : s;
+ }
+ 
++/**
++ * Is this value a DOM Event that reached us as an error, rather than an app error?
++ *
++ * DRY ON PURPOSE. This question is asked in three places — the report text (`messageOf` below), the toast
++ * (`ui/toasts.js describeError`) and the global handler that decides whether to raise a toast at all
++ * (`main.js installGlobalErrorHandlers`) — and having three copies is exactly what let the defect live through a
++ * release: `messageOf` was taught the shape first, the toast was not, and the player still saw 「发生未知错误」 for
++ * two more days (owner's report 2026-10-15 「怎么还有未知错误」). One predicate, imported by all three.
++ *
++ * The shape is awkward by nature: an Event keeps `type` / `target` / `isTrusted` on the PROTOTYPE (so `JSON.stringify`
++ * sees almost nothing), and an `ErrorEvent` additionally carries a standard `message` — which is why a caller must ask
++ * this question BEFORE it reads `message`, or the Event arm is unreachable.
++ * @param {any} err
++ */
++export function isDomEvent(err) {
++  if (!err || typeof err !== 'object' || typeof err.type !== 'string' || !err.type) return false;
++  // A real application error that happens to carry a `type` string wins: `{code, type}` shapes exist in this codebase.
++  if (typeof err.code === 'string' && err.code) return false;
++  if ('isTrusted' in err) return true;
++  try {
++    const evCtor = globalThis.Event;
++    if (typeof evCtor === 'function' && err instanceof evCtor) return true;
++    const errEvCtor = globalThis.ErrorEvent;
++    if (typeof errEvCtor === 'function' && err instanceof errEvCtor) return true;
++  } catch { /* a cross-realm or exotic event object */ }
++  return typeof err.target !== 'undefined' || typeof err.srcElement !== 'undefined';
++}
++
++/** The element an event happened to, or null. `srcElement` is the field PIXI's `copyData` forwards (no `target`). */
++export function eventTargetOf(err) {
++  const el = err && (err.target || err.srcElement);
++  return el && typeof el === 'object' ? el : null;
++}
++
++/**
++ * Is this rejection just an asset that would not load? A DOM Event targeting a resource element (`<img>`, `<video>`,
++ * `<script>`, …) — PIXI's loader rejects with exactly that (`ImageResource._load`: `r.onerror = a => s(a)`), and so do
++ * the browser's own media promises. Nothing in this app can act on it: the picture is missing and the view already
++ * drew its fallback. A genuine exception never takes this path, because it is not an Event with a resource target.
++ * @param {any} err
++ */
++const RESOURCE_TAGS = new Set(['IMG', 'VIDEO', 'AUDIO', 'SCRIPT', 'LINK', 'SOURCE', 'PICTURE', 'TRACK']);
++export function isResourceEvent(err) {
++  if (!isDomEvent(err)) return false;
++  const el = eventTargetOf(err);
++  const tag = el && typeof el.tagName === 'string' ? el.tagName.toUpperCase() : '';
++  return RESOURCE_TAGS.has(tag);
++}
++
++/** `type=error, target=img (/assets/…), message=…` — the one-line shape both the report and a toast build from. */
++export function eventLabel(err) {
++  const bits = [`type=${err?.type ?? '?'}`];
++  const el = eventTargetOf(err);
++  if (el) {
++    const tag = typeof el.tagName === 'string' ? el.tagName.toLowerCase() : '';
++    const src = typeof el.currentSrc === 'string' ? el.currentSrc : (typeof el.src === 'string' ? el.src : '');
++    bits.push(`target=${tag || el.constructor?.name || '?'}${src ? ` ${stripHosts(src).slice(0, 120)}` : ''}`);
++  }
++  if (err?.error) bits.push(`error=${messageOf(err.error)}`);
++  else if (typeof err?.message === 'string' && err.message) bits.push(`message=${err.message}`);
++  return bits.join(', ');
++}
++
+ /** The first STACK_LINES frames of `err.stack`, each without the page's scheme and host (`/js/ui/x.js:12:5`). */
+ export function stackOf(err) {
+   const raw = err && typeof err === 'object' && typeof err.stack === 'string' ? err.stack : '';
+diff --git a/public/js/main.js b/public/js/main.js
+index 0855d965..8af6d19d 100644
+--- a/public/js/main.js
++++ b/public/js/main.js
+@@ -59,7 +59,7 @@ import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/l
+ import { startBuildGuard } from './ui/buildGuard.js';
+ import { initLang, useLang, tickerText } from './ui/lang.js';
+ import { t, N_, translateWire } from '../../shared/i18n.js';
+-import { recordError, installTrafficMeter } from './diag.js';
++import { recordError, installTrafficMeter, isResourceEvent } from './diag.js';
+ 
+ const RESTORE_GRACE_MS = 1500;
+ const JOIN_DELAY_MS = 350;
+@@ -374,12 +374,33 @@ async function waitForFonts(ms) {
+   await Promise.race([Promise.all(loads), new Promise((r) => setTimeout(r, ms))]);
+ }
+ 
++/**
++ * Is this rejection just an asset that would not load? A DOM Event targeting a resource element (`<img>`, `<video>`,
++ * `<script>`, …) — PIXI's loader rejects with exactly that (`ImageResource._load`: `r.onerror = a => s(a)`), and so do
++ * the browser's own media promises. Nothing in this app can act on it: the picture is missing and the view already drew
++ * its fallback. The predicate lives in `diag.js` beside the report's, so the toast, the report and this handler can
++ * never disagree about what an Event is.
++ * @param {any} err
++ */
++const isResourceRejection = isResourceEvent;
++
+ function installGlobalErrorHandlers() {
+   window.addEventListener('unhandledrejection', (ev) => {
+     const err = ev.reason;
+     // Media autoplay/abort rejections (audio.play() before a user gesture, interrupted loads) are
+     // expected browser behaviour, not app errors: log quietly, never toast.
+     if (err && (err.name === 'NotAllowedError' || err.name === 'AbortError')) { console.warn('[app] ignored rejection', err.name); return; }
++    // A RESOURCE that failed to load is not an app error either. PIXI settles a texture's load with the raw DOM Event
++    // (`ImageResource._load`: `r.onerror = a => s(a)`), so one thumbnail that did not decode arrived here as an
++    // unhandled rejection whose reason is an Event targeting an <img> — and the player got 「发生意外错误」 for a
++    // missing picture that every call site already has a fallback for. Measured 2026-10-15 (room VVQT round 7,
++    // raidShip.png / steadShip.png, both HTTP 200 from the server). Still RECORDED (a report should show it) but never
++    // toasted: the same treatment the media rejections above get, and the same reason.
++    if (isResourceRejection(err)) {
++      console.warn('[app] ignored resource rejection', ev.reason?.target?.currentSrc || ev.reason?.target?.src || '');
++      recordError('rejection', err);
++      return;
++    }
+     console.error('[app] unhandled rejection', err);
+     recordError('rejection', err);
+     if (err instanceof NetError) toastError(err);
+diff --git a/public/js/render/app.js b/public/js/render/app.js
+index 44d97930..c591a89f 100644
+--- a/public/js/render/app.js
++++ b/public/js/render/app.js
+@@ -477,12 +477,37 @@ export async function createFieldView(host, options = {}) {
+   let shadowAsked = false;
+   let offShadow = null;
+   setupCleanup.push(() => offShadow?.());
++
++  /**
++   * Absorb a PIXI texture's own load rejection.
++   *
++   * WHY THIS IS NOT A `catch` AROUND `Texture.from`. `Texture.from(url)` is synchronous: it returns a texture whose
++   * image is still loading and settles that load LATER, on its own promise. PIXI's `ImageResource._load` settles it
++   * with the RAW DOM Event (`r.onerror = a => s(a)` in the bundle — no Error wrapper, no message, nothing enumerable
++   * but `isTrusted`), so a texture whose image fails to decode becomes an UNHANDLED REJECTION and `main.js` shows the
++   * player 「发生意外错误」 for what is usually a cosmetic miss every caller here already tolerates (the shadow sprite
++   * is optional; a bond icon falls back to a text-only pop).
++   *
++   * Measured 2026-10-15 (owner's report, room VVQT round 7): `raidShip.png` and `steadShip.png` — and BOTH answered
++   * HTTP 200 from the server with all 23 bond icons healthy, so it is a race (lazy decode, a request cancelled while the
++   * tab was hidden, or a resource cached as failed), not a missing file. A genuinely missing file lands here too and is
++   * just as harmless. Called wherever this file builds a texture from a URL; without it those call sites leak.
++   * @param {any} tex a PIXI Texture
++   */
++  function swallowTextureRejection(tex) {
++    try {
++      const pending = tex?.baseTexture?.resource?._load;
++      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
++    } catch { /* an unknown texture shape: nothing to absorb */ }
++  }
++
+   function loadShadow() {
+     const shadowUrl = !shadowAsked && assets.ui ? assets.ui('battle/sprite_shadow') : null;
+     if (!shadowUrl) return;
+     shadowAsked = true;
+     try {
+       const t = P.Texture.from(shadowUrl);
++      swallowTextureRejection(t);
+       const use = () => {
+         if (destroyed) return;
+         ctx.shadowTex = t;
+@@ -1622,7 +1647,21 @@ export async function createFieldView(host, options = {}) {
+         layerPops.set(k, { t: now, n });
+         const url = assets.bondIcon ? assets.bondIcon(bondId) : null;
+         let tex = null;
+-        if (url) { try { tex = P.Texture.from(url); } catch { tex = null; } }
++        // `Texture.from` kicks off PIXI's own image load, and PIXI's ImageResource rejects with the RAW DOM Event
++        // (`r.onerror = a => s(a)` in the bundle: no Error wrapper, no message, nothing enumerable but `isTrusted`).
++        // A bond icon that fails to decode is HARMLESS here — `fx.pop(null, …)` already draws its text without a
++        // picture — but that rejection escapes as an unhandled one and the player gets 「发生意外错误」 for a missing
++        // thumbnail. Measured 2026-10-15 (owner's report, room VVQT round 7): raidShip.png and steadShip.png were the
++        // two it happened to, and BOTH answered 200 from the server, so it is a race (lazy decode, a cancelled
++        // request, or a texture cached as failed), not a missing file. `Texture.from` returns a texture it fills in
++        // later, so attaching a catch to the pending load is the only place this can be settled — the try/catch below
++        // never saw it, because the throw is asynchronous.
++        if (url) {
++          try {
++            tex = P.Texture.from(url);
++            swallowTextureRejection(tex);
++          } catch { tex = null; }
++        }
+         fx.pop(tex, `+${n}`, 0xffffff, layerPops.size);
+         break;
+       }
+diff --git a/public/js/ui/toasts.js b/public/js/ui/toasts.js
+index 6580b7ec..93151ee8 100644
+--- a/public/js/ui/toasts.js
++++ b/public/js/ui/toasts.js
+@@ -9,7 +9,7 @@ import { useEffect, useReducer } from '../../vendor/hooks.module.js';
+ import htm from '../../vendor/htm.module.js';
+ import { ERR_TEXT } from '../../../shared/constants.js';
+ import { t } from '../../../shared/i18n.js';
+-import { recordError } from '../diag.js';
++import { recordError, isDomEvent, eventLabel } from '../diag.js';
+ 
+ // no shared static vnodes (see components.js hFresh: htm's static cache would retain unmounted DOM)
+ function hFresh(type, props, ...children) {
+@@ -89,15 +89,22 @@ export function dismissToast(id) {
+ }
+ 
+ /**
+- * Text for an error-ish value: NetError / {code,msg} / Error / string — in the current language (the Chinese texts are
+- * msgids: ERR_TEXT, net.js CLIENT_ERR_TEXT, a server `msg`; anything else is shown as it is).
++ * Text for an error-ish value: NetError / {code,msg} / Error / string / DOM Event — in the current language (the
++ * Chinese texts are msgids: ERR_TEXT, net.js CLIENT_ERR_TEXT, a server `msg`; anything else is shown as it is).
+  *
+- * WHY THE CODE IS APPENDED WHEN NOTHING ELSE CAN NAME IT. An `error` frame whose `code` is in neither ERR_TEXT nor
+- * CLIENT_ERR_TEXT and that carries no `msg` (server/net.js answers `{t:'error', code}` with the text optional) used to
+- * collapse to the bare 「发生未知错误」 — the ONE piece of information that would identify it, the code itself, was
+- * thrown away. That is unfixable from a player's screenshot: the operator sees a dead end and so does whoever they
+- * report it to. So an unmappable code is still shown, verbatim and in parentheses, which turns 「发生未知错误」 into
+- * 「发生未知错误（BAD_TARGET）」.
++ * TWO WAYS THIS USED TO END AT 「发生未知错误」, both of them dead ends for the player AND for whoever they report to:
++ *
++ *  1. An `error` frame whose `code` is in neither ERR_TEXT nor CLIENT_ERR_TEXT and that carries no `msg`
++ *     (server/net.js answers `{t:'error', code}` with the text optional). The ONE piece of information that would
++ *     identify it — the code — was thrown away. An unmappable code is now shown verbatim in parentheses, which turns
++ *     「发生未知错误」 into 「发生未知错误（BAD_TARGET）」.
++ *
++ *  2. A DOM Event used as the reason (a promise wired straight to an `onerror` handler rejects with the Event itself,
++ *     and PIXI hands on a synthetic event carrying `isTrusted` / `type` / `srcElement` but no `target`). This branch
++ *     must come BEFORE the `message` check, and that ordering is the whole point: an `ErrorEvent` HAS a standard
++ *     `message` field, so testing `message` first returned early and the Event shape was never reached — the fix in
++ *     `diag.js`'s `messageOf` did not help the TOAST, so the player still saw 「发生未知错误」 (owner's report
++ *     2026-10-15 「怎么还有未知错误」). `Event(...)` carries the type and the element instead.
+  * @param {any} err
+  * @returns {string}
+  */
+@@ -105,11 +112,17 @@ export function describeError(err) {
+   if (!err) return t('发生未知错误');
+   if (typeof err === 'string') return t(Object.hasOwn(ERR_TEXT, err) ? ERR_TEXT[err] : err);
+   if (err.code && Object.hasOwn(ERR_TEXT, err.code)) return t(ERR_TEXT[err.code]);
++  // A DOM Event, BEFORE the message branch (see the header). The predicate and the label are shared with `diag.js`, so
++  // the toast, the report and the global handler can never drift apart again.
++  if (isDomEvent(err)) return t('发生未知错误（{code}）', { code: eventLabel(err) });
+   if (typeof err.message === 'string' && err.message) return t(err.message);
+   if (typeof err.msg === 'string' && err.msg) return t(err.msg);
+   // Nothing could name it — so name what we actually got. An empty/absent code keeps the plain fallback.
+   const code = typeof err.code === 'string' || typeof err.code === 'number' ? String(err.code) : '';
+-  return code ? t('发生未知错误（{code}）', { code }) : t('发生未知错误');
++  if (code) return t('发生未知错误（{code}）', { code });
++  // A bare object with nothing enumerable (a class instance with prototype getters): at least name its type.
++  const ctor = err.constructor?.name;
++  return ctor && ctor !== 'Object' ? t('发生未知错误（{code}）', { code: ctor }) : t('发生未知错误');
+ }
+ 
+ /**
+diff --git a/server/match/effectsMeta.js b/server/match/effectsMeta.js
+index 1b440378..36fda1af 100644
+--- a/server/match/effectsMeta.js
++++ b/server/match/effectsMeta.js
+@@ -45,7 +45,11 @@ import { registerAllMeta } from '../sim/content/index.js';
+ import { registerBuiltins } from './builtinMeta.js';
+ import { msg, dn } from '../../shared/i18n.js';
+ import { onGiftTicker } from './botEmotes.js';
+-import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf } from './hextech.js';
++// applyHex joined this import for 潘多拉魔盒 (the owner's list of 2026-10-15): the card replaces the player's whole
++// hex set, and each replacement must run the ORDINARY pick path — so it re-enters the pipeline rather than rebuilding
++// a ref by hand. This module already imported from ./hextech.js, so the edge exists and no cycle is added.
++import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf, applyHex } from './hextech.js';
++import { createRng, deriveSeed } from '../sim/rng.js';
+ 
+ export const HOOKS = Object.freeze([
+   'onRoundStart', 'onIncome', 'onPrepStart', 'onPrepEnd', 'onGain', 'onSold', 'onRefresh', 'onPrice', 'onBuy',
+@@ -448,6 +452,81 @@ function grantSpeaker(gd, source) {
+   return offerLabel(gd, source) || (source && source.kind === 'choice' && source.card && source.card.name) || '';
+ }
+ 
++/**
++ * Enforce the stats-preview contract (docs/META.md, onBattleStart) at the ONE place every handler gets its ctx.
++ *
++ * With `ev.preview` true a handler may read anything and patch `ev.input` — the throwaway battle input the preview is
++ * built from — but it must not change match state or draw the match's rng. Handlers are CONTENT, so the dispatcher makes
++ * every persistent mutator a DRY RUN here instead of trusting each card to check the flag (the §29.8 lesson: a rule
++ * enforced per-site goes stale the moment someone adds a site).
++ *
++ * The dry runs return what the real call would have returned, so a handler that patches `ev.input` with that number
++ * stays exactly as correct as it is in a real battle (盟约寄生 banks its `per` layers into the snapshot the preview
++ * reads) while nothing is written. Counters get a shadow overlay, so a handler that writes one and reads it back sees
++ * its own write — the preview behaves like the first real run, it just leaves no trace.
++ *
++ * Found by the 业主 report of 2026-10-15 (「盟约寄生会在点击干员后多次触发」): opening an operator's detail card asks
++ * `g.unitStats` (client game.js, the prep live stats), whose preview ran the real onBattleStart handlers — so every card
++ * opening banked another `per` layers PERMANENTLY (measured: 10 → 14 → 18 → 22). 群蛇形态 spent its whole banked point
++ * counter the same way (3 → 0 on the first preview), and any future battle-start card that rolls would have moved the
++ * match's own rng stream.
++ */
++function applyPreviewGuard(ctx, ps, m, source, hook) {
++  /** Read a counter through the preview's own shadow first. */
++  const shadow = new Map();
++  const counter = (k) => (shadow.has(k) ? shadow.get(k) : (Number.isFinite(ps.counters[k]) ? ps.counters[k] : 0));
++  const noop = (v) => () => v;
++  ctx.rng = createRng(deriveSeed(m.seed, `preview:${ps.seat}`));
++  ctx.addFunds = noop(0);
++  ctx.addPendingFunds = noop(0);
++  ctx.spendFunds = noop(false);
++  ctx.grantFreeRefresh = noop(ps.shop.freeRefreshes);
++  ctx.zeroFunds = noop(0);
++  ctx.spendLp = noop(ps.lp);
++  ctx.levelUpFree = noop(false);
++  ctx.demonTakeover = noop(0);
++  // layers: report the gain the real call would have made, write nothing (盟约寄生 patches ev.input with it)
++  ctx.addLayers = (bondId, n, opts = {}) => ps.layerGainOf(bondId, n, { requireActive: !!(opts && opts.requireActive) });
++  ctx.setLayers = noop(0);
++  ctx.grantChess = noop(null);
++  ctx.grantItem = noop(null);
++  ctx.rollChess = noop(null);
++  ctx.rollItem = noop(null);
++  ctx.rollGoldenItem = noop(null);
++  ctx.rollPool = noop(null);
++  ctx.triggerGarrisons = noop(0);
++  ctx.promote = noop(false);
++  ctx.transform = noop(null);
++  ctx.upgradeItem = noop(false);
++  ctx.equipDirect = noop(false);
++  ctx.destroyPiece = noop(false);
++  ctx.offerChess = noop(false);
++  ctx.offerItems = noop(false);
++  ctx.setShopSlot = noop(false);
++  ctx.freeShopChess = noop(0);
++  ctx.addDeployCap = noop(ps.deployCap);
++  ctx.setDeployCapAtLeast = noop(ps.deployCap);
++  ctx.setBondCountBonus = noop(undefined);
++  ctx.setDeviceActive = noop(undefined);
++  ctx.setTileOverride = noop(undefined);
++  ctx.addEffect = noop(null);
++  ctx.removeEffect = noop(false);
++  ctx.setEffectCounter = noop(false);
++  ctx.addBounty = noop(undefined);
++  ctx.offerBountyChoice = noop(undefined);
++  ctx.toast = noop(undefined);
++  ctx.ticker = noop(undefined);
++  ctx.giftTicker = noop(undefined);
++  ctx.counter = counter;
++  ctx.setCounter = (k, v) => { if (typeof k === 'string' && Number.isFinite(v)) shadow.set(k, v); return counter(k); };
++  ctx.incCounter = (k, n = 1) => { if (typeof k !== 'string' || !Number.isFinite(n)) return counter(k); shadow.set(k, counter(k) + n); return counter(k); };
++  // a handler that reaches a teammate's ctx is bound by the same contract
++  const sub = (p) => applyPreviewGuard(makeCtx(m, p, source, hook, null), p, m, source, hook);
++  ctx.teammates = () => m.alivePlayers().filter((p) => p !== ps).map(sub);
++  ctx.player = (playerId) => { const p = m.players.get(playerId); return p && p.alive ? sub(p) : null; };
++  return ctx;
++}
++
+ /**
+  * @param {import('./Match.js').Match} m
+  * @param {import('./PlayerState.js').PlayerState} ps
+@@ -730,6 +809,52 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+     setDeviceActive: (alias, on) => { if (typeof alias === 'string') { ps.deviceOverrides[alias] = !!on; ps.invalidateDeployMap(); ps.dirty(); } },
+     setTileOverride: (r, c, cls) => { if (Number.isInteger(r) && Number.isInteger(c) && ['melee', 'ranged', 'none'].includes(cls)) { ps.tileOverrides[`${r},${c}`] = cls; ps.invalidateDeployMap(); ps.dirty(); } },
+ 
++    /**
++     * 潘多拉魔盒 (the owner's list of 2026-10-15): replace EVERY hex this player owns — the card that is running
++     * included — with a random 3阶 one, and return the ids granted.
++     *
++     * WHY IT LIVES HERE and not in applySpec: the replacement has to re-enter the pick pipeline
++     * (server/match/hextech.js applyHex), which is match-level state the sim-side ctx cannot reach — the same reason
++     * 镜像协议's arm and 债务's watcher are match-side. The import is static because the edge already existed in the
++     * other direction (this module already imported three readers from ./hextech.js).
++     *
++     * The old refs are dropped FIRST, so the new cards are not deduped away by addHexRef's one-ref-per-hex rule and
++     * 潘多拉魔盒 itself cannot be drawn back as its own replacement.
++     */
++    replaceHexes: () => {
++      // hexPlayerPool() returns the RECORDS themselves (not ids) — verified against the built data, where every
++      // element carries `id` / `rarity` / `effect`. Filtering the array as if it held ids found nothing and the card
++      // silently did nothing, so the shape is read off the elements.
++      const pool = typeof gd.hexPlayerPool === 'function' ? gd.hexPlayerPool() : [];
++      const prism = pool.filter((rec) => rec && rec.rarity === 'prismatic' && typeof rec.id === 'string');
++      if (!prism.length) return [];
++      const mine = (ps.effects || []).filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:'));
++      const n = mine.length;
++      if (!n) return [];
++      // drop every owned hex ref (the card's own included)
++      ps.effects = (ps.effects || []).filter((e) => !(e && typeof e.key === 'string' && e.key.startsWith('hex:')));
++      ps.dirty();
++      const granted = [];
++      for (let i = 0; i < n; i++) {
++        const rec = prism[Math.min(prism.length - 1, Math.floor(m.rngHex() * prism.length))];
++        if (!rec) continue;
++        granted.push(rec.id);
++        try { applyHex(m, ps, rec); } catch (e) { m.reportError(`hex ${rec.id} (pandora)`, e); }
++      }
++      return granted;
++    },
++    /**
++     * 可露希尔大降价 (the owner's list of 2026-10-15): mark every unsold ITEM slot of the current shop free. The
++     * chess half is PlayerState.freeShopChess (电表倒转·改 uses it); this is the same rule for the other slot kind,
++     * because the card's own text says 「购买干员，装备免费」.
++     */
++    freeShopItems: () => {
++      let n = 0;
++      for (const s of ps.shop.slots) if (s && s.kind === 'item' && !s.sold) { s.free = true; n++; }
++      if (n) ps.dirty();
++      return n;
++    },
++
+     // ---- effects (EffectRef: { id, key?, name, desc, iconKind, iconId, counter?, battle?, params?, data?, hidden? })
+     addEffect: (ref) => {
+       if (!ref || typeof ref.id !== 'string') return null;
+@@ -768,5 +893,7 @@ export function makeCtx(m, ps, source, hook, ev = null) {
+     teammates: () => m.alivePlayers().filter((p) => p !== ps).map((p) => makeCtx(m, p, source, hook, null)),
+     player: (playerId) => { const p = m.players.get(playerId); return p && p.alive ? makeCtx(m, p, source, hook, null) : null; },
+   };
++  // the stats preview (g.unitStats): every persistent mutator becomes a dry run (docs/META.md, onBattleStart)
++  if (ev && typeof ev === 'object' && ev.preview === true) applyPreviewGuard(ctx, ps, m, source, hook);
+   return ctx;
+ }
+diff --git a/server/match/hextech.js b/server/match/hextech.js
+index 435bcb67..ca21d16d 100644
+--- a/server/match/hextech.js
++++ b/server/match/hextech.js
+@@ -184,7 +184,14 @@ function applyHexExtras(m, ps, hex, { depth = 0 } = {}) {
+   //
+   // Solo (no living teammate — the owner's decision, 2026-10-11): the first half falls on the player itself and the
+   // watcher half is dropped, because there is nobody whose purchases could be watched.
+-  if (spec.debt && depth === 0) {
++  // 镜像协议 / 二次抽取 (owner report 2026-10-15): this used to be gated on `depth === 0`, so a 债务 GAINED through
++  // 镜像协议 (`resolveMirrorCopies` re-enters `applyHex` with `depth: 1`) or 二次抽取 (`depth + 1`) ran none of its
++  // onPick half — the copy landed as an inert `hex:hex_debt` ref with no +3 and, visibly, no watcher, so the card
++  // never granted an operator. 「获得时」 describes the GAIN, not how the card was reached, and the recursion this
++  // depth guard exists for is already stopped at the top of the function (`depth >= 2`, which also caps
++  // 镜像→镜像 and 二次抽取→二次抽取): the extra `=== 0` only ever blocked legitimate gains. The per-(picker, card)
++  // watcher id below still keeps a repeated gain from stacking a second observer.
++  if (spec.debt) {
+     const d = spec.debt;
+     const funds = Number.isFinite(d.funds) ? Math.max(0, Math.trunc(d.funds)) : 3;
+     const rounds = Number.isFinite(d.rounds) ? Math.max(1, Math.trunc(d.rounds)) : 3;
+@@ -436,7 +443,12 @@ const NORMAL_MODS = Object.freeze(['hpMul', 'atkMul', 'defMul', 'resMul', 'speed
+ export function applyEnemyHexes(spawns, hexMods) {
+   if (!Array.isArray(spawns) || !hexMods) return spawns;
+   const add = Number.isFinite(hexMods.countAdd) ? Math.max(0, Math.trunc(hexMods.countAdd)) : 0;
+-  if (!add && !NORMAL_MODS.some((k) => Number.isFinite(hexMods[k]))) return spawns;
++  // 精英化 (owner's list of 2026-10-15): fewer enemies per group. `countSub` is an ABSOLUTE subtraction (the owner
++  // chose 'one fewer body per wave' over a percentage — 10 % of a five-enemy group rounds to nothing a player can
++  // feel), floored at 1: a group that reaches this fold with a count is a group the stage MEANT to spawn, and a card
++  // that erased it outright would silently delete the round's content rather than thin it.
++  const sub = Number.isFinite(hexMods.countSub) ? Math.max(0, Math.trunc(hexMods.countSub)) : 0;
++  if (!add && !sub && !NORMAL_MODS.some((k) => Number.isFinite(hexMods[k]))) return spawns;
+   return spawns.map((sp) => {
+     if (!sp || !sp.mods || typeof sp.mods !== 'object') return sp;
+     const boss = sp.tag === 'boss';
+@@ -451,6 +463,8 @@ export function applyEnemyHexes(spawns, hexMods) {
+     }
+     let count = sp.count;
+     if (add && !boss && Number.isFinite(count)) { count = Math.max(1, Math.trunc(count) + add); changed = true; }
++    // countSub never touches a leader (its pool IS the fight) and never the 器物, and it stops at 1 body.
++    if (sub && !boss && Number.isFinite(count)) { count = Math.max(1, Math.trunc(count) - sub); changed = true; }
+     return changed ? { ...sp, mods, count } : sp;
+   });
+ }
+@@ -530,6 +544,35 @@ export function bossPoolHpFor(m, bossId, players = null) {
+  * @param {import('./Match.js').Match} m
+  * @returns {{ perLeak: number, cap: number }|null}
+  */
++/**
++ * 记录部抑制 (the owner's list of 2026-10-15): the LP a deploy costs in the prep phase of `round`, 0 when the enemy
++ * side does not own the card.
++ *
++ * The card's text is 「每 4 回合，修整期部署干员时减少 1 点策略生命」. `everyRounds` is read off the record's `params`
++ * and the same convention 后勤整备's `onRoundStart.everyRounds` uses applies: the FIRST round counts as the first tick,
++ * so `everyRounds: 4` charges rounds 1, 5, 9 … (`(round - 1) % every === 0`). That is the reading the card's own text
++ * supports — a player who takes it in R1 pays from R1, not from R4.
++ *
++ * The reader is deliberately a pure function of (match, round): the caller (match/intents.js `_moveWithDeployCost`)
++ * owns the mutation, the LP floor and the "did a deploy actually happen" question, so this module stays free of
++ * player state — the same split `enemyHexPayout` uses.
++ * @param {import('./Match.js').Match} m
++ * @param {number} round
++ * @returns {number} LP to charge, 0 when the card is absent or this round is not one of its ticks
++ */
++export function enemyPrepLpCost(m, round) {
++  let cost = 0;
++  for (const hex of ownedEnemyHexes(m)) {
++    const p = hex && hex.params;
++    if (!p || hex.verb !== 'records') continue;
++    const every = Number.isFinite(p.everyRounds) && p.everyRounds > 1 ? Math.trunc(p.everyRounds) : 1;
++    const lp = Number.isFinite(p.lp) && p.lp > 0 ? Math.trunc(p.lp) : 1;
++    const r = Number.isFinite(round) && round > 0 ? Math.trunc(round) : 1;
++    if ((r - 1) % every === 0) cost += lp;
++  }
++  return cost;
++}
++
+ export function enemyHexPayout(m) {
+   let best = null;
+   for (const hex of ownedEnemyHexes(m)) {
+diff --git a/server/match/match/intents.js b/server/match/match/intents.js
+index ddc00f7b..bb654abf 100644
+--- a/server/match/match/intents.js
++++ b/server/match/match/intents.js
+@@ -9,6 +9,9 @@ import { PHASE, ERR, EMOTES, EMOTE_COOLDOWN_MS, GEO } from '../../../shared/cons
+ import { deriveSeed } from '../../sim/rng.js';
+ import { OK, fail } from './common.js';
+ import { onHumanEmote } from '../botEmotes.js';
++// 记录部抑制 (the owner's list of 2026-10-15): the prep-phase LP cost of a deploy. A pure reader — the mutation lives
++// in `_moveWithDeployCost` below, which is also where the LP floor and the "did a deploy happen" question live.
++import { enemyPrepLpCost } from '../hextech.js';
+ 
+ export class MatchIntents {
+   _handle(ps, msg) {
+@@ -30,7 +33,7 @@ export class MatchIntents {
+       case 'g.levelUp': return ps.levelUp();
+       case 'g.sell': return ps.sell(msg.uid);
+       // dir: the deploy wheel's facing (DESIGN §3; absent ⇒ PlayerState reads to.dir, then RIGHT)
+-      case 'g.move': return ps.move(msg.uid, msg.to, msg.dir);
++      case 'g.move': return this._moveWithDeployCost(ps, msg);
+       case 'g.equip': return ps.equip(msg.itemUid, msg.targetUid, msg.replaceUid ?? null);
+       case 'g.art': return ps.useArt(msg.itemUid, msg.row, msg.col, msg.dir);
+       case 'g.destroy': return ps.destroy(msg.uid);
+@@ -96,6 +99,39 @@ export class MatchIntents {
+     else if (this.phase === PHASE.PREP && ps.alive && !ps.ready) this.scheduleBotPrep(ps, 0);
+   }
+ 
++  /**
++   * g.move, with the enemy side's PREP-phase costs applied (记录部抑制, the owner's list of 2026-10-15).
++   *
++   * The card is the first enemy hex that acts OUTSIDE a battle: 「每 4 回合，修整期部署干员时减少 1 点策略生命」。
++   * The engine had no prep-side hook for an enemy card at all (every previous enemy hex was a wave multiplier or a
++   * battle verb), so this wrapper is the seam. It runs the move first and charges only when the move actually LANDED.
++   *
++   * WHY AFTER, NOT BEFORE: a refused move (illegal tile, board full, bad uid) must not cost LP — charging first would
++   * turn a misclick into damage. `OK` is the same sentinel `_handle` returns to the client, so the refusal path is
++   * untouched.
++   *
++   * The LP floor is 1 (the same rule 远见透支 follows): an operator deploy is never lethal, because a player at 0 LP
++   * outside SETTLE is an invariant violation (server/match/invariants.js) and elimination is not what the card means.
++   * @param {PlayerState} ps @param {{ uid: number, to: object, dir?: string }} msg
++   */
++  _moveWithDeployCost(ps, msg) {
++    const before = new Set(ps.board instanceof Map ? [...ps.board.keys()] : []);
++    const r = ps.move(msg.uid, msg.to, msg.dir);
++    if (!r || r.ok !== true) return r;
++    // A move that did not put a NEW piece on the board (a re-orientation, a board-to-board shuffle, a piece going
++    // back to the hand) is not a 部署, which is what the card's own text names.
++    const after = ps.board instanceof Map ? [...ps.board.keys()] : [];
++    const deployed = after.some((k) => !before.has(k));
++    if (!deployed) return r;
++    const cost = enemyPrepLpCost(this, this.round);
++    if (cost > 0 && ps.lp > 1) {
++      ps.lp = Math.max(1, ps.lp - cost);
++      ps.dirty();
++      this.log?.info?.(`[match ${this.roomCode}] 记录部抑制: ${ps.playerId} 部署扣 ${cost} LP (剩 ${ps.lp})`);
++    }
++    return r;
++  }
++
+   /**
+    * g.unitStats { seq? } (user playtest #4 item 7: the detail card showed fixed record stats): the stats every unit of
+    * the player's board will fight with at the start of its next battle — equipment, bonds and their layers, 特质, the
+diff --git a/server/match/player/economy.js b/server/match/player/economy.js
+index 22244ecb..85665ef9 100644
+--- a/server/match/player/economy.js
++++ b/server/match/player/economy.js
+@@ -52,10 +52,8 @@ export class PlayerEconomy {
+    * multiplies the gain of the two bonds it keeps (§29 third batch, server/match/hextech.js layerGainMulOf).
+    */
+   addLayers(bondId, n, { requireActive = false, reason = '' } = {}) {
+-    if (!this.gd.bond(bondId) || !Number.isFinite(n) || n <= 0) return 0;
+-    if (requireActive && !(this.bonds[bondId] && this.bonds[bondId].active)) return 0;
+     const before = this.layers[bondId] || 0;
+-    const add = layerGainRoom(before, Math.floor(n) * layerGainMulOf(this, bondId));
++    const add = this.layerGainOf(bondId, n, { requireActive });
+     if (add <= 0) return 0;
+     this.layers[bondId] = before + add;
+     this.recompute();
+@@ -67,6 +65,23 @@ export class PlayerEconomy {
+     return add;
+   }
+ 
++  /**
++   * The layers a gain of `n` on `bondId` WOULD add right now: the same preconditions and the same clamp
++   * (`layerGainRoom` under BOND_LAYER_CAP, ×`layerGainMulOf`) that `addLayers` applies, computed without writing.
++   *
++   * The stats preview (`g.unitStats`) needs this: a battle-start handler must not change match state (docs/META.md,
++   * onBattleStart), but its layers still have to show in the battle input the preview reads (盟约寄生 patches that
++   * snapshot). So the dispatcher makes `ctx.addLayers` inert under `ev.preview` and hands back THIS number instead,
++   * and the caller patches `ev.input` with exactly what the real battle would have seen.
++   * @returns {number} layers that would be added (0 when refused / at the cap)
++   */
++  layerGainOf(bondId, n, { requireActive = false } = {}) {
++    if (!this.gd.bond(bondId) || !Number.isFinite(n) || n <= 0) return 0;
++    if (requireActive && !(this.bonds[bondId] && this.bonds[bondId].active)) return 0;
++    const before = this.layers[bondId] || 0;
++    return layerGainRoom(before, Math.floor(n) * layerGainMulOf(this, bondId));
++  }
++
+   /**
+    * 均衡盟约 (§29.34): set one bond's persistent layers to an ABSOLUTE value — the mirror of `addLayers`, which refuses a
+    * negative `n` (every other card only ever grants layers). Clamped to 0..BOND_LAYER_CAP, no gain multiplier (this is not
+diff --git a/server/sim/content/enemies/helpers.js b/server/sim/content/enemies/helpers.js
+index 06037091..ab04cb5e 100644
+--- a/server/sim/content/enemies/helpers.js
++++ b/server/sim/content/enemies/helpers.js
+@@ -331,7 +331,14 @@ export function stepToward(u, tx, ty, dist) {
+   return false;
+ }
+ 
+-/** Set a 频次 unit's hits (maxHp := hits, full): `n` rounded to a whole count, at least 1. */
++/**
++ * Set a 频次 unit's hits (maxHp := hits, full): `n` rounded to a whole count, at least 1.
++ *
++ * ⚠️ **这会覆盖 `base.maxHp`** —— 它只该用在**器物 / 频次怪**身上（它们**本来就是**"打 N 次才倒"，没有血量可言）。
++ * 「给敌人加一层能挡 N 次攻击的盾」是另一套东西：`ab.hitShield`（enemies.js `onHitIn`：整段伤害被 cancel、扣 1 层）。
++ * 2026-10-16 之前 莱茵护甲 走的是本函数，于是每个敌人（含十万血的首领）被压成 3 点血 —— 业主报的
++ * 「莱茵护甲怎么把怪的生命值改了」（server/sim/content/hextech.js hitShield 的注释）。
++ */
+ export function setHits(e, n) {
+   const h = Math.max(1, Math.round(n));
+   e.base.maxHp = h;
+diff --git a/server/sim/content/hexcards/armor.js b/server/sim/content/hexcards/armor.js
+index 9474c6bb..941291a3 100644
+--- a/server/sim/content/hexcards/armor.js
++++ b/server/sim/content/hexcards/armor.js
+@@ -102,6 +102,47 @@ export function installArmor(hooks) {
+       // onto the 5 % floor); the OPERATOR is the source, so the knock-out credit and the damage-dealt stats land on it
+       battle.dealDamage(target, src, info);
+     });
++
++    // ---- the DEALT half (owner's rebalance of 2026-10-15) ------------------------------------------------------
++    // 「受到或造成伤害时对敌人造成 200% 防御力真伤」: an own operator that LANDS a hit also answers, striking the enemy
++    // it just hit. `onDealt` is what turns this on; a record without it behaves exactly as before (the taken-only
++    // card of the fifth batch).
++    //
++    // The same guards as the taken half, mirrored: our own instance never re-answers (`hexRiposte` / the tag), an
++    // answer never starts a chain (isRetaliation), 流失 and 元素损伤 are not 造成伤害, and the striker must be a live
++    // own operator. The blow is `defRatio` of the STRIKER's own DEF (its own armour is what the card's text names),
++    // and the enemy it hit is the target — never the striker, which would be self-damage.
++    const onDealt = [...owners].some((pid) => {
++      const spec = specOf(pid, HEX_ID, 'armor');
++      return !!(spec && spec.onDealt);
++    });
++    if (onDealt) {
++      battle.on('damaged', (c) => {
++        if (!c) return;
++        const dmg = c.dmg || null;
++        if (dmg) {
++          if (dmg.hexRiposte) return;
++          if (Array.isArray(dmg.tags) && dmg.tags.includes(TAG)) return;
++          if (isRet(dmg)) return;
++          if (hpLoss(dmg)) return;
++        }
++        if ((dmg ? dmg.type : c.type) === 'element') return;
++        // The STRIKER is this card's carrier; the struck unit must be an enemy (friendly fire is not 「对敌人」).
++        const src = c.source;
++        const tgt = c.target;
++        if (!src || src.kind !== 'op' || src.side !== 'ally') return;
++        if (!owners.has(src.ownerId)) return;
++        if (!src.alive || !src.deployed || src.hidden) return;
++        if (!tgt || tgt.side !== 'enemy' || !tgt.alive || tgt.removed) return;
++        const ratio = optNumber(specOf(src.ownerId, HEX_ID, 'armor'), 'defRatio', 200) / 100;
++        const amount = src.s.def * ratio;
++        if (!(amount > 0)) return;
++        const info = battle.makeDamage({ amount, type: 'true', isSkill: true, tags: [TAG] });
++        info.hexRiposte = true;
++        fired++;
++        battle.dealDamage(src, tgt, info);
++      });
++    }
+   }
+ 
+   return {
+diff --git a/server/sim/content/hextech.js b/server/sim/content/hextech.js
+index 3877c4b6..768cb5b2 100644
+--- a/server/sim/content/hextech.js
++++ b/server/sim/content/hextech.js
+@@ -20,7 +20,7 @@
+ 
+ import { gameData, directMods, passiveBuff, unitBonds, bondActive, bondLayers, isMember, isOp, fxOn } from './support/index.js';
+ import { fissionBondIds as sharedFissionBondIds, fissionCap } from '../../../shared/hextech.js';
+-import { elem, hurt, areaAlliesInTiles, spawnChildren, isHitCount } from './enemies/helpers.js';
++import { elem, hurt, areaAlliesInTiles, spawnChildren, isHitCount, abOf } from './enemies/helpers.js';
+ import { hexHooks } from './hexcards/hooks.js';
+ import { installDrill } from './hexcards/drill.js';
+ import { installArmor } from './hexcards/armor.js';
+@@ -34,6 +34,11 @@ import { installNeurotoxin } from './hexcards/neurotoxin.js';
+ import { installRicochet } from './hexcards/ricochet.js';
+ import { installLogos } from './hexcards/logos.js';
+ import { installOneBody } from './hexcards/onebody.js';
++// tenth batch (the owner's list of 2026-10-15): the seven battle scripts of hexcards/batch10.js.
++import {
++  installBlockwall, installSharePain, installTerraMourn, installDirectiveAtk,
++  installDirectiveType, installRabbitHead, installProfResonance,
++} from './hexcards/batch10.js';
+ import { reviveNow, carries } from './items/battle.js';
+ 
+ /** Player effect-ref key prefix (parallel to `choice:`). */
+@@ -160,6 +165,11 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
+   // fire. Both are ownership-only mechanics (no `params.battle`), so each has to be declared here beside its `install`
+   // reader or `addHexRef` marks the ref prep-only and the battle never sees the card.
+   'logos', 'oneBody',
++  // tenth batch (the owner's list of 2026-10-15): 挡挡's block-slot ladder, 不区区's damage share, 泰拉在上's death
++  // blast, the two 指令之意 rolls, 兔头's ranking and 职业共鸣's profession count. All ownership-only mechanics (no
++  // params.battle passive), so each key MUST be declared here or addHexRef marks the ref prep-only and the battle
++  // never sees the card.
++  'blockwall', 'sharePain', 'deathBlast', 'directiveAtk', 'directiveType', 'rabbitHead', 'profResonance',
+   // eleventh batch (the owner's own list of 2026-10-13, §29.34): 背水一战's ×layerMul, which the sim applies on the
+   // `layerGain` hook. The match stamps `lastDitch.active` into the ref at battle start (`onBattleStart.lastDitchArm`) —
+   // the sim has no LP — and this key is what keeps the ref in the battle input in the first place.
+@@ -196,7 +206,9 @@ function applySpec(ctx, spec, hex = null, hook = '') {
+   let did = false;
+   if (isPos(spec.funds)) { ctx.addFunds(spec.funds, 'hex'); did = true; }
+   if (isPos(spec.freeRefresh)) { ctx.grantFreeRefresh(spec.freeRefresh); did = true; }
+-  if (spec.item && isPos(spec.item.count)) {
++  // The outer guard accepts EITHER form: a count-driven grant (id / pool / tier) or the `ids` list (武器大师, which has
++  // no count at all — gating on `count` skipped the whole block and the card granted nothing, silently).
++  if (spec.item && (isPos(spec.item.count) || (Array.isArray(spec.item.ids) && spec.item.ids.length))) {
+     // Three shapes (the third added by the remake's own equipment, §29.24):
+     //   { id: '<itemId>' } — an EXPLICIT record (幽魂): no roll and no pool, the card names the equipment it grants.
+     //   { pool: 'pool_equip_normal' } — a choices.json equip pool. `ctx.rollPool` injects `shopLevel: ps.shop.level`, and
+@@ -206,15 +218,25 @@ function applySpec(ctx, spec, hex = null, hook = '') {
+     //     branches on `Number.isInteger(tier)` and ignores `maxTier` when it is one, so a `'level'` token here would
+     //     silently roll tier 1 (tools/build-hextech.mjs rejects it; use `pool` for the level-scaled roll).
+     const shopLevel = typeof ctx.shopLevel === 'function' ? ctx.shopLevel() : 6;
+-    for (let i = 0; i < countOf(spec.item.count); i++) {
+-      const gid = typeof spec.item.id === 'string' && spec.item.id
+-        ? spec.item.id
+-        : typeof spec.item.pool === 'string' && spec.item.pool
+-          ? (typeof ctx.rollPool === 'function' ? (ctx.rollPool(spec.item.pool) || {}).id ?? null : null)
+-          : ctx.rollItem({ tier: Number.isInteger(spec.item.tier) ? spec.item.tier : 1, maxTier: Math.max(Number.isInteger(spec.item.tier) ? spec.item.tier : 1, shopLevel) });
+-      if (gid) ctx.grantItem(gid, { source: 'hex' });
++    // A FOURTH shape (the owner's list of 2026-10-15, 武器大师): `ids: ['a', 'b']` grants ONE of EACH named record,
++    // in order. The single-`id` form cannot express a card that hands out two DIFFERENT pieces of equipment, and the
++    // pool/tier forms roll — neither is what 「给一个天马之盔和一个天马之枪」 means.
++    if (Array.isArray(spec.item.ids) && spec.item.ids.length) {
++      for (const want of spec.item.ids) {
++        if (typeof want === 'string' && want) ctx.grantItem(want, { source: 'hex' });
++      }
++      did = true;
++    } else {
++      for (let i = 0; i < countOf(spec.item.count); i++) {
++        const gid = typeof spec.item.id === 'string' && spec.item.id
++          ? spec.item.id
++          : typeof spec.item.pool === 'string' && spec.item.pool
++            ? (typeof ctx.rollPool === 'function' ? (ctx.rollPool(spec.item.pool) || {}).id ?? null : null)
++            : ctx.rollItem({ tier: Number.isInteger(spec.item.tier) ? spec.item.tier : 1, maxTier: Math.max(Number.isInteger(spec.item.tier) ? spec.item.tier : 1, shopLevel) });
++        if (gid) ctx.grantItem(gid, { source: 'hex' });
++      }
++      did = true;
+     }
+-    did = true;
+   }
+   // 后勤整备 (2026-10-12 rebalance): a GOLDEN (进阶) equipment grant whose TIER is on a ladder —
+   //   { tier: 1 }     — a fixed tier (the pick's 1 阶进阶装备)
+@@ -663,6 +685,27 @@ function applySpec(ctx, spec, hex = null, hook = '') {
+     const ev = ctx.event();
+     if (pct > 0 && ev && ev.free === true && ctx.rng() < pct / 100) { ctx.freeShopChess(); did = true; }
+   }
++  // ---- tenth batch (the owner's list of 2026-10-15): the two PREP-side cards --------------------------------
++  // 潘多拉魔盒: every hex the player owns — THIS one included — is replaced by a random 3阶 hex. The card's own text
++  // names 3阶, so the roll is restricted to `prismatic` (the rarity whose tier is 3); a player who owns nothing but
++  // this card still gets one, because the pick itself is already in `ps.effects` by the time onPick runs.
++  //
++  // REPLACEMENT, not addition: the old refs are dropped and the new ones granted through the ordinary `applyHex`
++  // path (server/match/hextech.js), which is what re-runs each new card's own onPick. `ctx.replaceHexes` is that
++  // path — it lives in the match layer because the ctx has no way to re-enter the pick pipeline.
++  if (spec.pandora) {
++    if (typeof ctx.replaceHexes === 'function') { ctx.replaceHexes(); did = true; }
++  }
++  // 可露希尔大降价: the next `refreshes` refreshes and `buys` purchases of THIS round are free. Two separate
++  // primitives: `grantFreeRefresh` is the existing free-refresh pool, and `freeShopChess` marks the CURRENT shop's
++  // chess slots free (the mechanism 电表倒转·改 uses). Item slots are marked too — the card's own text says
++  // 「购买干员，装备免费」, and the item branch of `priceOf` reads the same `free` flag.
++  if (spec.discount) {
++    const refreshes = Number.isFinite(Number(spec.discount.refreshes)) ? Math.max(0, Math.trunc(spec.discount.refreshes)) : 0;
++    if (refreshes > 0) { ctx.grantFreeRefresh(refreshes); did = true; }
++    if (typeof ctx.freeShopChess === 'function') { ctx.freeShopChess(); did = true; }
++    if (typeof ctx.freeShopItems === 'function') { ctx.freeShopItems(); did = true; }
++  }
+   void hook;
+   return did;
+ }
+@@ -1285,6 +1328,10 @@ function installHexCards(battle) {
+     hex_neurotoxin: 'neurotoxin', hex_ricochet: 'ricochet',
+     // tenth batch (the owner's list of 2026-10-12, §29.27)
+     hex_logos: 'logos', hex_onebody: 'oneBody',
++    // tenth batch (the owner's list of 2026-10-15): the batch10.js scripts
++    hex_blockwall: 'blockwall', hex_sharepain: 'sharePain', hex_terramourn: 'deathBlast',
++    hex_directive: 'directiveAtk', hex_directive2: 'directiveType',
++    hex_rabbithead: 'rabbitHead', hex_profresonance: 'profResonance',
+   };
+   /** The `params` of a player's own ref for `hexId`. */
+   const paramsOf = (pid, hexId) => {
+@@ -1320,6 +1367,14 @@ function installHexCards(battle) {
+   // tenth batch (the owner's list of 2026-10-12, §29.27) — same bundle, same gate
+   installLogos(gated);
+   installOneBody(gated);
++  // tenth batch (the owner's list of 2026-10-15) — the same bundle, the same gate
++  installBlockwall(gated);
++  installSharePain(gated);
++  installTerraMourn(gated);
++  installDirectiveAtk(gated);
++  installDirectiveType(gated);
++  installRabbitHead(gated);
++  installProfResonance(gated);
+ }
+ 
+ /**
+@@ -1600,7 +1655,19 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
+       if (!enemy || !enemy.alive || enemy.findBuff('ab:stealth')) return;
+       if (enemy.tag === 'boss' || enemy.isBoss || enemy.isFlying) return;
+       if (isHitCount(enemy)) return;
+-      battle.addBuff(enemy, { key: 'ab:stealth', flags: { stealth: true }, persist: true, data: { stealthRestore: restore } });
++      // 中途变形 (owner report 2026-10-15): the airborne test above reads the unit ONCE, at spawn — but
++      // `Unit.isFlying` is a live getter over `motion` / `flags.float` / `flags.levitate`, and 守墓石像
++      // (enemy_1172_dugago) TAKES OFF mid-battle: its `statue()` kit runs `e.motion = 'FLY'` when the stone form
++      // expires (content/enemies/archetypes.js). Such an enemy kept the `ab:stealth` it opened with, so it stayed
++      // unselectable for the rest of the field — exactly the "a flyer has no block to end its stealth and no ground
++      // path to hide along" case this gate exists for. Re-check a few times a second and drop the buff the moment the
++      // unit is airborne. Scoped to THIS card's own buff: an enemy already hiding through its own kit
++      // (`kitStealth`) is skipped by the `findBuff` guard right above, so the official kits keep their own rules.
++      battle.addBuff(enemy, {
++        key: 'ab:stealth', flags: { stealth: true }, persist: true, data: { stealthRestore: restore },
++        interval: 0.25,
++        onTick: ({ battle: b, unit: u }) => { if (u.isFlying) b.removeBuff(u, 'ab:stealth'); },
++      });
+     });
+   },
+ 
+@@ -1691,4 +1758,283 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
+       }
+     });
+   },
++
++  // =================================================================================================================
++  // ninth batch (the owner's list of 2026-10-15): the enemy cards. Everything below is the script half of a card
++  // whose record lives in tools/hextech/roster.mjs ENEMY_HEXES; the plain multipliers of that batch stay `mods` and
++  // need no entry here.
++  //
++  // Three house rules every script below keeps, because walking into them is silent rather than loud:
++  //   * 器物 (a hit-count object: 木制瑞印 and its siblings) is not a body — it neither heals, is healed, nor counts
++  //     as 'an enemy' for a spawn-wide card (`isHitCount`, the gate 回响 / 隐匿 already use);
++  //   * a boss is exempt wherever the card's own text says so (无头苍蝇's 恐惧): the stage's leader is the one unit a
++  //     player cannot route around, so a card that disables it outright would delete the round's fight;
++  //   * our own damage carries the `hexVerb` tag, so a card can never answer its own output (the loop 铁壁's comment
++  //     describes: a handler that reacts to damage must recognise its own instance).
++  // =================================================================================================================
++
++  /**
++   * 莱茵护甲: every enemy opens with a 次数盾 — a shield that absorbs a fixed number of HITS rather than HP.
++   *
++   * **这个盾是"额外一层"，不是"血量等于次数"** —— 这正是引擎自己的 `ab.hitShield`（enemies.js `onHitIn`：
++   * 整段物理/法术伤害被 `cancel`、扣 1 层、破盾时放 `shieldBreak`）：官方的莱茵生命防卫科高级成员
++   * （`enemy_1249_lysdb_2`，`Shield.max_block_damage_cnt`）与假想敌：再生的光环（`times.js kitRegen`，
++   * `Aura.max_damage_block_cnt`）用的都是它。卡名「莱茵护甲」也来自前者。
++   *
++   * **直到 2026-10-16 这里用的是 `hitCount` + `setHits`，那是个静默的错误**：`setHits` 会把 `base.maxHp`
++   * 整个**覆盖**成"次数"（helpers.js 的注释就写着 `maxHp := hits`），于是每个敌人（十万血的首领也一样）
++   * 变成 **3 点血**、血条直接消失 —— 业主报的「莱茵护甲怎么把怪的生命值改了」。`hitCount` 是给**器物 /
++   * 频次怪**用的另一种机制（它们**本来就是**"打 N 次才倒"，没有血量可言），不是给"加一层盾"用的。
++   *
++   * 已经带着自己的次数盾的单位不再叠加（`Math.max`）：它自己那层还在，玩家打掉多少就是多少。
++   */
++  hitShield(battle, p) {
++    const hits = Math.max(1, Math.round(pnum(p.hits, 3)));
++    battle.on('enemySpawn', ({ enemy }) => {
++      if (!enemy || !enemy.alive) return;
++      const ab = abOf(battle, enemy);
++      ab.hitShield = Math.max(ab.hitShield, hits);
++    });
++  },
++
++  /**
++   * 势不可挡: enemies demand one more block slot. `blockWeight` is the sim's own notion (blocking.js sums it against
++   * an operator's `blockCnt`), so this is a +1 on the value the spawn already had — a 大力 enemy that needed 3 slots
++   * now needs 4, which is the card's whole point.
++   */
++  blockDemand(battle, p) {
++    const add = Math.max(1, Math.round(pnum(p.add, 1)));
++    battle.on('enemySpawn', ({ enemy }) => {
++      if (!enemy || !enemy.alive) return;
++      if (isHitCount(enemy)) return;
++      enemy.blockWeight = (enemy.blockWeight ?? 1) + add;
++    });
++  },
++
++  /**
++   * 食尸: when an enemy is knocked out, the enemies around the corpse are healed for a share of THAT ENEMY'S max HP.
++   *
++   * `reason === 'killed'` is the gate every death kit uses (archetypes.js `death`): `Battle._remove` fires `death`
++   * for a leak and an expiry too, and a leak is not a corpse to feed on.
++   */
++  cannibalize(battle, p) {
++    const pct = pnum(p.pct, 5) / 100;
++    const radius = pnum(p.radius, 1);
++    const shape = p.shape === 'box' ? 'box' : 'plus';
++    battle.on('death', ({ unit, reason }) => {
++      if (reason !== 'killed') return;
++      if (!unit || unit.side !== 'enemy' || isHitCount(unit)) return;
++      const amount = unit.s.maxHp * pct;
++      if (!(amount > 0)) return;
++      for (const e of battle.enemies) {
++        if (!e || !e.alive || e === unit || isHitCount(e)) continue;
++        const dr = Math.abs(e.tileR - unit.tileR);
++        const dc = Math.abs(e.tileC - unit.tileC);
++        const inside = shape === 'box' ? Math.max(dr, dc) <= radius : dr + dc <= radius;
++        if (inside) battle.heal(e, e, amount);
++      }
++    });
++  },
++
++  /**
++   * 静默: every `period` s ONE random own operator takes a large 凋亡损伤 (necrosis) tick.
++   *
++   * Necrosis is an ELEMENT gauge, not HP damage (damage.js `applyElement`), which is what a 损伤 means in this
++   * engine — the operator's HP is untouched until the gauge bursts. `elem` is the enemy-side entry point for it.
++   * Operators only: a token/trap is not an operator (the same narrowing 腐蚀领域 needed, §29.32).
++   */
++  silence(battle, p) {
++    const period = pnum(p.period, 35);
++    const amount = pnum(p.damage, 1000);
++    battle.on('tick', () => {
++      if (!(battle.time > 0)) return;
++      if (battle.time + 1e-9 < (battle._hexSilenceNext ?? period)) return;
++      battle._hexSilenceNext = battle.time + period;
++      const ops = battle.allies().filter((u) => u && u.kind === 'op' && u.alive && u.deployed);
++      if (!ops.length) return;
++      const pick = ops[Math.min(ops.length - 1, Math.floor(battle.rng() * ops.length))];
++      elem(battle, null, pick, 'necrosis', amount, { ignoreSelect: true, tags: ['hexVerb'] });
++    });
++  },
++
++  /**
++   * 重伤: an enemy's hit cuts the struck operator's 受治疗量 (healing received) for a few seconds.
++   *
++   * `healingTakenMul` is the stat the engine's heal path reads (units.js: `healingTakenMul` / `healingDealtMul`
++   * are the two multipliers the heal pipe folds in); a timed buff is how every other debuff in this codebase lands
++   * (addBuff + `duration`).
++   */
++  healCut(battle, p) {
++    const pct = Math.max(0, Math.min(90, pnum(p.pct, 20))) / 100;
++    const seconds = pnum(p.seconds, 4);
++    battle.on('damaged', (c) => {
++      const src = c && c.source;
++      const tgt = c && c.target;
++      if (!src || src.side !== 'enemy') return;
++      if (!tgt || tgt.side !== 'ally' || tgt.kind !== 'op' || !tgt.alive) return;
++      if (c.dmg && c.dmg.tags && c.dmg.tags.includes('hexVerb')) return;
++      if (!(c.amount > 0)) return;
++      battle.addBuff(tgt, {
++        key: 'hexverb:healcut', duration: seconds, refresh: 'replace', visible: true, tags: ['hex'],
++        mods: { healingTakenMul: 1 - pct },
++      });
++    });
++  },
++
++  /**
++   * 自适应: every hit an enemy TAKES adds DEF, up to a cap.
++   *
++   * The stack is a persistent buff replaced each time (so a re-application cannot grow unbounded), and the cap is
++   * read off the card's own `max` percentage — 30 % by the roster's numbers.
++   */
++  adaptive(battle, p) {
++    const perHit = pnum(p.perHit, 2) / 100;
++    const max = pnum(p.max, 30) / 100;
++    const cur = new Map();
++    battle.on('damaged', (c) => {
++      const tgt = c && c.target;
++      if (!tgt || tgt.side !== 'enemy' || !tgt.alive) return;
++      if (isHitCount(tgt)) return;
++      if (c.dmg && c.dmg.tags && c.dmg.tags.includes('hexVerb')) return;
++      if (!(c.amount > 0)) return;
++      const now = Math.min(max, (cur.get(tgt) || 0) + perHit);
++      if (now <= (cur.get(tgt) || 0)) return;
++      cur.set(tgt, now);
++      passiveBuff(battle, tgt, 'hexverb:adaptive', { defPct: now });
++    });
++  },
++
++  /**
++   * 物转法: physical enemies deal ARTS instead of physical (usually at a reduced ATK — that trade is the roster's
++   * own `mods`).
++   *
++   * This is a per-unit PROFILE change, not a hook: the sim asks `(e.profile && e.profile.dmgType) || def.dmgType` when
++   * it fires (ai.js:867), so rewriting the profile on spawn is what makes every later swing arts — secondary hits
++   * (splash, aftershock) included, which a per-attack hook would leave physical. Both carriers are written: the profile
++   * is what the attack reads, and `def` is what a later form change re-derives it from.
++   */
++  transmute(battle, p) {
++    battle.on('enemySpawn', ({ enemy }) => {
++      if (!enemy || !enemy.alive) return;
++      if (isHitCount(enemy)) return;
++      const cur = (enemy.profile && enemy.profile.dmgType) || (enemy.def && enemy.def.dmgType);
++      // 物理 only: an enemy that already deals arts is left as it is (the card is a CONVERSION, not an override).
++      if (cur !== 'phys') return;
++      // `def` IS FROZEN (simdata freezes every record it hands out), so a property write is a silent no-op in sloppy
++      // mode and a TypeError in strict — the card would simply never fire. Replacing the object with a shallow copy
++      // is the supported way to override one field. Both carriers are written: `profile.dmgType` is what the attack
++      // reads (ai.js:867), and `def` is what a later form change re-derives the profile from.
++      if (enemy.def) enemy.def = { ...enemy.def, dmgType: 'arts' };
++      if (enemy.profile) enemy.profile = { ...enemy.profile, dmgType: 'arts' };
++      enemy.markDirty();
++    });
++  },
++
++  /**
++   * 易碎铠甲: enemies open with more DEF and less speed, and every hit taken shaves DEF back down — down to (never
++   * below) the pre-card value.
++   *
++   * '至多降低至原值' is the floor: the card's own opening bonus is what gets eaten, so a fully-shattered enemy is the
++   * enemy the stage would have spawned anyway. The floor is captured ON SPAWN, before the bonus is applied, and kept
++   * per unit — reading `def` live would let a later DEF buff raise the floor with it.
++   */
++  brittleArmor(battle, p) {
++    const openPct = pnum(p.defPct, 50) / 100;
++    const speedPct = Math.max(0, Math.min(90, pnum(p.speedPct, 20))) / 100;
++    const shave = pnum(p.shavePct, 5) / 100;
++    const floors = new WeakMap();
++    const lost = new WeakMap();
++    battle.on('enemySpawn', ({ enemy }) => {
++      if (!enemy || !enemy.alive) return;
++      if (isHitCount(enemy)) return;
++      floors.set(enemy, enemy.s.def);
++      lost.set(enemy, 0);
++      passiveBuff(battle, enemy, 'hexverb:brittle:def', { defPct: openPct });
++      // moveMul is the sim's own move-speed multiplier (units.js: moveSpeed = (base + ΣmoveFlat) × ΠmoveMul).
++      passiveBuff(battle, enemy, 'hexverb:brittle:spd', { moveMul: 1 - speedPct });
++    });
++    battle.on('damaged', (c) => {
++      const tgt = c && c.target;
++      if (!tgt || tgt.side !== 'enemy' || !tgt.alive) return;
++      if (isHitCount(tgt)) return;
++      if (c.dmg && c.dmg.tags && c.dmg.tags.includes('hexVerb')) return;
++      if (!(c.amount > 0)) return;
++      const floor = floors.get(tgt);
++      if (!Number.isFinite(floor) || floor <= 0) return;
++      const cap = floor * openPct;
++      const had = lost.get(tgt) || 0;
++      if (had >= cap) return;
++      const next = Math.min(cap, had + floor * shave);
++      lost.set(tgt, next);
++      passiveBuff(battle, tgt, 'hexverb:brittle:def', { defPct: openPct - next / floor });
++    });
++  },
++
++  /**
++   * 无头苍蝇: enemies move faster, but every `period` s they are 恐惧 (feared) for a couple of seconds.
++   *
++   * Bosses and hidden (隐匿) enemies are exempt — the roster's own text says so. A 器物 is not a body either.
++   * The speed half is a plain passive; the fear half is a per-tick sweep, because the state is TIMED (the sim's
++   * `applyStatus` owns the expiry and the 抵抗 roll).
++   */
++  restless(battle, p) {
++    const period = pnum(p.period, 10);
++    const seconds = pnum(p.seconds, 2);
++    battle.on('tick', () => {
++      if (!(battle.time > 0)) return;
++      if (battle.time + 1e-9 < (battle._hexRestlessNext ?? period)) return;
++      battle._hexRestlessNext = battle.time + period;
++      for (const e of battle.enemies) {
++        if (!e || !e.alive) continue;
++        if (e.tag === 'boss' || e.isBoss) continue;
++        if (e.s.flags.stealth) continue;
++        if (isHitCount(e)) continue;
++        battle.applyStatus(e, 'fear', { duration: seconds, source: null });
++      }
++    });
++  },
++
++  /** zzz: every `period` s ONE random own operator falls asleep for a couple of seconds. */
++  drowse(battle, p) {
++    const period = pnum(p.period, 20);
++    const seconds = pnum(p.seconds, 2);
++    battle.on('tick', () => {
++      if (!(battle.time > 0)) return;
++      if (battle.time + 1e-9 < (battle._hexDrowseNext ?? period)) return;
++      battle._hexDrowseNext = battle.time + period;
++      const ops = battle.allies().filter((u) => u && u.kind === 'op' && u.alive && u.deployed);
++      if (!ops.length) return;
++      const pick = ops[Math.min(ops.length - 1, Math.floor(battle.rng() * ops.length))];
++      battle.applyStatus(pick, 'sleep', { duration: seconds, source: null });
++    });
++  },
++
++  /**
++   * 源石附身: every enemy carries the 活性原石 (active originium) effect — +ATK, +ASPD and a true-damage tick every
++   * second, for `duration` s.
++   *
++   * The engine already models this exact effect (devices.js 'active originium': damage / atk / aspd / duration, PRTS
++   * '部署于其上的我军和经过的敌军在{duration}s内…'). Here it is applied to the ENEMY SPAWN rather than to a tile, which
++   * is the card's whole shape. The per-second tick is an authored true-damage instance: the roster's own text hides
++   * the bracketed numbers from the player, so the tuning lives in `params`.
++   */
++  originium(battle, p) {
++    const duration = pnum(p.duration, 200);
++    const atkPct = pnum(p.atkPct, 50) / 100;
++    const aspd = pnum(p.aspd, 40);
++    const dps = pnum(p.dps, 40);
++    battle.on('enemySpawn', ({ enemy }) => {
++      if (!enemy || !enemy.alive) return;
++      if (isHitCount(enemy)) return;
++      battle.addBuff(enemy, {
++        key: 'hexverb:originium', duration, refresh: 'replace', visible: true, tags: ['hex'],
++        mods: { atkPct, aspd },
++        interval: 1,
++        onTick: ({ battle: b, unit: u }) => {
++          if (!u || !u.alive) return;
++          b.dealDamage(null, u, { amount: dps, type: 'true', canDodge: false, sourceless: true, tags: ['hexVerb', 'originium'] });
++        },
++      });
++    });
++  },
+ });
+diff --git a/shared/hextech.js b/shared/hextech.js
+index f8c2ceb4..89ad45cc 100644
+--- a/shared/hextech.js
++++ b/shared/hextech.js
+@@ -157,6 +157,26 @@ export const ENEMY_VERBS = Object.freeze([
+   'stealth',       // 隐匿: opens in stealth, re-hides after a block
+   'echo',          // 回响: splits into two weaker copies on death
+   'banner',        // 军旗: every knock-out empowers the survivors
++  // ninth batch (the owner's list of 2026-10-15) — the 14 enemy cards, one verb per card that is not a plain multiplier.
++  'hitShield',     // 莱茵护甲: every spawned enemy opens with a 次数盾 (a hit-count shield)
++  'blockDemand',   // 势不可挡: enemies demand one more block slot (blockWeight +1)
++  'cannibalize',   // 食尸: a knock-out heals the enemies around the corpse
++  'silence',       // 静默: every N seconds a random own operator takes a large 凋亡损伤 (necrosis) tick
++  'healCut',       // 重伤: an enemy's hit cuts the struck operator's 受治疗量 for a few seconds
++  'adaptive',      // 自适应: every hit an enemy takes adds DEF, up to a cap
++  'transmute',     // 物转法: physical enemies deal ARTS instead (usually at a lower ATK)
++  'brittleArmor',  // 易碎铠甲: opens with more DEF and less speed, and every hit taken shaves DEF back down
++  'restless',      // 无头苍蝇: faster, but periodically 恐惧 (bosses and hidden enemies are exempt)
++  'drowse',        // zzz: every N seconds a random own operator falls asleep
++  'originium',     // 源石附身: enemies carry the 活性原石 effect (ATK/ASPD up, true damage per second)
++  // 'mosaic' (情报部抑制) is deliberately NOT implemented as a battle script: the card's whole effect is a CLIENT-side
++  // screen filter, so the sim has nothing to do. It is listed here anyway because this is the ONE list the build check
++  // and the extractor share — a card whose verb is absent from it fails the build, and a card with no script is simply
++  // skipped by installEnemyVerbs (that is what a presentation-only card wants).
++  'mosaic',        // 情报部抑制: a full-screen mosaic filter on the client
++  // 'records' (记录部抑制) is likewise not a battle script: it acts during the PREP phase of the match
++  // (server/match/hextech.js enemyPrepLpCost), so the sim has nothing to install. Same reasoning as 'mosaic'.
++  'records',       // 记录部抑制: deploying an operator in prep costs LP every N rounds
+ ]);
+ 
+ /** Whether `id` is a known enemy verb (the build-time check and the sim's own guard). */
+@@ -172,12 +192,16 @@ export function isEnemyVerb(id) {
+  */
+ export function sumEnemyMods(hexes) {
+   const out = {};
++  // countAdd / countSub are BODIES PER GROUP, not multipliers: two 虫群 cards must mean +2, not +1 (1×1).
++  // Everything else is a multiplier and stays one. The two are seeded at 0 so the first add is exact; a record that
++  // carries neither never grows the key (the loop below only touches keys the record actually has).
++  const ADDITIVE = new Set(['countAdd', 'countSub']);
+   for (const h of hexes || []) {
+     const mods = h && h.mods;
+     if (!mods || typeof mods !== 'object') continue;
+     for (const [k, v] of Object.entries(mods)) {
+       if (!Number.isFinite(v)) continue;
+-      out[k] = (out[k] ?? 1) * v;
++      out[k] = ADDITIVE.has(k) ? (out[k] ?? 0) + v : (out[k] ?? 1) * v;
+     }
+   }
+   return out;
+diff --git a/test/client-static.test.js b/test/client-static.test.js
+index be3b814a..e429089c 100644
+--- a/test/client-static.test.js
++++ b/test/client-static.test.js
+@@ -1195,6 +1195,35 @@ describe('screen helpers', () => {
+     assert.match(describeError({ code: 'WAT', detail: 'x' }), /WAT/, 'detail 不能把 code 挤掉');
+     assert.equal(describeError({ code: '' }), '发生未知错误', '空 code 保持原样，不显示空括号');
+   });
++
++  test('toasts: a DOM Event names itself, and does so BEFORE the message branch', async () => {
++    // 2026-10-15 的回归：玩家看到「怎么还有未知错误」。一个 DOM Event（PIXI 的 ImageResource 用 onerror 收到的
++    // 裸 Event 去 reject）在界面上仍然塌成「发生未知错误」，因为 `ErrorEvent` 有标准的 `message` 字段，而旧代码
++    // 在读到 message 时就 return 了 —— Event 分支永远走不到。这个用例把「顺序」本身钉住。
++    const { describeError } = await mod('ui/toasts.js');
++    const el = (tag, src) => ({ tagName: tag, currentSrc: src });
++    const ev = (type, target, extra = {}) => Object.assign(Object.create({ type, isTrusted: true, target }), extra);
++
++    const msg = describeError(ev('error', el('IMG', 'https://cdn.example.com/assets/bond/raidShip.png')));
++    assert.notEqual(msg, '发生未知错误', `Event 必须显示内容，实际：${msg}`);
++    assert.match(msg, /type=error/, '事件类型是报告里最需要的一条');
++    assert.match(msg, /img/i, '以及它发生在什么元素上');
++    assert.match(msg, /raidShip\.png/, '以及哪个文件（这正是 2026-10-15 玩家报告里的形态）');
++    assert.ok(!/https?:\/\//.test(msg), '主机名不该进到提示或报告里');
++
++    // **顺序**：一个同时有 message 的 ErrorEvent 也必须走 Event 分支，不能被 message 截走。
++    const errEv = describeError(ev('error', el('IMG'), { message: 'Script error.' }));
++    assert.match(errEv, /type=error/, 'ErrorEvent 有 message，但顺序必须让 Event 分支先跑');
++    assert.ok(!/^Script error\.$/.test(errEv), '否则玩家只会看到那个毫无信息量的占位文案');
++
++    // PIXI 的合成事件只有 srcElement，没有 target —— 也得认出来。
++    const pixi = describeError({ type: 'pointerdown', isTrusted: true, srcElement: el('DIV') });
++    assert.match(pixi, /type=pointerdown/);
++
++    // 真错误绝不能被当成 Event 吞掉。
++    assert.equal(describeError(new Error('boom')), 'boom');
++    assert.equal(describeError({ code: 'NO_FUNDS' }), '资金不足');
++  });
+ });
+ 
+ 
+diff --git a/test/content/hextech.test.js b/test/content/hextech.test.js
+index fbd83914..97ecefad 100644
+--- a/test/content/hextech.test.js
++++ b/test/content/hextech.test.js
+@@ -27,12 +27,15 @@ test('data/hextech.json is what tools/build-hextech.mjs generates (run: node too
+   assert.equal(fs.readFileSync(OUT_FILE, 'utf8'), hextechText(buildHextech()));
+ });
+ 
+-test('roster: 79 player + 24 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
++test('roster: 90 player + 38 enemy hexes, unique ids, known rarities and an effect each (no art named)', () => {
+   assert.deepEqual(validateHextech(buildHextech()), []);
+-  assert.equal(PLAYER.length, 79);
+-  assert.equal(ENEMY.length, 24);
++  // tenth batch (the owner's list of 2026-10-15): 11 more player cards (79 -> 90) — 反击装甲 and 紧急拨款 are
++  // REBALANCES of existing records, not additions, so they do not move the count.
++  assert.equal(PLAYER.length, 90);
++  // ninth batch (the same list): 14 more enemy cards. 24 -> 38.
++  assert.equal(ENEMY.length, 38);
+   const ids = new Set([...PLAYER, ...ENEMY].map((h) => h.id));
+-  assert.equal(ids.size, 103);
++  assert.equal(ids.size, 128);
+   const rarities = new Set(HEXTECH.rarities.map((r) => r.id));
+   assert.deepEqual([...rarities], [...RARITY_ORDER]);
+   for (const h of PLAYER) {
+@@ -51,9 +54,11 @@ test('roster: 79 player + 24 enemy hexes, unique ids, known rarities and an effe
+     assert.ok(verb || Object.keys(h.mods || {}).length, `${h.id} needs mods or a verb`);
+     if (verb) assert.ok(ENEMY_VERBS.includes(verb), `${h.id}: unknown verb ${verb}`);
+     for (const [k, v] of Object.entries(h.mods || {})) {
+-      assert.ok(['hpMul', 'atkMul', 'defMul', 'resMul', 'speedMul', 'supplyHpMul', 'countAdd'].includes(k), `${h.id}: ${k}`);
+-      // countAdd is an absolute add; the multipliers are trade-offs now, so < 1 is allowed
+-      if (k === 'countAdd') assert.ok(Number.isInteger(v) && v >= 1 && v <= 3, `${h.id}: countAdd = ${v}`);
++      assert.ok(['hpMul', 'atkMul', 'defMul', 'resMul', 'speedMul', 'supplyHpMul', 'countAdd', 'countSub'].includes(k), `${h.id}: ${k}`);
++      // countAdd / countSub are absolute bodies; the multipliers are trade-offs now, so < 1 is allowed
++      if (k === 'countAdd' || k === 'countSub') assert.ok(Number.isInteger(v) && v >= 1 && v <= 3, `${h.id}: ${k} = ${v}`);
++      // move speed is its own axis (tools/build-hextech.mjs carries the reasoning): ±50 % is the owner's own number
++      else if (k === 'speedMul') assert.ok(v > 0.25 && v <= 2, `${h.id}: ${k} = ${v}`);
+       else assert.ok(v > 0.5 && v <= 1.35, `${h.id}: ${k} = ${v}`);
+     }
+     if (h.payout) assert.ok(Number.isInteger(h.payout.perLeak) && h.payout.perLeak >= 1, `${h.id}: payout.perLeak`);
+@@ -71,7 +76,7 @@ test('roster: 79 player + 24 enemy hexes, unique ids, known rarities and an effe
+ test('every player hex has a registered hex: handler with onHexPick and onRoundStart (choices.test.js style)', () => {
+   const reg = getDefaultRegistry();
+   const ids = hexIds();
+-  assert.equal(ids.length, 79);
++  assert.equal(ids.length, 90);
+   for (const id of ids) {
+     const h = reg.get(hexEffectKey(id));
+     assert.ok(h, `hex:${id} handler`);
+@@ -386,15 +391,22 @@ test('sumEnemyMods multiplies the owned hexes, with the cumulative bound kept sa
+   // a verb card carries no `mods` at all (DESIGN §29.10), so the HP sweep only looks at the multiplier cards
+   const hp = ENEMY.filter((h) => h.mods && h.mods.hpMul).sort((a, b) => b.mods.hpMul - a.mods.hpMul);
+   const merged = sumEnemyMods(hp.slice(0, 3));
+-  // the worst three draws: 1.35 × 1.25 × 1.20 (巨兽之魂 / 深渊灌注 / 过路费) = 2.025 — the bound every data change
+-  // must respect (docs/BALANCE.md §8); a sub-1 trade-off multiplier (虫群 0.92) only lowers it
+-  assert.ok(merged.hpMul > 1 && merged.hpMul <= 2.05, `three HP hexes = ${merged.hpMul}`);
++  // The worst three draws. This WAS 2.025 (1.35 × 1.25 × 1.20: 巨兽之魂 / 深渊灌注 / 过路费) with a 2.05 ceiling.
++  //
++  // 精英化 (the owner's list of 2026-10-15) enters at +30 % HP, so the new worst case is 1.35 × 1.30 × 1.25 = 2.19375
++  // and the ceiling moves to 2.20. That is a DELIBERATE widening, not a drift: the card was given as "+30 % ATK / DEF /
++  // HP" and it pays for it with 10 % fewer bodies (countSub), which is exactly the trade 虫群 makes in the other
++  // direction. Recorded here and in docs/BALANCE.md §8 so the next data change cannot move it silently.
++  assert.ok(merged.hpMul > 1 && merged.hpMul <= 2.20, `three HP hexes = ${merged.hpMul}`);
+   assert.deepEqual(sumEnemyMods([]), {});
+   assert.deepEqual(sumEnemyMods([{ mods: { atkMul: 1.1 } }, { mods: { atkMul: 1.2, speedMul: 1.1 } }]), { atkMul: 1.32, speedMul: 1.1 });
+-  // the verb cards cannot move the HP bound: summing them alone gives {}
++  // A verb card CAN carry a small trade-off multiplier (the ninth batch's 物转法 −30 % ATK, 势不可挡 −50 % speed), so
++  // the check is not "verbs are empty" — it is the thing that actually matters: a verb card can never move the HP
++  // ceiling. (It used to read `deepEqual(sumEnemyMods(verbs), {})`, which the new cards made false without any
++  // balance meaning: no HP multiplier is involved.)
+   const verbs = ENEMY.filter((h) => h.verb);
+   assert.ok(verbs.length > 0, 'the roster has verb cards');
+-  assert.deepEqual(sumEnemyMods(verbs), {}, 'a verb card carries no wave-scale multiplier');
++  assert.deepEqual(sumEnemyMods(verbs).hpMul, undefined, 'a verb card carries no HP multiplier');
+ });
+ 
+ test('the battle part of a hex ref becomes operator mods (directMods vocabulary)', () => {
+@@ -678,7 +690,7 @@ test('the eleventh batch: 79 player hexes, the owner’s names and tiers verbati
+     assert.equal(rec.name, name, `${id} name`);
+     assert.equal(rec.rarity, rarity, `${id} tier`);
+   }
+-  assert.equal(Object.keys(HEXTECH.playerHexes).length, 79, '79 player hexes after the batch');
++  assert.equal(Object.keys(HEXTECH.playerHexes).length, 90, '90 player hexes after the batch');
+ });
+ 
+ test('转职大师 / 赌狗大师 / 人力部资源 / 博士投影: the four plain item grants name the owner’s items', () => {
+@@ -729,7 +741,8 @@ test('紧急拨款: an ELITE sale pays 6 funds and arms the next refresh’s gua
+   assert.equal(ctx.funds, 0, 'a normal operator pays nothing');
+   ctx.ev = { piece: { kind: 'chess', id: 'chess_char_1_01_b' }, gain: 3 };
+   reg.get(hexEffectKey('hex_emergencygrant')).onSold(ctx);
+-  assert.equal(ctx.funds, 6, 'an elite sale pays the card’s 6 funds at once');
++  // Owner's rebalance of 2026-10-15: the payout is 2 funds (was 6).
++  assert.equal(ctx.funds, 2, 'an elite sale pays the card’s 2 funds at once');
+   assert.equal(ctx.counter('hex:hex_emergencygrant:nextTopBond'), 1, 'and arms the guarantee');
+   reg.get(hexEffectKey('hex_emergencygrant')).onRefresh(ctx);
+   assert.deepEqual(slots, [[0, { kind: 'chess', id: 'chess_char_1_01' }]], 'the next refresh writes slot 0 with the top bond’s operator');
+diff --git a/test/custom-art.test.js b/test/custom-art.test.js
+index 6005c704..2077afc6 100644
+--- a/test/custom-art.test.js
++++ b/test/custom-art.test.js
+@@ -27,7 +27,7 @@ import {
+ } from '../tools/custom-spine.mjs';
+ import { addCustomArtEntries, applyAllCustomArt, ART_ALIAS_IDS } from '../tools/custom-assets.mjs';
+ import { CUSTOM_OP_IDS, FIXED_OP_IDS, customArt, fixedArt } from '../tools/custom-ops.mjs';
+-import { localAssetUrl } from '../public/js/assets.js';
++import { localAssetUrl, localSpineEntry } from '../public/js/assets.js';
+ import { chessAvatarUrl, chessPortraitUrl, localArtUrl } from '../public/js/ui/assetUrls.js';
+ 
+ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+@@ -481,3 +481,22 @@ test('data/assets.json carries no /assets/local/ URL — an install without the
+     }
+   }
+ });
++
++test('自制战斗模型: 服务端逐文件发哈希时 skel/atlas 的名称校验仍成立', () => {
++  // 服务端 (server/http/assetViews.js) 只给 `spine/…` 组里的文件**一个共享模型哈希**；自制干员的模型挂在
++  // `char/<charId>` 组下 (customCharArtGroup)，三个文件各拿自己的哈希。于是「skel 去掉 .skel 就是 atlas」
++  // 这条 pixi-spine 需要的名称校验，在比对**原始 URL** 时永远不成立 —— `spineLocal` 对自制干员就成了死代码，
++  // 模型回落到别名 (业主 2026-10-16 报「娅娜立绘不对」时顺带查到的第二条)。校验必须去哈希段后比对。
++  const man = { groups: { 'char/x': {
++    'spine/front/m.skel': { path: '/assets/~aaaaaaaaaaaaaaaa/char/x/spine/front/m.skel' },
++    'spine/front/m.atlas': { path: '/assets/~bbbbbbbbbbbbbbbb/char/x/spine/front/m.atlas' },
++    'spine/front/m.png': { path: '/assets/~cccccccccccccccc/char/x/spine/front/m.png' },
++  } } };
++  const sl = { group: 'char/x', skel: 'spine/front/m.skel', atlas: 'spine/front/m.atlas', textures: ['spine/front/m.png'], pma: false, anims: { idle: 'Idle' } };
++  const e = localSpineEntry(sl, man, null);
++  assert.ok(e, '哈希不同也解析成一条模型');
++  assert.equal(e.skel, man.groups['char/x']['spine/front/m.skel'].path);
++  assert.equal(localSpineEntry({ ...sl, atlas: 'spine/front/other.atlas' }, man, null), null, 'atlas 对不上 skel 照样拒绝');
++  const one = { groups: { 'char/x': { 'spine/front/m.skel': { path: '/assets/~aaaaaaaaaaaaaaaa/char/x/spine/front/m.skel' } } } };
++  assert.equal(localSpineEntry(sl, one, null), null, '缺文件一样拒绝');
++});
+diff --git a/test/diag.test.js b/test/diag.test.js
+index b91eda76..bb08a965 100644
+--- a/test/diag.test.js
++++ b/test/diag.test.js
+@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
+ import {
+   recordError, errorLog, errorCount, clearErrorLog, messageOf, stackOf, stripHosts, redact, redactValues, secretsOf, buildDiagnostics,
+   diagnosticsPayload, setBattleSource, currentBattle, LOG_MAX, STACK_LINES, recordResourceEntry, trafficSummary, trafficLine, clearTraffic, installTrafficMeter,
++  isDomEvent, isResourceEvent, eventLabel,
+ } from '../public/js/diag.js';
+ import { META_KEYS } from '../server/feedback.js';
+ import { APP_VERSION } from '../shared/constants.js';
+@@ -43,6 +44,80 @@ describe('the error log', () => {
+     assert.equal(stripHosts('see http://10.0.0.2:3000/x.js and https://a.b/c'), 'see /x.js and /c');
+   });
+ 
++  test('a DOM Event as the reason names the event and its element, not just {"isTrusted":true}', () => {
++    // A promise wired straight to an `onerror` handler rejects with the Event itself, and a real Event keeps `type` /
++    // `target` on the PROTOTYPE — so `JSON.stringify` saw only `{"isTrusted":true}`. A player's report showed exactly
++    // that (2026-10-14) and it named nothing at all. These pin the diagnosis-carrying shape.
++    const img = { tagName: 'IMG', currentSrc: 'https://cdn.example.com/assets/char/a.png' };
++    const ev = Object.assign(Object.create({ type: 'error', isTrusted: true, target: img }), {});
++    const msg = messageOf(ev);
++    assert.match(msg, /Event\(/, 'must be recognisable as an Event');
++    assert.match(msg, /type=error/, 'the event TYPE is the first thing a report needs');
++    assert.match(msg, /img/i, 'and the element it happened to');
++    assert.match(msg, /a\.png/, 'and which file, with the host stripped');
++    assert.ok(!/isTrusted/.test(msg), '「isTrusted」 alone is noise, not a diagnosis');
++    assert.ok(!/https?:\/\//.test(msg), 'a host must never reach the report');
++    // An event carrying the real error keeps it.
++    assert.match(messageOf({ type: 'error', isTrusted: true, error: new Error('boom') }), /boom/);
++    // Newlines/whitespace still collapse, and the message stays bounded.
++    assert.ok(messageOf(Object.assign(Object.create({ type: 'error', isTrusted: true }), {})).length <= 300);
++  });
++
++  test('isDomEvent / isResourceEvent classify the shape, and an app error never looks like an Event', () => {
++    const el = (tag, src) => ({ tagName: tag, currentSrc: src });
++    const ev = (type, target) => Object.assign(Object.create({ type, isTrusted: true, target }), {});
++    assert.equal(isDomEvent(ev('error', el('IMG'))), true);
++    assert.equal(isResourceEvent(ev('error', el('IMG'))), true, 'a failed <img> is a resource, not an app error');
++    assert.equal(isResourceEvent(ev('error', el('DIV'))), false, 'the same event on a plain element is NOT swallowed');
++    assert.equal(isResourceEvent({ type: 'error', isTrusted: true, srcElement: el('SCRIPT') }), true, 'PIXI forwards srcElement, not target');
++    // Real errors must never be mistaken for an Event — this is the guard that keeps a genuine bug visible.
++    for (const appErr of [{ code: 'NO_FUNDS' }, new Error('boom'), { code: 'X', type: 'error' }, 'plain', null]) {
++      assert.equal(isDomEvent(appErr), false, `${JSON.stringify(appErr)} is not an Event`);
++      assert.equal(isResourceEvent(appErr), false);
++    }
++    // The label both the report and the toast are built from: type first, then the element, host stripped.
++    const label = eventLabel(ev('error', el('IMG', 'https://cdn.example.com/a/b.png')));
++    assert.match(label, /^type=error/);
++    assert.match(label, /target=img/);
++    assert.match(label, /\/a\/b\.png/);
++    assert.ok(!/https?:/.test(label), 'the host must not survive into a report or a toast');
++  });
++
++  test('isResourceEvent draws the line between「静默」and「弹提示」', () => {
++    // `main.js` records a resource rejection but does NOT toast it (an asset that will not decode is not an app error,
++    // and the view already drew its fallback). Everything else must still reach the player, so this predicate is the
++    // difference between "a missing thumbnail" and "a real bug nobody hears about". 2026-10-15: two bond icons.
++    const el = (tag, src) => ({ tagName: tag, currentSrc: src });
++    const ev = (type, target) => Object.assign(Object.create({ type, isTrusted: true, target }), {});
++    for (const tag of ['IMG', 'VIDEO', 'AUDIO', 'SCRIPT', 'LINK', 'SOURCE', 'PICTURE', 'TRACK']) {
++      assert.equal(isResourceEvent(ev('error', el(tag))), true, `<${tag}> 加载失败应当静默`);
++    }
++    // A canvas / div / window / a custom element: NOT a resource load, so it keeps its toast.
++    for (const tag of ['DIV', 'CANVAS', 'BODY', 'SPAN', 'CUSTOM-THING']) {
++      assert.equal(isResourceEvent(ev('error', el(tag))), false, `<${tag}> 不该被当成资源失败吞掉`);
++    }
++    // An Event with no element at all (a window-level error) is not a resource failure either.
++    assert.equal(isResourceEvent(ev('error', null)), false);
++    assert.equal(isResourceEvent({ type: 'error', isTrusted: true }), false);
++    // PIXI hands on `srcElement` instead of `target`; the tag must still be read.
++    assert.equal(isResourceEvent({ type: 'error', isTrusted: true, srcElement: el('IMG') }), true);
++  });
++
++  test('the toast and the report agree about an Event (three copies of this rule once drifted)', () => {
++    // The 2026-10-15 defect: `messageOf` learned the Event shape, `describeError` did not, and the player still saw
++    // 「未知错误」. They now share `isDomEvent` — so an Event that the report calls an Event must never be reported to the
++    // player as a nameless failure. (toasts.js is imported here so the two cannot silently diverge again.)
++    return import('../public/js/ui/toasts.js').then(({ describeError }) => {
++      const ev = Object.assign(Object.create({ type: 'error', isTrusted: true, target: { tagName: 'IMG' } }), {});
++      assert.ok(isDomEvent(ev));
++      const report = messageOf(ev);
++      const toast = describeError(ev);
++      assert.ok(!/^发生未知错误$/.test(toast), `the toast must not be the bare fallback: ${toast}`);
++      assert.match(toast, /type=error/, 'the toast names the same event the report does');
++      assert.match(report, /type=error/);
++    });
++  });
++
+   test('the same error again raises the count of its entry; another source or message is a new entry', () => {
+     recordError('sim', '[sim] skill failed', null, 1000);
+     recordError('sim', '[sim] skill failed', null, 2000);
+diff --git a/test/match/hextech.test.js b/test/match/hextech.test.js
+index 2ad979c0..4ace1099 100644
+--- a/test/match/hextech.test.js
++++ b/test/match/hextech.test.js
+@@ -1057,3 +1057,46 @@ test('均衡盟约: the noStack bonds are left out of the redistribution, and th
+   m.dispose();
+ });
+ 
++// 业主 report 2026-10-15: 「盟约寄生会在点击干员后多次触发」. Opening an own operator's detail card in PREP asks the server
++// for its start-of-battle stats (g.unitStats → intents.js _unitStatsOf), which dispatches the real onBattleStart handlers
++// with `preview: true`. 盟约寄生 banked its bench layers on EVERY preview — a permanent layer gain per card opening —
++// and 群蛇形态 spent its whole banked point counter on the first one. docs/META.md states the contract ("with ev.preview
++// true a handler must NOT change match state or draw match rng"); the dispatcher now enforces it, so a handler may still
++// patch ev.input (the preview must SHOW the layers) but nothing is written.
++test('the stats preview runs the battle-start cards without changing the match (盟约寄生 / 群蛇形态)', () => {
++  const { h, m, ps } = solo1(733);
++  give(m, ps, 'chess_char_1_09_a', 'hand', 0);
++  give(m, ps, 'chess_char_1_17_a', 'hand', 1);
++  applyHex(m, ps, m.gd.hex('hex_bondparasite'));
++  applyHex(m, ps, m.gd.hex('hex_serpentform'));
++  ps.bondCountBonus.preciShip = 2;
++  ps.layers.preciShip = 10;
++  ps.counters['hex:hex_serpentform:serpent'] = 3; // two banked enemies at 0.5 each
++  ps.recompute();
++  const layersBefore = ps.layers.preciShip;
++  const bankedBefore = ps.counters['hex:hex_serpentform:serpent'];
++  assert.equal(layersBefore, 10, 'premise: the bond holds 10 layers');
++  assert.equal(bankedBefore, 3, 'premise: 群蛇形态 has banked points');
++  // ask for the stats three times, exactly as the client does while the card stays open
++  for (let i = 0; i < 3; i++) {
++    m._unitStatsCache = null;
++    assert.deepEqual(m.handle('p_0', { t: 'g.unitStats', seq: i }), { ok: true });
++  }
++  assert.equal(ps.layers.preciShip, layersBefore, '盟约寄生 banks nothing on a preview');
++  assert.equal(ps.counters['hex:hex_serpentform:serpent'], bankedBefore, '群蛇形态 spends nothing on a preview');
++  // … while the preview still SHOWS what the real battle will see: the bench is 2 operators × 2 layers
++  const previewInput = ps.battleInput({ side: 'L', colOffset: 0 });
++  const ev = { input: previewInput, kind: 'normal', round: m.round, preview: true };
++  m.dispatch(ps, 'onBattleStart', ev);
++  assert.equal(ev.input.bonds.preciShip.layers, layersBefore + 4, 'the previewed snapshot carries the 4 layers it would gain');
++  assert.equal(ps.layers.preciShip, layersBefore, 'and still nothing was written');
++  // the REAL battle start (no preview flag) does the work, once
++  const realInput = ps.battleInput({ side: 'L', colOffset: 0 });
++  const realEv = { input: realInput, kind: 'normal', round: m.round, spawns: [] };
++  m.dispatch(ps, 'onBattleStart', realEv);
++  assert.equal(ps.layers.preciShip, layersBefore + 4, 'the real battle banks the 4 layers');
++  assert.equal(ps.counters['hex:hex_serpentform:serpent'], 0, 'and 群蛇形态 cashes its 3 points in');
++  h.invariants();
++  m.dispose();
++});
++
+diff --git a/test/match/meta.test.js b/test/match/meta.test.js
+index 9a8d39c6..02366c38 100644
+--- a/test/match/meta.test.js
++++ b/test/match/meta.test.js
+@@ -204,6 +204,67 @@ test('onBattleStart may edit the PlayerBattleInput; onBattleResult sees the resu
+ 
+ const awaitFake = await import('./fakeBattle.js');
+ 
++// docs/META.md onBattleStart: "With ev.preview true (no ev.spawns) a handler must NOT change match state or draw match
++// rng". Handlers are content, so the dispatcher enforces it: under a preview every persistent mutator is a dry run that
++// returns what the real call would have returned. 业主 report 2026-10-15 (盟约寄生 banked layers per card opening).
++test('the preview flag makes every persistent mutator a dry run — state, rng and counters all survive', () => {
++  const reg = registerBuiltins(new MetaRegistry(), DATA);
++  const seen = {};
++  reg.global('probe', {
++    onBattleStart: (ctx, ev) => {
++      if (!ev.preview) return;
++      const before = ctx.counter('probe:n');
++      seen.rng = ctx.rng();
++      seen.addFunds = ctx.addFunds(50);
++      seen.spendLp = ctx.spendLp(3);
++      seen.addLayers = ctx.addLayers('yanShip', 7);
++      seen.grantChess = ctx.grantChess(chessOfTier(1)[0]);
++      seen.grantItem = ctx.grantItem('chess_item_1_03_e_a');
++      seen.rollChess = ctx.rollChess({ maxTier: 6 });
++      seen.rollPool = ctx.rollPool('pool_equip_1');
++      seen.setShopSlot = ctx.setShopSlot(0, { kind: 'chess', id: chessOfTier(1)[0] });
++      seen.incCounter = ctx.incCounter('probe:n', 2);
++      seen.counter = ctx.counter('probe:n');
++      seen.triggerGarrisons = ctx.triggerGarrisons(1, 'SERVER_GAIN');
++      seen.destroyPiece = ctx.destroyPiece(1);
++      seen.before = before;
++    },
++  });
++  const { h, m } = metaMatch(reg, { seed: 88 });
++  const ps = h.ps('p_0');
++  const funds = ps.funds;
++  const lp = ps.lp;
++  const layers = { ...ps.layers };
++  const hand = ps.hand.filter(Boolean).length;
++  const rngBefore = m.rngMeta.state(); // the raw state: calling rngMeta() itself would draw
++  const input = ps.battleInput({ side: 'L', colOffset: 0 });
++  m.dispatch(ps, 'onBattleStart', { input, kind: 'normal', round: m.round, preview: true });
++  // the dry runs returned plausible values (so a handler can still patch ev.input with them)
++  assert.equal(seen.addFunds, 0);
++  assert.equal(seen.spendLp, lp);
++  assert.equal(seen.addLayers, 7, 'addLayers reports the gain the real call would have made');
++  assert.equal(seen.grantChess, null);
++  assert.equal(seen.grantItem, null);
++  assert.equal(seen.rollChess, null);
++  assert.equal(seen.rollPool, null);
++  assert.equal(seen.setShopSlot, false);
++  assert.equal(seen.triggerGarrisons, 0);
++  assert.equal(seen.destroyPiece, false);
++  // the shadow counter sees its own write (the preview behaves like the first real run) …
++  assert.equal(seen.before, 0);
++  assert.equal(seen.incCounter, 2);
++  assert.equal(seen.counter, 2);
++  // … and nothing at all reached the match
++  assert.equal(ps.funds, funds, 'funds');
++  assert.equal(ps.lp, lp, 'LP');
++  assert.deepEqual(ps.layers, layers, 'layers');
++  assert.equal(ps.hand.filter(Boolean).length, hand, 'no piece was granted');
++  assert.equal(ps.counters['probe:n'], undefined, 'the shadow counter was never written through');
++  assert.equal(m.rngMeta.state(), rngBefore, 'the match rng stream did not move');
++  h.invariants();
++  m.dispose();
++});
++
+ test('choice:<id> handler overrides the family default, runs once, and other sources observe the pick', async () => {
+   const { applyCard } = await import('../../server/match/choices.js');
+   const reg = registerBuiltins(new MetaRegistry(), DATA);
+diff --git a/test/sim/hextech-battle.test.js b/test/sim/hextech-battle.test.js
+index 7f9c6bd4..936996b6 100644
+--- a/test/sim/hextech-battle.test.js
++++ b/test/sim/hextech-battle.test.js
+@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
+ import path from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
+-import { isHitCount } from '../../server/sim/content/enemies/helpers.js';
++import { isHitCount, abOf } from '../../server/sim/content/enemies/helpers.js';
+ import { canTargetEnemy, enemyStealthed } from '../../server/sim/targeting.js';
+ import { HUSK_REBIRTH } from '../../server/sim/content/enemies.js';
+ 
+@@ -869,6 +869,34 @@ test('破甲弹 (armorbreak): the enemy’s physical hits shred the struck opera
+   h.invariants();
+ });
+ 
++test('莱茵护甲 (hitShield): 敌人血量不变，额外挡 3 次攻击（业主 2026-10-16）', () => {
++  // 业主报「莱茵护甲怎么把怪的生命值改了」。旧实现是 `hitCount` + `setHits`，而 `setHits` 会把 `base.maxHp`
++  // 整个**覆盖**成"次数"（helpers.js 的注释就是 `maxHp := hits`）—— 十万血的首领也变成 3 点血、血条消失。
++  // `hitCount` 是给器物 / 频次怪用的另一种机制（它们本来就是"打 N 次才倒"），不是给"加一层盾"用的。
++  // 真正的一层盾是引擎自己的 `ab.hitShield`（enemies.js onHitIn：整段物理/法术伤害被 cancel、扣 1 层、
++  // 破盾放 shieldBreak），官方莱茵生命防卫科高级成员与假想敌：再生用的都是它。
++  const h = enemyVerbBattle('ehex_leine', { enemyKey: 'enemy_dummy', timeLimit: 30 });
++  h.run(0.5);
++  const e = h.enemies()[0];
++  const b = h.battle;
++  assert.ok(e, 'the enemy is on the field (premise)');
++  assert.equal(e.s.maxHp, 100000, 'the HP is untouched (the bug made this 3)');
++  assert.ok(!isHitCount(e), 'it is NOT a 频次 unit: that mechanic exists for 器物, not for a shield');
++  assert.equal(abOf(b, e).hitShield, 3, '3 layers of the real hit shield');
++  const breaks = [];
++  const fx = b.fx.bind(b);
++  b.fx = (k, p) => { if (k === 'shieldBreak') breaks.push(p.id); return fx(k, p); };
++  for (let i = 1; i <= 3; i++) {
++    assert.equal(b.dealDamage(null, e, { amount: 25000, type: 'phys', ignoreSleep: true }), 0, `hit ${i}: the whole instance is negated`);
++    assert.equal(e.hp, 100000, `hit ${i}: no HP was lost`);
++    assert.equal(abOf(b, e).hitShield, 3 - i, `hit ${i}: ${3 - i} layers left`);
++  }
++  assert.deepEqual(breaks, [e.id], 'the shield breaks once, with its fx');
++  assert.equal(b.dealDamage(null, e, { amount: 25000, type: 'phys', ignoreSleep: true }), 25000, 'the 4th hit lands');
++  assert.equal(e.hp, 75000);
++  h.invariants();
++});
++
+ test('铁壁 (ironwall): physical damage is reflected, and the recursion guard stops it looping forever', () => {
+   const h = enemyVerbBattle('ehex_ironwall', { enemyKey: 'enemy_march', timeLimit: 20 });
+   // the real assertion is that this returns at all: an unguarded `hurt` on the attacker re-enters `damaged` forever
+diff --git a/tools/build-hextech.mjs b/tools/build-hextech.mjs
+index 0e6e04c7..9937497d 100644
+--- a/tools/build-hextech.mjs
++++ b/tools/build-hextech.mjs
+@@ -77,6 +77,23 @@ export function validateHextech(body) {
+         // test/content/hextech.test.js, because this tool never reads the generated data.
+         const item = spec && spec.item ? spec.item : null;
+         if (item) {
++          // 武器大师 (the owner's list of 2026-10-15): `ids` grants one of EACH named record (a card that hands out two
++          // DIFFERENT pieces). Every entry is checked like the single `id` form, and the two forms are mutually
++          // exclusive — carrying both would leave which one wins to the reader.
++          if (item.ids != null) {
++            if (!Array.isArray(item.ids) || !item.ids.length) {
++              problems.push(`${kind}: ${h.id} item.ids must be a non-empty array`);
++            } else {
++              for (const want of item.ids) {
++                if (typeof want !== 'string' || !/^[a-z][a-z0-9_]*$/.test(want)) {
++                  problems.push(`${kind}: ${h.id} item.ids entry ${JSON.stringify(want)} is not an item id`);
++                }
++              }
++            }
++            if (item.id != null || item.pool != null || item.tier != null) {
++              problems.push(`${kind}: ${h.id} item.ids cannot be combined with item.id / item.pool / item.tier`);
++            }
++          }
+           if (item.id != null && (typeof item.id !== 'string' || !/^[a-z][a-z0-9_]*$/.test(item.id))) {
+             problems.push(`${kind}: ${h.id} item.id ${JSON.stringify(item.id)} is not an item id`);
+           }
+@@ -112,9 +129,16 @@ export function validateHextech(body) {
+         for (const k of keys) {
+           if (!MOD_KEYS.has(k)) { problems.push(`${kind}: ${h.id} unknown mod ${k}`); continue; }
+           const v = h.mods[k];
+-          // countAdd is an absolute add (1..3); the multipliers are trade-offs now, so a < 1 value is allowed
+-          if (k === 'countAdd') { if (!(Number.isInteger(v) && v >= 1 && v <= 3)) problems.push(`${kind}: ${h.id} countAdd ${v} is not 1..3`); }
+-          else if (!(v > 0.5 && v <= 1.35)) problems.push(`${kind}: ${h.id}: ${k} = ${v} (expected 0.5 < v ≤ 1.35)`);
++          // countAdd / countSub are absolute bodies (1..3); the multipliers are trade-offs now, so a < 1 value is allowed
++          if (k === 'countAdd' || k === 'countSub') {
++            if (!(Number.isInteger(v) && v >= 1 && v <= 3)) problems.push(`${kind}: ${h.id} ${k} ${v} is not 1..3`);
++          } else if (k === 'speedMul') {
++            // MOVE SPEED IS ITS OWN AXIS (owner's list of 2026-10-15: 势不可挡 −50 %, 无头苍蝇 +50 %). The ±1.35 bound
++            // below exists to stop STAT multipliers stacking into a wall (BALANCE.md §8: the worst three HP draws must
++            // stay under 2.05), and speed is not that axis — an enemy that walks at half speed or 1.5× is a distinct
++            // reading of the round, and its cap is the engine's own (the sim clamps a unit's moveMul at 0 anyway).
++            if (!(v > 0.25 && v <= 2)) problems.push(`${kind}: ${h.id}: ${k} = ${v} (expected 0.25 < v ≤ 2)`);
++          } else if (!(v > 0.5 && v <= 1.35)) problems.push(`${kind}: ${h.id}: ${k} = ${v} (expected 0.5 < v ≤ 1.35)`);
+         }
+         // a verb card carries its tuning as flat params; reject a `mods`-only field the sim would silently ignore
+         if (verb && h.params != null && (typeof h.params !== 'object' || Array.isArray(h.params))) {
+@@ -144,8 +168,14 @@ export function validateHextech(body) {
+   return problems;
+ }
+ 
+-/** The wave vocabulary an enemy hex may scale (server/match/waves.js roundMods) + the second batch's count wrench. */
+-const MOD_KEYS = new Set(['hpMul', 'atkMul', 'defMul', 'resMul', 'speedMul', 'supplyHpMul', 'countAdd']);
++/** The wave vocabulary an enemy hex may scale (server/match/waves.js roundMods) + the count wrenches. */
++const MOD_KEYS = new Set([
++  'hpMul', 'atkMul', 'defMul', 'resMul', 'speedMul', 'supplyHpMul',
++  'countAdd', // 虫群: +N bodies per normal spawn group (an absolute add, 1..3)
++  // 精英化 (owner's list of 2026-10-15): −N bodies per normal spawn group. Absolute too, for the reason the owner
++  // chose it over a percentage — 10 % of a five-enemy group rounds away to nothing. See server/match/hextech.js.
++  'countSub',
++]);
+ 
+ /** The enemy verb scripts the sim knows (shared/hextech.js — one list, so a typo fails the build). */
+ const VERB_IDS = new Set(ENEMY_VERBS);
+diff --git a/tools/hextech/roster.mjs b/tools/hextech/roster.mjs
+index 992bc47e..5553115f 100644
+--- a/tools/hextech/roster.mjs
++++ b/tools/hextech/roster.mjs
+@@ -189,10 +189,12 @@ export const PLAYER_HEXES = [
+   {
+     id: 'hex_armor',
+     name: '反击装甲',
+-    desc: '作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害后对伤害来源造成 100% 防御力的真实伤害。',
++    // Owner's rebalance of 2026-10-15: the riposte now fires on damage DEALT as well as taken, at 200 % (was 100 %,
++    // taken only). `onDealt` is read by hexcards/armor.js.
++    desc: '作战中，己方所有干员防御力 +18%、法术抗性 +10；受到伤害或造成伤害时，对伤害来源造成 200% 防御力的真实伤害。',
+     rarity: 'gold',
+     // fifth batch: static +18 % DEF / +10 RES + the riposte script (hexcards/armor.js).
+-    effect: { battle: { defPct: 18, resFlat: 10 }, armor: { defRatio: 100 } },
++    effect: { battle: { defPct: 18, resFlat: 10 }, armor: { defRatio: 200, onDealt: true } },
+   },
+   {
+     id: 'hex_overlord',
+@@ -778,9 +780,10 @@ export const PLAYER_HEXES = [
+   {
+     id: 'hex_emergencygrant',
+     name: '紧急拨款',
+-    desc: '每当你卖出一名精锐（三星）干员，立刻获得 6 资金；下一次刷新必定出现你场上人数最多盟约的干员。',
++    // Owner's rebalance of 2026-10-15: the payout is 2 funds (was 6). The rest of the card is unchanged.
++    desc: '每当你卖出一名精锐（三星）干员，立刻获得 2 资金；下一次刷新必定出现你场上人数最多盟约的干员。',
+     rarity: 'gold',
+-    effect: { onSold: { eliteGrant: { funds: 6 } }, onRefresh: { eliteGrantRefresh: true } },
++    effect: { onSold: { eliteGrant: { funds: 2 } }, onRefresh: { eliteGrantRefresh: true } },
+   },
+   {
+     id: 'hex_bondequalize',
+@@ -855,6 +858,88 @@ export const PLAYER_HEXES = [
+     rarity: 'gold',
+     effect: { onPick: { item: { id: 'chess_item_5_06_e_a', count: 1 } } },
+   },
++  // ---- tenth batch (the owner's list of 2026-10-15): 13 more player hexes ----
++  {
++    id: 'hex_weaponmaster',
++    name: '武器大师',
++    desc: '获得时立即得到装备【天马之盔】与【天马之枪】各一件。',
++    rarity: 'gold',
++    // item.ids (added for this card): one of EACH named record, in order — the single-id form cannot hand out two
++    // different pieces, and the pool/tier forms roll. Both ids are official 5/6 阶 equipment (items.json).
++    effect: { onPick: { item: { ids: ['chess_item_5_09_e_a', 'chess_item_6_01_e_a'] } } },
++  },
++  {
++    id: 'hex_beacon',
++    name: '共享信标',
++    desc: '获得时你和所有队友各得到装备【信标】一件。',
++    rarity: 'silver',
++    // team: true — every alive teammate runs the same handler through its OWN ctx, so each keeps its own copy
++    // (the mechanism 共鸣协议 / 战争机器 use).
++    effect: { team: true, onPick: { item: { id: 'chess_item_5_04_e_a', count: 1 } } },
++  },
++  {
++    id: 'hex_pandora',
++    name: '潘多拉魔盒',
++    desc: '获得时，将你已拥有的所有协议源石（含本张）随机更换为 3 阶协议源石。',
++    rarity: 'prismatic',
++    effect: { onPick: { pandora: true } },
++  },
++  {
++    id: 'hex_blockwall',
++    name: '挡挡',
++    desc: '不屈盟约的层数超过 100 层后，不屈干员阻挡数 +1；此后每多出 150 层，阻挡数再 +1。',
++    rarity: 'silver',
++    effect: { blockwall: { base: 100, step: 150 } },
++  },
++  {
++    id: 'hex_sharepain',
++    name: '不区区！',
++    desc: '作战中，不屈干员会为其他干员分担 50% 的伤害。',
++    rarity: 'gold',
++    effect: { sharePain: { pct: 50 } },
++  },
++  {
++    id: 'hex_terramourn',
++    name: '泰拉在上',
++    desc: '作战中，己方干员阵亡时对周围 8 格造成其攻击力 200% 的法术伤害，并附加灼燃损伤。',
++    rarity: 'gold',
++    effect: { deathBlast: { atkPct: 200, radius: 1 } },
++  },
++  {
++    id: 'hex_directive',
++    name: '指令之意',
++    desc: '作战开始时随机指定一种职业，该职业的己方干员攻击力 +50%。',
++    rarity: 'gold',
++    effect: { directiveAtk: { atkPct: 50 } },
++  },
++  {
++    id: 'hex_directive2',
++    name: '指令之意·改',
++    desc: '作战开始时随机指定一种伤害类型，己方干员造成该类型伤害时提升至 150%。',
++    rarity: 'prismatic',
++    effect: { directiveType: { mul: 150 } },
++  },
++  {
++    id: 'hex_bigdiscount',
++    name: '可露希尔大降价',
++    desc: '获得时，本回合内接下来 3 次刷新免费，且购买干员与装备免费。',
++    rarity: 'gold',
++    effect: { onPick: { discount: { refreshes: 3, buys: 3 } } },
++  },
++  {
++    id: 'hex_rabbithead',
++    name: '兔头',
++    desc: '作战中，己方攻击力最高的干员攻击力 +50%，攻击力最低的干员攻击力 −30%。',
++    rarity: 'silver',
++    effect: { rabbitHead: { top: 50, bottom: -30 } },
++  },
++  {
++    id: 'hex_profresonance',
++    name: '职业共鸣',
++    desc: '作战中，每有一名与自身相同职业的己方干员，该干员攻击力与防御力 +10%。',
++    rarity: 'silver',
++    effect: { profResonance: { pct: 10 } },
++  },
+ ];
+ 
+ /**
+@@ -1062,6 +1147,119 @@ export const ENEMY_HEXES = [
+     verb: 'banner',
+     params: { atkPct: 2, max: 40 },
+   },
++  // ---- ninth batch (the owner's list of 2026-10-15): 14 enemy cards ----
++  {
++    id: 'ehex_mosaic',
++    name: '情报部抑制',
++    desc: '给画面加一层马赛克滤镜。',
++    rarity: 'prismatic',
++    verb: 'mosaic',
++  },
++  {
++    id: 'ehex_records',
++    name: '记录部抑制',
++    desc: '每 4 回合，修整期部署干员时减少 1 点策略生命。',
++    rarity: 'prismatic',
++    verb: 'records',
++    params: {"everyRounds":4,"lp":1},
++  },
++  {
++    id: 'ehex_leine',
++    name: '莱茵护甲',
++    desc: '敌人获得一层次数盾（可抵挡 3 次攻击）。',
++    rarity: 'silver',
++    verb: 'hitShield',
++    params: {"hits":3},
++  },
++  {
++    id: 'ehex_unstoppable',
++    name: '势不可挡',
++    desc: '敌人所需的阻挡数 +1，但移动速度降低 50%。',
++    rarity: 'prismatic',
++    verb: 'blockDemand',
++    params: {"add":1},
++    mods: {"speedMul":0.5},
++  },
++  {
++    id: 'ehex_scavenge',
++    name: '食尸',
++    desc: '敌人死亡时，治疗附近敌人其最大生命值 5% 的生命。',
++    rarity: 'gold',
++    verb: 'cannibalize',
++    params: {"pct":5,"radius":1},
++  },
++  {
++    id: 'ehex_hush',
++    name: '静默',
++    desc: '每过 35 秒，我方随机 1 名干员受到 1000 点凋亡损伤。',
++    rarity: 'prismatic',
++    verb: 'silence',
++    params: {"period":35,"damage":1000},
++  },
++  {
++    id: 'ehex_gravewound',
++    name: '重伤',
++    desc: '敌人的攻击使我方干员受到的受治疗量降低 20%，持续 4 秒。',
++    rarity: 'gold',
++    verb: 'healCut',
++    params: {"pct":20,"seconds":4},
++  },
++  {
++    id: 'ehex_elite',
++    name: '精英化',
++    desc: '敌人数量减少 10%，但攻击力、防御力和生命力上升 30%。',
++    rarity: 'silver',
++    mods: {"atkMul":1.3,"defMul":1.3,"hpMul":1.3,"countSub":1},
++  },
++  {
++    id: 'ehex_adaptive',
++    name: '自适应',
++    desc: '敌人每次受到攻击提高 2% 防御力，最高 30%。',
++    rarity: 'silver',
++    verb: 'adaptive',
++    params: {"perHit":2,"max":30},
++  },
++  {
++    id: 'ehex_transmute',
++    name: '物转法',
++    desc: '物理敌人攻击力降低 30%，但是造成法术伤害。',
++    rarity: 'gold',
++    verb: 'transmute',
++    mods: {"atkMul":0.7},
++  },
++  {
++    id: 'ehex_brittle',
++    name: '易碎铠甲',
++    desc: '出场敌人防御力提高 50%，移动速度降低 20%，每次受到攻击降低 5% 防御力（至多降低至原值）。',
++    rarity: 'silver',
++    verb: 'brittleArmor',
++    params: {"defPct":50,"speedPct":20,"shavePct":5},
++  },
++  {
++    id: 'ehex_restless',
++    name: '无头苍蝇',
++    desc: '敌人移动速度增加 50%，但是每过 10 秒受到一次 2 秒恐惧（boss 和隐匿敌人除外）。',
++    rarity: 'silver',
++    verb: 'restless',
++    params: {"period":10,"seconds":2},
++    mods: {"speedMul":1.5},
++  },
++  {
++    id: 'ehex_drowse',
++    name: 'zzz',
++    desc: '每过 20 秒，我方随机 1 名干员陷入沉睡 2 秒。',
++    rarity: 'gold',
++    verb: 'drowse',
++    params: {"period":20,"seconds":2},
++  },
++  {
++    id: 'ehex_originium',
++    name: '源石附身',
++    desc: '敌人获得活性原石效果。',
++    rarity: 'silver',
++    verb: 'originium',
++    params: {"duration":200,"atkPct":50,"aspd":40,"dps":40},
++  },
+ ];
+ 
+ /**

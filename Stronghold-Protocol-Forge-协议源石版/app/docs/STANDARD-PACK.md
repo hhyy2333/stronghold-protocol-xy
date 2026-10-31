@@ -36,6 +36,7 @@
    `content overrides` · `voices voiceLangs bondIcons itemIcons art skins support operators i18n` ·
    `forms fx` · `notices playtest` · `variants behaviour` · `assets client server routes` · `target` ·
    `dependencies conflicts`。
+   老的 `support` 声明（服务端那套已删除的扩展玩法）**仍留在闭集里**，但已经没有解析分支 —— 老包里写着它不会让包装不上，也不会做任何事。
    **不认识的顶层键点名拒绝**（`PACK_UNKNOWN_FIELD`），**绝不读过去** —— 这是这一层最硬的一条纪律。
    `target`（§28.46）是**唯一一格可以带出本引擎的键**：`"stardust"` 的包是给 Stardust 宿主的**声明型包**，
    本引擎只认识、不装载（`server/workshop.js` 的 `foreign`）；**不写 `target` 的包一个字节都不受影响**。
@@ -43,10 +44,10 @@
    形状在这里判，**语义在装载期裁决**（缺失依赖 / 版本不合 / 互斥 / 级联 / 循环，全部具名拒绝）。
 3. **必须有"贡献"**：只声明 `variants`（或只有元信息）会被判 **`EMPTY_PACK`** —— 原话是
    「`variants` is NOT a contribution」。要上架就得**至少贡献一样东西**（内容 / 面板 / 规则 / 公告 / 素材…）。
-   **不算贡献项的六个键**（`shared/workshop.js` 的 `notContributions`；只在该包真的声明了它们时才逐字点名）：
-   **`behaviour` · `variants` · `support` · `playtest` · `dependencies` · `conflicts`** —— 它们**都只是「怎么跑」或
-   「和别的包什么关系」的声明，自己不往对局里带任何东西**（`behaviour` 选规则档、`variants` 选口径、`support` 只决定
-   助战卡池里放谁、`playtest` 只是试玩时直接发手牌、`dependencies` / `conflicts` 只说包之间的关系）。
+   **不算贡献项的键**（`shared/workshop.js` 的 `notContributions`；只在该包真的声明了它们时才逐字点名）：
+   **`playtest` · `variants` · `behaviour` · `dependencies` · `conflicts` · `callBudget` · `matchKinds`** —— 它们**都只是
+   「怎么跑」或「和别的包什么关系」的声明，自己不往对局里带任何东西**（`behaviour` 选规则档、`variants` 选口径、
+   `playtest` 只是试玩时直接发手牌，其余几个只说包之间的关系与额度）。
    ⚠️ **声明行为开关的包必须另带一样真贡献**：`content` / `client` / `notices` / `routes` … 里至少要有一个，
    否则整包被拒（`EMPTY_PACK` 的文案会逐字写「`"behaviour"` is NOT a contribution — a pack that declares it
    alone brings nothing into a match」）。**声明还得是表里有的**：`shared/behaviour.js` 的

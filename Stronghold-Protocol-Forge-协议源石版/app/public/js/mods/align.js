@@ -54,19 +54,37 @@ export function roomDataBase(mods, welcomeMods) {
 /**
  * The catalogue (`GET /mods/catalog.json`) — what this server carries and what each file's hash is. Cached per page:
  * the catalogue only changes when the server restarts, and a failed load is not cached (the next call retries).
- * @param {{ fetch?: typeof fetch, url?: string }} [opts]
+ *
+ * **It must always settle.** The room screen's alignment gate reports `checking` and only clears it when this
+ * promise settles (screens/room.js), so a request that never comes back used to freeze that room's 准备就绪 forever —
+ * exactly what players hit after the 0.19.37 blue-green switch (a connection cut mid-request), with no way out but a
+ * page reload. The `timeoutMs` race below bounds it; the abort is what actually cancels the socket (a fetch that
+ * ignores the signal still cannot hold the gate, because the race settles either way).
+ * @param {{ fetch?: typeof fetch, url?: string, timeoutMs?: number }} [opts]
  * @returns {Promise<{ packs: Array<any> }|null>}
  */
+/** How long the catalogue fetch may take before the page gives up on it (0 or negative = no limit). */
+export const CATALOG_TIMEOUT_MS = 8000;
+const CATALOG_TIMED_OUT = Symbol('catalog timeout');
 let catalogPromise = null;
-export function loadCatalog({ fetch: doFetch = (...a) => globalThis.fetch(...a), url = CATALOG_URL } = {}) {
+export function loadCatalog({ fetch: doFetch = (...a) => globalThis.fetch(...a), url = CATALOG_URL, timeoutMs = CATALOG_TIMEOUT_MS } = {}) {
   if (!catalogPromise) {
     catalogPromise = (async () => {
+      const controller = typeof globalThis.AbortController === 'function' ? new globalThis.AbortController() : null;
+      let timer = null;
+      const guard = new Promise((resolve) => {
+        if (timeoutMs > 0) timer = setTimeout(() => resolve(CATALOG_TIMED_OUT), timeoutMs);
+      });
       try {
-        const res = await doFetch(url, { cache: 'no-cache' });
+        const res = await Promise.race([
+          doFetch(url, controller ? { cache: 'no-cache', signal: controller.signal } : { cache: 'no-cache' }),
+          guard,
+        ]);
+        if (res === CATALOG_TIMED_OUT) { try { controller?.abort(); } catch { /* already gone */ } return null; }
         if (!res || !res.ok) return null;
         const body = await res.json();
         return body && Array.isArray(body.packs) ? body : null;
-      } catch { return null; }
+      } catch { return null; } finally { if (timer) clearTimeout(timer); }
     })().then((cat) => {
       if (!cat) catalogPromise = null; // a failed load must not be remembered as "this server has no mods"
       return cat;

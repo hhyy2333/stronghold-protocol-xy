@@ -107,7 +107,12 @@ not `'killed'`: no 被击倒 effects, 阿戈尔 or knock-down count — except T
 by the operator's own effect that plays its death animation: 史尔特尔's 余烬, 骑士戒律 + 竞技旗; PRTS Touch(卫戍协议) 备注
 "部分有死亡动画的强制撤退（如史尔特尔的天赋效果）也能触发这一天赋"), but 不屈 rolls on it (PRTS 盟约记录 不屈 修正 "被击倒、撤退、
 切换<替身>与<本体>时": a hit redeploys it at once, free, where it lies; addon/battle.js); only the 突袭 retreat (`'raid'`,
-redeployed at once on its landing tile — no 不屈 roll) and permanent removals leave nothing.
+redeployed at once on its landing tile — no 不屈 roll) and permanent removals leave nothing. 不屈 rolls **once per
+knock-out, not once per instant**: `battle.time` is fixed for a whole tick, so two lethal hits inside one tick (two
+ranged enemies of a wave firing in lockstep, a hit plus a DoT frame) each get their own roll — the hook only refuses a
+knock-out raised *inside* its own revive (`u.mem.indomBusy`, a deploy hook that kills again), which would otherwise loop
+(owner report 2026-10-30 「不屈盟约100%时有概率不生效」: the old `u.mem[ID.indom] === battle.time` guard swallowed the
+second knock-out and left the operator down for its whole timer at p = 1).
 
 ### 1.1 Coordinates (PlayerBattleInput units)
 
@@ -502,6 +507,16 @@ Guarantees content can rely on (pinned by `test/sim/robustness.test.js`):
   handler/callback is skipped and a `hookDepth:*` content error is logged (deterministic — no stack overflow). Its message
   lists the open frames (`chain: hit(enemy_x→chess_y) > damaged(chess_y) > …`) so the looping pair is named; see the
   re-entrancy rule in §5. A tripped guard is always a content bug, never a limit to raise.
+- **A battle that has gone pathological is abandoned, not run forever.** Two count-based caps (deterministic — no clock,
+  so a replay stops on the same tick) separate "an isolated mistake" from "an endless storm":
+  `MAX_BATTLE_ERRORS` (20 000) counts **every** handler error, isolated content ones included, and force-ends the battle
+  as a `timeout`; `MAX_INTERNAL_ERRORS` (200) above it only ever counted *engine* errors, which is why a `hookDepth`
+  storm — reported as a content error — could skip the nested handlers and keep going forever (2026-10-30: a host sat at
+  100 % CPU for two hours). `MAX_TICK_DAMAGE_INSTANCES` (50 000) caps the damage instances one tick may resolve, which
+  catches a mutual-damage loop (A reflects into B, B into A) that raises no error at all. Both are `Battle` opts
+  (`maxBattleErrors` / `maxTickDamageInstances`) so a test can shrink them; host-side, one `FieldRunner` pump that
+  spends more than `PUMP_BUDGET_MS` (5 s) of wall clock abandons its fields and logs the match, which is what tells an
+  operator *which* match was the problem.
 - **Bad numbers.** Helpers sanitize their inputs: DP flags and non-boss `timeLimit` (0/NaN ⇒ 60 s) fall back to defaults;
   unit rows/cols are coerced to integers (junk ⇒ unit skipped); `spawnEnemy` mods must be finite ≥ 0 (else ×1), the spawn
   point is clamped into the rect; `spawnDevice`/`spawnToken`/`relocate` accept only integer in-rect free tiles
@@ -553,7 +568,8 @@ list and budget (DESIGN §30.27); this is local to the kit, not a change to gene
 
 **Hit areas (`body.js`, user playtest #5 item 10).** A regular enemy is a point: in a grid range when the tile of its
 position (`round(y)`, `round(x)`) is a range tile, in a radius when its position is (DESIGN §3). A huge enemy (巨型单位:
-`enemy.hitArea` from data/enemies.json `hitArea` — 假想敌：胄 / 管 / 盐风主教昆图斯 / 阿利斯泰尔 / “萨米的意志”, PRTS
+`enemy.hitArea` from data/enemies.json `hitArea` — 假想敌：胄 / 管 / 盐风主教昆图斯 / 阿利斯泰尔 / “萨米的意志” / 伤心的大锁, PRTS
+  plus the fork's round-16 木桩 (no PRTS page: it takes 萨米's 4.95 × 2.95 body because it draws that model).
 "受击判定区域为长4.95、宽2.95的长方形，向上偏移1.0") is hit anywhere on a rectangle `w` × `h` tiles centred on its position
 moved `dx` columns right / `dy` rows up: it occupies every tile the rectangle overlaps (`bodyKeys` — 5 × 3 tiles; PRTS
 作战机制 "巨型BOSS单位的每一个占据的格子都可以让其本身通过格子判定"), and radius rules measure to the rectangle (`bodyDist`, 0
@@ -813,6 +829,17 @@ passed the shields; a handler may only lower `amount` — the 伤判效果 that 
 (boss units: routed to `sharedBoss.damage(playerId, amount)`; a pool left under 1 HP is emptied) → if HP ≤ 0: **`fatal`** (`ctx.prevented = true` keeps the
 unit at ≥ 1 HP) → **`damaged`** → SP-on-hurt / TAKE_DAMAGE → `kill` + `death`.
 
+**A redirect's output is final** (the owner's decision of 2026-10-29; 坚守 used to cut a share 浊心斯卡蒂 had already
+moved — a 500 transfer became 300 + 200 to the members, so the 100 / 400 / 500 split `docs/history/0.2.4.md` records did
+not come out). Two markers carry it: `damage.js isRedirectShare(dmg)` names what a sharing effect produced (`transfer`
+tag, `bond:stead:share` / `hex:yanember:share`, `steadShare` / `steadThorn` / `yanEmberShare` / `knightTransfer`),
+and no cut-and-share effect (坚守, 浊心斯卡蒂 S1, 燎原's 炎烬, 骑士徽章) touches such an instance; and
+`dmg.redirectClaim` is set at `hit` by a redirect that takes the whole hit (骑士徽章), which the same effects leave alone.
+Both are load-bearing: an effect's share is derived from the HP that reaches the victim (`redirectShare` over
+`damaged.amount`), and a 100 % transfer leaves 0 there — a cut made first is deleted instead of moved (measured: 1000 into
+"卡西米尔 + 坚守 t2" cost the team only 600), and two effects that re-share each other's answers bounce until the
+hook-depth guard drops the rest of the tick (0.14 斯卡蒂 ↔ 坚守).
+
 `battle.heal(source, target, amount, { overheal=false, self, silent, regen, ignoreHealFree })`: no-op on `noHeal` targets
 (unless self — 禁疗 / 孤立 summons carry the flag, §3) and on `healFree` ones, self included (史尔特尔's 余烬), unless `regen`
 (an HP-regen attribute tick) or `ignoreHealFree` (a heal that "无视禁疗"); a healer whose profile names the target in
@@ -919,7 +946,7 @@ instance) and skip `'counter'` / `'reflect'` damage. When the guard trips, the l
 | `spawnDevice(key, row, col, { hp, obstacle, blockCnt, name, def, res, atk, bat, aspd })`, `setObstacle(r, c, on)` | obstacles re-path enemies; spawnDevice returns null outside the rect, on a living unit or on a knocked-out operator's tile |
 | `isReservedTile(r, c)` | true when a living unit stands there or it is the rest tile (`restTile`) of an ally piece that has not deployed yet / waits to redeploy — the tile a knocked-out operator lies on, else the home tile — every automatic picker (the 突袭 landing tile, tactical points, summon / device tiles) must skip these (`findTacticalPoint` does) |
 | `downOn(r, c, except?)`, `restTile(u)` | the down operator (`isDown`: knocked out or forced out) lying on a tile (no ally deploys / moves there: `_deploy`, `spawnDevice`, `relocate`); the tile a withdrawn ally comes back on — its `body` tile when down, else its home (§1) |
-| `addProjectile({ from, target | to:{x,y}, speed, onHit(ctx), visual, source, hitDead })` | homing; fizzles if the target dies unless `hitDead` |
+| `addProjectile({ from, target | to:{x,y}, speed, onHit(ctx), visual, source, hitDead, maxAge, steer, heading })` | homing; fizzles if the target dies unless `hitDead`; `maxAge` (s, default 10) = 最大存在时间, and a shot that runs out of it still "arrives" — its `onHit` runs (PRTS 弹道 §4); `steer` (0..1, default 1) = 转向速度, the per-tick turn weight `d' = d·(B−A)/B + t·(A/B)` of PRTS 弹道 §3 (1 = dead-on homing, the engine's own behaviour; 丰川祥子的音符 fires with `heading` (its 扇面 = 天赋 `attack@angle`) and `steer` 0.35 [ASSUMED]) — `heading` ({x,y}, unit vector) seeds that first direction, so a shot can leave at an angle and curve onto its target (丰川祥子)  |
 | `allySelectable(ally, by)`, `alliesFor(by, ownerId?)` | may an ability of ally `by` select `ally` — never a 孤立 unit (炎佑, 从不混淆的方向) but `by` itself (PRTS 选择器: "若掩码中孤立为1，且选择器的阵营与目标为友好关系，则不可选中"); `allies()` without the 孤立 ones — content picks ally targets (buffs, auras, 全场 talents, heal picks) through these, `alliesInGrid` too |
 | `unitsInGrid(unit, grid, {side, extend})`, `alliesInGrid(unit)`, `enemiesInRadius(x, y, r, centre?)`, `foesInRadius(x, y, r, centre?)`, `foesInColliderRadius(x, y, r)`, `alliesInRadius(x, y, r, ownerId?)` | grid offsets are relative to facing RIGHT, rotated by `unit.dir`; enemies by their body (§2 hit areas: a regular enemy in a grid by its 0.1 collider, a huge enemy on every tile it occupies / within `r` of its rectangle; `foesInColliderRadius` = a radius effect PRTS marks 碰撞判定, a regular enemy within `r` + 0.1; `centre` = splash around a target, a 中点判定 by position; `foesInRadius` = the enemies an operator's area effect can select — no untargetable enemy, none whose 隐匿 is on (`targeting.js enemyStealthed`: not blocked, not revealed, not within 3 s of its last block), PRTS 作战机制 §AOE伤害判定 — while enemy-side auras / heals and collisions keep `enemiesInRadius`) |
 | `enemiesInKeys(keys, attacker, profile)`, `enemiesOnTiles(keys, attacker, profile)`, `blockedTargets(unit, profile)` | targetable enemies in the range of the tiles — a regular one by its 0.1 collider, each listed once (a `rangeTiles` attacker: by tile) —, or standing on them (`enemiesOnTiles`, the tile rule: the tile of the position; a huge one on its rectangle's tiles); the enemies a unit blocks — always selectable by it, a ranged operator on a melee tile included (§1.2 Blocking) |
@@ -1031,7 +1058,10 @@ flag alters movement or 失衡.
   and `spGain` hook; used by 黄沙罗盘 (PRTS says all its SP ignores 阻回), including its caster's +3 SP.
 - Kinds: `duration` (mods for `duration` s), `ammo` (mods until `ammo` attacks were made, optional duration cap),
   `instant` (onStart + optional one-shot attack override applied to the next attack), `charges` (instant with charges),
-  `passive` (always on from deployment, no SP), `toggle` (stays on until death once activated).
+  `passive` (always on from deployment, no SP), `toggle` (stays on until death once activated; `recast: true`
+  makes it a **切换** skill — tapping it again while it runs switches the mode instead of being refused: no SP spent,
+  the skill stays active, and `onEnd` then `onStart` run with `reason: 'recast'` so the kit swaps what it grants —
+  丰川祥子 S2 满月的舞会's 钢琴 / 风琴). Every other running timed skill still cannot be re-activated.
 - Timed deployment skills use `duration`, `activateOnDeploy: true`, `spCost: 0`, `spType: 'none'`, `trigger: 'NEVER'`.
   Landing state is set before `reset()` synchronously calls `activate('deploy')`; `skillStart` precedes the `deploy`
   hooks. Each deployment grants and consumes one charge. Duration end clears effects and fires `skillEnd('duration')`;

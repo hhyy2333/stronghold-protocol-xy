@@ -34,6 +34,15 @@
 //                                   match can ever hold twice (the draft never repeats an owned card).
 //        g.testEnemyHexClear {}   → drop every enemy hex (the enemy fights unmodified from the next battle on).
 //
+//        g.testBoss { bossId? }   → skip the rounds before the leader round and re-enter its prep with that leader's own
+//                                   wave (`Match.testBossTemplate`), so a tester can fight a leader the mode never draws.
+//        g.testChess { chessId }  → BUY any shop operator (业主 2026-10-26「在测试场增加功能可以购买任何干员」): the
+//                                   ordinary purchase path (`PlayerState._buyChessSlot`, the same one `g.buy` takes) on a
+//                                   synthetic slot, so the tier price is charged, a full hand refuses it, the merge
+//                                   runs and 购买 counters / onBuy hooks fire — but the shop's draw, its level cap, the
+//                                   match's bans and the pool's remaining copies do not apply. PREP only, not after
+//                                   Ready (a purchase changes the hand and the board).
+//
 // Only `this.test === true` accepts them: outside a test field every call answers ERR.WRONG_PHASE, and no other code path
 // reads `this.test` (a normal match differs from 0.3.0 in not one byte of behaviour).
 //
@@ -70,7 +79,9 @@ export class MatchTestField {
     if (g) return g;
     const n = Number(amount);
     if (!Number.isInteger(n) || n <= 0 || n > TEST_MAX_FUNDS) return fail(ERR.BAD_TARGET, 'test funds out of range');
-    ps.addFunds(n, { reason: 'test' });
+    // `force` — 测试场发的是**工具钱**，不是一回合能「获得」的资金：不占 addFunds 的一回合上限、也不计入
+    // `round.fundsGained`（那一格来自协议等级 19，业主 2026-10-29；测试场就是要把钱直接给到手）。
+    ps.addFunds(n, { reason: 'test', force: true });
     ps.recompute();
     return OK;
   }
@@ -200,7 +211,7 @@ export class MatchTestField {
       const wantLevel = Math.min(this.gd.maxShopLevel, 1 + Math.floor((this.round - 1) / 3));
       if (p.shop.level < wantLevel) p.shop.level = wantLevel;
       p.startRound(this.round);
-      if (p.funds < TEST_BOSS_PURSE) p.addFunds(TEST_BOSS_PURSE - p.funds, { reason: 'test' });
+      if (p.funds < TEST_BOSS_PURSE) p.addFunds(TEST_BOSS_PURSE - p.funds, { reason: 'test', force: true });
       p.recompute();
     }
     this.bossId = boss.bossId;
@@ -208,6 +219,39 @@ export class MatchTestField {
     this.bossWaves = null;
     this.enterPrep();
     return OK;
+  }
+
+  /**
+   * g.testChess { chessId } — 业主 2026-10-26「在测试场增加功能可以购买任何干员」.
+   *
+   * Buy ANY shop operator, not only the ones this round's shop happened to roll: a tester assembling a board to watch one
+   * interaction must not wait for a copy-weighted draw, level the shop up to the card's tier, or re-roll around the
+   * match's random bans. What the picker may name is therefore every record the shop could EVER offer — visible, not
+   * golden, not 自选, not hidden, a real tier — and the match's bans, the pool's remaining copies and the shop's level are
+   * deliberately not consulted.
+   *
+   * It is still a PURCHASE, though, and it takes the ordinary path: `PlayerState._buyChessSlot` is the same method `g.buy`
+   * reaches, so the price comes from `priceOf` (onPrice modifiers and the free windows included), the funds / hand gates
+   * answer NO_FUNDS / HAND_FULL, the three-copy merge runs, the 购买 counters move and the onBuy hooks (休露丝, 玛恩纳,
+   * 升华 …) fire. Only the slot record is synthetic.
+   *
+   * Refused outside PREP or after Ready (`WRONG_PHASE`): a purchase changes the hand and the board, which is exactly what
+   * the shop's own gate protects — the panel's other intents stay phase-free because they only touch a card list.
+   * An elite id is refused (BAD_TARGET): the elite is what three copies merge INTO, not a shop item, and granting one
+   * directly would skip the merge's own rules (its pool copies, the reward offer, the tile).
+   */
+  testChess(ps, chessId) {
+    const g = this._testGate(ps);
+    if (g) return g;
+    if (this.phase !== PHASE.PREP) return fail(ERR.WRONG_PHASE, 'test chess: a purchase happens in prep');
+    if (ps.ready) return fail(ERR.WRONG_PHASE, 'ready');
+    const rec = typeof chessId === 'string' ? this.gd.chess(chessId) : null;
+    // the shop-eligible roster (the same predicate as gd.visibleChess), without its bans / stock / level
+    if (!rec || !rec.visible || rec.isGolden || rec.isDiy || rec.isHidden || !Number.isInteger(rec.tier)) {
+      return fail(ERR.BAD_TARGET, 'not a shop operator');
+    }
+    // the shop's own slot shape, so priceOf applies onPrice / the free windows to it exactly as to a rolled slot
+    return ps._buyChessSlot({ kind: 'chess', id: chessId, basePrice: this.gd.chessPrice(chessId), frozen: false, sold: false });
   }
 
   /**

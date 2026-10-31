@@ -36,8 +36,8 @@ function fixture() {
   put('docs/img/combat.jpg', BYTES.png);
   put('public/dev/recordings/one.json', Buffer.from('{}'));
   put('test/fixtures/official-waves.json', Buffer.from('[]'));
-  // deliberately NOT exported
-  put('data/support.json', Buffer.from('{}'));
+  // deliberately NOT exported (under data/ only *.json is exported; a hand-written note stays on the GPL side)
+  put('data/notes.md');
   put('test/fixtures/other.json', Buffer.from('[]'));
   put('docs/research/README.txt');
   put('server/index.js');
@@ -70,7 +70,7 @@ test('collector: official data, art, fonts, research, screenshots, recordings an
   await withFixture((root) => {
     assert.deepEqual(rels(root), EXPECTED);
     // hand-written server config, non-official fixtures and our own code stay on the GPL side
-    for (const gone of ['data/support.json', 'test/fixtures/other.json', 'server/index.js', 'public/js/main.js']) {
+    for (const gone of ['data/notes.md', 'test/fixtures/other.json', 'server/index.js', 'public/js/main.js']) {
       assert.ok(!rels(root).includes(gone), `${gone} must not be exported`);
     }
   });

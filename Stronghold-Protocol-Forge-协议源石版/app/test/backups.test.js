@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { standInRecord, composeUnitRecord, unitForm, statusKey, IDENTITY_FIELDS } from '../shared/standIn.js';
 import { diyRecordOf, lockedSelection } from '../shared/diy.js';
 import { composeStats, composeTalents, resolveLoadout, loadoutRecord, normalizeChess } from '../server/sim/simdata.js';
-import { FIXED_CHESS_IDS } from '../tools/custom-ops.mjs';
+import { FIXED_CHESS_IDS, FIXED_OP_IDS } from '../tools/custom-ops.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA = process.env.DATA_DIR || join(ROOT, 'data');
@@ -65,7 +65,8 @@ test('chess: the backup fields are the official shop row, verbatim', { skip: !HA
   for (const c of all) {
     if (fixed.has(c.chessId)) {
       assert.equal(c.chessType, 'PRESET', `${c.chessId}: a fixed operator is a PRESET chess`);
-      assert.deepEqual(c.backup, { charId: c.charId, tmplId: null, skillIndex: 0, uniEquipId: null, potRank: 0 }, `${c.chessId}: its own backup (a PRESET is itself)`);
+      // 固定干员的「补位」就是它自己：默认技能与默认模组照它自己那条记录（有 ADVANCED 模组时 uniEquipId 不是 null）
+      assert.deepEqual(c.backup, { charId: c.charId, tmplId: null, skillIndex: c.skill.index, uniEquipId: c.module?.id ?? null, potRank: 0 }, `${c.chessId}: its own backup (a PRESET is itself)`);
       continue;
     }
     const s = act.charShopChessDatas[c.baseId];
@@ -338,9 +339,11 @@ test('DIY: the owned-6★ pool and the faction → bond rule (mainPower + every 
   for (const id of ownedPool) { const k = operators[id].bonds.join('+'); tally[k] = (tally[k] || 0) + 1; }
   assert.deepEqual(tally, { emptyShip: 38, yanShip: 14, victoriaShip: 8, sargonShip: 4, siracusaShip: 4, lateranoShip: 1, kazimierzShip: 1, egirShip: 1, 'yanShip+victoriaShip': 1 });
   // the collab operators are out of the data and the pool (the owner's decision of 2026-10-05: copyright)
+  // 业主 2026-10-25：结城理 / 丰川祥子 已改成固定干员（tools/custom-ops.mjs，进商店池），不再是「被排除的自选」，
+  // 所以这张名单只剩另外五名联动干员
   assert.deepEqual(backups.diy.excluded.map((id) => [id, backups.units[id], operators[id]]),
-    ['char_456_ash', 'char_1029_yato2', 'char_1048_orchd2', 'char_4123_ela', 'char_4141_marcil', 'char_4182_oblvns', 'char_4217_makoto'].map((id) => [id, undefined, undefined]),
-    '灰烬, 麒麟R夜刀, 焰狐龙梓兰 (MH05: a 联动寻访, by its display number), 艾拉, 玛露西尔, 丰川祥子, 结城理');
+    ['char_456_ash', 'char_1029_yato2', 'char_1048_orchd2', 'char_4123_ela', 'char_4141_marcil'].map((id) => [id, undefined, undefined]),
+    '灰烬, 麒麟R夜刀, 焰狐龙梓兰 (MH05: a 联动寻访, by its display number), 艾拉, 玛露西尔');
   assert.deepEqual(operators.char_017_huang.bonds, ['yanShip', 'victoriaShip'], '煌: 炎 + 维多利亚 from her subPower (mainPower rhodes / elite)');
   for (const id of [...prototypes['5'], ...prototypes['6']]) assert.deepEqual(operators[id].bonds, ['emptyShip'], `${id}: no faction`);
 });
@@ -348,11 +351,13 @@ test('DIY: the owned-6★ pool and the faction → bond rule (mainPower + every 
 test('DIY: powers and the owned pool re-derived from character_table', { skip: !HAS_CACHE && 'no .cache/gamedata' }, () => {
   const CT = raw('character_table');
   const act = raw('activity_table').activity.AUTOCHESS_SEASON.act2autochess;
-  const roster = new Set(Object.values(act.charShopChessDatas).map((r) => r.charId).filter(Boolean));
+  // 固定干员的商店行不在官方表里（tools/custom-ops.mjs 在构建时补进去），这里按同一份声明把它们也算进池内
+  const roster = new Set([...Object.values(act.charShopChessDatas).map((r) => r.charId).filter(Boolean), ...FIXED_OP_IDS]);
   const collab = (c) => [c.mainPower, ...(c.subPower || [])].some((p) => ['rainbow', 'action4', 'mujica', 'sees', 'laios'].includes(p?.teamId))
     || /^(?:MH|RS|AM|PS|DD)\d/.test(c.displayNumber || '');
   const legal = Object.entries(CT).filter(([id, c]) => id.startsWith('char_') && c.rarity === 'TIER_6' && !['TOKEN', 'TRAP'].includes(c.profession) && !c.isNotObtainable && !roster.has(id));
-  assert.equal(legal.length, 79, 'the excel\'s 79 obtainable 6★ outside the chess pool');
+  // 结城理 / 丰川祥子 现在是固定干员（在 chess 池里），所以「池外的可获 6★」从 79 变成 77
+  assert.equal(legal.length, 77, 'the excel\'s obtainable 6★ outside the chess pool');
   assert.deepEqual([...backups.diy.ownedPool].sort(), legal.filter(([, c]) => !collab(c)).map(([id]) => id).sort());
   assert.deepEqual([...backups.diy.excluded].sort(), legal.filter(([, c]) => collab(c)).map(([id]) => id).sort());
   for (const [id, o] of Object.entries(backups.diy.operators)) {

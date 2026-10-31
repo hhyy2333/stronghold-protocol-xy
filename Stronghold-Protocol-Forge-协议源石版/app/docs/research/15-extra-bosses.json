@@ -9,7 +9,11 @@
       "enemy_database.json (zh_CN) enemy_1507_mephi level 0: 生命 28000, 攻击 500, 防御 200, 法抗 60, 移动 0.5, 攻击间隔 6.0, 攻击半径 20（全场）, 重量 3, 目标价值 1; 无任何常见抗性; skills 为 null; talentBlackboard 仅 healaura.hp_recovery_per_sec = 1.0（生命回复速度 +100%）",
       "enemy_handbook_table.json enemy_1507_mephi: 能力 text（全场的敌方单位的自然生命回复速度加倍 / 普通攻击能够同时治疗3名敌方单位）",
       "PRTS 梅菲斯特 (level 0): 治疗不造成任何伤害、无阶段 / 无召唤 / 无技能; 5-10「长夜终尽」敌方阵容以宿主为主（宿主士兵×44 / 宿主拾荒者×22 / 粉碎攻坚手×3 / 特战术师×2 / 浮士德×1），关卡层面没有针对领袖的脚本技能",
-      "Ark-Models models_data.json enemy 1507_mephi (spine): enemy_1507_mephi.skel / .atlas / .png"
+      "Ark-Models models_data.json enemy 1507_mephi (spine): enemy_1507_mephi.skel / .atlas / .png",
+      "enemy_database.json (zh_CN) enemy_2018_csdoll level 0（唯一级别）: 生命 300000 / 攻击 800 / 防御 700 / 法抗 60 / 移动 0.1 / 攻击间隔 4.0 / 攻击半径 99（全场）/ 重量 10 / 目标价值 1 / 远程物理; 抗性 沉默·晕眩·沉睡·冻结·浮空·战栗·恐惧·诱导（麻痹·传送·缚地不免疫）; skills 保护屏障（cd 45 / icd 60）与 终结（cd 480 / icd 480）; talentBlackboard 召唤三段 interval 24 / 20 / 16 与 duration 90 / 180、自愈 0.0025、受击反击 stack_cnt 20 / warning_stack_cnt 10 / aoe.atk_scale 1.5、shield.hp_ratio 0.05、shield.interval 20、movespeedup.move_speed 2",
+      "PRTS 伤心的大锁（等级0，pageid 36812 / 敌人 id 1208）: 天赋 巨型单位（受击判定区域长2.95宽2.95，向上偏移1）、静态刚体、自缚、无法被阻挡; 「普通攻击可同时攻击2个目标，攻击范围为全场」; 【自愈】每秒 0.25 %; 召唤 24/48/72 s 第一类、110/130/150/170 s 第二类、180 s 后每 16 s（不含第 180 s 时）第三类; 「每受到20次可触发受击回复的伤害后…攻击力100%的法术溅射」（页面注明 Json 里的 150 % 未生效）; 技能 保护屏障（屏障 = 最大生命 15 %，期间不普攻、每 20 s 额外召唤、全场其他敌方移速 200 %）与 终结（200 % 法术 + 扣 30 目标生命，结束后自身死亡）; 页面的「数值换算」节（45000 / 1600 / 800）",
+      "enemy_database.json (zh_CN) enemy_1528_manfri level 0: 生命 40000 / 攻击 1000 / 防御 600 / 法抗 40 / 移动 0.5 / 攻击间隔 5.0 / 攻击半径 2.0 / 重量 8 / 目标价值 2 / 远程法术; 抗性 仅 沉默·沉睡; skills Pose（cd 9999）与 Funnel_rage（cd 9999，atk_scale 0.3）; talentBlackboard Funnel_common.attack@attack_speed 60 / max_stack_cnt 5 / duration 6、Shield.prob 0.8 / disable_duration 30 / Shield[disable].stun 8、Funnel_s1.attack@atk_scale 0.5、Funnel_s2.atk_scale 0.5、Reborn.duration 20 / interval 0.8 / invincible 5",
+      "PRTS 曼弗雷德（级别0，pageid 40267 / 敌人 id 1157）: 【专注】同目标每次 +60 攻速、最多 5 层、切换目标或 6 s 未攻击清空; 【军事训练】80 % 物理/法术闪避，被<伦蒂尼姆城防副炮>伤害后闪避失效 30 s 并晕眩 8 s; 第一形态普攻 1000×50 % 法术、被击败后 20 s 重生回 100 % 生命、重生期【枯木新枝】每 0.8 s 打 1 个随机我方 1000×30 % 法术; 重生结束切第二形态并获得 5 s 无敌，第二形态普攻 1000×100 % 物理 + 浮游炮同目标 1000×50 % 法术"
     ],
     "notes": [
       "属性按业主 2026-10-21「把黑蛇属性加强到现在的 boss 属性」拉到现有领袖的档位：生命 50000 → 240000、攻击 770 → 1000、防御 800 → 1000、法抗 50 不变（`stats` 覆盖，build-data 合并进数据）[ASSUMED：官方 H8-4 数值在本模式的领袖里偏低]。",
@@ -22,7 +26,12 @@
       "波次沿用 h07_05 的场地与巡逻路线：他会像卢西恩一样绕行、不会走到终点。无阶段、无技能、无召唤：kit 只把普通攻击换成治疗（每 6 s 至多 3 名未满血敌方单位，最低生命比优先），并加上 +100% 生命回复光环。",
       "bloodPoint 与其它手加领袖同档（277.5k / 787.5k / 2M / 4M）[ASSUMED：他是纯续航型领袖，整场要打掉的伤害量与其它领袖相当，实际手感待试玩回调]。",
       "复活动作与不息恶火的特效补齐（业主 2026-10-26「补全黑蛇第二阶段的火雨特性和复活动作」）：模型的骨架里本来就有三段重生 clip（data/assets.json animations：Reborn_1_Start 3.13 s / Reborn_1_Idle 0 s / Reborn_1_End 2.77 s，Reborn_2_Start 5.33 s / Reborn_2_End 1.23 s，外加 *_B 的 Idle_B / Move_B / Attack_B 一整套）。原先的形态映射把 5 s 重生挂成 'form2'（也就是 *_B 那套），而狂暴态回到基础影集，于是 Reborn_2_Start / Reborn_2_End 一次都没播过。现在：重生 = 'reborn'（Reborn_1_Start → Reborn_1_Idle 保持 → Reborn_1_End 正好收在 5 s），狂暴 = 'form2'（Reborn_2_Start 5.33 s 起手，之后走 *_B 的走 / 打），20 s 后回到 'form2' 的 leave clip Reborn_2_End 收尾再回基础影集。不息恶火按 PRTS「每隔2s从场地左侧召唤一列向右飞行的火球（每行一个）」：每一行都发一颗（没站人的行也有，那才是一道火墙），有人的行则在火球飞到最左侧那名干员时结算 100 % 法术；画面上是新增的 'bsnakeFire' 彗星式弹道（render/fx/projectiles.js `_stepComet`），横穿整行、拖一条燃烧尾迹，而不是原来那种砸在地上的迫击炮弹。",
-      "攻击力 1000 → 600（业主 2026-10-22「先削弱黑蛇攻击力至0.6倍」）：0.19.15 修好它「普通攻击从来没打出来过」的 bug 之后，它的普通攻击（真实伤害 + 附加烈焚灼息）与官方那条「带火者对黑蛇伤害降低 50%」第一次同时生效，R14 最终攻势里它成了最硬的首领（ABYSS L18 四人 @150 s 池子只掉 15 %，其余 45–97 %）。0.6 倍只压低直接伤害（普通攻击 / 引爆 / 不息恶火的火球），**烈焚灼息每秒 50 → 230 的递增来自技能黑板、不受攻击力影响**，狂暴的 +50 % 仍在其上叠。"
+      "攻击力 1000 → 600（业主 2026-10-22「先削弱黑蛇攻击力至0.6倍」）：0.19.15 修好它「普通攻击从来没打出来过」的 bug 之后，它的普通攻击（真实伤害 + 附加烈焚灼息）与官方那条「带火者对黑蛇伤害降低 50%」第一次同时生效，R14 最终攻势里它成了最硬的首领（ABYSS L18 四人 @150 s 池子只掉 15 %，其余 45–97 %）。0.6 倍只压低直接伤害（普通攻击 / 引爆 / 不息恶火的火球），**烈焚灼息每秒 50 → 230 的递增来自技能黑板、不受攻击力影响**，狂暴的 +50 % 仍在其上叠。",
+      "boss_13 伤心的大锁：属性直接用数据行原值（300000 / 800 / 700 / 60，重量 10、目标价值 1 来自 enemy_database，本文件只覆盖 maxHp/atk/def/res），不按其它领袖的档位改写 —— 它本身就是 300000 血的巨型首领。bloodPoint 与「萨米的意志」同档（277.5k / 787.5k / 2M / 4M）[ASSUMED：它只有一条血条，整场要打掉的伤害量与其它领袖相当]。波次用 act1autochess_h07_07（“萨米的意志”那张巨型自缚领袖场）。",
+      "boss_13 的 [ASSUMED] 点：① 保护屏障取 PRTS 数值换算的「最大生命 15 % = 45000」，数据里 `shield.hp_ratio` 是 0.05，两者不一致且没有来源解释差异；② 受击反击取 PRTS 的 100 %（页面注明 Json 的 `aoe.atk_scale` 1.5「并未生效」）；③ 三类召唤物的具体敌人来自关卡分支 csdoll_1/2/3，缓存的数据表里没有那几条分支，kit 用本模式已有的剧团敌人顶替（骇笑看客 / 绯红歌伶 / 剧场组装体），召唤时刻表本身用黑板的 interval + duration 复现 PRTS 的 24/48/72、110/130/150/170、196 起的 16 s 节奏；④ 自愈写的是**共享血池**：引擎的 heal 与自然回复都拒绝 `bossPool`，所以 kit 直接写池子（没有可写 `hp` 的池子——重新模拟时的 CreditPool——会静默保留血量）；⑤ 【终结】「技能结束后自身立刻死亡」只 kill 单位，血池没空就继续按池子 / 时限结算（DESIGN §20.10：共享血池的领袖没有真正的死亡）。",
+      "boss_13 的 静态刚体 / 自缚：领袖本来就不吃位移（battle/displacement.js 的 `_displaceable` 排除 `isBoss`），所以「静态刚体」不需要额外代码；「自缚 + 无法被阻挡」由 kit 自己挂 noMove + selfBound + unblockable——**这个 key 没有进 bosses.js 的 SELF_BOUND**：那份清单被 test/sim/playtest5_bossbody.test.js 与 test/docs-consistency.test.js 钉死为「有 data `hitArea` 的巨型领袖」，而 tools/build-data.mjs 的 HIT_AREAS 里还没有大锁（PRTS 给的是长 2.95 宽 2.95、向上偏移 1，与那 6 个「长 4.95 宽 2.95」不同，需要单独加一条 + 重新生成数据）。",
+      "boss_14 曼弗雷德：属性用数据行原值（40000 / 1000 / 600 / 40；重量 8、目标价值 2、攻击半径 2.0 来自 enemy_database）。bloodPoint 与其它手加领袖同档 [ASSUMED：两条 40000 的血条合计，整场伤害量与其它领袖相当]。波次用 act2autochess_h07_05（卢西恩那张，含 boss_battle_multi_player 双人镜像）。",
+      "boss_14 的 [ASSUMED] 点：① 【军事训练】只做 80 % 物理/法术闪避，`<伦蒂尼姆城防副炮>` 那半（闪避失效 30 s + 晕眩 8 s，黑板 `Shield.disable_duration` / `Shield[disable].stun`）在本模式没有对应装置，不建模；② 【专注】切换目标时「清除全部增益」后，新目标的第一次攻击按 1 层计（PRTS 只说切换后清空，没说那一击算不算一层）；③ 第一形态被击败进入 20 s 重生，这里用**血池比例 50 %** 当触发点：本模式的领袖 HP 就是共享血池，池子空了这一轮就结束，所以领袖没法真正「被击败再站起来」（与黑蛇同一处 [ASSUMED]，DESIGN §20.10），两条 40000 的血条按 50 : 50 切池子；④ 「首次被击倒时，结束当前波次」在本模式没有波次可结束，未建模；⑤ 浮游炮按 PRTS 做成「与普攻同步、同目标」的第二段 50 % 法术伤害（不是独立的索敌）。"
     ]
   },
   "bosses": [
@@ -55,6 +64,30 @@
         "enemy_2010_csdcr": "enemy_1061_zomshd",
         "enemy_1042_frostd": "enemy_1043_zomsbr"
       }
+    },
+    {
+      "bossId": "boss_13",
+      "enemyId": "enemy_2018_csdoll",
+      "handbookId": "enemy_2018_csdoll",
+      "name": "伤心的大锁",
+      "sortId": 13,
+      "weight": 4,
+      "hidden": false,
+      "bloodPoint": { "FUNNY": 277500, "NORMAL": 787500, "HARD": 2000000, "ABYSS": 4000000 },
+      "stats": { "maxHp": 300000, "atk": 800, "def": 700, "res": 60 },
+      "waveBase": { "multi": "act1autochess_h07_07", "solo": "act1autochess_h07_07_s" }
+    },
+    {
+      "bossId": "boss_14",
+      "enemyId": "enemy_1528_manfri",
+      "handbookId": "enemy_1528_manfri",
+      "name": "曼弗雷德",
+      "sortId": 14,
+      "weight": 4,
+      "hidden": false,
+      "bloodPoint": { "FUNNY": 277500, "NORMAL": 787500, "HARD": 2000000, "ABYSS": 4000000 },
+      "stats": { "maxHp": 40000, "atk": 1000, "def": 600, "res": 40 },
+      "waveBase": { "multi": "act2autochess_h07_05", "solo": "act2autochess_h07_05_s" }
     }
   ]
 }

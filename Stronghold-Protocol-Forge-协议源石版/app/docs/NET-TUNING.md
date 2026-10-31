@@ -26,8 +26,8 @@
 | `PUBLIC_FULL_EVERY`（增量帧保活：多少个连续增量帧后强制全量） | `32` | `server/match/match/common.js:40` | **上游无此参数** | 自愈窗口变长（32→64 时约 3.2 s→6.4 s），全量帧占比下降 | 自愈窗口变短，全量帧占比上升；大房间带宽回升 |
 | `PUBLIC_FULL_ASK_MS`（客户端 `g.publicFull` 的最小间隔） | `2000`（ms） | `public/js/main.js:150`（用在 `:379`） | **上游无此参数**（上游客户端 `net.on('m.public', …)` 只有一行 `store.patch`） | 客户端发现状态错后更晚才修 | 客户端更急着要全量；调得太小会把「要全量」放大成「每帧都要全量」 |
 | `PROTOCOL_VERSION`（线上帧格式号 / 陈旧页面闸门） | `2` | `shared/constants.js:16` | `1`（`v0.2.3`、`v0.2.4` 两 tag 都是 `export const PROTOCOL_VERSION = 1;`） | 见 §4：只有「帧的形状变了、旧页面会读错」才顶 | 不要「改回去」；降回 1 等于放一台没有合并逻辑的旧页面进来读错名册 |
-| 增量 diff 的字段范围 `SCALAR_KEYS`（顶层哪些键参与 diff） | 27 个键：`phase, round, lastRound, deadline, modeId, difficulty, stageId, setupRevision, rerollVote, factions, disabledBonds, drawnDisabledBonds, bannedChess, bossId, hiddenBossId, bossRound, hiddenRound, spRound, combatMode, paused, teamLp, overtimeAt, bossHp, draft, sp, unite, uniteResult` | `server/viewsDelta.js:55-60` | **上游无此参数**（上游没有 diff，每次都发整份 `publicView()`） | 新增顶层字段若不登记，它的变化**不会**进入增量帧 | 移除某项后，该项变化只在全量帧时才更新（客户端会长期读到旧值） |
-| 行内字段的 diff | 无白名单：按 `Object.keys(row)` 逐字段比 | `server/viewsDelta.js:249-285`（玩家行）、`:297-327`（战场条目） | **上游无此参数** | — | — |
+| 增量 diff 的字段范围 `SCALAR_KEYS`（顶层哪些键参与 diff） | 26 个键：`phase, round, lastRound, deadline, modeId, difficulty, stageId, setupRevision, factions, disabledBonds, drawnDisabledBonds, bannedChess, bossId, hiddenBossId, bossRound, hiddenRound, spRound, combatMode, paused, teamLp, overtimeAt, bossHp, draft, sp, unite, uniteResult` | `server/viewsDelta.js:55-66` | **上游无此参数**（上游没有 diff，每次都发整份 `publicView()`） | 新增顶层字段若不登记，它的变化**不会**进入增量帧 | 移除某项后，该项变化只在全量帧时才更新（客户端会长期读到旧值） |
+| 行内字段的 diff | 无白名单：按 `Object.keys(row)` 逐字段比 | `server/viewsDelta.js:255-291`（玩家行）、`:303-333`（战场条目） | **上游无此参数** | — | — |
 | `null` 语义 / `gone` 名单（不是数值，是行为口子） | 行内 `null` = 「这个键没了」→ 客户端删除该键；顶层键消失写进 `gone: [...]`；整行/整条目消失是 `{playerId|fieldId, gone: true}` | `server/viewsDelta.js:12-21`；客户端合并规则 `public/js/matchDelta.js:13-17`、`:75-76`、`:91-94`、`:123-125` | **上游无此参数** | — | 改错这一层的后果见 §5 |
 | 判断一帧能不能合并 `canMerge` | 无开关：`frame.delta === true` 且内层 `players`/`fields` 每项都有 `playerId`/`fieldId` 才可合并，否则判定不可合并 | `public/js/matchDelta.js:36-53` | **上游无此参数** |
 
@@ -184,7 +184,7 @@ W_worst     = max(W_keepalive, W_ask) + RTT ≈ 3.2 s + RTT
 - **`SCALAR_KEYS` 的维护是隐式契约。** 新增一个顶层字段却忘了登记，它的变化**不会**进增量帧，
   客户端会一直读到旧值，而且没有任何测试会因此变红（除非专门补用例）。
   行内字段没有白名单，改了就自动进 diff——所以「行内加字段」是安全的，「顶层加字段」不是。
-- **`gone` 名单与 `null` 的区分不能弄反。** 顶层 `null` 是**真值**（`rerollVote`、`bossId`、`uniteResult`），
+- **`gone` 名单与 `null` 的区分不能弄反。** 顶层 `null` 是**真值**（`bossId`、`uniteResult`），
   「键消失」必须走 `gone`；行内 `null` 才是「键没了」。弄反会出现「客户端状态与服务端基线永久不一致」，
   表现为每 `PUBLIC_FULL_ASK_MS` 就要一次全量、房间被反复打成全量帧。
 - **改完形状不顶号 ⇒ 最贵的坑。** 不顶号时，一台没合并逻辑的旧页面会一直错着读（名册、LP 都可能错），

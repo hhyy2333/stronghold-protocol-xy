@@ -1,9 +1,8 @@
-# WORKSHOP.md — 创意工坊与助战（remake 扩展）
+# WORKSHOP.md — 创意工坊（remake 扩展）
 
-本文档描述两件**本项目自行新增**的功能，它们都不属于官方数据，也不在 `tools/build-data.mjs` 的生成范围内：
+本文档描述一件**本项目自行新增**的功能，它不属于官方数据，也不在 `tools/build-data.mjs` 的生成范围内：
 
-1. **创意工坊（workshop）**：一个不修改 `data/*.json` 的内容叠加层，让社区可以新增/替换干员、装备、怪物、地图等。
-2. **助战（support）**：由**服务端**控制的助战卡池与名额，每名玩家每阶可选 n 个，不在卡池中的干员即禁用。
+**创意工坊（workshop）**：一个不修改 `data/*.json` 的内容叠加层，让社区可以新增/替换干员、装备、怪物、地图等。
 
 代码位置：
 
@@ -15,14 +14,9 @@
 | 把合并后的 `/data/*.json` 发给浏览器 | `server/index.js`（`buildWorkshopDataFiles`） |
 | 包语音汇总进 `assets.audio.voice` | `shared/workshop.js`（`workshopVoiceIndex` / `mergeWorkshopVoices`） |
 | 包自带盟约图标并进 `assets.bonds` | `shared/workshop.js`（`workshopBondIconIndex` / `mergeWorkshopBondIcons`） |
-| 助战配置与校验（纯函数，前后端共用） | `shared/support.js` |
-| 助战卡池的服务端声明 | `data/support.json` |
-| 助战的引擎侧视图 | `server/match/gamedata.js` |
-| 助战消息与落库 | `shared/protocol.js`、`server/lobby.js` |
-| 助战的对局内生效 | `server/match/Match.js`、`server/match/PlayerState.js` |
 | 一个包的 `.zip` 读写（零依赖，确定性且拒绝优先） | `shared/zip.js` |
-| 导出 / 导入 / 列出与 `pack.json.support` 的读写（CLI 与编辑器共用） | `tools/workshop-pack.mjs` |
-| 测试 | `test/workshop.test.js`、`test/workshopVoices.test.js`、`test/workshopAssets.test.js`、`test/support.test.js`、`test/zip.test.js`、`test/workshopPack.test.js` |
+| 导出 / 导入 / 列出（CLI 与编辑器共用） | `tools/workshop-pack.mjs` |
+| 测试 | `test/workshop.test.js`、`test/workshopVoices.test.js`、`test/workshopAssets.test.js`、`test/zip.test.js`、`test/workshopPack.test.js` |
 
 ---
 
@@ -63,7 +57,6 @@ workshop/<packId>/
 | `itemIcons` | 贡献项之一 | 这个包为哪些装备/道具提供图标，见 §1.4：`{ "<图标 id>": "<包内相对 assets/ 的路径>" }` | 装备页 + 该页的「已声明」清单 |
 | `art` | 贡献项之一 | 这个包自带的外观素材（头像 / 立绘 / 模型）**与四张扁平图表**（技能图标 / 分支图标 / 盟约图集 / 分队图集），见 §1.4、§1.2：`{ chars / enemies / tokens / skills / profSub / bonds / bands: { "<id>": … } }` | 干员页 / 怪物页的「本包自带的外观素材」+ 「已声明」清单 |
 | `skins` | 贡献项之一 | 这个包给某些干员带来的**时装**（一套 = 立绘 / 头像 / 可选模型与语音），见 §1.17：`[{ id, charId, name, series?, desc?, art?, voices? }]`。字段闭集是 `SKIN_FIELDS`，`art` 与 `art.chars` 的一条**同形**；落点是 `assets.skins[<charId>]` 的一列（同一干员可以有好几套）。**引擎不认识「皮肤」**：哪一套生效由一个注册了的外观提供者决定，玩家可以用设置里的「工坊外观」整个关掉 | ⛔ 本轮无图形入口（作者手写 `pack.json`） |
-| `support` | 否 | 这个包自己新增的、应当进助战卡池的干员 id 列表，见 §2.1；阶由记录推导 | 包管理 → 助战声明 |
 | `operators` | 贡献项之一 | 这个包自己新增的、应当进**自选池**（自选编队）的干员，见 §1.2；名字/星级/职业/分支从本包那条 `units` 记录派生 | 包管理 → 自选池声明 |
 | `playtest` | 否 | **试玩行为开关**（不进记录）：`{ "directToHand": ["<chessId>", …] }` —— 这些干员在编辑器「一键试玩」的第一回合直接进手牌，见 §1.2 与 docs/EDITOR.md §试玩 | 干员页的「试玩时直接发到手上」复选框（覆盖官方干员时写在这里；本包新增的干员仍写在记录里）+ 包管理 → 试玩直接发到手上（逐条删除） |
 | `overrides` | 否 | 允许覆盖的官方记录，格式 `"<file>:<id>"`，例如 `"chess:chess_char_1_01_a"`、`"bonds:yanShip"`、`"units:char_4231_clemnt"` | 包管理 → overrides（盟约页覆盖官方时自动补 `bonds:<id>`） |
@@ -99,11 +92,10 @@ workshop/<packId>/
 「开关名 + 闭枚举选项名」，一个数字、一个键路径、一个文件都写不进去 —— 这正是两者分得开的地方。
 
 **只带素材的包是合法的包**：`content: []` + `voices` / `voiceLangs` / `bondIcons` / `itemIcons` / `art` / `skins` / `operators` / `i18n` / `forms` / `fx`
-里任意一项（见 §1.4、§1.10、§1.17、§1.19）。一个只给助战干员配语音、只给盟约/装备配一张图、只给某个干员配一张立绘或一套时装、
+里任意一项（见 §1.4、§1.10、§1.17、§1.19）。一个只给自己的干员配语音、只给盟约/装备配一张图、只给某个干员配一张立绘或一套时装、
 只给已有语种补几条界面词条、只给自己的怪物补一个形态或一个静默相位的包，不需要提供任何数据文件；反过来，这些贡献项**全空**才会被拒（`EMPTY_PACK`）。
 
-`support` 与 `playtest` **不是**贡献项：`support` 只决定**助战卡池**里放谁，干员本体还是由 `content: ["chess"]` 带进来的
-—— 所以一个只写 `"support": […]`、`content: []` 的包会被 `EMPTY_PACK` 拒，而理由里会点名 `support`（见 §2.1 的完整例子）。
+`playtest` **不是**贡献项：它只是试玩时的行为开关（见 §1.2），一个只写它的包什么都没带来，照旧 `EMPTY_PACK`。
 
 中间层的四组能力声明（`assets` / `client` / `server` / `routes`，见 §1.9）与 `i18n` 也是贡献项 —— 但只有**声明了内容**
 才算：`routes: []`（空数组）与不声明没有区别，照旧 `EMPTY_PACK`；`fx: { "silentPhases": [] }` 同理（见 §1.19）。
@@ -359,7 +351,7 @@ workshop/*/ ──┘        （冻结之前）              └─→ /data/<fi
 
 #### 语音包（`voices`）
 
-包可以给干员配语音 —— 主要是给**自己新增的助战干员**配，也可以给官方干员补几条：
+包可以给干员配语音 —— 主要是给**自己新增的干员**配，也可以给官方干员补几条：
 
 ```json
 {
@@ -555,7 +547,7 @@ node tools/workshop-pack.mjs export my-pack                 # → ./my-pack.zip
 node tools/workshop-pack.mjs export my-pack --out D:\share\my-pack.zip
 node tools/workshop-pack.mjs import D:\share\my-pack.zip    # 装到 workshop/my-pack/
 node tools/workshop-pack.mjs import other.zip --force       # 覆盖同名包（默认拒绝）
-node tools/workshop-pack.mjs list                           # 每个包一行：id/名称/版本/内容/语音/助战
+node tools/workshop-pack.mjs list                           # 每个包一行：id/名称/版本/内容/语音
 ```
 
 **zip 布局**：`pack.json` 与包内其它文件（**包括 `assets/**`**）都在 **zip 根**，一个目录层级都不多 ——
@@ -596,8 +588,7 @@ UTF-8」的位（bit 11），而 **Windows 上的 `tar` / 资源管理器写中�
 （`tools/package-update.mjs`）使用 —— 这条规则曾经只长在更新器里，而包导入那条路没有，于是同一个中文名 zip
 「更新得了、导入不了」。
 
-装好的包要**重启游戏服务器**才会出现在游戏里。`pack.json.support`（§2.1）在编辑器第八页有图形入口：
-勾选本包自己新增的干员，阶由记录推导，页面不接受手输的阶。
+装好的包要**重启游戏服务器**才会出现在游戏里。包元数据、`overrides` 与 `operators` 的图形入口在编辑器第八页（包管理）。
 
 ### 1.6 作者接口（面向人，也面向 AI）
 
@@ -665,7 +656,6 @@ node tools/workshop-validate.mjs my-pack
 | **自选池声明（`pack.json.operators`）**：进 `diy.ownedPool` / `diy.operators`；四条拒绝规则（`OPERATOR_NO_UNIT` / `OPERATOR_NOT_SIX` / `OPERATOR_BOND_UNKNOWN` / `OPERATOR_FORM_MISSING`）失败关闭 | ✅ 已实现（`test/workshopOperators.test.js`、编辑器包管理页） |
 | **「新建一个干员」的编辑器表单** | ⛔ 不在本轮（业主未裁定；干员记录目前只能手写 `units.json`，或由干员页的机制产出） |
 | **包 kit 的 import 权利（`KIT_IMPORT`）** | ⛔ 未裁定：本轮之后，克莱门莎的 kit 仍然只能用就地补丁（`test/modSurface.test.js` 那条「判罚稳定」的测试是留给这次裁决的锚点） |
-| **包自带助战（`support`）**：按记录推导阶并入 `data/support.json` 的卡池、随合并的 `support.json` 送达客户端 | ✅ 已实现（`test/workshopSupport.test.js`） |
 | **分享与安装（`.zip`）**：导出/导入/列出，CLI 与编辑器第八页共用同一批函数 | ✅ 已实现（`shared/zip.js`、`tools/workshop-pack.mjs`、`test/workshopPack.test.js`） |
 | **局外编辑器 UI**：干员 / 地图 / 怪物 / 出怪 / 装备 / **盟约** / 行为层 kit / **语音** / **包管理** 九个页面 | ✅ 已实现（`editor/`，见 `docs/EDITOR.md`） |
 | 工坊包的版本对齐、依赖声明、内容寻址 | ⛔ 未实现（`gameVersion` 目前只是元信息） |
@@ -741,12 +731,7 @@ node tools/workshop-validate.mjs my-pack
 | `content` 里任一文件 / `voices` / `voiceLangs` / `bondIcons` / `itemIcons` / `art` / `skins` / `operators` | **算**（旧语义，一字未改；`skins` 见 §1.17） |
 | `assets` / `client`（至少一个面板）/ `server.preDispatch` / `routes`（至少一条） | **算**（A 段新增；一个只声明它们的包是合法包） |
 | `i18n`（至少一个语种） | **算**（B5 段；一个只给已有语种补词条的包是合法包，见 §1.10） |
-| `routes: []`、空的 `client.panels`、空的 `i18n`、`playtest`、`api`、`support` | **不算** —— 什么都没带来，照旧 `EMPTY_PACK` |
-
-`support` 在这一行里是**最容易踩**的一条：它只决定助战**卡池**里放谁，干员本体由 `content: ["chess"]` 带进来。
-一个只写 `"support": ["chess_ws_x"]`、`content: []` 的包会被 `EMPTY_PACK` 拒，理由里会**点名 `support` 不是贡献项**
-（B5 段补的措辞：原来的文案只列了合法贡献项，没有提到 `support`，作者只能对着 `EMPTY_PACK` 猜）。
-`EMPTY_PACK` 的**语义一个字都没放宽** —— 改的只是它把话说清楚。
+| `routes: []`、空的 `client.panels`、空的 `i18n`、`playtest`、`api` | **不算** —— 什么都没带来，照旧 `EMPTY_PACK` |
 
 「只带 `playtest` 的包照旧被拒」是既有裁决（`test/playtestDirectToHand.test.js` 钉着它），本刀**没有**为了让谁的
 测试变绿而放松任何断言 —— `test/packAssets.test.js` 里有同一断言的对照用例。
@@ -2055,7 +2040,7 @@ node --test test/packForms.test.js
 3. **必须标 `combat: true`**（`VARIANTS_NEED_COMBAT`）。判据是**能力**而不是意图：一条能改结果的口径声明，
    必须进房间摘要闸门与 golden 语料（与 `server.meta` / `server.battle` / `modules[].uses: ["matchClass"]` 同一条线）。
 
-**不是**贡献项：一个只声明了 `variants` 的包照旧 `EMPTY_PACK`（与 `support` / `playtest` 同一个语义 —— 口径选的
+**不是**贡献项：一个只声明了 `variants` 的包照旧 `EMPTY_PACK`（与 `playtest` 同一个语义 —— 口径选的
 是引擎已有的一套表现，不是内容）。
 
 **多包抢同一个轴**：按既有的「包 id 字典序小的赢」（§1.2、DESIGN §28.3），输的一方会被**点名**报告。
@@ -2104,7 +2089,7 @@ node --test test/packForms.test.js
 「写进去的 N 条」与「被抢掉的 N 张」分开印）。
 
 **不是**贡献项这条不再成立：口径**数值**是真的往对局里带数值，所以 `content: ["variants"]` 的包**不是**
-`EMPTY_PACK`；只声明轴、不带 `variants.json` 的包仍然是（与 `support` / `playtest` 同一条语义）。
+`EMPTY_PACK`；只声明轴、不带 `variants.json` 的包仍然是（与 `playtest` 同一条语义）。
 
 **它只在装载期生效**，不接管玩家自己的「干员调配」练度开关（`training` 轴今天的行为一字未改）。
 
@@ -2228,7 +2213,7 @@ URL **一次都不被请求**。一个包把加载源改坏了，关掉这一格
 3. **必须标 `combat: true`**（`BEHAVIOUR_NEEDS_COMBAT`）：一格的入场券本就是「它改一条规则」⇒ 必须进房间摘要
    闸门与 golden 语料。判据是**能力**而不是意图：将来若有一格**明确改不了结果**（例如纯客户端规则），它必须
    **不**要求 `combat`，并把「不改结果」写进那一格的 `effect`。
-4. **不是贡献项**：与 `support` / `playtest` / `variants` 同一个语义 —— 一个只带 `behaviour` 的包照旧 `EMPTY_PACK`
+4. **不是贡献项**：与 `playtest` / `variants` 同一个语义 —— 一个只带 `behaviour` 的包照旧 `EMPTY_PACK`
    （文案里点名 `"behaviour" is NOT a contribution`）。
 5. **缺省逐字节不变**：不声明 `behaviour` 的包，归一化清单里**没有这个键**（否则所有已发布包的内容哈希全变、
    房间的摘要闸门误判）；而**声明了就必须进身份哈希** —— 只差一个开关的两份包摘要必须不同（同一个摘要下两种
@@ -2511,116 +2496,26 @@ node tools/workshop-pack.mjs rollback  demo         # 把升级时留底的上�
 
 ---
 
-## 2. 助战
+## 2. 助战（已移除）
 
-### 2.1 配置：`data/support.json`
-
-```json
-{
-  "enabled": true,
-  "label": "助战",
-  "slots": { "5": 2, "6": 1 },
-  "pool": {
-    "5": ["chess_char_5_01_a", "…"],
-    "6": ["chess_char_6_01_a", "…"]
-  },
-  "denyUnknown": true
-}
-```
-
-| 字段 | 说明 |
-|---|---|
-| `enabled` | 总开关。`false` 或缺少可用的「名额 + 卡池」组合时整体禁用 |
-| `slots` | 每阶每名玩家可带的助战数量；`0` 表示该阶关闭 |
-| `pool` | 该阶允许的干员 id。**必须与 `data/chess.json` 里该干员的 `tier` 一致**：把 6 阶干员写进 `"5"` 里不会被提升，而是被禁用 |
-| `denyUnknown` | 卡池外一律拒绝（默认 `true`） |
-| `prices` | `{ "<chessId>": 3 }`：**带上这名助战的玩家**商店里的标价（0–99 整数，只认卡池里真有的 id）。留空 = 阶级价；关掉该助战时这条价目会被清掉（见 §2.3） |
-| `workshop` | 写 `false` 即忽略**所有**工坊包的助战声明（安装方保留最终决定权，启动日志会写出来） |
-
-这个文件由服务器维护、**不参与 `build-data`**，改完重启即生效，无需重建 `data/`。
-
-#### 工坊包自带助战（`pack.json.support`）
-
-`data/support.json` 是**这个安装**的决定；工坊包可以**建议**自己新增的哪些干员该进池：
-
-```json
-{ "id": "my-ally", "content": ["chess"], "support": ["chess_char_ws_my_ally_01_a"] }
-```
-
-> **`support` 本身不是贡献项**（`content` 才是）：上面那个例子里的 `"content": ["chess"]` 是**必需**的，
-> 因为干员本体是 `chess` 记录带进来的。一个只有 `"support": [...]`、`content: []` 的包会被 `EMPTY_PACK` 拒
-> —— 这不是缺陷，是既有裁决（§1.9 的 `EMPTY_PACK` 表）；B5 段把这条**写进了拒绝文案**，理由里会点名 `support`。
-
-装载时叠加层把每个 id 按**记录自己的阶**加进 `pool`（`shared/workshop.js` 的 `workshopSupportEntries` / `mergeWorkshopSupport`），
-于是「装包即可选」——不必再手工改 `data/support.json`。两条硬规则：
-
-| 规则 | 为什么 |
-|---|---|
-| **只能声明本包自己新增的干员** | 卡池是安装方的规则决定；允许包把官方干员塞进/移出卡池就等于让内容包改规则。违反记 `SUPPORT_FOREIGN_OPERATOR`（整条被拒，其余照常生效） |
-| **阶由记录推导，清单里不写** | `isSupportChess()` 要求 id 出现在**它自己那一阶**的池子里；清单里手写阶就会出现「写错了但没人报错、该干员静默不可选」。记录没有 1–6 的整数 `tier` 时记 `SUPPORT_TIER_UNKNOWN` |
-
-安装方保留最终决定权：`data/support.json` 里写 `"workshop": false` 即忽略所有包的助战声明（启动日志会写出来）。
-被触及的 `support.json` 会**合并后**发给浏览器（`workshopTouchedFiles`），客户端从那里渲染助战选择界面 —— 与其它工坊内容同一条路径。
-
-**写这个字段的图形入口是编辑器的第八个页面 `/pack.html`**（`docs/EDITOR.md` §包管理）：它勾选本包自己新增的干员进池，
-界面上显示的阶**由记录推导**（`workshopSupportEntries`，与加载器/校验器同一份规则，手输的阶会让该干员静默不可选），
-就地改 `pack.json` 的 `support` 一个字段，并说明卡池本身在 `data/support.json`、可用 `"workshop": false` 整体关掉。
-
-### 2.2 「没有即禁用」的三层含义
-
-1. **客户端看不到**：客户端只能通过 `gd.supportPicker()` 拿卡池；服务端是唯一来源。
-2. **请求被整条拒绝**：`checkSupport()`（`shared/support.js`）对卡池外的 id、重复 id、超出该阶名额的请求返回 `BAD_TARGET`，**不做静默降级** — 静默降级会把「被禁用的干员」悄悄变成「已发放的干员」。空选择永远合法，表示不带助战。
-3. **开局时再查一次**：`PlayerState.prepareSupports()` 会重新核对卡池，并把「本局商店里真的买得到的那几个」记进
-   `supportGranted`。因为 `data/support.json` 可能在 `lobby` 校验之后、对局开始之前被改掉；此时该干员被跳过并给玩家一条提示。
-
-### 2.3 生命周期
-
-```
-房间席位 seat.support ─→ Match 构造 opts.seats[].support ─→ PlayerState.setSupport()（再校验）
-        │                                                            │
-        │  构造时：Match.supportSupply = 人（非机器人）带上的助战        │
-        │  → SharedPool 给每人一份额外拷贝（连本局禁用也盖过去）          │
-        │                                                             │
-        INFO_CHECK 期间仍可改（与 room.loadout 一样，之后锁定）          │
-                                                                     ▼
-                            ROUND 1 开始时 prepareSupports() → 只记录「买得到的那几个」
-```
-
-- **助战干员进商店，不白送**（业主 2026-10-07 定下：「助战干员就应该加入商店，按阶级像普通棋子一样购买出售」）。
-  实现方式是共享池里**多一份拷贝**：`cap` 与 `left` 同时 +1，所以共享池恒等式（`left + Σ held == cap`）自动成立；
-  这份拷贝属于**这场对局**（池是共享的，合作模式里队友也能买到它）。
-- 助战因此就是**普通棋子**：可以在商店里摇到、按阶级价买到、可合成精锐、可装备、可部署、卖掉按普通规则归还拷贝。
-- **价格可以改**：`data/support.json` 的 `prices: { "<chessId>": 3 }` 是**带上它的那名玩家**商店里的标价（0–99，
-  只接受卡池里真有的 id）；没配的用它的阶级价（`GameData.chessPrice`）。出售价不分助战，一律走 `sellPrice`。
-- **阶级门照旧**：六阶助战仍要商店等级 6 才摇得到。
-- **随机禁用不禁用助战**：本局禁用名单照旧生成，但带上的助战仍然有一份拷贝 —— 「禁用抽卡」不是「禁用助战」。
-- 机器人不带助战（`PlayerState.setSupport` 直接拒绝，`Match.supportSupply` 也不看机器人的席位）。
-
-### 2.4 消息
-
-`room.support { entries: [chessId, …] }` — 数组，最多 `SUPPORT_LIMITS.entries`(16) 项，元素为互不重复的合法 id。校验与 `room.loadout` 同风格：结构错误 `BAD_MSG`，语义错误 `BAD_TARGET`，对局已过 `INFO_CHECK` 则 `WRONG_PHASE`（stub 对局没有 `setSupport` 时 `ROOM_STARTED`，与 loadout 一致）。
-
-### 2.5 当前状态
-
-| 部分 | 状态 |
-|---|---|
-| 服务端卡池、名额、全部失败关闭路径 | ✅ 已实现并测试 |
-| `room.support` 消息、会话/席位存储、对局内再校验 | ✅ 已实现并测试 |
-| ROUND 1 记录「本局商店里买得到哪些助战」、共享池记账恒等式 | ✅ 已实现并测试 |
-| 客户端**助战选择 UI** | ⛔ **未实现**（服务端已就绪，`m.private` 里也还没有回显 `support`） |
+**这个扩展已被删除**（业主裁决：助战是本作自研的扩展，不是官方玩法）。原来这一节讲的四件事 —— 服务端
+`data/support.json` 的卡池与每阶名额（§2.1）、「没有即禁用」的三层含义（§2.2）、助战干员在共享池里多一份拷贝
+并按助战价进商店（§2.3），以及 `room.support` 消息（§2.4）—— 现在**都不存在**：`shared/support.js`、
+`server/match/player/support.js` 与 `data/support.json` 一起删掉了，工坊包也不再声明 `pack.json.support`。
+旧包里写着的那个键不会让包装不上（它只是一条不再被读取的声明）。
 
 ---
 
 ## 3. 本地验证
 
 ```powershell
-node --test test/workshop.test.js test/support.test.js
+node --test test/workshop.test.js
 ```
 
 示例包位于 `docs/examples/demo-workshop/`（**目录名必须等于 `pack.json` 的 `id`**，否则加载器会以 `PACK_ID_MISMATCH` 跳过它），复制到 `workshop/demo-workshop/` 即生效；测试会在临时目录里做同样的事，所以仓库默认状态不含任何工坊内容。
 
 ```powershell
-node --test test/chessAuthoring.test.js test/workshop.test.js test/support.test.js test/editor.test.js test/workshopKits.test.js
+node --test test/chessAuthoring.test.js test/workshop.test.js test/editor.test.js test/workshopKits.test.js
 ```
 
 ---

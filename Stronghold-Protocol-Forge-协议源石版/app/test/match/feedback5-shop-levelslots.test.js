@@ -30,6 +30,11 @@ test('a level-up opens the new level\'s operator slot EMPTY; the cards shown sta
   assert.equal(ps.shop.slots[3], null, 'the new slot is open and empty');
   // the player sees it right away (m.private shop)
   assert.deepEqual(ids(ps.privateView().shop.slots), ids(ps.shop.slots));
+  // and can tell WHICH column the empty slot belongs to: an empty slot carries no kind, so the private view publishes
+  // the real slot counts (upstream 0.3.3 §38.1; ui/shopBar.js shopColumns splits by them)
+  assert.deepEqual(ps.privateView().shop.layout, { chess: 4, item: 1 });
+  assert.equal(ps.privateView().shop.layout.chess + ps.privateView().shop.layout.item, ps.privateView().shop.slots.length,
+    'the layout covers exactly the slots sent');
   // a manual refresh fills every slot at the new level (the empty one included)
   assert.deepEqual(h.m.handle('p_0', { t: 'g.refresh' }), { ok: true });
   assert.equal(ps.shop.slots.length, 5);

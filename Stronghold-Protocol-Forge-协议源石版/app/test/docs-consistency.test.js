@@ -391,7 +391,7 @@ test('user playtest #5 (DESIGN §19): blocking, 联防 forced exit, huge bosses,
   assert.match(sec(6), /knocked out at the end of its own combat enters down/);
   assert.match(PLAYING, /作战结束时已被击倒的干员在原位倒地/);
   // #10 huge bosses: hit areas (§3), 自缚 (§7)
-  assert.equal(SELF_BOUND.length, 7);
+  assert.equal(SELF_BOUND.length, 9);   // the 7 official 巨型单位 + the fork's 伤心的大锁 (boss_13) + the round-16 木桩
   assert.match(sec(3), /data `hitArea`/);
   assert.match(sec(3), /`sim\/body\.js`/);
   assert.match(sec(3), /中点判定/);

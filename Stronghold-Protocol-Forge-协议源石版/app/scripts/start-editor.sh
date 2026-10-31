@@ -26,7 +26,7 @@ if [ ! -f node_modules/ws/package.json ]; then
 fi
 
 echo
-echo "工坊编辑器正在启动（默认只绑本机 127.0.0.1:3311，可写工坊包与 data/support.json，不要暴露到公网）。"
+echo "工坊编辑器正在启动（默认只绑本机 127.0.0.1:3311，可写工坊包，不要暴露到公网）。"
 echo "保存后需要重启游戏服务器（scripts/start.sh）才会出现在游戏里。"
 echo
 exec node tools/workshop-editor.mjs --open "$@"

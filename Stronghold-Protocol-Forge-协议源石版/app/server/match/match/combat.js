@@ -8,7 +8,7 @@ import { deriveSeed } from '../../sim/rng.js';
 import { withBounties } from '../waves.js';
 // 协议源石敌方 hex 的 mods 半边（applyEnemyHexes / enemyHexMods）：**实战与预览必须折同一份**，否则
 // 预览显示的敌人数量与真打出来的不一致。
-import { applyEnemyHexes, matchEnemyMods } from '../hextech.js';
+import { applyEnemyHexes, matchEnemyMods, isRangedEnemyKey } from '../hextech.js';
 import { planUnite } from '../unite.js';
 import { FieldRunner, DeadBattle } from '../fields.js';
 import { DELAYS } from './common.js';
@@ -61,9 +61,11 @@ export class MatchCombat {
     // 末尾折一次敌方协议源石的 mods（虫群的 countAdd 等）—— **与 m.private.nextEnemies 的预览同一处折叠**
     // （views.js nextEnemiesFor）。从前只有预览折了、这里没折，于是「预览说有 N 只、实际只出 M 只」，
     // 由 test/content/choices.test.js 的「same enemy total」抓住；保证「预览的敌人数量 = 实战出怪数量」。
+    // 第三个参数是协议等级那条**远程怪攻击力曲线**的判定（业主 2026-10-30），预览必须传同一份。
     const spawns = applyEnemyHexes(
       withBounties(this.gd, this.round, wave, ps.bounties, ps.playerId).map((s) => ({ ...s, ownerPlayerId: ps.playerId })),
       matchEnemyMods(this),
+      (key) => isRangedEnemyKey(this.gd, key),
     );
     const ev = { input, kind: 'normal', round: this.round, spawns, ...(preview ? { preview: true } : {}) };
     // Preview construction failures go to the rehearsal's discard path, never Match.dispatch's live error sink.

@@ -29,9 +29,9 @@ npm run ci
 
 ---
 
-## 1. 契约面（11 个文件）：上游会照顾，我们只读
+## 1. 契约面（10 个文件）：上游会照顾，我们只读
 
-这 11 个是**两边共同的规范**，上游动它们会进 CHANGELOG：
+这 10 个是**两边共同的规范**，上游动它们会进 CHANGELOG：
 
 | 文件 | 它是什么 |
 |---|---|
@@ -41,10 +41,9 @@ npm run ci
 | `shared/i18n.js` / `shared/i18nPacks.js` | 界面词条 |
 | `shared/modIdentity.js` | 房间身份与摘要 |
 | `shared/diy.js` | 自选池记录 |
-| `shared/support.js` | 助战目录 |
 | `shared/packs` 的三个同族文件 | 见 `npm run ci` 的 imports 步骤 |
 
-**核对方式**：看上游 CHANGELOG 有没有改这 11 个；有，就逐条读它改了什么形状。
+**核对方式**：看上游 CHANGELOG 有没有改这 10 个；有，就逐条读它改了什么形状。
 
 **什么时候抬 `MOD_API_VERSION`**：只有「**契约语义变了、没有别名可对**」才抬
 （比如 kit 函数的签名变了、效果注册表的形状变了）。抬了老包会**响亮地被拒**（`MOD_API_INCOMPATIBLE`）——

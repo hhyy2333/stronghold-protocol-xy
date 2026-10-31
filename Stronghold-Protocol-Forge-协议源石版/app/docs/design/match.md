@@ -10,9 +10,14 @@ Part of [DESIGN.md](../DESIGN.md) (the index; section numbers are global).
 LOBBY(room, whose SEAT COUNT is set when it is created — the host's slider at `room.create` picks 2…this server's ceiling (缺省 20, `DEFAULT_MAX_SEATS`; `SP_MAX_SEATS=4` puts it back on the official room — 业主裁令 2026-10-12), and the host may resize it afterwards with `room.setSeatCap` (docs/META.md §1.9a) as long as the new cap still holds everybody already in the room, so no occupant can ever be evicted and no seat index moves; a 4-seat room's frames are byte-for-byte the ones from before that feature) → INFO_CHECK (co-op 25 s; solo and any single-human match untimed (§18.2); all ready ⇒ skip; the operator loadout (§16) locks when it ends) → BAND_DRAFT (co-op: random order — the room option 「AI 队友最后选择」 (host, off by default; `room.setAiPicksLast`) puts every human seat before every AI seat, each group keeping the drawn order, and draws no extra random number; a skipping human goes behind the other humans still to pick and ahead of the AI seats, or to the very end when no other human remains [ASSUMED] —, ONE countdown — `BAND_TURN_SECONDS` 50 s per turn = m.public.deadline, AI seats pick at once, 1 skip each, **duplicates allowed** — `data/config.json bandDraft.duplicatesAllowed` true (the official rule and the default: two seats may take the same strategy; research 01 `_criticAddendum.bandDraft`, superseding research 09 §5's reading of the guidebook page), published as `m.public.draft.duplicatesAllowed`; with the switch off a strategy a teammate already took is refused (队友已选) and the automatic assignments hunt for a free one —, timeout ⇒ the strategy the player highlights (`g.bandFocus`) while allowed (and, switch off, free), else band_bldsk, else (switch off) the first free one; solo: free pick, no timer, no skip; a single human: untimed) → BATTLE_CHECK (3 s)
 → loop r = 1..lastRound:
      ROUND_START   (income, upgrade price −1 (floor 0), temp NOT wiped — what overflowed after the last prep's deadline is shown in this
-                    prep (§6.2 temp overflow), unfrozen shop slots rerolled, frozen kept, <进入休整期时> effects)
+                    prep (§6.2 temp overflow), unfrozen shop slots rerolled, frozen kept, <进入休整期时> effects;
+                    破财消灾's debt (`ps.payoffDue`, booked by the previous round's 悬赏决策) is collected here, after the
+                    income, as a real `spend()` — owner 2026-10-30, META §1.2)
      [SP_DRAFT]    (if r ∈ spRounds: 机变 draft; co-op: random order (「AI 队友最后选择」, off by default: humans first, the same partition as the strategy draft), 30 s first picker / 16 s others; solo 3 cards; solo / single human untimed;
-                    a card is picked with two taps, §18.2)
+                    a card is picked with two taps, §18.2; a 悬赏决策 round also offers 「破财消灾」 — a −1 pseudo index, once
+                    per player, 1 资金, no card taken (META §1.2) — and its 1 资金 is charged at the NEXT round's start, not on
+                    the pick, with no funds gate on the pick itself (业主 2026-10-30「扣1块钱是在下回合开始时扣」/「没钱也能选，
+                    下回合从收入里扣」: `ps.payoffDue` → `settleSpPayoffs` in ROUND_START)
      PREP          (co-op: timer from config (else the infoCheck 25 s guard), ends when all alive humans+bots ready; solo: untimed, ends on ready; a single human in a co-op room is TIMED — the prep waits on that human's Ready and would otherwise stall, docs/PS100-MIGRATION.md §5. **修订 playtest #4 item 3**: that rule used to let the lone-human 同盟房 wait forever at this phase — the defect this timing removes; the `test/match/verification-slices.test.js` assertion that depended on that stall was retargeted to the accepted-result object, and a positive assertion added — docs/META.md §1)
      PREP_END      (<休整期结束时> effects; unfrozen shop cleared; Ready is blocked while a personal choice or temp overflow is pending;
                     at the deadline personal choices are auto-picked first, then
@@ -31,9 +36,34 @@ LOBBY(room, whose SEAT COUNT is set when it is created — the host's slider at 
                     real s after 120 real s, or 150 with an AI teammate at fight start (§31.1, m.public.overtimeAt); no layer gains; team LP 0 ⇒ defeat at once (PRTS 直接失败),
                     pool 0 ⇒ victory — the first end the server registers decides, §20.5)
    R15 HIDDEN_CORE  (if difficulty ≥ NORMAL and Σ activated layers > 350 solo / 1200 co-op and team LP > 1)
+   R16 木桩演练    (only after the Hidden Core was CLEARED, and only in a mode with `dummyRound` — the six NORMAL+ ones;
+                    owner 2026-10-29「增加16回合，加一个“木桩”让玩家看看自己的输出」. A NORMAL-template round
+                    (`custom_dummy`, 60 real s) whose wave builds exactly one 木桩: it neither moves nor fights back and
+                    heals itself, so the players read their own output on a fixed window. It is NOT a rule round — it
+                    pays no reward, moves no `roundsPassed`, has no shared pool and no 限伤 (the post's spawn carries no
+                    `boss` tag) — so `_finishFinal` starts it and `afterSettle` ends the match when it settles)
 → RESULT (per-player stats, titles, rounds passed, victory/defeat)
 ```
 Solo FUNNY has 9 rounds (boss at R9); everything is read from `data/config.json → modes[modeId]`.
+
+**The 木桩演练 round (R16)** exists because the owner wanted a way to see one's own output. Two properties follow from that
+and are worth stating, because they are what make the numbers readable:
+
+- *played from the boss deploy field* (owner 2026-10-30「16回合没有设置成boss回合，导致地图有问题」): the round registers the
+  players into `bossWaves` (`phases.js _planDummyField`) so `deployFieldOf` hands out `bossL` / `bossR` and the post stands
+  on the official leader route — but the FIGHT stays a normal `PHASE.COMBAT` one: no shared pool (its `bloodPoint` would
+  override the post's HP), no `BOSS_HIT_LIMIT` 限伤 (300 000 — it cancels a big hit whole and would eat exactly what this
+  round measures), no overtime LP drain.
+- *a measuring device, not an enemy*: `enemy_9901_dummy` is `enemy_9033_acdeer` (“萨米的意志”) cloned with `atk` 0,
+  `moveSpeed` 0, `lpr` 0, `def`/`res` **0** and a **325 亿** (32 500 000 000) HP pool that regenerates 1000/s — the owner raised it from 20 000 000 on 2026-10-30「木桩太脆了，血量改为325亿」after a fully-built team emptied a 20 000 000 post inside one window. The unarmoured target is the
+  point — `max(A − D, 5 %·A)` would floor every low-ATK operator at 5 % against 萨米's own 800 DEF, and the reading would
+  be “output vs an 800-DEF target” rather than the operator's own (docs/DATA.md "The training post"). The pool is sized so
+  no team empties it inside the 60 s window; there is deliberately **no** 免死/无敌, because an invulnerable post would read
+  0 damage.
+- *readable while it runs*: the in-battle 伤害统计 panel carries a 秒伤 (DPS) column — damage dealt ÷ the seconds the
+  battle on screen has run (`public/js/ui/damageReport.js`; the panel itself stays a pure view and takes `elapsed` from the
+  game screen's battle clock) — and the panel opens itself, frozen, once when this round settles. The dummy round and that
+  panel are the only parts of the game that do this; every other round's report is opened by the player.
 
 ### 6.2 Player state (PlayerState.js) — authoritative per player
 
@@ -61,6 +91,8 @@ Summons (§20.1): an operator on the board sends its manually deployable summons
 Equipment (research 04 §2 + addendum, 09 §1.2): 2 slots per chess; a third item on a full carrier replaces the equipped item `replaceUid` names (the replace dialog's pick, official `UseEquipUp.unloadInstId`; absent ⇒ the oldest; a uid not equipped on the target ⇒ `BAD_TARGET`, nothing changes) and the replaced item is destroyed. A consume-on-equip item (盟约之币, 博士投影 …) on a full carrier replaces the same way before it resolves, so the carrier is left with a free slot (the normal 博士投影 takes it until the next round start); a target its effect refuses (博士投影 on an elite) keeps both items — PRTS 卫戍协议/帮助 "达到上限强行佩戴会改为替换装备" names no exception (GitHub #263; the client opens the replace dialog for it, `equipReplaces`). Equipped items are otherwise **locked**: `destroy` (销毁) accepts hand / temp items only (`BAD_TARGET 'equipped items are locked'`); equipment goes back to the hand only when its carrier merges, is sold, or is destroyed by 突变细胞's transformation (the cell itself returns too; PRTS 帮助 "在失去该干员（干员出售、销毁、合并等）…时自动卸除", §21.1) — a sale is refused with `HAND_FULL` when there is no room for it; returned equipment is stowed before the operator a transformation gains and before a merge elite's summon cards, and every path that hands the player an item — returned equipment included — ends with the auto-merge, so no player holds two identical mergeable normal items (§21.7).
 
 Economy/shop/pool/merge/hand rules: exactly as research 00-INDEX §3–§4 (income `min(3+r,12)`; prices by tier; refresh 1; freeze toggles all; sell +1; items not sellable; upgrade prices per mode with −1/round; single-player pool copies 12/14/18/16/8/5 plus measured exceptions; co-op shared operators use twice those counts, while equipment has separate shared stock (DESIGN §31.8); elite = 3 copies; odds = copy-weighted draw over unbanned visible chess with tier ≤ level; merge 3 (风丸 2) → elite onto the consumed deployed copy's tile, else to the hand (§20.11) + reward offer of 3 **different** free chess of tier `min(level+1, 6)` (copy-weighted; a tier short of different chess tops up from the tier below [ASSUMED], §20.6); full hand blocks every buy / reward pick, a merge-completing one too (PRTS 卫戍协议/帮助 §手牌区, GitHub #82); overflow to temp; a free hand slot pulls the temp pieces back in at once, right → left (`PlayerState._fillHandFromTemp`); temp blocks ready).
+
+**N19 的负面：一回合获得的资金上限（业主 2026-10-29「增加限制玩家一回合最多获得30块」→「把这个负面做成 n19」）.** 这条规则**属于协议等级 19**（表里那一行的 `fundsGainCap: 30`）：0–18 级、其它难度、以及关了等级的每一局都是 0 = 不设上限，从前的经济逐字节不变。口径按业主同一次追问的两个选择定：**所有正收益都算** —— 回合开始的收入（含上回合结转的首领金币 `pendingFunds`）、协议源石 / 盟约 / 装备 / 策略的发放、卖出返还、债务还款，全部计入同一个额度；超出的部分**直接作废**、不结转下回合，并在第一次被削时给本人一条 toast（每回合最多一条，四语都翻了）。执行点只有一个：`PlayerState.addFunds`（`server/match/player/economy.js`）—— 全游戏的钱都从那个原语进（内容层也走 `effectsMeta` 的 `ctx.addFunds` → 它），所以没有能绕过去的路；计数器是 `ps.round.fundsGained`，`startRound` 用它之前先清零，于是「一回合」= 一次回合开始到下一次。负数 `addFunds`（刚扣掉又退回来的付款、对外还的债）把额度**还回来**：那只还回钱包里真正少掉的那部分，「先付再退」的一对因此不占额度；而 `spend()` 真正花掉的钱不还。`force: true` = 不是「获得」：跳过上限、也不计数 —— 测试场自己的工具钱（`g.testFunds`、`g.testBoss` 的起步资金）与只把钱挪去立刻花掉的内部过路（天人形态的免费升级）用它。回归：`test/match/funds-cap.test.js`（19 级生效 / 18 级与关等级不生效 / toast / 卖出 / 退款 / force）。
 
 **Temp overflow (临时整备区, row 8; user playtest #3 item 3).** Passive gains that find the hand full (merge elites, grants — the operator a 突变细胞 transformation gains included, §21.1 —, battle-result rewards, equipment returned by a merged / sold / transformed carrier) overflow into the 5 temp slots, and Ready is refused while any is occupied (official "直到溢出情况排除才可开始进行作战"). A temp piece is resolved — a chess sold back to the pool with its summons removed, items destroyed, a summon stack removed (it comes back at the next round start, PRTS "干员所属召唤物会于下一回合返还", §20.1) — only at the deadline of the **first prep in which its player could act on it** (`PlayerState.tempDue(piece)` vs `prepsEnded`; every write into a temp slot goes through `_putTemp`, which records it): a piece that arrived during a prep before Ready is due at that prep's end; one that arrived after Ready or during the `<休整期结束时>` effects, or outside PREP (COMBAT, 联防, SETTLE — battle-result grants, a SETTLE merge's elite, returned equipment —, the next ROUND_START, 机变) is kept, visible and usable (move to a free hand slot, place, equip, use, destroy, sell) through the **next** prep. Un-readying (`setReady(false)`) makes whatever arrived while ready due at the current prep. ROUND_START no longer wipes temp (it used to destroy what SETTLE had put there before the player ever saw it). A merge's elite whose merge consumed a deployed copy takes that copy's tile and facing (§20.11); otherwise it goes to the hand, overflowing into temp (also outside PREP). `server/match/audit.js` (`tools/matchrun.mjs --check`) tracks the arrivals itself and flags any temp piece that outlives its due prep. The UI frames the row on the board with the rule (§17.5).
 
@@ -158,35 +190,52 @@ bot reply. Settlement uses that round's results (kills then damage, stable seat 
 chess merge reacts once and resets at settlement. Gifts are classified by trusted source playerId, never display name.
 These hooks consume no gameplay RNG and schedule no game actions.
 
-[ASSUMED] During INFO_CHECK the host may request an opening reroll; all connected human participants must explicitly
-agree, including autoplay humans. Bots and spectators do not vote; one human refreshes immediately. A vote pauses the
-confirmation timer and blocks Ready. Rejection, host cancellation, disconnect or leaving cancels it and restores the
-remaining time / prior Ready state. Success preserves the room, seats, settings and connections, redraws the complete
-opening, resets Ready, and starts the full original timer (single-human matches remain untimed). Fixed stage/bans
-remain fixed and random results can repeat. A separate seed-derived stream leaves shop/draft RNG untouched; requests
-have a 300 ms anti-burst guard, revision and vote identities. All new setup data and player DIY stocks are prepared
-before mutation; data preparation failure leaves the old opening intact. This is a remake convenience, not an official
+[ASSUMED] During INFO_CHECK the host alone may reroll the opening (业主 2026-10-30); no other player votes or has to
+agree. The request carries the `setupRevision` the host saw, so a stale briefing cannot overwrite a newer opening. It
+also preserves the room, seats, settings and connections, redraws the complete opening, resets every human's Ready, and
+starts the full original timer (single-human matches remain untimed). Fixed stage/bans remain fixed and random results
+can repeat. A separate seed-derived stream leaves shop/draft RNG untouched; requests have a 300 ms anti-burst guard and
+are refused outside INFO_CHECK. All new setup data and player DIY stocks are prepared before mutation; data
+preparation failure leaves the old opening intact, and a queued all-ready transition is cancelled only once the new
+opening is ready. A disconnected or autoplaying human does not block the host, and a reconnect receives the new setup.
+The client asks the host for one local confirmation, which is not a vote. This is a remake convenience, not an official
 mode rule. Unrelated result-screen changes from PR #408 are not included.
 
 The shared DIY detail preview (stats, range, trait, talents, potential, cultivation and matching normal/elite skill descriptions) follows roster loadout resolution. Jessica shield placement is limited to her four orthogonal neighbors. The two Ptilopsis prep-gift copy exceptions are defined in §31.3 and META; no generic change to all copied conditions is implied.
 
 
-## 协议等级 1–18（2026-10-18，业主裁定）
+## 协议等级 1–19（2026-10-18；19 级 2026-10-29，业主裁定）
 
 **叠加在「终极模拟」之上的一条数值难度轴，`0` = 关闭。** 它不是第 5 个模式：四个难度是四份不同的官方数据
-（回合表 / 敌池 / 盟约集合 / 首领回合），各做 18 份 = 72 套数据，不可维护。等级只折进引擎**已有**的读取点。
+（回合表 / 敌池 / 盟约集合 / 首领回合），各做 19 份 = 76 套数据，不可维护。等级只折进引擎**已有**的读取点。
 
-- **口径**：只有 `difficulty === 'ABYSS'` 能开 1–18；其他难度上服务端归一化为 0。`0` 时引擎逐字节不变
+- **口径**：只有 `difficulty === 'ABYSS'` 能开 1–19；其他难度上服务端归一化为 0。`0` 时引擎逐字节不变
   （golden 不移动）。13–18 已用 `tools/balance.mjs --level` 量过一轮（docs/BALANCE.md §8），与 1–12 同一条
-  单调曲线（生命/攻击逐级升；数量、漏怪、收入惩罚、首领池、额外敌方源石在 13–18 都不回头）。
+  单调曲线（生命/攻击逐级升；数量、漏怪、收入惩罚、首领池、额外敌方源石在 13–18 都不回头）。**19 级的敌方数值
+  没量过**（`[ASSUMED]`，沿 18 级的增量再抬一格）：业主 2026-10-29 点名的是它的**负面**，不是它的数值。
 - **表**：`shared/protocolLevels.js`。每级只动 1–2 个玩家能感知的量，乘法曲线，每 3 级一个拐点：
-  1–6 敌方生命/攻击；7–12 追加防御/法抗、漏怪 LP、每波数量、收入；13–18 首领池、额外敌方协议源石、收入惩罚。
-- **回合爬升（2026-10-24，业主「削弱敌方前期加强后期」→「k = 1 落在第 6 回合」）**：同一级的乘区在**局内**按回合缩放
-  「高于 1 的那一段」——`有效乘区 = 1 + (表值 - 1) × k(round)`，k = R1–2 0.45 / R3–4 0.60 / R5 0.80 /
-  **R6–10 1.00** / R11–13 1.20 / R14–15 1.35（`PROTOCOL_LEVEL_ROUND_RAMP` / `protocolLevelRoundK`）。18 行表值不为它
-  改动，所以 R6–R10 与改前逐字节相同。`countAdd` 另走一条阶梯（`protocolLevelCountAddAt`：R1–5 = 0、R6–10 = 表值、
-  R11 起 +1）；`bossPoolMul` 不吃 k（它只在首领回合生效），改成直接抬表值 13/14 = 1.25 … 18 = 1.80。
-  `round` 缺失或非整数 ⇒ k = 1（开局前的读取路径与旧口径一致）。
+  1–6 敌方生命/攻击；7–12 追加防御/法抗、漏怪 LP、每波数量、收入；13–19 首领池、额外敌方协议源石、收入惩罚。
+- **19 级 = 18 级 + 一个负面**（业主 2026-10-29「把这个负面做成 n19」）：多出来的那一格是行里的 `fundsGainCap: 30` ——
+  **一回合最多获得 30 资金，超出的部分作废**（完整口径与唯一的执行点 `PlayerState.addFunds` 见上面 §6.2 经济那段）。
+  它是**唯一**带这一格的等级；0–18 级、其它难度、以及关了等级的每一局都是 0 = 不设上限，从前的经济逐字节不变。
+  18 级起有的东西（R10 彩蛋首领）19 级也有。
+- **回合爬升（2026-10-24，业主「削弱敌方前期加强后期」→「k = 1 落在第 6 回合」；2026-10-31 后三回合再各抬一档）**：
+  同一级的乘区在**局内**按回合缩放「高于 1 的那一段」——`有效乘区 = 1 + (表值 - 1) × k(round)`，k = R1–2 0.45 /
+  R3–4 0.60 / R5 0.80 / **R6–10 1.00** / R11–12 1.20 / **R13 1.35** / **R14–15 1.55**（`PROTOCOL_LEVEL_ROUND_RAMP` /
+  `protocolLevelRoundK`）。业主 2026-10-31「增加 n1-n19，13，14，15 回合的敌人加成」就是这一档：R13（最后一个普通回合）
+  与 R14 / R15（最终攻势 / 隐秘核心）单独抬，前面所有回合一个字没动。表值不为它改动，所以 R6–R10 与改前逐字节相同。
+  `countAdd` 另走一条阶梯（`protocolLevelCountAddAt`：R1–5 = 0、R6–10 = 表值、R11 起 +1）；`bossPoolMul` 不吃 k
+  （它只在首领回合生效），改成直接抬表值：13/14 = 1.35、15/16 = 1.50、17 = 1.70、18 = 2.00、19 = 2.10 —— 首领轮
+  「跟着更硬」走的是这一列，不是给池子乘 k。`round` 缺失或非整数 ⇒ k = 1（开局前的读取路径与旧口径一致）。
+- **远程怪的攻击力单走一条曲线（2026-10-30，业主「给 n1-n19 的远程怪攻击力曲线单独设置」）**：每行多一格
+  `atkMulRanged`，只作用于 **`applyWay === 'RANGED'`** 的敌人（当前 92 个）；`ALL`（能近能远，16 个）与 `MELEE`
+  仍吃 `atkMul` —— 业主当场选的是这个**窄口径**，不是官方图鉴「攻击方式包含远程」那个宽口径（`op-thorns.js`
+  的反伤判定用的是宽的，两者故意不一致）。曲线更**缓**：1–6 级两条逐值相同（稳定区不动），7 级起放缓，
+  19 级 1.46 对通用的 1.94。它吃同一份回合爬升（`PROTOCOL_LEVEL_RAMPED_KEYS` 里有它）。折入点只有一个：
+  `server/match/hextech.js` 的 `applyEnemyHexes` —— 远程怪的 spawn 拿「卡牌那份 `atkMul` × `atkMulRanged`」，
+  **生命 / 防御 / 法抗 / 速度两条完全一样**；`tag === 'boss'` 的领袖**不吃**这一格（首领轮有自己的 `bossPoolMul`
+  与共享血池，这条曲线是给小怪 / 精英怪的）。两条曲线相同时（0 级 / 1–6 级）连 `atkMulRanged` 这个键都不带出来，
+  于是 0 级、其余三个难度、以及 1–6 级的对局逐字节不变。回归：`test/match/protocol-levels.test.js`。
 - **收入惩罚从第 8 回合起生效**（`PROTOCOL_LEVEL_INCOME_FREE_ROUNDS = 7`，业主 2026-10-18：「n18 经济惩罚太重」
   →「从第 8 回合开始减少钱」）。这条惩罚是**绝对减**，而开局是自走棋最脆弱的地方：Lv18 的 `incomeDelta: -3`
   曾把第 1 回合的 4 金砍到 1 金（最便宜的棋子 2 金）—— 那不是「更难」，是开局就被判死。豁免前 7 回合后，
@@ -200,7 +249,7 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `room.state.level`（只有 >0 才带这个键）；`m.result.protocolLevel` 进战绩（`matchRecords` 的 `level`、
   `ui/stats` 的 `level`）。
 - **匹配**：`server/matchmaking.js` 严格按 `(difficulty, level)` 成房 —— 不同等级不会凑到同一间。
-- **额外敌方协议源石**：13/14/15 级 1 张、16/17 级 2 张、18 级 3 张，**按 1 / 3 / 5 回合分散发放**
+- **额外敌方协议源石**：13/14/15 级 1 张、16/17 级 2 张、18/19 级 3 张，**按 1 / 3 / 5 回合分散发放**
   （`MatchHexDraft.applyProtocolLevelEnemyHexes(round)`，每回合由 `MatchPhases.startRound` 调一次；第 i 张落在
   `PROTOCOL_LEVEL_EXTRA_HEX_ROUNDS[i]` 回合。业主 2026-10-22「额外协议源石分散给，在1，3，5回合给额外的」——
   此前是开局一次发完，L18 等于 R1 就拿到 3 张）。从敌方名册按这一局的 `rngHex` 抽（跳过已有的卡、确定性；等级
@@ -216,7 +265,7 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `records.board` 取榜，客户端「统计 → 排行榜」按难度 / 等级筛选。
 - **N18 第 10 回合的彩蛋首领**（业主 2026-10-22「n18难度增加第10回合会出现黑蛇或梅菲斯特」）：**普通回合里额外
   刷一只**「不死的黑蛇」（`enemy_1515_bsnake`）或梅菲斯特（`enemy_1507_mephi`），由对局种子决定是哪一只；只在
-  **ABYSS 18 级**、**只在 R10**。
+  **ABYSS 18 级起（18 / 19）**、**只在 R10**。
 
   形态是业主当场选定的那一条：**不是一个额外的首领回合** —— 它不碰最终攻势那一整套（不合并团队 LP、没有共享
   血池、没有 BOSS_HIT 播报、R14 照常还是本局唯一那场首领关），而是像波次里任何一个敌人那样打：走本回合第一条
@@ -241,7 +290,7 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   与排版；顶上一行 `protocolLevelHeadline` 给出「稳定区 / 危险区 / 深潜区」的一句摘要。两个落点：
   `public/js/screens/lobby.js` 的 `ProtocolLevelPicker`（选择模拟协议里，等级条下面直接摊开）、
   `public/js/screens/room.js` 的底栏滑块（空间只有一格，点 `?` 展开浮层 `.rs-lvhelp`）。
-  18 级独有那一条（R10 的彩蛋首领）用 `is-special` 单独标记，因为它是唯一一个「不是数值」的规则。
+  「不是数值」的两条（R10 的彩蛋首领、19 级的一回合资金上限）用 `is-special` 单独标记。
   这些 msgid 是运行时拼出来的，`tools/i18n.mjs` 的字面量提取看不到它们，所以：四个语言包手工补齐，
   `PROTOCOL_LEVEL_EFFECT_TEXT` 留一份完整清单，`test/match/protocol-levels.test.js` 逐个查
   `public/i18n/*.json`（少一条就报 —— 漏了的表现是界面上直接显示中文原文）。
@@ -251,6 +300,8 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   官方那条「带火的干员对黑蛇伤害降低 50%」也随之第一次生效（见 `docs/BALANCE.md` 的同一节）。
   R10 彩蛋首领的手感数据是在**修复前**量的，那批数字偏软。
 - **待办**：人手实测；L18 的 R8 尖峰（每波 +1 + 3 张额外源石）是刻意的终局强度，实测过狠时先动 18 的 `countAdd`。
+  **L19 的敌方数值还没量过**（`[ASSUMED]`，沿 18 的增量再抬一格）：实测时若比 18 级狠太多，先调 19 的 `hpMul/atkMul`，
+  别动它的 `fundsGainCap`（那是业主点名的那一格）。
 
 
 
@@ -278,6 +329,16 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   层数读 `ps.layers`，**圣约回响的显示倍率不算**）把**场上**的炎干员加进 `steadShip` 的成员集合 ⇒ 坚守真的激活 / 升阶，
   盟约条与弹窗的在场数跟着变。战斗输入随后带着这个 `tier`，`bonds/addon/battle.js` 再把炎干员并进坚守的成员名单
   （战斗中才到 300 层时由 `layerGain` 重建名单）；客户端 `gameLogic/bonds.js bondMembers` 只镜像弹窗的成员行。
+- 伤害转移的叠加口径（业主 2026-10-29 裁定）：**任何转移的产出都不再被二次转移**。100 % 转移（【骑士徽章】）在
+  `hit` 阶段**认领**整次伤害（`dmg.redirectClaim`），坚守 / 浊心斯卡蒂 S1 / 燎原的炎烬据此不削减、不分成 —— 它们的
+  分成是从「落到被转移者身上的 HP」反推的（`damage.js redirectShare`），认领之后那里恒为 0，先削后转只会把那份伤害
+  **删掉**（实测：1000 打在「卡西米尔 + 坚守 t2」的干员身上，全队只吃 600）。反过来，任何一种转移产出的那一份
+  （`damage.js isRedirectShare`：`transfer` / `bond:stead:share` / `hex:yanember:share` 标记与 `steadShare` /
+  `steadThorn` / `yanEmberShare` / `knightTransfer`）都不会被再切一次、也不会被徽章接走。所以「斯卡蒂 S1 + 坚守」
+  同时生效时，受击者照旧保留 1−R−S，而斯卡蒂转移过去的那一份**不再**被坚守二次削减（旧实现会再切 40 %：500 → 300 给
+  斯卡蒂、200 给成员；现为 500 整份），分配回到 100 / 400 / 500 —— 即 `docs/history/0.2.4.md` 的 31.2 节记录的数字，
+  此前的实现与那一段不符。灰毫（`chess_char_2_18_a`，同时是卡西米尔与坚守）在场时，旧版徽章与坚守会互打，直到 32 层
+  hook 深度上限（每一击 6 条 `hookDepth` 错误）。
 - 战斗半段：`server/sim/content/hexcards/stone_*.js`（各自由 `specOf` 的参数门控）；卡西米尔那件走
   `server/sim/content/items/knightbadge.js`（装备驱动，与卡无关）。
 - 备战半段：`applySpec` 新增 `chess.ids`（指定干员，锻炉给薄绿+洛洛）、`deployCap`（部署位）、
@@ -286,3 +347,91 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 - 阿戈尔那半：`bonds/core.js devour()` 读 `hex_egir_symbiosis`，有卡时跳过 5000 物理流失，并在每次吞噬结束时
   `emit('egirDevourEnd', { playerId })` 给卡脚本做属性结算。
 - 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-盟约专属协议-第7回合-设计稿-20261026.md`（工作区级）。
+
+## 协议源石：四张 2 阶盟约专属协议【衰朽的骄矜】【炎百兽】【困毙之雪】【骑士金神】（2026-10-31，业主裁定）
+
+第 7 回合的专属池新增四张 **2 阶（gold）** 卡（与【锻炉】同阶，专属池不再全是 3 阶）：维多利亚【衰朽的骄矜】
+(`hex_victoria_decay`)、炎【炎百兽】(`hex_yan_beasts`)、谢拉格【困毙之雪】(`hex_kjerag_frostdeath`)、卡西米尔【骑士金神】
+(`hex_kazimierz_knightgold`)，均 `requiresBond`。数值全部在卡面 `effect` 参数里（`tools/hextech/roster.mjs` →
+`data/hextech.json`），战斗半段在 `server/sim/content/hexcards/stone_victoria_decay.js` / `stone_yan_beasts.js` /
+`stone_kjerag_frostdeath.js` / `stone_kazimierz_knightgold.js`（各自由 `specOf` 的参数门控）。
+
+| 盟约 | 卡 | 作战中 |
+|---|---|---|
+| 维多利亚 | 衰朽的骄矜 | 在场 3 名不同维多利亚：携带装备者攻击无视防御/法抗，维多利亚每秒流失 0.5% 最大生命；5 名：生命 >80% 时 +50 生命 / +50 防御 / +100 攻击 / +7 攻速（随层数增长）、额外流失 0.5%（装备维式重锤时 0）；7 名：额外流失 1%；维多利亚生命首次归零时锁血进入「衰朽」8 秒（阻挡 0、攻击 +100%、攻速 +7 随层数），8 秒内**本人**击杀 3 名则回复 50% 最大生命并脱离，否则强制撤退（每名干员每场一次） |
+| 炎 | 炎百兽 | 炎干员技力消耗 +5%（装备天师古鼎的豁免）；战斗开始时为每名炎干员召唤一只与其生命共享的炎佑（属性 = 对应干员 80% + 0.4%/层，加到模板上）；5 名：技力消耗再 +5%、炎干员每秒回复 20 + 0.5/层 生命；7 名：技力消耗再 +5%、炎佑的祛恶之焰改为锁定 2 个目标（攻击力 60% + 0.2%/层，半径 1，每秒一次，最多 20 秒） |
+| 谢拉格 | 困毙之雪 | 谢拉格冻结敌人 +1 层霜寒（每层：防御 +5%、攻速 −5），5 层消耗清零进入「冰封」5 秒（无法攻击/技能/被治疗，阻挡 +1、免疫伤害，期间不叠层）；3 名：每层霜寒攻击时 30% 施寒、解冻未死则半径 1.5 内谢拉格 +1 层、无冻结敌人每 5 秒 +1 层、冰封干员阻挡的敌人每秒 100 + 40×谢拉格层数 真伤；6 名：谢拉格死亡冻结全场 5 秒并全体 −2 层，全员冰封时每秒 100 + 50×谢拉格层数 真伤 + 寒冷，持续 15 秒 |
+| 卡西米尔 | 骑士金神 | 卡西米尔击杀 4 个敌人获得 1 金（全队共享计数，每场上限 min(9, 1+floor(卡西米尔层数/50))）；5 名：战斗开始时按卡西米尔层数累计刷怪（<50 一只无胄盟清扫小队、50–100 再 +1、100–200 烛骑士薇薇安娜、200–300 腐败骑士、300–400 凋零骑士），等阶最高的卡西米尔（并列都加）攻击力 +30+层数、攻击范围 +1 格；7 名：本回合每消耗 3 金，所有己方干员伤害 +20%（可叠加，只在本回合有效，备战侧写 `params.battle.dmgPct`） |
+
+- 祛恶之焰的 2 目标由 `server/sim/content/tokens.js yanyouKit` 读 `unit.mem.flameTargets` / `unit.mem.flameScaleFn`
+  （缺省 1 目标 + 数据里的 `atk_scale`，与旧版行为逐字节一致）。
+- 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-专属协议-衰朽的骄矜与炎百兽-设计稿-20261031.md` 与
+  `04-文档/协议源石-专属协议-困毙之雪-设计稿-20261031.md`（工作区级）。
+
+## 协议源石：普通卡【突破极限】(3 阶) 与【特限恢复】(2 阶)（2026-10-31，业主裁定）
+
+两张**普通卡**（无 `requiresBond`），都只对抽到卡的玩家自己生效：
+
+- 【突破极限】`hex_break_limit`（3 阶）：盟约叠层上限 999 → **9999**。`bondLayerCapOf(ps)` 从卡面
+  `params.bondCap.cap` 读每玩家上限；备战加层/预览、战斗内加层、回合结算、客户端显示全部跟着抬
+  （`shared/constants.js layerGainRoom(before, n, cap)`；`PlayerBattleInput.bondLayerCap`）。
+- 【特限恢复】`hex_mode_modules`（2 阶）：① 拥有者的干员使用 **3 级模组**数据 ——
+  `data/moduleLevels.json`（`tools/build-data.mjs` 生成，按 `uniEquipId` 记录 equipLevel 3 的 attr / traitOverride /
+  talentChanges），战斗与备战预览按 `loadout.moduleLevel = 3` 组合（普通形态用默认模组的 3 级数据）；
+  ② **特限模组（ISW / SO / RA）** 的专属效果在战斗中生效（`hexcards/stone_mode_modules_isw.js` /
+  `stone_mode_modules_ra.js`，按 `u.def.module.type` 前缀逐干员实现）。
+- 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md`（工作区级）。
+
+## 协议源石：【死亡之舞】新增 + 四张卡调整（2026-10-31，业主裁定）
+
+- 新增 3 阶普通卡【死亡之舞】`hex_deathdance`：己方干员受到的 HP 伤害改为**3 秒内均匀扣**（0.5 秒一跳、可致死、
+  护盾仍先抵挡；`hpDamage` 钩子把即时伤害压成待扣队列）；己方干员**周围八格**有敌人死亡时，该干员回复 5% 最大生命。
+- 【圣佑】`hex_laterano_sanctuary`（3 阶专属）：每消耗 1 弹药的「回复 5% 最大生命」改为**获得自身 5% 最大生命的护盾**
+  （可累加）；新增：本场累计拉特兰子弹量，每 3 秒随机狙击一个敌人，造成 **累计子弹量 ×325** 物理伤害。
+- 【惊惧】`hex_dread`（1 阶）：改为**己方地面干员开启技能时**，其**周围八格**内的敌人战栗 3 秒。
+- 【装甲破坏】`hex_armorbreak`（2 阶）：每次物理伤害的防御削减 −20 → **−80**。
+- 【先锋之势】`hex_vanguard`（2 阶）：先锋首次击杀的 4 资金保留；首次攻击的 +30% 攻击力改为
+  **每名己方先锋的第一次攻击直接秒杀目标**（ELITE / BOSS 无效；击杀仍记在先锋身上，所以加钱照常）。
+- 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-死亡之舞与四张卡调整-设计稿-20261031.md`（工作区级）。
+
+## 协议源石：第 6 回合的「点卡刷新」（2026-10-30 定规则；2026-10-31 改成点卡界面，业主裁定）
+
+**第 6 回合多给一次换牌机会**：业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的协议源石」，
+2026-10-31「不要按钮形式，你就搞个界面把有的协议源石放上去点击刷新」「就是选完协议源石，这面板直接出现，用协议源石的界面也行」。
+第 6 回合的 3 选 1 **照常**（`format.rounds` 不动），换牌是**另外**给的一手。
+
+- **口径**：免费；**每局 2 张**（`shared/hextech.js HEX_RECYCLE_BUDGET`）—— 点一次花一次，可以点同一张两次，也可以点两张
+  各一次；换回**相同数量**的随机源石，走正常抽取的 1/2/3 阶权重（`gd.hexWeights()`，当前 0.46/0.38/0.16）；被换掉那张
+  **已经给过的一次性收益不回收**（加的钱 / 部署位 / 装备 / 干员留在原地，与测试场 `g.testHexClear` 同一条口径）。
+- **界面**：`ui/hexOverlay.js` 的 `HexRecyclePanel` —— 复用抽卡那套 `.spov` 外壳 + `HexCard`，把已拥有的源石铺成卡，
+  **点哪张刷哪张**（无确认、无多选），头部「剩 n 次」，底部「完成」；窗口一开**自动弹出**，不靠角落按钮
+  （2026-10-31 业主「不要按钮形式」）。`ui/gameActions.js hexRecycle` 是唯一发送点；文案进四个 `public/i18n/*.json`。
+- **窗口（服务端权威）**：`server/match/match/hexDraft.js _hexRecycleGate` —— 存活 + 第 6 回合 + 余量 > 0 + 至少拥有 1 张，
+  且是下面之一：**抽卡阶段里自己已经选完**（`picks[pid]` 已落下、没有欠的额外选牌 —— 「选完协议源石，这面板直接出现」），
+  或**休整期且未准备**（与其它备战期动作同一条闸门）。换牌只摘自己身上的 `hex:<id>` ref，**`offers` / `picks` 一个字节都不动**。
+  客户端另有一条纯表现上的让步：**同回合还有机变的难度**（`spRounds` 含 6 的标准 / 同盟标准）里，抽卡结束紧接着就是机变的
+  整屏界面，这时不弹面板（会闪一下、还会盖住机变），等休整期再弹 —— 仍是同一回合、仍在选完之后（`hexRecycleWindow` 读
+  `m.public.spRound`）。
+- **意图**：`g.hexRecycle { ids }`（`shared/protocol.js`，1–2 个互不相同的已拥有 id；界面点一次只发一张）。落点
+  `hexDraft.js recycleHex`，由 `server/match/match/intents.js` 路由。**`PROTOCOL_VERSION` 不动**（先例 `records.mine` /
+  `g.unequip`）：老客户端不发它，一切照旧。余数只在**第 6 回合**的 `m.public.players[]` 行上写成 `hexRecycleLeft`（0–2）；
+  其它回合不写这个键，所以没走到第 6 回合的对局帧逐字节不变（`server/match/match/views.js publicPlayerView`）。
+- **拒绝码**：`WRONG_PHASE`（阶段 / 回合 / 已准备 / 还没选完，`detail` 点名是哪一条）、`ALREADY`（余量为 0）、
+  `BAD_TARGET`（张数不对 / 超过余量 / 不是自己的牌 / 池子凑不出同样数量）。被拒绝的请求**一张牌都不动、余量也不扣**。
+- **池子与随机流**：`_hexPoolFor(ps)`（禁用 + 未激活盟约的专属卡照旧收窄；第 7 回合的 exclusive 收窄只对第 7 回合生效）
+  + 本局种子流 `rngHex`（`rollOffers`），所以重放确定性。换回的牌**排除「仍拥有的」与「刚换掉的」** —— 与刷新同一条
+  「不会立刻回到手上」规则。**池子凑不出同样数量时直接拒绝**（`BAD_TARGET` / `detail: 'pool exhausted'`）：
+  「随机获得相同数量」是这条规则的原话，宁可不让用也不发半份。
+- **换牌 = 只摘 `hex:<id>` EffectRef**（复制副本 `hex:<id>#<n>` 一起走），持续 / 战斗那一半随之消失；换回的牌走正式发牌
+  路径 `applyHex`（`onPick` 立即生效、持续 ref、战斗半段、镜像协议 / 二次抽取这类额外都照常）。[ASSUMED] 队友身上的
+  **同名团队卡**副本不动 —— 那是他们自己的 ref，来源无法区分，摘掉会误伤独立抽到同一张的队友；[ASSUMED] 能换的是
+  **此刻拥有的一切**，包括本回合刚抽到的那张（每局只 2 张，不会变成无限刷新）。**AI 座位不用它**（bot 从不发意图，
+  规则里也没有给它们的自动版本）。
+- **顺带修掉的卡死**（fuzz 新增意图后 seed 27 暴露，**旧代码就有的 bug**）：整批刷新（`g.hexReroll` 不带 `idx`）在
+  「已拥有 + 当前这一批」把池子占满时抽到**空数组**，会把手里还有牌的 offer 清空 —— 限时的局靠超时兜底，单人 / 单人不限时
+  的局没有 deadline，整局永远卡在 `HEX_DRAFT`（第 7 回合的专属池只有 1–2 张，最容易占满）。现在：抽不出新的一批就**保留原来
+  那一批**（与单张刷新 `|| next[idx]` 同口径），并且**空 offer 不再算「欠一次选牌」**（`_hexPicksLeft` 返回 0，phase 照常
+  往下走）。回归：`test/match/hex-exclusive.test.js`。
+- **回归**：`test/match/hex-recycle.test.js`（抽卡阶段换 / 休整期换 / 一次 2 张 / 各条拒绝 / 不回收一次性收益 / 同种子同结果）、
+  `test/ui/hexRecycle.test.js`（客户端纯函数与面板）、`test/match/fuzz.test.js`（新意图进 `GAME` 后的随机序列）。
+  **golden 不移动**：这是备战层的规则，不进战斗模拟。

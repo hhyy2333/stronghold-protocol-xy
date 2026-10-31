@@ -49,7 +49,7 @@
 | `content` | `content[]` + `<文件>.json`（15 张表，`WORKSHOP_CONTENT_FILES`；第 15 张 `variants` 是 §28.51 的**口径数据通道**：只给**已有**记录写字段级补丁，不新增记录、不写新键、不发明轴） | 记录形状照抄官方；数据不是代码，改不了对局结果 | §28.13 |
 | `traits.grantsBonds` | 一条 chess 记录的 `trait.grantsBonds = ["<bondId>", …]` | **特质 ⇒ 盟约成员资格 ⇒ count/tier**：`bondId` 必须是本机 `bonds.json` 里真有的（不存在的 id **点名**且永不进计数，但**不拒包**）；形状写歪一律点名（`TRAIT_GRANT_BAD_SHAPE` / `TRAIT_GRANT_EMPTY`）；**不写 ⇒ 逐字节不变**；判据只有一份（`shared/morph.js` 的 `grantedBondsByTrait`），合并也只有一份（`memberBonds`），三处读取点同源 | §28.49 |
 | `overrides` | `overrides[] = "<文件>:<id>"` | 覆盖官方条目必须显式声明 | §28.3 |
-| `units.operators` | `operators` / `support` + `units.json` | 干员记录必须带 `UNIT_REQUIRED_FIELDS` 那几个键 | §28.10 |
+| `units.operators` | `operators` + `units.json` | 干员记录必须带 `UNIT_REQUIRED_FIELDS` 那几个键 | §28.10 |
 | `media.voices` | `voices` / `voiceLangs` + 包内音频 | 只服务登记过的 URL | §28.13 |
 | `media.voices.cdn` | `voices` / `voiceLangs` 里的 `{ url, sha256, file }` 条目（作者自备 CDN） | **协议只认 `https:`**；`sha256` 是作者声明的内容摘要，取回来必须对上（对不上不落盘、不服务）；**绝不内置任何官方语音地址、也绝不新增下载路由**（主机名只来自 `pack.json`，字节由既有的 `/workshop-assets/` 送出）；不放宽 `VOICE_LANG_*`；失败逐条点名 + 那条台词从客户端语音表里摘掉（回落默认配音，而不是留一条永远 404 的静音）；声明了就必须写 `license` | §28.36 |
 | `media.icons` | `bondIcons` / `itemIcons` / `art` | 路径是包内相对路径；素材不进 git | §28.13 |

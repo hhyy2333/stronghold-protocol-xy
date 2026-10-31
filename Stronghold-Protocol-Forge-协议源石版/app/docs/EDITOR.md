@@ -39,9 +39,8 @@ node tools/workshop-editor.mjs --workshop D:\packs # 指定其它工坊目录
 | `workshop/<pack>/specs/<slug>.json` | **编辑器的源文件**：你填的那份 spec，可反复编辑 |
 | `workshop/<pack>/chess.json` | **生成产物**：由 specs 推导出来，游戏读的是它。请不要手改（和 `data/*.json` 同样的态度） |
 | `workshop/<pack>/kits/<chessId>.js` | **行为层 kit**：它既是源、也是游戏加载的产物（见下面「kit 编辑器」），保存时会在文件开头补写署名头 |
-| `workshop/<pack>/pack.json` | 首次保存时自动创建（`id` 必须等于目录名）；**语音编辑器就地更新它的 `voices` / `voiceLangs`**，**盟约页更新 `bondIcons`**，**装备页更新 `itemIcons`**，**包管理页更新 `support`**，其余字段、键序与缩进原样保留 |
+| `workshop/<pack>/pack.json` | 首次保存时自动创建（`id` 必须等于目录名）；**语音编辑器就地更新它的 `voices` / `voiceLangs`**，**盟约页更新 `bondIcons`**，**装备页更新 `itemIcons`**，**包管理页更新元数据 / `overrides` / `operators`**，其余字段、键序与缩进原样保留 |
 | `workshop/<pack>/**` | **导入一个 `.zip`** 时整包写入（新建目录；覆盖同名包需要显式 `--force`/`?force=1`，且写入全部在这个目录之内） |
-| `data/support.json` | 只在动「是否助战」开关时修改——它是**手工维护的服务端配置**，不是 `build-data` 的产物 |
 
 `data/` 下由 `tools/build-data.mjs` 生成的其它文件**永不改动**。
 
@@ -61,7 +60,7 @@ node tools/workshop-editor.mjs --workshop D:\packs # 指定其它工坊目录
 | `/bond.html` | **盟约（羁绊）**编辑器（新增盟约，或**覆盖官方 23 条**的阈值 / 计数 / 说明 / 黑板数值 + 成员） |
 | `/kit.html` | **kit（行为层）**编辑器（直接编辑 `kits/<chessId>.js` 的代码，静态校验） |
 | `/voice.html` | **语音**编辑器（`pack.json` 的 `voices` 字段 + 每个语种一份 `voiceLangs`：语言 × 干员 × 槽位 × 文件） |
-| `/pack.html` | **包管理**（导出/导入 `.zip`、`pack.json` 的 `support` 助战声明与 `operators` 自选池声明、**一键试玩**） |
+| `/pack.html` | **包管理**（导出/导入 `.zip`、`pack.json` 的元数据 / `overrides` / `operators` 自选池声明、**一键试玩**） |
 
 五个内容页（地图 / 怪物 / 出怪 / 装备 / 盟约）的侧栏或右栏都有一个**保存目标**下拉：列出所有工坊包（id 与 `pack.json` 里的名字），
 选好再保存。以前每次保存都要在对话框里手打一次包 id —— 打错就是存进别的包，或者凭空建一个空包。
@@ -135,7 +134,7 @@ node tools/workshop-editor.mjs --workshop D:\packs # 指定其它工坊目录
   留一份与普通一模一样的副本会让 spec 变脏，也让「精锐到底改了什么」看不出来。
 - **保存旁边就能起一局试玩**：`▶ 试玩` 直接调 `/api/playtest/start`（已经在跑就先停掉再起 —— 点这个按钮的意思
   就是「把我刚写的内容加载进去」），并在新标签页打开；省掉「切到包管理页 → 点试玩」那两步。
-- **表单**：身份（id/名称/阶/**职业**/**分支**/**位置**，都是中文名 + 英文枚举的双语下拉）、外观（复用已有 Spine id）、**普通与精锐两套数值**、**技能**（技能名/类型/持续类型/技力消耗/初始技力/持续时间/技力回复/自动释放触发/官方技能描述，外加**黑板书键值编辑器**）、**天赋**（0~2 条，每条含天赋名、说明、黑板书）、**模组**、**盟约**、以及**「是否助战」开关**（直接写入服务端助战卡池）。
+- **表单**：身份（id/名称/阶/**职业**/**分支**/**位置**，都是中文名 + 英文枚举的双语下拉）、外观（复用已有 Spine id）、**普通与精锐两套数值**、**技能**（技能名/类型/持续类型/技力消耗/初始技力/持续时间/技力回复/自动释放触发/官方技能描述，外加**黑板书键值编辑器**）、**天赋**（0~2 条，每条含天赋名、说明、黑板书）、**模组**、**盟约**。
 - **改了纯文本 = 连富文本原文一起改**：官方记录的 `descRaw`（`<$ba.stun>晕眩</>` 这类标记）与 `desc` 常常不同，
   而派生层优先读 `descRaw` —— 数据里 199 条天赋有 56 条如此。所以编辑干员特性、天赋说明、模组特性/说明/天赋改写时，
   界面会把两个字段一起改掉；否则「在界面上改了字、记录里一个字没变」这种静默失败无法察觉。
@@ -413,7 +412,7 @@ node tools/workshop-validate.mjs workshop     # kits 层：静态检查 + 真实
   「这个包给谁配了音」）；**这一档语种表空了就把 `voiceLangs[<语种>]` 一起删掉，全部语种都没了连 `voiceLangs` 也删**
   （空表会被加载器以 `VOICE_LANG_EMPTY` 拒绝）；默认配音那一档最后一个也没有时 `voices` 整个删除。
   只有「清空」这一类写入允许把包变成加载器会拒绝的
-  形态（例如 `content: []` 的助战语音包被清空后就是 `EMPTY_PACK`），这时响应里给 `warnings` ——
+  形态（例如 `content: []` 的语音包被清空后就是 `EMPTY_PACK`），这时响应里给 `warnings` ——
   **一条删不掉的语音，比一个被校验器报告的包更糟**。
 - **手工写坏的槽位只能手工改**：`pack.json` 里若写着 `VOICE_SLOTS` 之外的槽位，两个接口都会按规则拒绝，
   页面会把该槽位的按钮禁用并说明原因。
@@ -424,20 +423,19 @@ node tools/workshop-validate.mjs workshop     # kits 层：静态检查 + 真实
 node tools/workshop-validate.mjs workshop     # 语音层：文件是否存在、扩展名是否可服务、槽位与干员 id 是否合法
 ```
 
-## 包管理（元数据 / overrides / 导出 / 导入 / 助战声明）
+## 包管理（元数据 / overrides / 导出 / 导入 / 自选池声明）
 
-第八个页面：**`/pack.html`**。它补上几件一直缺失的事：一个包**没法交给别人**（只能手抄目录）、
-`pack.json.support`（助战声明，见 `docs/WORKSHOP.md` §2.1）**没有图形入口**，以及
-**元数据与 `overrides` 此前只能手改 `pack.json`**。
+第八个页面：**`/pack.html`**。它补上几件一直缺失的事：一个包**没法交给别人**（只能手抄目录），
+以及**元数据与 `overrides` 此前只能手改 `pack.json`**。
 
 **归档规则只有一份实现**：这一页与 `node tools/workshop-pack.mjs …` 调用的是
 `tools/workshop-pack.mjs` 里的同一批函数（zip 的字节由 `shared/zip.js` 负责），所以图形界面与命令行
 不可能给出不同结论。这与其它页面的立场一致：规则由服务端/共享模块持有，页面只渲染它。
 
-- **左栏**：每个工坊包一条 —— 名称、包 id、版本、license、内容文件、语音条数、助战个数，以及**加载器的结论**
+- **左栏**：每个工坊包一条 —— 名称、包 id、版本、license、内容文件、语音条数，以及**加载器的结论**
   （`loadWorkshop` 接受的显示「加载器接受」，否则显示它拒绝的码，例如 `EMPTY_PACK`、`ASSETS_NEED_LICENSE`）。
 - **中栏**：这个包的详情（id / 版本 / 作者 / license / 内容 / 语音 / 是否有 `assets/`）+ 校验结论 +
-  **包元数据表单** + **overrides 清单** + **助战声明编辑器** + **自选池声明编辑器** + 「卡池在哪里」的说明。
+  **包元数据表单** + **overrides 清单** + **自选池声明编辑器**。
 - **右栏**：**导出**（下载 `<包id>.zip`）与**导入**（选一个 `.zip`，可选覆盖同名包），各自都写明命令行等价路径。
 
 ### 包元数据（`name` / `version` / `author` / `license` / `description` / `gameVersion`）
@@ -473,7 +471,7 @@ node tools/workshop-validate.mjs workshop     # 语音层：文件是否存在�
 - **删除永远不被「有没有在用」挡住**：加一条、删一条都是把新的整表发回来（`POST /api/packs/:pack/overrides`），
   形状不合法的条目会被拒（与加载器同一份正则 `OVERRIDE_ENTRY_RE`、同一份数据文件白名单），
   而官方没有的 id 照收 —— 写进去的东西必须能删掉。
-- 写入只动 `overrides` 这一个字段，规则与 `support` 相同（键序保留、内容没变不写盘）。
+- 写入只动 `overrides` 这一个字段，规则与 `operators` 相同（键序保留、内容没变不写盘）。
 
 **导出**：`pack.json` 与包内所有文件（**包括 `assets/**`**）都在 **zip 根** —— 这个 zip 就是这个包。
 条目按名字排序、DOS 时间戳固定，所以同样的内容永远得到同样的字节；响应是 `application/zip`，带
@@ -493,18 +491,6 @@ node tools/workshop-validate.mjs workshop     # 语音层：文件是否存在�
 清单可以在 zip 根，也可以在一个**唯一的顶层目录**里（`my-pack-1.0.0/pack.json`，两种归档都很常见），后者那层目录会被去掉。
 默认**拒绝**覆盖已存在的包，勾上「覆盖同名包」才覆盖（`?force=1`）—— 覆盖时旧目录先改名挪开、新包搬进去之后才清理，
 所以失败的覆盖不会留下半个包，也不会把原来的包弄丢。安装的写入**全部在 `workshop/` 之内**。
-
-**助战声明**（`pack.json` 的 `support`）：
-
-- 只能勾选**这个包自己新增**的干员（来自它的 `chess.json`）。卡池是安装方的规则：允许包把官方干员塞进或移出卡池，
-  就等于让内容包改规则。违反会被加载器记 `SUPPORT_FOREIGN_OPERATOR` 并整条丢掉，编辑器**直接拒绝写入**并说明原因。
-- **阶由记录推导**（`workshopSupportEntries`，与加载器/校验器同一份规则），页面上**没有任何可以手输阶的地方** ——
-  手写的阶一旦与记录不一致，`isSupportChess` 会让该干员静默不可选。记录没有 1–6 的整数 `tier` 时
-  （`SUPPORT_TIER_UNKNOWN`）勾选框被禁用并说明原因，而不是让作者勾一个不会生效的选项。
-- **写入只动 `support` 一个字段**：其余字段、键序与两空格缩进原样保留，新键追加在末尾，
-  而且**绝不会**给包补一条它没声明过的 `content`（写助战不是声明数据文件）。内容没变就不写盘。
-- 页面明说卡池本身在服务端的 `data/support.json`，而且安装方在那里写 `"workshop": false` 就会忽略所有包的声明 ——
-  否则作者会把「没生效」当成编辑器的 bug。
 
 **自选池声明**（`pack.json` 的 `operators`，`docs/WORKSHOP.md` §1.2）：
 
@@ -526,7 +512,7 @@ node tools/workshop-validate.mjs workshop     # 语音层：文件是否存在�
 ```powershell
 node tools/workshop-pack.mjs export my-pack [--out D:\share\my-pack.zip]
 node tools/workshop-pack.mjs import my-pack.zip [--force] [--json]
-node tools/workshop-pack.mjs list [--json]     # id / 名称 / 版本 / 内容 / 语音 / 助战，每个包一行
+node tools/workshop-pack.mjs list [--json]     # id / 名称 / 版本 / 内容 / 语音，每个包一行
 ```
 
 ## 试玩（一键开一局）
@@ -594,23 +580,6 @@ POST /api/playtest/start ──→ playtest.start({directToHand}) ──SP_DIREC
 一个删不掉的陈旧声明会让整个包起不来）。**包管理页**另有一块「试玩直接发到手上（pack.json 的 playtest）」：
 逐条列出声明、逐条删除（手写的或已经陈旧的条目必须能在界面上删掉），并单列「记录自己带这个开关」的那些干员 ——
 两者在引擎里是并集。字段的形状、成员资格与谁赢规则见 [docs/WORKSHOP.md](WORKSHOP.md) §1.2。
-
-## 助战（客户端）
-
-助战的选择由**服务端**声明并强制：卡池之外的干员是**禁用**的，请求会被整条拒绝，**没有回退**（回退会让一个被禁用的干员变成已发放）。
-
-- 服务端在 `room.state` 里下发卡池目录（`enabled` / `label` / `tiers` / `capacity` / `slots`）—— 客户端无法自行得知卡池
-- **界面**：`js/screens/support.js`（房间 / 大厅 / 简报室左下角「助战」按钮）—— 按阶列出卡池，每阶显示「已选 n/m」，
-  顶部显示同步状态。**卡池没到就显示「等待服务器下发」而不是猜**；服务器没开助战就显示「本服务器未开启助战」
-- 客户端 `ui/supportModel.js` + `ui/supportSync.js`：卡池未知时**等待不发**；被拒绝时**报错并保留玩家选择**
-- 对局开始后 `room.state` 的助战会锁定，改动在下一局生效
-- **助战干员进商店，不白送**（业主 2026-10-07 定下）：带上的干员在共享池里多一份拷贝，因此像普通棋子一样被摇到、
-  按阶级价买到、按普通规则卖掉。价格可以用 `data/support.json` 的 `prices`（`{ "<chessId>": 3 }`）单独定，
-  没配就用它的阶级价；助战摇出来的格子带 `support: true`，客户端可以据此加个标
-- **随机禁用的干员不禁用助战**：随机禁用只影响商店抽卡（`server/match/pool.js`），带上的助战照样进池
-  —— 哪怕它整条都在本局禁用名单里，池中仍有且仅有那一份助战拷贝（`test/support.test.js` 锁住了这条）
-- 局内 `m.private.support` 回显 `{ selected, granted }`：`granted` = 本局商店里真的买得到的那几个，
-  卡池在开局前变化导致「选了但买不到」时客户端能解释
 
 ## 盟约（羁绊）编辑器
 
@@ -684,14 +653,12 @@ node tools/workshop-validate.mjs workshop     # waves 层：重算 totalCount/sl
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/state` | 工坊包（含每个包 `bonds.json` 里的盟约清单 `bonds`，以及各包的 `packArt` —— `art` 声明 + 本包真实素材 + 已声明 spine 的骨架动画名/版本、图谱页名）、干员、校验问题、助战配置、可选用的官方 Spine 列表、**按职业的数值参照 `statRanges`**、**官方盟约清单 `officialBonds`**（干员页的盟约勾选）；官方干员条目带 `subProfessionName`（分支中文名） |
+| GET | `/api/state` | 工坊包（含每个包 `bonds.json` 里的盟约清单 `bonds`，以及各包的 `packArt` —— `art` 声明 + 本包真实素材 + 已声明 spine 的骨架动画名/版本、图谱页名）、干员、校验问题、可选用的官方 Spine 列表、**按职业的数值参照 `statRanges`**、**官方盟约清单 `officialBonds`**（干员页的盟约勾选）；官方干员条目带 `subProfessionName`（分支中文名） |
 | GET | `/api/operators/template?chessId=` | 把一对已发布的干员记录转成一份**可继续编辑的 spec**（模板新建用；id 留空） |
 | GET | `/api/official/chess/:id`（可选 `?pack=`） | **覆盖模式**的只读入口：回 `{ spec, ids, official }` —— `spec` 带 `override: true` 与 `slug`，`official` 是官方原文（供差异预览）；给了 `pack` 时再回 `playtest`（该包 `pack.json.playtest.directToHand` 的声明 + 这条覆盖的两个 id），界面按声明显示「试玩直接发到手上」的勾选状态 |
 | POST | `/api/preview` | `{ spec }` → 推导并校验，**不写盘** |
 | POST | `/api/packs/:pack/operators` | `{ spec }` → 写 specs 并重新生成 `chess.json` |
 | DELETE | `/api/packs/:pack/operators/:slug` | 删除 spec 及其拥有的记录 |
-| POST | `/api/support/toggle` | `{ chessId, tier, enabled }` → 增删 `data/support.json` 的卡池（取消助战时顺手删掉它的专属售价） |
-| POST | `/api/support/price` | `{ chessId, price }` → 写 `data/support.json` 的 `prices`（`price: null`/空串即删除，回到阶级价） |
 | GET | `/api/bonds` | 官方 23 条盟约 + 各包的盟约状态（specs/记录/校验）+ 枚举候选 + 图标与效果清单 + **成员勾选用的干员表** |
 | GET | `/api/bonds/template?bondId=` | 把一条已有的盟约转成一份**可继续编辑的 spec**（模板新建用；id 留空） |
 | POST | `/api/bonds/preview` | `{ spec }` → 推导并校验，**不写盘**（与保存同一条路：撞官方 id 不报错，因为保存会自动声明覆盖） |
@@ -737,8 +704,7 @@ node tools/workshop-validate.mjs workshop     # waves 层：重算 totalCount/sl
 | DELETE | `/api/packs/:pack/voices/:charId/:slot`（可选 `?lang=`） | 删除一个干员的一个槽位（不存在则报告 `removed: false`，不重写文件）；`?lang=cn` 删的是 `voiceLangs.cn` 那一份 |
 | GET | `/api/packs/:id/export` | 该包的 `.zip`（`application/zip` + `Content-Disposition: attachment`）；包不存在 → 404 |
 | POST | `/api/packs/import`（可选 `?force=1`） | **原始 zip 字节**（`application/octet-stream`）→ 解压到临时目录、校验、搬进 `workshop/<包id>/`；返回装好的包摘要 |
-| GET | `/api/packs/support` | 各包的助战状态 + 每个包的**自有干员与推导阶** + `data/support.json` 的卡池与总开关 + `meta`（每个包的元数据与 `overrides` 状态）+ `overrideCandidates`（官方每张表的 id + 名字） |
-| POST | `/api/packs/:id/support` | `{ ids }` → 就地更新 `pack.json` 的 `support`（只动这一个字段，绝不补 `content`） |
+| GET | `/api/packs` | 各包摘要 + 每个包的自选池声明状态 + `meta`（每个包的元数据与 `overrides` 状态）+ `overrideCandidates`（官方每张表的 id + 名字） |
 | POST | `/api/packs/:id/meta` | `{ name?, version?, author?, license?, description?, gameVersion? }` → 就地更新 `pack.json` 的元数据（只动传进来的键；空串/null = 删掉那个键；清空一个有 `assets/` 的包的 license → 400 `ASSETS_NEED_LICENSE`） |
 | POST | `/api/packs/:id/overrides` | `{ overrides }` → 整表替换 `pack.json` 的 `overrides`（`"<文件>:<id>"`；形状与文件白名单由 `OVERRIDE_ENTRY_RE` 判，官方没有的 id 照收 —— 写进去的要能删掉） |
 | POST | `/api/packs/:id/playtest` | `{ directToHand }` → 整表替换 `pack.json` 的 `playtest.directToHand`（元素只查形状，成员资格仍由加载器判 `PLAYTEST_UNKNOWN_CHESS`；清空 = 删掉这个键）。加一条的正路是干员页那个勾，这条路由存在的理由是**删**：手写的、或者记录已经被删掉的陈旧条目必须能删掉，否则一个错 id 会让整个包起不来而作者无处可改 |
@@ -788,7 +754,6 @@ node tools/workshop-validate.mjs workshop     # waves 层：重算 totalCount/sl
 
 ## 当前不包含
 
-- 助战**名额**（`slots`）的编辑——改 `data/support.json` 的 `slots` 字段或编辑器里的「是否助战」开关
 - 语音**素材的上传**——编辑器只写路径，音频文件由作者自己放进 `<pack>/assets/`（没有二进制上传接口）
 - 包的**签名与来源校验**——导入只保证「归档结构合法、清单能被加载器接受」，不证明这个包是谁做的
 - 包的**版本对齐与依赖声明**——一个包里没有「需要另一个包」的字段（见 `docs/WORKSHOP.md` §1.7）
@@ -801,15 +766,15 @@ node tools/workshop-validate.mjs workshop     # waves 层：重算 totalCount/sl
 
 | 工具 | 面向 | 关系 |
 |---|---|---|
-| `editor/`（本文件） | 人，图形界面 | 写 spec，生成记录；导出/导入 `.zip`，改 `pack.json` 的 `voices` / `support`；一键起试玩服务器 |
+| `editor/`（本文件） | 人，图形界面 | 写 spec，生成记录；导出/导入 `.zip`，改 `pack.json` 的 `voices` / `operators`；一键起试玩服务器 |
 | `editor/playtest.mjs` | 编辑器内部 | 起 / 停游戏服务器子进程（挑空闲端口、`SP_WORKSHOP`、等 `/healthz`、退出收尸） |
 | `scripts/launch.mjs` | 人 / 脚本 | 同样的服务器，由人来起（试玩的命令行等价物） |
 | `tools/workshop-scaffold.mjs` | 人 / 脚本 / AI | 同样的 spec → 同样的记录（无界面） |
-| `tools/workshop-pack.mjs` | 人 / 脚本 / CI | 导出 / 导入 / 列出包，读写 `pack.json.support` —— 编辑器第八页调用的就是它 |
-| `tools/workshop-validate.mjs` | 人 / CI / AI | 分层校验：格式 → 语义 → 真实引擎 → 每种内容一层（kits / 地图 / 怪物 / 出怪 / 装备 / 语音 / 助战） |
+| `tools/workshop-pack.mjs` | 人 / 脚本 / CI | 导出 / 导入 / 列出包，写 `pack.json` 的元数据、`overrides` 与 `operators` —— 编辑器第八页调用的就是它 |
+| `tools/workshop-validate.mjs` | 人 / CI / AI | 分层校验：格式 → 语义 → 真实引擎 → 每种内容一层（kits / 地图 / 怪物 / 出怪 / 装备 / 语音） |
 | `docs/prompts/operator-pack.md` | 任意 AI | 模板 prompt，让 AI 产出 spec |
 
 编辑器与 CLI 共用同一批 `shared/*Authoring.js`（干员 / 地图 / 怪物 / 出怪 / 装备 / kit），所以**规则不会漂移** ——
 编辑器里能保存的内容，`tools/workshop-validate.mjs` 一定也接受，反之亦然。
 包管理这一页更进一步：它**直接 import** `tools/workshop-pack.mjs`（而不是复制一份逻辑），
-所以「编辑器能导出/导入/写 support」与「命令行能导出/导入/写 support」不是两条实现。
+所以「编辑器能导出/导入/改 `pack.json`」与「命令行能导出/导入/改 `pack.json`」不是两条实现。

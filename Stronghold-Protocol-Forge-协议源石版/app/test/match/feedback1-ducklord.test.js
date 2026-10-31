@@ -25,27 +25,34 @@ const TANKS = Object.values(DATA.chess).filter((c) => c.visible && !c.isGolden &
 const realBattle = (m, opts) => new Battle({ data: m.ds, content: m.battleContent, logger: QUIET, ...opts });
 
 /** Solo match at PREP of round `r` holding the 鸭爵 band (FakeBattle rounds before). */
-function soloAt(r, seed) {
+function soloAt(r, seed, stage = null) {
   const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed, fake: true }).start();
   h.toPrep(r, { band: BAND });
+  if (stage) h.setStage(stage);
   const ps = h.ps('p_0');
   assert.equal(ps.bandId, BAND);
   return { h, m: h.m, ps };
 }
 
-/** The player's normal-battle options until the band swapped a `key` into the real wave (the real onBattleStart path). */
-function optsWith(m, ps, key, tries = 400) {
+/**
+ * A match of round `r` whose 鸭爵 draw swapped `key` into the real wave (the real onBattleStart path).
+ *
+ * The draw is ONE per round from a stream of its own (bands/meta.js duckGlobal: ctx.seedFor('duck:<round>'), GitHub #839),
+ * so repeating `_normalOpts` on one match always yields the same swaps — the seed is what varies between matches.
+ */
+function matchSwapping(r, key, { from = 7071, tries = 60, stage = null } = {}) {
   for (let i = 0; i < tries; i++) {
+    const { h, m, ps } = soloAt(r, from + i, stage);
     const opts = m._normalOpts(ps);
     const spec = opts.spawns.find((s) => s.enemyKey === key);
-    if (spec) return { opts, spec };
+    if (spec) return { h, m, ps, opts, spec };
+    m.dispose();
   }
-  assert.fail(`no ${key} in ${tries} battles`);
+  assert.fail(`no ${key} swapped into round ${r} over ${tries} seeds`);
 }
 
 test('#7 圆仔 brought by 鸭爵 is never blocked: it walks past a board full of defenders (real R6 wave, real Battle)', () => {
-  const { h, m, ps } = soloAt(6, 7071);
-  h.setStage('act1autochess_m01');
+  const { h, m, ps } = matchSwapping(6, YUANZAI, { stage: 'act1autochess_m01' });
   for (const p of [...ps.board.values(), ...ps.hand.filter(Boolean)]) if (p.kind === 'chess') ps.returnCopies(p);
   ps.board.clear();
   ps.hand.fill(null);
@@ -59,7 +66,10 @@ test('#7 圆仔 brought by 鸭爵 is never blocked: it walks past a board full o
     n++;
   }
   assert.ok(n >= 6, `${n} defenders`);
-  const { opts, spec } = optsWith(m, ps, YUANZAI);
+  // the same round's draw (one per round: the stream only depends on the match seed and the round), now on a board of defenders
+  const opts = m._normalOpts(ps);
+  const spec = opts.spawns.find((s) => s.enemyKey === YUANZAI);
+  assert.ok(spec, '圆仔 still swapped in after the board change');
   assert.deepEqual(spec.bounty, { coins: 1, ownerPlayerId: 'p_0' }, '1 fund to whoever knocks it out');
   // the swapped-in 圆仔 alone, at once (its real route and round multipliers)
   const b = realBattle(m, { ...opts, spawns: [{ ...spec, time: 0 }], timeLimit: 600 });
@@ -96,8 +106,7 @@ test('#7 the four 鸭爵 enemies are the act2 versions: PRTS stats, 1 LP when th
 });
 
 test('#7 鸭爵 runs at +300 % move speed once hurt (PRTS: 受伤后移动速度+300%), never attacks, is never blocked', () => {
-  const { m, ps } = soloAt(5, 7072);
-  const { opts, spec } = optsWith(m, ps, DUCK);
+  const { m, opts, spec } = matchSwapping(5, DUCK, { from: 7072 });
   const b = realBattle(m, { ...opts, spawns: [{ ...spec, time: 0 }], timeLimit: 600 });
   let d = null;
   for (let t = 0; t < 30 && !d; t++) { b.step(); d = b.enemies.find((e) => e.defId === DUCK) || null; }
@@ -114,7 +123,7 @@ test('#7 鸭爵 runs at +300 % move speed once hurt (PRTS: 受伤后移动速度
 test('#7 the swap still happens in the Final Assault (escorts, never the leader or its parts), and a leaked swap costs the merged LP 1', () => {
   let swapped = 0;
   let lpChecked = false;
-  for (let seed = 1; seed <= 8 && (!swapped || !lpChecked); seed++) {
+  for (let seed = 1; seed <= 40 && (!swapped || !lpChecked); seed++) {
     const h = makeMatch({ mode: 'solo', difficulty: 'FUNNY', seed: 7100 + seed, fake: true, script: (b) => (b.kind === 'boss' ? { bossDps: 1e9 } : {}) }).start();
     const m = h.m;
     h.drive(() => m.phase === PHASE.PREP && m.round === m.gd.bossRound, { band: BAND });
@@ -130,18 +139,24 @@ test('#7 the swap still happens in the Final Assault (escorts, never the leader 
     }
     swapped += ducks.length;
     if (ducks.length && !lpChecked) {
-      // the real boss battle (no operators): the swapped enemy walks into the goal and the team pool loses its lpr 1
+      // the real boss battle without the board (an operator or a 阻隔工事 would shoot the swap down, and the round's enemy
+      // 协议源石 can kill it on the way — 血渴 drains it): the swapped enemy walks into the goal and the merged pool loses
+      // its lpr 1. Whichever of the four the draw picked, and whichever seed, is fine — every one of them is a 1-LP leak.
       const pool = { hp: 1e12, maxHp: 1e12, damage() { return 0; } };
-      const b = realBattle(m, { ...f.opts, sharedBoss: pool, spawns: [{ ...ducks[0], time: 0 }] });
-      const leaks = [];
-      b.on('enemyLeak', (ctx) => leaks.push(ctx.enemy));
-      for (let t = 0; t < 400 * 30 && !leaks.length; t++) b.step();
-      assert.equal(leaks.length, 1, 'leaked');
-      assert.equal(leaks[0].lpr, 1);
-      const lp = m.teamLp;
-      m._bossLeak(leaks[0]);
-      assert.equal(m.teamLp, lp - 1);
-      lpChecked = true;
+      const bare = { ...f.opts, players: (f.opts.players || []).map((p) => ({ ...p, units: [] })) };
+      for (const d of ducks) {
+        const b = realBattle(m, { ...bare, sharedBoss: pool, spawns: [{ ...d, time: 0 }] });
+        const leaks = [];
+        b.on('enemyLeak', (ctx) => leaks.push(ctx.enemy));
+        for (let t = 0; t < 400 * 30 && !leaks.length && !b.finished; t++) b.step();
+        if (leaks.length !== 1) continue;
+        assert.equal(leaks[0].lpr, 1, 'the swapped enemy costs 1 LP');
+        const lp = m.teamLp;
+        m._bossLeak(leaks[0]);
+        assert.equal(m.teamLp, lp - 1);
+        lpChecked = true;
+        break;
+      }
     }
     m.dispose();
   }

@@ -12,7 +12,7 @@ import { buildBossWave, bountySpawns } from '../waves.js';
 import { pairPlayers, SharedBossPool, CreditPool, hiddenEligible, BOSS_HIT_STEPS } from '../finalAssault.js';
 // 协议源石那半（业主 2026-10-13）：领袖血池必须走 bossPoolHpFor —— 它把「总阶数 ÷ 人数 ÷ 2」的倍率一起算进去。
 // 本文件以前直接调 bossPoolHp(gd, id, n)，倍率那一半就丢了（移植时漏的 import）。
-import { bossPoolHpFor, enemyHexPayoutFor, bountyMultiplier, applyEnemyHexes, matchEnemyMods } from '../hextech.js';
+import { bossPoolHpFor, enemyHexPayoutFor, bountyMultiplier, applyEnemyHexes, matchEnemyMods, isRangedEnemyKey } from '../hextech.js';
 import { FieldRunner, HeadlessPacer, syntheticResult, BOSS_SILENCE_MS, CATCHUP_TICKS_PER_INTERVAL } from '../fields.js';
 import { FLOW_TICKER_PRIORITY, BOSS_CLOCK_MS, DELAYS } from './common.js';
 
@@ -85,7 +85,7 @@ export class MatchBoss {
       // countAdd / 精英化's countSub / the stat multipliers applied to every NORMAL round and to the preparation preview
       // (views.nextEnemiesFor folds them for boss groups too) but NOT to the boss field itself — the preview said one
       // thing, the fight did another. Folded here, the same single call the normal / 联防 paths use.
-      const spawns = applyEnemyHexes(wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined })), matchEnemyMods(this));
+      const spawns = applyEnemyHexes(wave.spawns.map((s) => ({ ...s, mods: s.mods ? { ...s.mods } : undefined })), matchEnemyMods(this), (key) => isRangedEnemyKey(this.gd, key));
       // bounties with battles left (a multi-round card lasts MULTI_ROUND_BOUNTY_BATTLES) follow their player into the
       // boss field, on the player's half
       g.forEach((ps, j) => {
@@ -589,7 +589,24 @@ export class MatchBoss {
         }
       });
     } else {
-      this.later(this.scaled(DELAYS.SETTLE), () => this.finish({ victory: true, hiddenCleared: victory, reason: 'victory' }));
+      this.later(this.scaled(DELAYS.SETTLE), () => {
+        // 第16回合「木桩演练」(docs/research/17-dummy-round.json, Lead 2026-10-29): a hidden core that was CLEARED no
+        // longer ends the match — the dummy round follows it (settle.js afterSettle finishes the match when THAT round
+        // ends), so the players still get to measure their damage. The hidden core's own result has to travel across
+        // that extra round: `finish` reads `hiddenCleared` only once, at the very end, and roundsPassed (results.js:
+        // bossRound + hiddenCleared), the Hidden-Core trophy row and m.result.hiddenCleared all hang off it. Hence
+        // `hiddenCoreCleared` on the match.
+        //
+        // A hidden core that was LOST still finishes right here, byte-for-byte as before, and so does every mode with
+        // no dummy round (`gd.dummyRound` null ⇒ the old single line).
+        if (victory && this.gd.dummyRound != null) {
+          this.hiddenCoreCleared = true;
+          this.bossPool = null; // no leader pool during the dummy round (views.js bossHp is the boss rounds' own)
+          this.startRound(this.gd.dummyRound);
+          return;
+        }
+        this.finish({ victory: true, hiddenCleared: victory, reason: 'victory' });
+      });
     }
   }
 }

@@ -58,7 +58,7 @@
 | [BALANCE.md](BALANCE.md) | 难度模型与测量（官方数值，不做自定义调优） |
 | [ASSETS.md](ASSETS.md) | 素材来源、布局、清单、致谢 |
 | [NET-TUNING.md](NET-TUNING.md) | 网络可调参数（`m.public` 增量帧） |
-| [WORKSHOP.md](WORKSHOP.md) | 创意工坊与助战（本项目自行新增） |
+| [WORKSHOP.md](WORKSHOP.md) | 创意工坊（本项目自行新增） |
 | [MOD-SURFACE.md](MOD-SURFACE.md) | mod 表面清单（pack-facing ABI）：一个包能依赖引擎的哪些东西 |
 | [STANDARD-PACK.md](STANDARD-PACK.md) | **标准包规范**：七种投稿形态的定级、标准包的四条硬要求、`functional`/`documentation`/`unknown` 判据、非标准形态（补丁型 / 安装器型）怎么处置 |
 | [EDITOR.md](EDITOR.md) | 工坊编辑器（可选、独立分发） |

@@ -70,7 +70,7 @@ what `welcome`, `/healthz`, the BattleSpec and a bug report all quote, so four d
 over exactly the bytes the loader reads and the browser will be served:
 
 1. `pack.json` — hashed **after** `normalizePackManifest` (`shared/workshop.js:1802`), so the hash covers the pack's
-   effective declaration (normalized `overrides`, `content`, icon tables, `art`, `support`, `voices`), not its
+   effective declaration (normalized `overrides`, `content`, icon tables, `art`, `voices`), not its
    whitespace. Two spellings of the same pack then hash the same, and a declaration the loader silently dropped
    (`shared/workshop.js:1859` filters a malformed `overrides` entry in silence today) cannot hide behind the hash.
 2. every declared content file, after `normalizeContentFile` — the same normalized records the loader merges.
@@ -230,8 +230,8 @@ there. Both defects — the wrong attribution and the unnamed kit holder — are
 **Cross-pack conflicts are reported once, at load, in one shape.** The report used to be split across three carriers
 with three shapes: the overlay's `report.errors` (logged by `server/data.js:95`), the icon and art collisions on that
 same array, and `loadWorkshopKits`' own `errors` (`server/workshop.js:508`) — no single line an author could grep. Every
-one of them now carries a `code`, and the four `MANIFEST_MISSING` cases (`data/assets.json` or `data/support.json` not
-produced by the asset pipeline) are distinguishable from a collision without reading prose. The ordering contract is
+one of them now carries a `code`, and the `MANIFEST_MISSING` cases (`data/assets.json` not produced by the asset
+pipeline) are distinguishable from a collision without reading prose. The ordering contract is
 documented for authors in `docs/WORKSHOP.md` §1.2 and summarized in the §1.7 status table, because a rule an author
 cannot read is a rule an author cannot follow.
 
@@ -299,7 +299,7 @@ code:
   what the two things ARE. "Same shape as the official record" is the override contract — an override says *this
   operator's data is patched*, so the patched record must be the official record with fields changed, and a key official
   data never had is not a patch. "Hand this operator to the player in playtest" says nothing about the operator: it is a
-  decision about what the *session* does, which is what the manifest is for — the same reason `support` and `overrides`
+  decision about what the *session* does, which is what the manifest is for — the same reason `overrides`
   live there. So a pack that ADDS its own operator keeps the record marker (unchanged behaviour), a pack that OVERRIDES
   an official one declares it in `pack.json`, and the engine reads the union of the two (`directToHandIds`). The
   production invariant is untouched and now has its own test: with `SP_PLAYTEST` not exactly `1`, `directToHandIds`
@@ -623,7 +623,7 @@ its `ownedPool` has exactly the 71 operators the generator decided on, and `work
   `npm run build-data` cannot erase an operator the pack owns).
 
 What this deliberately does NOT give the author is a way to change which OFFICIAL operators are in the pool, or to edit
-`diy.slots` — the same boundary `support` draws for the 助战 pool ("the pool belongs to the install").
+`diy.slots` — the pool belongs to the install, and a pack never rewrites it.
 
 **One community behaviour is declined by this paragraph, on purpose.** A real mod (`fanpack`) ships a
 `stripPackOperators` step: when a pack turns an OFFICIAL operator into a chess piece, remove him from `diy.ownedPool`,
@@ -1521,7 +1521,7 @@ It is a heuristic, not a sandbox: `globalThis['pro'+'cess']` slips past this sca
   | mount | what it hands over | why it cannot reach a core path / a match |
   |---|---|---|
   | `metrics` (§28.31) | a **deep-frozen object of scalars** (`uptimeSec`, `rss`, `heapUsed`, `elu`, `loopP*`, `sampleAgeMs`, `state`) | it is a *value*, not a handle: no `process`, no histogram, no timer, no function. A read cannot change a result |
-  | `route` (§28.32) | a synchronous callback answering a JSON value | the path **must** live under `/mod/<pack id>/…`, a namespace the engine reserves for exactly this; `GET`/`HEAD` only; `no-store`/`no-cache` only; bounded body. A pack has no position to name `/data/support.json`, so the "core reserved path table" is the second line of defence rather than the first |
+  | `route` (§28.32) | a synchronous callback answering a JSON value | the path **must** live under `/mod/<pack id>/…`, a namespace the engine reserves for exactly this; `GET`/`HEAD` only; `no-store`/`no-cache` only; bounded body. A pack has no position to name `/data/chess.json`, so the "core reserved path table" is the second line of defence rather than the first |
 
   The static `pack.json.routes` channel (§28.13.2) also asks this same reserved table before it mounts anything, so a
   declaration can no longer shadow a core path either — but it asks a **narrower** question than the dynamic channel's
@@ -2106,7 +2106,7 @@ screen and as the new outfit in the detail card, and each of the two screens agr
 | `public/js/ui/detailPanel.js` | the detail card's portrait |
 | `public/js/ui/shopBar.js` | the shop card's portrait |
 | `public/js/ui/fallbackField.js` | the stand-in (补位) avatar |
-| `public/js/screens/{loadout,diy,ownership,support}.js` | the picker, the DIY slots, the ownership list, the support list |
+| `public/js/screens/{loadout,diy,ownership}.js` | the picker, the DIY slots, the ownership list |
 
 `test/ui/portraitChain.test.js` guards this at the **source level**: for every one of those files it asserts that no
 line outside an `import` still calls `chessAvatarUrl(...)` / `chessPortraitUrl(...)`, and that each one passes
@@ -2646,7 +2646,7 @@ JSON 可序列化值**的回调。
 六条纪律（判据的唯一真相在 `server/http/routeMount.js`）：
 
 1. **命名空间**：路径必须在 `/mod/<包id>/…` 里。两个包在结构上不可能撞车，核心命名空间也不可能被顶掉 ——
-   包**没有位置**去点名 `/data/support.json`。
+   包**没有位置**去点名 `/data/chess.json`。
 2. **核心保留路径表**（`RESERVED_ROUTE_PREFIXES` = `CORE_ROUTE_EXACT` + `CORE_ROUTE_PREFIXES`，都在
    `server/http/routeMount.js`）：常量端点 `/healthz`、`/data.js`、`/mods/catalog.json` 逐字比，命名空间
    `/ws`、`/data`、`/shared`、`/sim`、`/i18n`、`/mods`、`/media`、`/packs`、`/assets`、`/fonts`、`/workshop-*`、
@@ -2893,7 +2893,7 @@ JSON 可序列化值**的回调。
    （`MODULES_NEED_COMBAT`）同一条线：一条**能**改结果的口径声明必须进房间摘要闸门与 golden 语料。
    位置在 `BAD_COMBAT`（类型）之后、`EMPTY_PACK` 之后 —— 一个只声明了口径、什么都没带来的包，真问题是「空包」。
 
-**不是贡献项**：与 `support` / `playtest` 同一个语义 —— 口径选的是引擎已有的一套表现，不是内容。所以
+**不是贡献项**：与 `playtest` 同一个语义 —— 口径选的是引擎已有的一套表现，不是内容。所以
 `contributesDecl` 不数它，一个只带 `variants` 的包照旧 `EMPTY_PACK`（文案里点名 `"variants" is NOT a contribution`）。
 
 **多包抢同一个轴**：按既有的「包 id 字典序小的赢」（§28.3，与数据记录 / kit / 图标同一条），由
@@ -3370,7 +3370,6 @@ bug（`server/match/invariants.js` 写的是收棋子的形状、其余写的是
 
 | 位置 | 形态 | 与某格开关相关？ |
 |---|---|---|
-| `screens/support.js` 的 `shouldAutoClose` | 与 `loadout.js` 那一处**同形**（相位一离开 `INFO_CHECK` 就收走助战面板） | **无关**：助战**没有**开关，而服务端 `platform.js` 的 `room.support` 同样只在 `INFO_CHECK` 收（`WRONG_PHASE`）⇒ **两边一致，不是缺陷**。将来若有投稿要"休整期换助战"，那就是**第 5 格开关**，两处一起改 |
 | `ui/equipReplace.js` 的 `if (equipped.length < 2) return null;` | 客户端把**装备位写死 2**（换装对话框的触发判据） | **第 7 段已按格开关处理**：`equipReplaces`（`ui/gameLogic/placement.js`）改读 `slotPolicy().slotsUsed` / `slotCap`，`ui/equipReplace.js` 只消费它的判决 ⇒ 两档都对得上服务端 |
 | `ui/gameLogic/placement.js` 的 `if (targetPiece.items.length < 2) return false;` | 同上（拖拽配发的预判） | **同上，已处理**（判据收在 `equipReplaces` 一处） |
 | `ui/detailPanel.js` 的 `EQUIP n/2` 与"最多 2 件"文案 | 纯显示 | **第 7 段已处理**：分子换成 `slotPolicy().slotsUsed`（`plus` 档不数那件不占位的），分母 `slotCap`；`plus` 档另外给那一行画一个「不占装备格」标签（`dtag-slotless`，缺省档不画）。**2026-10-18 补**：分母从此是**这名玩家自己的**装备位上限（`priv.equipCap`，服务端 `PlayerState.equipCap()` 经私有视图发布；海克斯 整装待发 = 3），不是数据里那个 2 —— 此前这里只读 `slotPolicy`，把那张卡开出来的第三格挡在界面外（拖第三件弹替换框、卡片写 `EQUIP n/2`） |

@@ -71,6 +71,7 @@ Top level: `{ season, seasonName, modes, economy, lpCapPerRound, bossOvertimeAft
 | `lastRound` | `14` (solo FUNNY `9`) | last regular round (boss round) |
 | `bossRound` | `14` | round of the Final Assault |
 | `hiddenRound` | `15` or `null` | 隐秘核心 round (NORMAL+) |
+| `dummyRound` | `16` or `null` | the fork's 木桩演练 round, right after the Hidden Core (the six modes that have a `hiddenRound`; owner 2026-10-29「增加16回合，加一个“木桩”让玩家看看自己的输出」). Not a rule round: it pays no reward and does not move `lastRound` / `bossRound` / `roundsPassed` |
 | `rounds[r]` | see below | per-round schedule |
 | `spRounds` | `[3,9,11]` | rounds whose prep opens with a 机变 draft |
 | `combatTimeLimit[r]` | `{"1":45,…,"14":null}` | = `rounds[r].combatTimeLimit`: **real** seconds of the forced-2× battle (DESIGN §4) |
@@ -94,6 +95,7 @@ Top level: `{ season, seasonName, modes, economy, lpCapPerRound, bossOvertimeAft
 | `prepTime` | `65` | multi/training prep timer (real seconds); **`null` for solo** (untimed in 下半) |
 | `prepTimeData` | `300` | official `normalPhaseTime` (optional "timed solo") |
 | `isSpPrepare`, `isBoss`, `isHidden` | | 机变 before prep / leader round / 隐秘核心 |
+| `isDummy` | `true` on round 16 | the 木桩演练 round (owner 2026-10-29): a normal-template round whose wave builds exactly one 木桩, so the players can read their own output. `isBoss` / `isHidden` stay false — it never enters `_planBossWaves` and has no shared pool |
 | `bossOvertimeAfter` | `150` | boss rounds: team LP −1 per **real** second after this many real seconds (= 300 game s on the 2× field clock; `m.public.overtimeAt`) |
 
 ### 1.2 `economy`
@@ -159,7 +161,7 @@ Top level: `{ season, seasonName, modes, economy, lpCapPerRound, bossOvertimeAft
 | `name`, `appellation` | `"隐现"`, `"Insider"` | |
 | `rarity` | `5` | stars 1–6 |
 | `profession`, `subProfessionId`, `subProfessionName`, `position` | `"SNIPER"`, `"fastshot"`, `"速射手"`, `"RANGED"` | |
-| `placement` | | not stored. A MELEE chess may also stand on a 高台 when its trait without a module (`traitBase`, else `trait`) reads 「可以放置于远程位」 — the 钩索师 / 推击手 branch trait: 歌蕾蒂娅, 崖心, 见行者, normal and elite; the module does not matter (every module of the three keeps the line). Read at place time (`shared/highGround.js meleeOnHighGround`, `board.js positionClass`); the owner's decision of 2026-10-05, following PRTS (it reverses the 2026-10-04 one: elite 歌蕾蒂娅 with HOK-Y only). `position` stays MELEE for the battle |
+| `placement` | | not stored. A MELEE chess may also stand on a 高台 when its trait without a module (`traitBase`, else `trait`) reads 「可以放置于远程位」 — the 钩索师 / 推击手 branch trait: 歌蕾蒂娅, 崖心, 见行者, normal and elite; the module does not matter (every module of the three keeps the line). Read at place time (`shared/highGround.js meleeOnHighGround`, `board.js positionClass`); the owner's decision of 2026-10-05, following PRTS (it reverses the 2026-10-04 one: elite 歌蕾蒂娅 with HOK-Y only). `position` stays MELEE for the battle. **Not stored in `data/*.json`**: since the 0.3.1 port (#676 / #700) `public/js/data.js` derives the boolean from the untranslated record and caches it on the localized copy (`placeOnRanged`, plus `passiveRange` / `rangeExpand` / `modeOnly` for the range preview), so a translated record reads the same answer; `shared/highGround.js` / `shared/loadoutRecord.js` read the flag first and the zh text only as a fallback |
 | `nationId` | `"laterano"` | |
 | `bonds[]` | `["lateranoShip","swiftShip"]` | bondIds (→ `bonds.json`) |
 | `garrisonIds[]` | `["garrison_16_b"]` | 特质 (→ `garrisons.json`); first = displayed trait |
@@ -291,7 +293,7 @@ full-rank build from the others; the build fails unless `atRank` rebuilds every 
 | `layerMilestones[]` | `[{"layer":25,"mode":"every","effect":"bond_layer_added_reward_equip"}]` | layer-based powers: `reach` (while L ≥ layer), `every` (each multiple), `first` (latched once) |
 | `desc`, `descRaw` | | bond panel text |
 | `effectId`, `effectName`, `effectDesc`, `effectDescRaw` | `"bondeffect_deput"`, …, `"所有干员防御力+{0:0%}（受层数影响）…"` | in-battle text with **positional** placeholders |
-| `effectDescParams[]` | `[{"index":0,"format":"0%","base":"base_def","perStack":"def_per_stack"}]` | `{i:fmt}` = `bb[base] + bb[perStack] × layers` — layers never exceed 999 (the official `MAX_GARRISON_STACK`, not in any table: shared/constants.js `BOND_LAYER_CAP`, research 11) |
+| `effectDescParams[]` | `[{"index":0,"format":"0%","base":"base_def","perStack":"def_per_stack"}]` | `{i:fmt}` = `bb[base] + bb[perStack] × layers` — layers never exceed 999 (the official `MAX_GARRISON_STACK`, not in any table: shared/constants.js `BOND_LAYER_CAP`, research 11); a **chance** (`*prob*` base / perStack: 迅捷 / 不屈 / 奇迹) is clamped to 1 and, for an integer-percent format, floored rather than rounded, so a chance below 1 never reads 100 % (不屈 204 layers = 99.6 % reads 99 %, 205 = 100 %; richText.js `formatBondEffect`, owner report 2026-10-30) |
 | `bb`, `bbStr` | `{"base_def":0.15,"def_per_stack":0.012,"respawn_time":-0.3,"layer":2,"count":3,"more_layer":4}` | all buffs merged (first wins) |
 | `buffs[]` | `[{"key":"env_gbuff_new","bb":{…},"bbStr":{"key":"act1autochess_bond_eff_deput"}}, …]` | exact official buffs (e.g. 萨尔贡 has a second buff valid only with `band_narant`) |
 | `baseParams`, `perStackParams` | `["base_def"]`, `["def_per_stack"]` | official descParamBaseList / descParamPerStackList |
@@ -345,13 +347,13 @@ full-rank build from the others; the build fails unless `atRank` rebuilds every 
 | `victorCount`, `rewardModulus`, `unlockDesc` | `3`, `1`, `null` | |
 | `bondIds` | `["lateranoShip"]` (潘格尼尼) / `[]` | the bonds the strategy is built around (`shared/bandBonds.js`: the bond names in <…> of its text — the official note "在<X>部分干员缺席时体验可能不完整" among them — and the bond ids / bond pools of its blackboards, `pool` → choices.json `pools[pool].bond`); 9 bands are tied. The bot never picks, and the strategy draft marks 本局禁用, a band whose bond the mode switches off (DESIGN §21.26) |
 
-**管理员 / 管理员2 / 管理员3** (业主 2026-10-26, 2026-10-25) are the three hand-authored strategies: they have no `bandDataListDict` row, so `tools/build-data.mjs` writes them from `CUSTOM_BANDS` + their effects `aceffect_band_admin*` (`CUSTOM_BAND_EFFECTS`) instead of copying one. Everything textual lives on the effect, so the two tables cannot drift; `iconId: "icon_admin*"` has no art behind it and `ui/gameComponents.js BandIcon` falls back to the name's first character (what a hextech card without its tier art does). Their buffs are match-side code, not `bands/meta.js` handlers, because each is a 协议源石 GAIN and only the match may grant one:
+**管理员 / 管理员2 / 管理员3** (业主 2026-10-26, 2026-10-25) are the three hand-authored strategies: they have no `bandDataListDict` row, so `tools/build-data.mjs` writes them from `CUSTOM_BANDS` + their effects `aceffect_band_admin*` (`CUSTOM_BAND_EFFECTS`) instead of copying one. Everything textual lives on the effect, so the two tables cannot drift; the three share one portrait — `band_admin.png` ships in the tree and `tools/assets/plan.mjs HAND_BAND_ICON_ALIASES` points `band_admin2` / `band_admin3` at the same manifest URL (`node tools/asset-aliases.mjs` applies it to `data/assets.json` without a full `fetch-assets` rebuild, 业主 2026-10-31「把管理员2，3策略图像加上，用管理员策略的图像」), so `iconId: "icon_admin*"` is a name only and `ui/gameComponents.js BandIcon` draws 管理员's picture instead of the name's first character. Their buffs are match-side code, not `bands/meta.js` handlers, because each is a 协议源石 GAIN and only the match may grant one:
 
 | Band | Buff | Mechanic (match code) |
 |---|---|---|
 | 管理员 | `band_hex_extra_pick_r1 { count: 1 }` | 「第一回合的协议源石可以多选一次」 — the R1 draft deals a second three-card offer (`hexDraft.js _hexExtraPicksFor` / `_applyHex`) |
 | 管理员2 | `band_hex_grant_rounds { roundA: 1, roundB: 3 }` | 第 1、3 回合开始时**随机**获得一枚（同一次抽卡池 `hexPoolFor`，排除已拥有；`hexDraft.js applyBandRoundHexes` + `_rollBandHex`）|
-| 管理员3 | `band_hex_grant_rounds { roundA: 4, roundB: 10 }` + `bbStr.hexId: "hex_pandora"` | 第 4、10 回合开始时获得【潘多拉魔盒】（`bbStr.hexId` 钉住卡片；走 `grantHex`，onPick 全套照跑）|
+| 管理员3 | `band_hex_grant_rounds { roundA: 5 }` + `bbStr.hexId: "hex_pandora"` | 第 5 回合开始时获得【潘多拉魔盒】（`bbStr.hexId` 钉住卡片；单回合只写 `roundA`，缺的 `roundB` 被 `bandHexGrants` 的整数过滤丢掉；走 `grantHex`，onPick 全套照跑）|
 
 So all three are bands with neither a prep handler nor a battle part (the others: 鸭爵, 歌利亚). (`band_hex_copy_once` / `applyBandHexCopy` still exist as the seam a workshop pack may call, but no shipped strategy carries that buff since the owner moved the copy into the 2阶 hex card 「复制」 on 2026-10-25.)
 
@@ -382,7 +384,7 @@ Types: `BAND_INITIAL` 42, `BOND` 23, `EQUIP` 115, `ENEMY_GAIN` 129 (悬赏), `BU
 | `tacticDraft` | `{"rounds":[11],"kinds":["ally"],"weights":{"allybuff_select_4":4,…},"seen":[7,9,18,20],"count":6}` | the official 战术决策 (R11 of matches 7, 9, 18, 20; build-data `TACTIC_DRAFT`; the user: "战术决策也按官方改成可以重复吧"): six cards, each drawn on its own — with replacement, so a card can come twice (official: 补给 ×2 in match 7; the other three drafts show six different cards). All 24 official cards are `ally` cards (no 排斥 / 责罚 / 裁决, no 模拟战场演变; four drafts without a debuff: about 0.04 % for the previous draw, 6 different cards of the 26 ally + 9 debuff cards), and 列装 / 财富 / 补给 / 整备 / 升华 made 12 of them (uniform: about 4.6), so at `rounds` (R11 = 绝境 / 终极, the round of the screenshots) only the cards of `kinds`, each by `weights` (1 + the official cards it showed on; unlisted 1) [ASSUMED: the weights; no terrain card at R11 — the maps of the 4 matches are unknown]; each card independent, no slots like `shopDraft` [ASSUMED, open: all 4 drafts hold a 驰援, a 盟誓 and two of 列装 / 财富 / 补给 / 整备 / 升华 — about 3 % under independent draws, a pattern spotted after the fact]; solo 3 [ASSUMED]; other rounds (标准 R3 / R9, 险境 R3 / R6 / R9, 险境 solo R9; no screenshot) every card uniform, terrain cards only for the match stage, with replacement too [ASSUMED]. A card acting only on dead bonds is never offered (`Match.bondLive`). `assumed` lists the assumed parts |
 | `pools[poolId]` | `{"kind":"equip","items":[…]}` / `{"kind":"chess","tier":2,"rule":"shopEligible"}` | server-side reward pools referenced by effects (`pool_equip_*`, `pool_chess_shop_N_reward`, `pool_char_later`, …), all [ASSUMED]; `rule:"shopEligible"` = visible/non-hidden entries, `maxTier:"shopLevel"` = ≤ current shop level, `weighted` = `[[id, weight]]`. `pool_equip_vict` (维多利亚, every 25 layers: "获得一件带有随机特殊效果的维式重锤") and `pool_equip_rockr` (洛洛's 定制品; user playtest #4 — the research 04 §8 guess 有限加速器 / 激光发射器 / 护盾无人机 / 双模机械臂 / 蜂鸣器 is superseded) = the 4 special 维式重锤, uniform. `pool_equip_kathe` and `pool_equip_narant` omit `maxTier` (every shop-eligible tier, uniform [ASSUMED]; 见者有份 §34.14.8). `pool_equip_kathe.also` is 突变细胞 (`chess_item_5_08_e_a`), appended by `Match.rollItemId` at the same uniform weight [ASSUMED] and at any 调度中心 level (#631, §34.14.24); the shop item slot does not read `also`, so 突变细胞 stays `shopExcluded` |
 
-## 9. `enemies.json` — `{ [enemyKey]: Enemy }` (251 keys that can appear)
+## 9. `enemies.json` — `{ [enemyKey]: Enemy }` (318 rows: the official keys + the fork's wave batches, its two extra leaders and `enemy_9901_dummy`)
 
 Collected from all wave templates (spawns, branches, enemyDbRefs), special-enemy entries and pools, bounty
 effects, band effects, bosses, placeholders, mode bans, plus summons (`extraEnemyKeyList`) and enemy keys in enemy
@@ -405,7 +407,7 @@ blackboards (transitively). Level = `randomEnemyAttributeDict[key].level` (0 for
 | `templateSlot` | `"N"` | placeholder slot when the key is a template key |
 | `summons[]`, `inactiveIn[]`, `seasonOverride` | | spawned enemies; modes banning it; overridden fields |
 | `iconId`, `spine` | `"enemy_1422_lrsldr"` | asset ids |
-| `hitArea` | `{"w":4.95,"h":2.95,"dx":0,"dy":1}` (`enemy_9013_acstmk`) | **huge units only** (巨型单位, 7 keys: 假想敌：胄 ×2, 假想敌：管 ×2 — the 隐秘核心 one `dx` 1 —, 盐风主教昆图斯, 阿利斯泰尔，帝国余晖, “萨米的意志”): the hit rectangle, `w` tiles along the columns × `h` along the rows, centred on the unit's position moved `dx` columns right / `dy` rows up (sim/body.js; user playtest #5). Not in the game tables (the collider lives in the prefab): `tools/build-data.mjs HIT_AREAS` by `prefabKey`, from PRTS "巨型单位：受击判定区域为长4.95、宽2.95的长方形，向上偏移1.0" and PRTS盟约记录 (the season's 阿利斯泰尔 / “萨米的意志” versions); absent = a point. All 7 are also 自缚 + 无法被阻挡 (PRTS 天赋 — not a data field either: content/bosses.js `SELF_BOUND`) |
+| `hitArea` | `{"w":4.95,"h":2.95,"dx":0,"dy":1}` (`enemy_9013_acstmk`) | **huge units only** (巨型单位, 9 keys: 假想敌：胄 ×2, 假想敌：管 ×2 — the 隐秘核心 one `dx` 1 —, 盐风主教昆图斯, 阿利斯泰尔，帝国余晖, “萨米的意志”, the fork's 伤心的大锁 `{"w":2.95,"h":2.95,"dx":0,"dy":1}` — a square body, not the 4.95 × 2.95 rectangle —, and the round-16 木桩 `enemy_9901_dummy`, which takes 萨米's rectangle because it draws that model on the boss deploy field): the hit rectangle, `w` tiles along the columns × `h` along the rows, centred on the unit's position moved `dx` columns right / `dy` rows up (sim/body.js; user playtest #5). Not in the game tables (the collider lives in the prefab): `tools/build-data.mjs HIT_AREAS` by `prefabKey`, from PRTS "巨型单位：受击判定区域为长4.95、宽2.95的长方形，向上偏移1.0" and PRTS盟约记录 (the season's 阿利斯泰尔 / “萨米的意志” versions); absent = a point. All 9 are also 自缚 + 无法被阻挡 (PRTS 天赋 — not a data field either: content/bosses.js `SELF_BOUND`) |
 | `staticBody` | `true` (`enemy_1005_yokai` 妖怪) | **静态刚体 only** (28 keys: every air unit of the mode except “炎佑” — 妖怪 ×3, 御4, 暴鸰, 法术大师 ×2, 寒霜, 帝国炮火先兆者 ×2, 枯朽之种, 枯朽萃聚使徒, 护障 ×2, 远眺, 愧悔魂灵圣杯, 假想敌：黑云, “斩胄之剑”, “破胄之锤”, 刺胄之弹, 未装配刀片, 防护背心, 冲击式施术单元, 节日气球, “萨科塔之翼 / 之眼 / 昂首” — plus the ground boss 盐风主教昆图斯): pushes and pulls never move it, the skills still hit it (sim `Battle._displaceable`; player report after 0.1.0). PRTS 特殊机制 静态刚体: "该单位的Unity刚体的刚体类型为部分静态（Kinematic）或静态（Static）…无法产生任何速度或移动…※是否为静态刚体与单位的行动方式无关". Not in the game tables (the rigidbody lives in the prefab): `tools/build-data.mjs STATIC_BODIES` by key, from the 天赋 "{{特殊机制|静态刚体}}" of each enemy's PRTS page (every enemy of the file, read 2026-10-03); absent = a dynamic body |
 | `modelScale` | `0.5926` (`enemy_1005_yokai_3` 威龙) | official drawn size of the enemy's Spine model relative to the standard (user playtest #6): the battle prefab's transform scale down to its Spine renderer (Graphic × FaceSwitcher × Spine; SkeletonDataAsset.scale is 0.01 for every enemy skeleton) ÷ 0.27, the standard of 1454 of the client's 2147 enemy prefabs (2080 have exactly one Spine renderer) and of the operators' battle skins. The renderer multiplies `UNIT.modelScale` by it (render/units.js `enemyModelScale`). 125 keys (122 prefabs) carry one, from 0.5926 (威龙 0.16; 妖怪 0.7407, 寒霜 0.6667) to 2.2222 (青铜镜 / 青瓷茶器 0.6); absent = 1. Not in the game tables: `tools/build-data.mjs MODEL_SCALES` by `prefabKey`, read from the local client by `tools/local-extract/enemy_scales.py` |
 | `modelScaleY` | `1.263` (`enemy_1112_emppnt` 帝国炮火先兆者) | **vertically stretched models only** (2 keys, the 先兆者 pair): the official prefab's `Graphic` scale sy ÷ sx — 1.263 because the pair's scale is (0.19, 0.24, 0.24), i.e. the game draws them 26 % taller than `modelScale` (which only carries the horizontal product) implies. The renderer multiplies the skeleton's **Y** scale (and the bar height) by it (render/units.js `enemyModelScaleY`). Not in the game tables: `tools/build-data.mjs MODEL_STRETCH_Y`, read from the local client by `tools/local-extract/enemy_model_offsets.py` (a sweep of all 242 readable enemy prefabs found no other non-uniform one), docs/research/12 §3.1 (PR #211 by @xcdoge; the owner's decision of 2026-10-06) |
@@ -432,6 +434,34 @@ The official generator (implemented by `server/match/waves.js`):
    f32(P(new)/f(new)))), 1, 5)` (P = `enemies[k].attrPower`, f = `beFactor`), unit *i* at
    `time + i·max(n·interval/n', 0.05·n·interval)`. Literal keys and the T / TF token keys are kept.
 3. **Leader / hidden rounds** use the pick of their own slot (14 / 15; solo 标准 9): only E **or** EF escorts spawn.
+
+### The training post `enemy_9901_dummy` (round 16 木桩演练, owner 2026-10-29)
+
+The round-16 target is the one enemy row this fork invents rather than takes from the official tables: 「用萨米的意志复制
+改改」, so `tools/build-data.mjs` clones `enemy_9033_acdeer` (“萨米的意志”) field for field and overrides these:
+
+| field | value | why |
+|---|---|---|
+| `name` | 木桩 | |
+| `rank` | `ELITE` | **not** `BOSS`: a spawn is a leader only when its `tag` is `boss` (`sim/battle/spawns.js`), and the
+  post must never look like — or be counted as — a leader |
+| `stats.maxHp` | 32500000000 | owner 2026-10-30「木桩太脆了，血量改为325亿」: ABYSS's leader pool is 4 000 000 and the window is 60 real s ≈ 120 game s, but a real fully-built team still emptied a 20 000 000 post inside it — 325 亿 (~81 000× the ABYSS pool) is the owner's number for "cannot be emptied", not a derivation, so the post has
+  headroom and cannot be emptied mid-measurement. There is **no** 免死/无敌: a single hit ≥ maxHp does kill it — an
+  invulnerable post would read 0 damage and defeat the round's purpose (`test/sim/dummy.test.js` pins both directions) |
+| `stats.atk` | 0 | it never fights back (`profile.noAttack` from its kit) |
+| `stats.def`, `stats.res` | 0, 0 | [ASSUMED] 萨米本体 is 800 / 40, but `max(A − D, 5 %·A)` floors every low-ATK operator at
+  5 % against 800 DEF, so the reading would be “output vs an 800-DEF target”, not the operator's own — the post is a
+  measuring device, so it is an unarmoured target |
+| `stats.moveSpeed` | 0 | plus the kit's `selfBound`/`noMove` flags |
+| `stats.lpr` | 0 | a leak would cost nothing (it cannot leak — `selfBound` — this is belt and braces) |
+| `stats.hpRecoveryPerSec` | 1000 | 自愈 through the engine's ordinary `s.hpRegen`; the kit writes no healing of its own |
+| `hitArea` | `{"w":4.95,"h":2.95,"dx":0,"dy":1}` | **the same body as 萨米** (owner 2026-10-30「木桩的受击范围」): it draws that
+  model and stands where a leader stands on the boss deploy field, so the hit rectangle has to match the picture — a
+  1-tile body under a huge model reads as cutting air. That is also why the key is on both `HIT_AREAS` and
+  `bosses.js SELF_BOUND` (the pair of invariants `test/sim/playtest5_bossbody.test.js` pins), and why it is 自缚 +
+  无法被阻挡 |
+| `iconId`, `spine` | `enemy_9033_acdeer` | draws as 萨米; `tools/assets/plan.mjs ENEMY_SPINE_ALIAS` also aliases the
+  manifest's `spine` (and, for an alias, the icon) so the client really uses that model |
 
 ### Fork wave enemies (0.19.17, owner 2026-10-22「做d」)
 
@@ -481,6 +511,7 @@ carry a fork card, and when its group is drawn the draft is made of them.
 | `enemy_1004_mslime` 酸液源石虫 | every hit lowers the target's DEF by 10 | `dealt` → `addBuff(defFlat)` |
 | ~~`enemy_1130_infstr` 畸变体傀儡~~ | **back out** (owner 2026-10-26「删除畸变体傀儡」): its only line is 「死亡时分裂两个」, and a split doubles the body count of whatever pool it lands in — the owner does not want that effect, so the enemy goes with it | — |
 | `enemy_1028_mocock` 鸡尾酒投掷者 | none (plain ranged attacker; the kit exists only so it is not double-listed) | — |
+| `enemy_9901_dummy` 木桩 | round 16's training post: never attacks, never moves, cannot be blocked, heals 1000/s from its data row | `profile.noAttack` + the `SELF_BOUND` flag set (`noMove` / `selfBound` / `unblockable`), in `server/sim/content/enemies/dummy.js`. **No invented mechanic**: 自愈 is `stats.hpRecoveryPerSec` → `s.hpRegen`, so the kit writes no healing at all |
 
 Their research rows carry `kit: 'server/sim/content/enemies/forkwave.js'` and `band: 'wide'`: they are all weaker than
 the pool anchors that fit them, so they attach at the wider [0.7, 1.5] power band and stay out of `STATS_ONLY`
@@ -526,7 +557,7 @@ under the talents — 周期性治疗 and 【微光之触】 are SKILLS of their
 An enemy whose handbook line names a system this mode does not have (结晶, 装备, 狂欢时刻, 摄影区域, 月光, 沙尘暴, 闪亮果实,
 战术机库) ships without that line rather than half-working; the comment on each kit names the line and why.
 
-## 11. `waves.json` — `{ [templateId]: Wave }` (42 templates)
+## 11. `waves.json` — `{ [templateId]: Wave }` (47 templates: 38 official + 8 hand-added-leader clones + `custom_dummy`)
 
 Non-boss rounds use `act1autochess_01…07`, `h01…h06`; leaders `h07_0X` (+`_s` solo; boss_5 is `act2autochess_h07_05`);
 hidden core `h08_0X`; 联防 `act1autochess_escaped_single|multi`; training `tr01/02/04`; the fork's hand-added leaders
@@ -534,6 +565,14 @@ boss_11 `custom_boss_11` / `_s` (a clone of the h07_05 field — its patrol rout
 假想敌：铳 — whose leader spawn is `enemy_1515_bsnake`) and boss_12 `custom_boss_12` / `_s` (the same h07_05 clone with
 leader `enemy_1507_mephi` and its escorts swapped to the 宿主 units by the research entry's `escorts` map;
 `docs/research/15-extra-bosses.json`).
+
+`custom_dummy` is the fork's round-16 木桩演练 field (owner 2026-10-29, `docs/research/17-dummy-round.json`): one
+route and **exactly one spawn**, `enemy_9901_dummy` at t 0 with no `tag` (neither `boss` nor `part` — the training
+post is not a leader, so no shared pool and no per-hit 限伤), `maxPlayTime` 60. Its route is the **official leader route**
+of `act1autochess_h07_07` (`[3,10] → [2,2]`, checkpoint `[2,3]`), so the post stands in the arena: owner 2026-10-30
+「16回合没有设置成boss回合，导致地图有问题」— the round is played from the **boss deploy field** (`bossL` / `bossR`;
+board tile `(10,10)` maps to stage `(3,10)`, i.e. onto the post) while the FIGHT stays a normal one
+(`server/match/match/phases.js _planDummyField`).
 
 | Field | Example | Meaning |
 |---|---|---|
@@ -602,7 +641,7 @@ Glyph legend (`rows`):
 | `m` `g` `i` | tile_mire / tile_smog / tile_infection | LOW | ALL | yes | special terrain (see `special`) |
 | `d` | tile_deepsea | LOW | NONE (level: ALL) | yes | 深水区 (see `special.deepsea`): enemies wade through it; no unit may be deployed on it (PRTS 深水区 地形信息 "拒绝部署（待补充）") — 战场#08's pool at board (10–12, 6), (10–12, 14), boss (3–5, 6) / (3–5, 14) |
 
-## 13. `bosses.json` — `{ [bossId]: Boss }` (12 = 10 official + the fork's hand-added boss_11 / boss_12; boss_8–10 hidden)
+## 13. `bosses.json` — `{ [bossId]: Boss }` (14 = 10 official + the fork's hand-added boss_11 黑蛇 / boss_12 梅菲斯特 / boss_13 伤心的大锁 / boss_14 曼弗雷德; boss_8–10 hidden)
 
 The official ten come from activity_table `autoChessData.bossInfoDict`; `boss_11` (“不死的黑蛇”, `enemy_1515_bsnake`) and
 `boss_12` (梅菲斯特, `enemy_1507_mephi`) are declared by the fork in `docs/research/15-extra-bosses.json` and merged here
@@ -715,8 +754,8 @@ by `tools/build-data.mjs` (no official `bossInfoDict` row exists for them).
 ## 16. Counts (current build)
 
 `chess 266 (112 visible; 283 selectable skills over the visible chess, 185 module choices over 129 goldens; 74 PRESET / 55 NORMAL / 4 DIY base chess)`, `bonds 23`, `garrisons 249 (43 effect keys)`, `items 115`, `bands 41`, `effects 362`,
-`enemies 272`, `factions 67 entries`, `waves 42`, `stages 13 (8 active)`, `bosses 12`, `tokens 22`, `choice events 109`,
-`bounty cards 129`, `tactic cards 43`, `backups: 89 units (17 stand-ins, 72 owned-6★ picks; 259 forms), 38 自选 summons, 4 DIY slots, 15 / 9 prototype picks (tier 5 / 6), 72 owned-6★ picks (7 collab operators excluded)`, potential (§2.3): `256 chess records, 219 forms / variants with potDown; 442 + 401 + 19 chained talent entries (chess, backups, tokens)`.
+`enemies 318` (the official keys + the fork's wave batches — `docs/research/16-extra-enemies.json` —, its two hand-added leaders and the round-16 training post), `factions 67 entries`, `waves 47`, `stages 13 (8 active)`, `bosses 14`, `tokens 22`, `choice events 109`,
+`bounty cards 143 (129 official + 14 fork 强怪悬赏)`, `tactic cards 43`, `backups: 89 units (17 stand-ins, 72 owned-6★ picks; 259 forms), 38 自选 summons, 4 DIY slots, 15 / 9 prototype picks (tier 5 / 6), 72 owned-6★ picks (7 collab operators excluded)`, potential (§2.3): `256 chess records, 219 forms / variants with potDown; 442 + 401 + 19 chained talent entries (chess, backups, tokens)`.
 
 ## 17. Integrity guarantees (checked by the builder and `test/data.test.js`)
 
@@ -849,6 +888,6 @@ loadout. No id is also a tokens.json record.
 
 Not in this data: a player's ownership roster and 自选 picks (browser settings sent with `room.ownership` / `room.diy`),
 the DIY stock (per player in the match, `PlayerState.diyStock`: `config.economy.poolCopies` of the slot's tier — no excel
-field), 助战 borrows (`borrowCount` 20), and a player's potential / 练度 per operator (the 干员调配 settings sent with
+field), the official borrow roster (`borrowCount` 20), and a player's potential / 练度 per operator (the 干员调配 settings sent with
 `room.loadout`; the forms are built at full potential and carry the lower ranks, §2.3; 练度 = effects.json
 `aceffect_char_1…4`).

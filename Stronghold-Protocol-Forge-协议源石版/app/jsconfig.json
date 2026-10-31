@@ -32,7 +32,6 @@
     "shared/zip.js",
     "shared/workshop.js",
     "shared/chessAuthoring.js",
-    "shared/support.js",
     "shared/enemyAuthoring.js",
     "shared/statReference.js",
     "shared/stageAuthoring.js",

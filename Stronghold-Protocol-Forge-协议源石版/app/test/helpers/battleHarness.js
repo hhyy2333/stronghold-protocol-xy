@@ -256,6 +256,8 @@ export function makeBattle(opts = {}) {
     sharedBoss: opts.sharedBoss ?? null, flags: { startOpCooldown: 0, ...opts.flags }, fieldId: opts.fieldId ?? 'test', data,
     content: opts.content ?? 'full', recordEvents: opts.recordEvents !== false, logger: opts.logger ?? quietLogger(opts.verbose),
     quiet: opts.verbose ? false : true, devices: opts.devices,
+    // the two "pathological battle" caps (server/sim/constants.js): a test may shrink them to prove they fire
+    maxBattleErrors: opts.maxBattleErrors, maxTickDamageInstances: opts.maxTickDamageInstances,
     autoFinish: opts.autoFinish ?? spawns.length > 0, kits: opts.kits, extraContent: opts.extraContent,
     setup: (b) => {
       for (const name of hookNames) {

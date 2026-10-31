@@ -58,8 +58,11 @@ describe('room.hexBans (lobby, stub match)', () => {
   test('malformed lists are BAD_MSG; unknown ids dropped; stored per session and seat; the next match takes it', async () => {
     const host = await pool.player('Host');
     await err(host, { t: 'room.hexBans', ids: 'nope' }, ERR.BAD_MSG);
-    await err(host, { t: 'room.hexBans', ids: ['hex_stipend', 'hex_echo', 'hex_recruit', 'hex_refresh'] }, ERR.BAD_MSG);
+    // 6 is the cap (业主 2026-10-30 「增加协议源石ban位从3到6」), so a 7th id is what the structural check refuses
+    await err(host, { t: 'room.hexBans', ids: ['hex_stipend', 'hex_echo', 'hex_recruit', 'hex_refresh', 'hex_bulwark', 'hex_massprod', 'hex_drill'] }, ERR.BAD_MSG);
     await err(host, { t: 'room.hexBans', ids: ['hex_stipend', 'hex_stipend'] }, ERR.BAD_MSG);
+    // exactly six legal cards are accepted
+    await ok(host, { t: 'room.hexBans', ids: ['hex_stipend', 'hex_echo', 'hex_recruit', 'hex_refresh', 'hex_bulwark', 'hex_massprod'] });
     // outside a room: accepted; the unknown id is dropped and the legal ones kept
     await ok(host, { t: 'room.hexBans', ids: ['hex_stipend', 'hex_echo', 'not_a_card'] });
     const st = await createRoom(host);
