@@ -502,6 +502,10 @@ export function compactResult(res) {
       perfect: !!p.perfect,
       layerGains,
       coins: Math.max(0, fnum(p.coins)),
+      // 协议源石来源的那一部分悬赏金（骑士金神击杀金币；battle/economy.js addCoins `{ hex: true }`）：结算要用它把
+      // 这一笔从 n19 的额度里摘出来。**只在有值时出现**，所以没有这张卡的战报与从前逐字节相同；也不进 resultDigest
+      // （与 creditedKills 同一条理由：客户端与服务器重算的摘要不该因为一个只影响「豁免」的数值分叉）。
+      ...(fnum(p.coinsHex) > 0 ? { coinsHex: Math.max(0, fnum(p.coinsHex)) } : {}),
       damageDealt: Math.max(0, Math.round(fnum(p.damageDealt))),
       bossDamage: Math.max(0, Math.round(fnum(p.bossDamage))),
       healingDone: Math.max(0, Math.round(fnum(p.healingDone))),

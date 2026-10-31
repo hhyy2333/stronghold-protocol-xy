@@ -194,14 +194,22 @@ export function installOmenpact(hooks) {
 }
 
 /**
- * 蛋白粉奶昔 (hex_proteinshake, 3 阶): 每有 100 生命值增加 10 点防御力、0.1 点法抗。
+ * 蛋白粉奶昔 (hex_proteinshake, 3 阶): 每有 100 生命值增加 10 点防御力、0.1 点法抗；并使其受到的治疗量 +2%
+ * （2026-10-31 业主追加后半句，卡面 `proteinshake { perHp, def, res, healTakenPct }`）。
  *
  * Reading: `steps = floor(maxHp / perHp)`; the operator gains `steps × def` flat DEF and `steps × res` flat RES
- * (0.1 per step — a RES point here is 1, not 10). The max HP read is the LIVE stat (`u.s.maxHp`, every hpPct/hpFlat buff
- * already folded in) and it is re-read every tick, so a max-HP change re-scales the bonus at once.
+ * (0.1 per step — a RES point here is 1, not 10), plus `healingTakenMul = 1 + (healTakenPct/100) × steps`
+ * (the same step count: 1 step ⇒ ×1.02, 2 ⇒ ×1.04, 3 ⇒ ×1.06 …). The max HP read is the LIVE stat (`u.s.maxHp`,
+ * every hpPct/hpFlat buff already folded in) and it is re-read every tick, so a max-HP change re-scales the bonus
+ * (DEF / RES / 受治疗量一起) at once.
+ *
+ * `healingTakenMul` is the engine's 「受到的治疗量」 乘区 (damage.js `heal`: `amount × source.healingDealtMul ×
+ * target.healingTakenMul`), so it stacks multiplicatively with every other 受治疗量 source and needs no special-casing.
  *
  * [ASSUMED] 「每有 100 生命值」 rounds DOWN: 199 max HP grants one step, 99 grants none.
  * [ASSUMED] The max HP is the operator's effective max HP for this battle (a +HP buff counts).
+ * [ASSUMED] `healTakenPct` 缺省 2；和本文件的 perHp / def / res 一样按「0 当未配置」读（`optNumber` 口径），
+ *   所以卡面写 0 也会退回 2 —— 要关掉这半句得改代码，不是改卡面。
  */
 const PROTEIN_KEY = 'hex:proteinshake';
 
@@ -220,6 +228,7 @@ export function installProteinShake(hooks) {
       const perHp = optNumber(spec, 'perHp', 100);
       const def = optNumber(spec, 'def', 10);
       const res = optNumber(spec, 'res', 0.1);
+      const healTakenPct = optNumber(spec, 'healTakenPct', 2);
       for (const u of opsOf(pid) || []) {
         if (!u || !u.alive || !u.deployed) continue;
         const maxHp = u.s && u.s.maxHp;
@@ -227,7 +236,14 @@ export function installProteinShake(hooks) {
         const steps = Math.floor(maxHp / perHp + 1e-9);
         if (steps <= 0) { battle.removeBuff(u, PROTEIN_KEY); continue; }
         battle.addBuff(u, {
-          key: PROTEIN_KEY, mods: { defFlat: steps * def, resFlat: steps * res }, persist: true, allowDead: true,
+          key: PROTEIN_KEY,
+          mods: {
+            defFlat: steps * def,
+            resFlat: steps * res,
+            // 同档位：每 100 最大生命 +healTakenPct% 受到的治疗量（乘区，与其它受治疗量来源相乘）
+            healingTakenMul: 1 + (healTakenPct / 100) * steps,
+          },
+          persist: true, allowDead: true,
           refresh: 'replace',
         });
         applied = steps;
@@ -238,7 +254,8 @@ export function installProteinShake(hooks) {
 }
 
 /**
- * 重量级打击手 (hex_heavyhitter, 1 阶): 你的攻击造成相当于 10% 最大生命值的额外**法术**伤害。
+ * 重量级打击手 (hex_heavyhitter, 1 阶): 你的攻击造成相当于 20% 最大生命值的额外**法术**伤害。
+ * （2026-10-31 业主把比例从 10% 调到 20%，卡面 `heavyhitter { maxHpPct }`；代码兜底同步改成 20。）
  *
  * Reading: after one of the own operator's NORMAL attacks lands, every enemy that attack struck takes one separate ARTS
  * instance of `maxHpPct` of the operator's max HP. It is a plain 'arts' hit — mitigated by the target's RES like any
@@ -252,6 +269,7 @@ export function installProteinShake(hooks) {
  * [ASSUMED] 「你的攻击」 = normal attacks only (`isSkill` false) — the owner's own clarification of this card says
  *   「每次普通攻击」.
  * [ASSUMED] Each enemy hit by a multi-target normal attack takes its own bonus instance.
+ * [ASSUMED] `maxHpPct` 缺省 20（与本文件的 optNumber 口径一致：0 / 非法值退回兜底）。
  */
 const HEAVY_TAG = 'hex:heavyhitter';
 
@@ -272,7 +290,7 @@ export function installHeavyHitter(hooks) {
     const maxHp = u.s && u.s.maxHp;
     if (!(maxHp > 0)) return;
     const spec = specOf(u.ownerId, 'hex_heavyhitter', 'heavyhitter');
-    const amount = maxHp * (optNumber(spec, 'maxHpPct', 10) / 100);
+    const amount = maxHp * (optNumber(spec, 'maxHpPct', 20) / 100);
     if (!(amount > 0)) return;
     for (const t of (ctx.targets || [])) {
       if (!t || t.side !== 'enemy' || !t.alive || t.removed) continue;

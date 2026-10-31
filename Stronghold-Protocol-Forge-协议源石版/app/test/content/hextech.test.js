@@ -836,7 +836,7 @@ test('the thirteenth batch: ten battle-script cards are wired end to end (record
   }
   // the card text itself (owner's wording) — a rewrite of the roster must not silently change it
   assert.equal(HEXTECH.playerHexes.hex_frostghost.desc, '每 12 秒束缚全场敌人 3 秒。');
-  assert.equal(HEXTECH.playerHexes.hex_heavyhitter.desc, '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的法术伤害。');
+  assert.equal(HEXTECH.playerHexes.hex_heavyhitter.desc, '作战中，己方干员的攻击额外造成相当于自身最大生命值 20% 的法术伤害。');
 });
 
 test('转职大师 / 赌狗大师 / 人力部资源 / 博士投影: the four plain item grants name the owner’s items', () => {
@@ -887,8 +887,8 @@ test('紧急拨款: an ELITE sale pays 6 funds and arms the next refresh’s gua
   assert.equal(ctx.funds, 0, 'a normal operator pays nothing');
   ctx.ev = { piece: { kind: 'chess', id: 'chess_char_1_01_b' }, gain: 3 };
   reg.get(hexEffectKey('hex_emergencygrant')).onSold(ctx);
-  // Owner's rebalance of 2026-10-15: the payout is 2 funds (was 6).
-  assert.equal(ctx.funds, 2, 'an elite sale pays the card’s 2 funds at once');
+  // Owner's rebalance of 2026-10-15: the payout is 2 funds (was 6); 2026-10-31: 2 → 3.
+  assert.equal(ctx.funds, 3, 'an elite sale pays the card’s 3 funds at once');
   assert.equal(ctx.counter('hex:hex_emergencygrant:nextTopBond'), 1, 'and arms the guarantee');
   reg.get(hexEffectKey('hex_emergencygrant')).onRefresh(ctx);
   assert.deepEqual(slots, [[0, { kind: 'chess', id: 'chess_char_1_01' }]], 'the next refresh writes slot 0 with the top bond’s operator');
@@ -1509,14 +1509,16 @@ test('第二十三批：普通协议源石【突破极限】【特限恢复】�
   assert.equal(bl.name, '突破极限');
   assert.equal(bl.rarity, 'prismatic', '3 阶');
   assert.equal(bl.requiresBond, undefined, '普通卡（不限盟约）');
-  assert.deepEqual(bl.effect.bondCap, { cap: 9999 });
-  // 特限恢复：2 阶普通卡，3 级模组 + ISW/SO/RA 特限模组效果
+  // 业主 2026-11-01「联防也能叠层」：uniteLayers 开关进卡面，只有拥有者在联防里加层
+  assert.deepEqual(bl.effect.bondCap, { cap: 9999, uniteLayers: true });
+  // 特限恢复：2 阶普通卡，3 级模组 + ISW/SO/RA 特限模组效果 + 有特限模组的干员购买价 −2（最低 1）
   const mm = HEXTECH.playerHexes.hex_mode_modules;
   assert.ok(mm, 'hex_mode_modules 在 roster 里');
   assert.equal(mm.name, '特限恢复');
   assert.equal(mm.rarity, 'gold', '2 阶');
   assert.equal(mm.requiresBond, undefined, '普通卡（不限盟约）');
   assert.deepEqual(mm.effect.modeModules, { level: 3, types: ['ISW', 'SO', 'RA'] });
+  assert.deepEqual(mm.effect.onPrice.specialLimitDiscount, { delta: -2, min: 1, types: ['ISW', 'SO', 'RA'] });
   assert.ok(BATTLE_SPEC_KEYS.includes('modeModules'), 'modeModules 必须进 BATTLE_SPEC_KEYS');
   assert.equal(HEX_SCRIPT_KEYS.hex_mode_modules, 'modeModules', 'HEX_SCRIPT_KEYS 接线');
   // 3 级模组数据文件存在且覆盖全部棋子的模组（data/moduleLevels.json 由 tools/build-data.mjs 生成）
@@ -1551,6 +1553,56 @@ test('第二十四批：新增【死亡之舞】+ 四张卡调整 —— 卡面/
   assert.deepEqual(vg.firstKillBy, { profession: 'PIONEER', coins: 4 });
   assert.deepEqual(vg.firstAttackExecute, { profession: 'PIONEER' });
   assert.equal(vg.firstAttackBy, undefined, '旧的首次攻击加攻参数已移除');
+});
+
+test('第二十五批：七张卡调整 —— 卡面/参数全部到位', () => {
+  // 重量级打击手：10% → 20%
+  assert.equal(HEXTECH.playerHexes.hex_heavyhitter.effect.heavyhitter.maxHpPct, 20);
+  // 蛋白粉奶昔：每 100 生命再加 +2% 受到治疗量
+  assert.equal(HEXTECH.playerHexes.hex_proteinshake.effect.proteinshake.healTakenPct, 2);
+  // 群蛇形态：本回合每卖 1 名 → 下场敌人 −10% 最大生命（封顶 50%），回合清零
+  const sf = HEXTECH.playerHexes.hex_serpentform;
+  assert.deepEqual(sf.effect.onSold.serpentHpLoss, { per: 10, cap: 50 });
+  assert.equal(sf.effect.onRoundStart.serpentReset, true);
+  assert.deepEqual(sf.effect.serpentHpLossPct, { pct: 0 }, '顶层的战斗可见参数（hasBattlePart）');
+  assert.ok(BATTLE_SPEC_KEYS.includes('serpentHpLossPct'), 'serpentHpLossPct 必须进 BATTLE_SPEC_KEYS');
+  // 紧急拨款：2 → 3 资金
+  assert.equal(HEXTECH.playerHexes.hex_emergencygrant.effect.onSold.eliteGrant.funds, 3);
+  // 赌狗大师：获得时 2 件，此后每 3 回合 1 件
+  const mg = HEXTECH.playerHexes.hex_mastergamble;
+  assert.deepEqual(mg.effect.onPick.item, { id: 'chess_item_5_05_e_a', count: 2 });
+  assert.deepEqual(mg.effect.onRoundStart.item, { id: 'chess_item_5_05_e_a', count: 1 });
+  assert.equal(mg.effect.onRoundStart.everyRounds, 3);
+  assert.equal(mg.effect.onRoundStart.skipFirst, true);
+  // 锻炉：自动进阶由代码实现（server/match/hextech.js applyForgeFusion），卡面仍指向 百变
+  assert.equal(HEXTECH.playerHexes.hex_forge.effect.forge.itemId, 'chess_item_9_97_e_a');
+  // 残光：装备记录带锁血参数
+  const items = JSON.parse(fs.readFileSync('data/items.json', 'utf8'));
+  assert.equal(items['chess_item_9_92_e_a'].params.lockSec, 5, '残光装备的锁血 5 秒');
+});
+
+test('第二十六批：十条 bug/增强 —— 卡面参数全部到位（业主 2026-11-01）', () => {
+  // 量产线：获得时立即得到 1 名当前等级阶的干员（每回合那条不变）
+  const mp = HEXTECH.playerHexes.hex_massprod;
+  assert.deepEqual(mp.effect.onPick.chess, { tier: 'level', count: 1 });
+  assert.deepEqual(mp.effect.onRoundStart.chess, { tier: 'level', count: 1 });
+  // 困毙之雪：每 5 秒 +1 层霜寒改成完全无条件（不看在场人数、不看有没有冻结敌人）
+  const fd = HEXTECH.playerHexes.hex_kjerag_frostdeath.effect.kjeragFrostDeath;
+  assert.equal(fd.idleFrostSec, 5);
+  assert.equal(fd.idleFrostUnconditional, true);
+  assert.equal(fd.allSealedSec, 15, '六人口 15 秒真伤');
+  assert.ok(HEXTECH.playerHexes.hex_kjerag_frostdeath.desc.includes('所有【谢拉格】干员每 5 秒获得 1 层霜寒'));
+  // 炎百兽：生命共享双向（回血镜像）+ 炎佑 100% 继承防御力/法抗
+  const yb = HEXTECH.playerHexes.hex_yan_beasts.effect.yanBeasts;
+  assert.equal(yb.shareHealPct, 100);
+  assert.equal(yb.inheritDefPct, 100);
+  assert.equal(yb.inheritResPct, 100);
+  assert.ok(HEXTECH.playerHexes.hex_yan_beasts.desc.includes('防御力与法术抗性与其对应干员相同'));
+  // 突破极限：联防也能叠层
+  assert.equal(HEXTECH.playerHexes.hex_break_limit.effect.bondCap.uniteLayers, true);
+  // 特限恢复：有特限模组的干员购买价 −2、最低 1
+  assert.deepEqual(HEXTECH.playerHexes.hex_mode_modules.effect.onPrice.specialLimitDiscount,
+    { delta: -2, min: 1, types: ['ISW', 'SO', 'RA'] });
 });
 
 test('三连透支: a merge that cannot grant (no stock) does not spend the round', () => {

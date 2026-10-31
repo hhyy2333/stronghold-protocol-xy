@@ -29,30 +29,44 @@
 //   * **霜寒**：一个 `refresh: 'stack'` 的 buff（键 `hex:kjeragfrost:frost`，`maxStacks = frostMax`），
 //     `mods: { defPct: defPctPerStack/100, aspd: -aspdPerStack }`。引擎的加算 mod 按 `stacks` 乘值
 //     （buffs.js aggregateMods：`add[k] += v * stacks`）⇒ 5 层 = 防御 +25%、攻速 −25。`stacks` 就是霜寒层数。
-//   * **获得霜寒**（N ≥ unlockCount 且该干员不在冰封中）三条来源：
-//     ① `statusApplied` 钩子：`status === 'freeze' && entered === true && target.side === 'enemy'` 且 `source`
-//        是己方【谢拉格】干员 ⇒ **该干员** +1 层（引擎的「寒冷成对转冻结」也走这条：applyStatus 内部递归发出的
-//        freeze 保留同一个 source，所以本卡自己施加的寒冷凑成冻结时同样算「冻结敌人」）。
-//     ② `battle.every(0.25)` 轮询敌人的 `freeze` buff：上一拍冻结、这一拍不冻结且**还活着** ⇒ 该敌人半径
-//        `freezeEndRadius`（1.5）内所有己方在场【谢拉格】干员各 +1 层。判定用单位的场上坐标（欧氏距离，单位=格）。
-//     ③ `battle.every(idleFrostSec)`：全场没有任何敌人带 `freeze` buff ⇒ 所有己方在场【谢拉格】干员 +1 层。
+//   * **获得霜寒**（该干员不在冰封中）的来源：
+//     ① **基础效果**（业主 2026-11-01 拍板，**完全无条件**）：`battle.every(idleFrostSec)` 每 5 秒让所有己方在场
+//        【谢拉格】干员 +1 层 —— **不看在场人数**（N < 3 也照样叠，0 名时只是场上没人可叠）、**也不看有没有敌人被
+//        冻结**。它接管了原来写在 3 名档分支里的那一句（不再双发）。卡面开关 `idleFrostUnconditional` 置 false 时
+//        退回旧口径（N ≥ unlockCount **且**场上没有任何敌人带 freeze）。为了在 N < 3 时也能叠层，这条走
+//        `gainFrost(u, 1, { ignoreUnlock: true })` 旁路掉「3 名档解锁」的总闸；`frostMax`（5 层 ⇒ 冰封）不变。
+//     ② `statusApplied` 钩子（N ≥ unlockCount）：`status === 'freeze' && entered === true && target.side === 'enemy'`
+//        且 `source` 是己方【谢拉格】干员 ⇒ **该干员** +1 层（引擎的「寒冷成对转冻结」也走这条：applyStatus 内部
+//        递归发出的 freeze 保留同一个 source，所以本卡自己施加的寒冷凑成冻结时同样算「冻结敌人」）。
+//     ③ `battle.every(0.25)` 轮询敌人的 `freeze` buff（N ≥ unlockCount）：上一拍冻结、这一拍不冻结且**还活着** ⇒
+//        该敌人半径 `freezeEndRadius`（1.5）内所有己方在场【谢拉格】干员各 +1 层。判定用单位的场上坐标（欧氏距离）。
 //   * **冰封**：霜寒叠到 `frostMax` 层 ⇒ 移除霜寒 buff（消耗清零）、挂 `hex:kjeragfrost:seal`，
 //     持续 `sealSec`：`flags: { disarm, silence, noHeal, healFree, invulnerable }`、`mods: { blockCnt: 1 }`。
 //     冰封期间不再获得霜寒（`gainFrost` 见到 seal 直接返回）；seal 靠 buff 自己的时长自然结束，结束后从 0 重新叠。
 //   * **攻击施寒**（N ≥ unlockCount）：`hit` 钩子里，来源是己方【谢拉格】干员、目标是活着的敌方、这一击不是
 //     元素损伤 / 流失 / 反伤 / 链式附加，概率 = `min(1, coldChancePerStack/100 × 层数)`（`battle.rng()`），
 //     命中则 `applyStatus(target, 'cold', { duration: coldSec, source: unit })`。层数为 0 时不掷骰（不消耗随机数）。
-//   * **冰封干员阻挡的敌人**：`battle.every(1)`，对每个带 seal 的己方【谢拉格】干员，遍历 `u.blocking` 里
+//   * **冰封干员阻挡的敌人**（N ≥ unlockCount，3 名档效果）：`battle.every(1)`，对每个带 seal 的己方【谢拉格】干员，遍历 `u.blocking` 里
 //     `e.blockedBy === u` 的敌人，造成 `sealedBlockDmg + sealedBlockDmgPerLayer × L` 真实伤害
 //     （L = `bondLayers(battle, pid, 'kjeragShip')`，来源 = 该干员，tags 标 `hex`）。
 //   * **6 名档 · 死亡**：`death` 钩子，`c.unit` 是己方【谢拉格】干员且 `c.reason === 'killed'` ⇒
 //     对全场活着的敌人 `applyStatus('freeze', { duration: deathFreezeSec, source: 该干员 })`；
 //     对全体己方在场【谢拉格】干员移除 `deathRemoveStacks` 层霜寒（`stacks -= n`，≤ 0 就移除 buff）。
 //     档位判定把**刚阵亡的那名干员**算进去（它倒下前确实在场，否则「第 6 名倒下」永远不会触发这一档）。
-//   * **6 名档 · 全冰封**：`battle.every(0.25)` 检查「场上至少 1 名己方【谢拉格】干员、且全部带 seal buff」
-//     （且 N ≥ highCount）⇒ 启动 `allSealedSec` 秒的每秒脉冲：对全场敌人造成
+//   * **6 名档 · 全冰封（真伤窗口）**：一旦「场上所有己方【谢拉格】干员同时处于冰封状态」成立（且 N ≥ highCount），
+//     就开一个**固定 `allSealedSec` 秒**的窗口：窗口内每秒对全场敌人造成
 //     `allSealedDmg + allSealedDmgPerLayer × L` 真实伤害并 `applyStatus('cold', { duration: coldSec })`。
-//     脉冲期间不重复启动（`pulses` 表），结束后可再次触发。
+//     窗口是**闩**：期间不重启、不叠加；到点释放，之后可再触发。
+//
+// 业主 2026-11-01「六人口的真伤效果没持续到15s」的诊断（复现脚本 .scratch/probe-frostdeath-trigger.mjs）：
+//   ① **根因：触发只在 0.25 秒轮询里采样**（旧代码 `battle.every(0.25)`）。每名干员的冰封只有 `sealSec`（5 秒），
+//      而 6 名干员的冰封是**各自**开始的 —— 全员重叠的窗口完全可能短于 0.25 秒。实测：第 6 名在 t=5.90 进入冰封、
+//      其余 5 名 t=6.0 解封（重叠 0.1 秒）⇒ 一次都没被采到 ⇒ **15 秒效果根本没触发**。玩家当时看到的「几秒真伤」
+//      其实是 3 名档的「冰封干员阻挡的敌人每秒真伤」（它只在冰封期间生效，所以正好 ~5 秒）。
+//   ② 持续时间按「脉冲拍数」数（旧 `left--`），任何一拍被吞（战斗节奏变化 / 回调被深度守卫跳过）就少一秒。
+//   ③ 真伤来源固定取触发那一刻的 `ops[0]`，那名干员一旦离场整段就哑。
+//   现在的口径（业主 2026-11-01）：**一旦触发就固定跑满 `allSealedSec` 秒**，与冰封是否还在、人数是否还够、
+//   来源是否还活着都无关 —— 触发改成事件驱动（`seal()` 末尾判定），持续时间用绝对截止时刻，来源每一拍现取。
 //
 // [ASSUMED]（设计稿没写死、实现时定下的口径）：
 //   1. 「无法被治疗」= `noHeal + healFree`（禁疗也挡住自己的回复）；「冰封」不是晕眩，仍然阻挡（不加 `stun`）。
@@ -61,6 +75,12 @@
 //   3. 全冰封脉冲的真伤来源记为该玩家**第一名冰封干员**（触发那一刻），寒冷同样由它施加。
 //   4. 冻结结束的半径判定用「场上坐标的欧氏距离 ≤ freezeEndRadius」，不取整到格子。
 //   5. 死亡档的「全体〖谢拉格〗干员」= 场上（活着 / 已部署 / 未隐匿）的己方【谢拉格】干员。
+//   6. 6 名档的真伤窗口**不延长、不刷新**：窗口期间再有干员进入冰封不会重启计时（闩），窗口结束后才能再次触发。
+//   7. 窗口的 15 秒与「全员冰封」状态**解耦**：冰封（`sealSec` 5 秒）结束后真伤照打 —— 卡面写的是「持续15秒」。
+//   8. 基础效果（每 5 秒 +1 层）与「3 名档解锁霜寒」**解耦**（业主 2026-11-01「完全无条件」）：1–2 名谢拉格干员时
+//      霜寒照样叠、也照样会到 5 层进冰封。其余 3 名档效果（攻击施寒 / 解冻回层 / 冰封阻挡真伤）**仍然**要 N ≥ 3。
+//   9. `idleFrostUnconditional` 缺席时按 **true**（业主 2026-11-01 的口径）处理；置 false 则退回旧口径
+//      （N ≥ 3 且场上没有敌人被冻结才 +1）。两条互斥，不会双发。
 //
 // 确定性：没有 Math.random / Date / Node API；随机一律走 `battle.rng()`；计时只用 `battle.every` / `battle.after`。
 //
@@ -83,6 +103,8 @@ const FROST_KEY = 'hex:kjeragfrost:frost';
 const SEAL_KEY = 'hex:kjeragfrost:seal';
 /** 本卡自己打出的真伤带的 tag（`hit` 钩子见到它就不再掷寒，见 [ASSUMED] 2）。 */
 const SELF_TAG = 'hex:kjeragfrost';
+/** 卡面 `idleFrostUnconditional` 缺席时的默认：业主 2026-11-01 的口径 —— 基础效果无条件生效（见 [ASSUMED] 9）。 */
+const IDLE_UNCONDITIONAL_DEFAULT = true;
 
 /**
  * 设计稿 §2 的兜底值：只在卡面缺这一格时用。数值一律以卡面为准，这里只为「记录比模块旧」的战斗兜底。
@@ -111,6 +133,21 @@ function numOf(spec, key, fallback) {
 
 /** 正整数（人数阈值 / 层数 / 秒数），非法值退回兜底。 */
 const countOf = (spec, key, fallback, min = 1) => Math.max(min, Math.round(numOf(spec, key, fallback)));
+
+/**
+ * 读一个卡面**布尔开关**：缺省 / 空值退回 `fallback`；boolean 原样；数字按 0 = false；字符串 'false' / '0' 算 false。
+ * @param {any} spec 卡面参数对象 @param {string} key @param {boolean} fallback 缺省（设计稿口径）
+ * @returns {boolean}
+ */
+function boolOf(spec, key, fallback) {
+  if (!spec || typeof spec !== 'object') return fallback;
+  const raw = spec[key];
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  if (typeof raw === 'boolean') return raw;
+  const n = Number(raw);
+  if (Number.isFinite(n)) return n !== 0;
+  return String(raw).toLowerCase() !== 'false';
+}
 
 /** 「卡片存在 + 包形状对」守卫：没有卡（或 hooks 不是 hexHooks 的返回对象）时是个 no-op。 */
 function ownersOfCard(hooks, hexId) {
@@ -156,6 +193,8 @@ export function installKjeragFrostDeath(hooks) {
       // 解冻 / 无冻结
       freezeEndRadius: Math.max(0, numOf(spec, 'freezeEndRadius', FALLBACK.freezeEndRadius)),
       idleFrostSec: Math.max(0.05, numOf(spec, 'idleFrostSec', FALLBACK.idleFrostSec)),
+      // 业主 2026-11-01：true = 基础效果（每 5 秒 +1 层，完全无条件）；false = 退回旧口径（3 名档 + 场上无冻结）
+      idleUnconditional: boolOf(spec, 'idleFrostUnconditional', IDLE_UNCONDITIONAL_DEFAULT),
       // 冰封阻挡真伤
       sealedBlockDmg: numOf(spec, 'sealedBlockDmg', FALLBACK.sealedBlockDmg),
       sealedBlockDmgPerLayer: numOf(spec, 'sealedBlockDmgPerLayer', FALLBACK.sealedBlockDmgPerLayer),
@@ -214,6 +253,9 @@ export function installKjeragFrostDeath(hooks) {
       flags: { disarm: true, silence: true, noHeal: true, healFree: true, invulnerable: true },
       mods: { blockCnt: 1 },
     });
+    // 事件驱动的 6 名档判定（业主 2026-11-01）：进入冰封的**这一刻**就检查「全员冰封」，不再等 0.25 秒轮询
+    // —— 全员重叠的窗口可能短于轮询间隔（实测 0.1 秒的窗口会整段漏掉，15 秒真伤根本不触发）。
+    maybeStartPulse(u.ownerId);
   };
 
   /**
@@ -221,11 +263,11 @@ export function installKjeragFrostDeath(hooks) {
    * @param {any} u 干员 @param {number} n 层数
    * @returns {number} 加完之后剩下的层数（冰封 / 未解锁 / 不在场时 0）
    */
-  const gainFrost = (u, n = 1) => {
+  const gainFrost = (u, n = 1, { ignoreUnlock = false } = {}) => {
     const pid = u && u.ownerId;
     const p = pid ? plan.get(pid) : null;
     if (!p || !isKjeragOp(u) || !onField(u)) return 0;
-    if (!unlocked(pid)) return 0;                       // N < 3：完全不解锁
+    if (!ignoreUnlock && !unlocked(pid)) return 0;      // N < 3：3 名档来源不解锁（基础效果走 ignoreUnlock 旁路）
     if (isSealed(u)) return 0;                          // 冰封期间不再获得霜寒
     for (let i = 0; i < n; i++) {
       battle.addBuff(u, {
@@ -307,13 +349,22 @@ export function installKjeragFrostDeath(hooks) {
   });
 
   // ===================================================================================================================
-  // 3 名档 · ③ 场上没有任何敌人处于冻结状态 ⇒ 每 idleFrostSec 秒所有己方【谢拉格】干员 +1 层
+  // **基础效果** · 每 idleFrostSec 秒所有己方【谢拉格】干员 +1 层霜寒
+  //
+  // 业主 2026-11-01 拍板：**完全无条件** —— 不看在场人数（N < 3 也叠）、也不看有没有敌人被冻结。它接管了原来写在
+  // 「<在场3名>」分支里的那一句（二选一，不双发）。卡面开关 `idleFrostUnconditional`（缺席按 true）：
+  //   * true  —— 基础效果：每拍对场上所有己方【谢拉格】干员 `gainFrost(u, 1, { ignoreUnlock: true })`；
+  //   * false —— 退回旧口径：只有 N ≥ unlockCount **且**场上没有任何敌人带 freeze 时才 +1。
 
   for (const pid of owners) {
     const p = plan.get(pid);
     if (!p) continue;
     battle.every(p.idleFrostSec, () => {
-      if (!unlocked(pid)) return;
+      if (p.idleUnconditional) {                        // 基础效果：无条件（0 名时场上没人可叠，自然什么都不发生）
+        for (const u of opsOnField(pid)) gainFrost(u, 1, { ignoreUnlock: true });
+        return;
+      }
+      if (!unlocked(pid)) return;                       // 旧口径：3 名档才生效
       for (const e of battle.enemies) {
         if (e && e.alive && typeof e.findBuff === 'function' && e.findBuff('freeze')) return;   // 有人被冻结 ⇒ 这一拍不叠
       }
@@ -353,6 +404,8 @@ export function installKjeragFrostDeath(hooks) {
     battle.every(1, () => {
       const p = plan.get(pid);
       if (!p) return;
+      // 3 名档效果：A 条之后「冰封」在 N < 3 也能发生，所以这道闸必须显式写出来（卡面把它列在 <在场3名> 里）
+      if (!unlocked(pid)) return;
       const amount = p.sealedBlockDmg + p.sealedBlockDmgPerLayer * layersOf(pid);
       if (!(amount > 0)) return;
       for (const u of opsOnField(pid)) {
@@ -383,37 +436,80 @@ export function installKjeragFrostDeath(hooks) {
   });
 
   // ===================================================================================================================
-  // 6 名档 · 全员冰封 ⇒ allSealedSec 秒的每秒脉冲（真实伤害 + 寒冷）
+  // 6 名档 · 全冰封 ⇒ allSealedSec 秒的真伤窗口（真实伤害 + 寒冷）
+  //
+  // 诊断与口径见文件头：① 触发改成**事件驱动**（`seal()` 末尾调用 `maybeStartPulse`，不再只靠 0.25 秒轮询采样）；
+  // ② 持续时间改成**绝对截止时刻**（触发时刻 + allSealedSec），不再数拍数；③ 来源每一拍现取。
 
-  /** pid → 正在脉冲中（期间不重复启动）。 */
-  const pulses = new Set();
-  const startPulse = (pid, p, src) => {
-    pulses.add(pid);
-    let left = p.allSealedSec;                           // 每秒一拍，共 allSealedSec 拍
-    const s = battle.every(1, () => {
-      if (left <= 0) { s.cancel(); pulses.delete(pid); return; }
-      left--;
-      const amount = p.allSealedDmg + p.allSealedDmgPerLayer * layersOf(pid);
-      for (const e of battle.enemies.slice()) {
-        if (!e || !e.alive) continue;
-        if (amount > 0) trueDamage(src, e, amount);
-        if (e.alive) battle.applyStatus(e, 'cold', { duration: p.coldSec, source: src });
-      }
-      if (left <= 0) { s.cancel(); pulses.delete(pid); }
-    });
+  /** pid → 本次窗口的绝对截止时刻（battle time）。有键 = 窗口正在跑（闩：期间不重启、不叠加）。 */
+  const pulseUntil = new Map();
+
+  /** 全场敌人吃一拍：allSealedDmg + allSealedDmgPerLayer × L 真实伤害 + 寒冷。 */
+  const pulseBeat = (pid, p) => {
+    const ops = opsOnField(pid);
+    // 来源每一拍现取（优先冰封中的那名）：触发那一刻的干员之后死了 / 撤退了，真伤也不会哑
+    const src = ops.find((u) => isSealed(u)) ?? ops[0] ?? null;
+    const amount = p.allSealedDmg + p.allSealedDmgPerLayer * layersOf(pid);
+    for (const e of battle.enemies.slice()) {
+      if (!e || !e.alive) continue;
+      if (amount > 0) trueDamage(src, e, amount);
+      if (e.alive) battle.applyStatus(e, 'cold', { duration: p.coldSec, source: src });
+    }
   };
 
-  for (const pid of owners) {
-    const p = plan.get(pid);
-    if (!p) continue;
-    battle.every(0.25, () => {
-      if (pulses.has(pid)) return;                       // 脉冲期间不重复启动
-      const ops = opsOnField(pid);
-      if (!ops.length) return;                           // 至少 1 名己方【谢拉格】干员
-      if (distinctCount(pid) < p.highCount) return;      // 6 名档
-      if (!ops.every((u) => isSealed(u))) return;        // 且**全部**处于冰封
-      startPulse(pid, p, ops[0]);
+  /**
+   * 开一个 allSealedSec 秒的窗口（幂等：已经在跑就什么都不做）。
+   * 持续时间是**绝对截止时刻**，与冰封是否还在、人数是否还够、来源是否还活着都无关。
+   * @param {string} pid @param {any} p
+   * @returns {boolean} 这次是否真的开了新窗口
+   */
+  const startPulse = (pid, p) => {
+    if (pulseUntil.has(pid)) return false;                 // 闩：窗口期间不重启
+    const until = battle.time + p.allSealedSec;
+    pulseUntil.set(pid, until);
+    let closed = false;
+    const close = () => { if (!closed) { closed = true; pulseUntil.delete(pid); } };
+    const s = battle.every(1, () => {
+      if (closed) { s.cancel(); return; }
+      pulseBeat(pid, p);
+      if (battle.time + 1e-9 >= until) { close(); s.cancel(); }   // 窗口的最后一拍
     });
+    // 兜底收尾：最后一拍万一没落地（拍被吞 / 调度被清），到点也补一拍并关窗 —— 「固定跑满」不靠运气
+    battle.after(p.allSealedSec, () => {
+      if (closed) return;
+      pulseBeat(pid, p);
+      close();
+      s.cancel();
+    });
+    return true;
+  };
+
+  /** 「场上所有己方【谢拉格】干员同时处于冰封状态」且 N ≥ highCount。 */
+  const allSealedNow = (pid) => {
+    const p = plan.get(pid);
+    if (!p) return false;
+    const ops = opsOnField(pid);
+    if (!ops.length) return false;                          // 至少 1 名己方【谢拉格】干员
+    if (distinctCount(pid) < p.highCount) return false;     // 6 名档
+    return ops.every((u) => isSealed(u));                   // 且**全部**处于冰封
+  };
+
+  /**
+   * 判定一次。主路径是 `seal()` 里的事件驱动调用（进入冰封的那一刻），所以全冰封的窗口再短也不会漏。
+   * @param {string} pid
+   * @returns {boolean} 这次是否开了新窗口
+   */
+  const maybeStartPulse = (pid) => {
+    const p = plan.get(pid);
+    if (!p || pulseUntil.has(pid)) return false;
+    if (!allSealedNow(pid)) return false;
+    return startPulse(pid, p);
+  };
+
+  // 0.25 秒轮询只是**兜底**（「有人刚进入冰封」那条主路径已经在 `seal()` 里事件驱动覆盖了）：例如装机时
+  // 场上已经有人带着 seal，或者 seal 是被别的来源挂上的。
+  for (const pid of owners) {
+    battle.every(0.25, () => { maybeStartPulse(pid); });
   }
 
   // 安装时的覆盖面（名册里的己方【谢拉格】干员数）：0 只在「没有这张卡」或「一个谢拉格干员都没有」时出现。

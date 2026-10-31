@@ -80,7 +80,7 @@ import { net as appNet } from '../net.js';
 import { BOND_LAYER_CAP } from '../../../shared/constants.js';
 import { store as appStore } from '../store.js';
 import { fxForm } from '../../../shared/protocol.js';
-import { spectateEffects } from './observe.js';
+import { spectateEffects, spectateEffectsByPlayer } from './observe.js';
 import { recordError, setBattleSource } from '../diag.js';
 import { roomDataBase } from '../mods/align.js';
 import { loadBrowserSim } from './simLoader.js';
@@ -519,17 +519,24 @@ export function createBattleRunner(deps) {
 
   /**
    * Re-read an entry's live bond layers (DESIGN §20.15): per player of its spec, the bonds whose layers in the battle's
-   * live copy (Battle.addLayers, clamped at BOND_LAYER_CAP like the client's AddBondCount) exceed the spec's start
-   * count. Nothing to do when the battle disables gains (联防, boss rounds).
+   * live copy (Battle.addLayers, clamped at that player's cap like the client's AddBondCount) exceed the spec's start
+   * count. Nothing to do when the battle disables gains — whole field (boss rounds) or per player (联防:
+   * `flags.layerGainsByPlayer` names the 【突破极限】 owner, 业主 2026-11-01).
    */
   function noteLayers(e) {
     const b = e.battle;
-    if (!b || (b.flags && b.flags.layerGainsEnabled === false) || typeof b.getPlayer !== 'function') return;
+    if (!b || typeof b.getPlayer !== 'function') return;
+    const flags = b.flags || {};
+    // 每玩家开关（【突破极限】）：没有这张表 ⇒ 整场 flag 说了算，与从前逐字节相同
+    const byPlayer = flags.layerGainsByPlayer && typeof flags.layerGainsByPlayer === 'object' ? flags.layerGainsByPlayer : null;
+    if (!byPlayer && flags.layerGainsEnabled === false) return;
+    const gainsOn = (pid) => (byPlayer && typeof byPlayer[pid] === 'boolean' ? byPlayer[pid] : flags.layerGainsEnabled !== false);
     let sum = 0;
     let live = null;
     for (const sp of Array.isArray(e.spec.players) ? e.spec.players : []) {
       const ps = sp && sp.playerId != null ? b.getPlayer(sp.playerId) : null;
       if (!ps || !ps.bonds || typeof ps.bonds !== 'object') continue;
+      if (!gainsOn(sp.playerId)) continue;
       const start = sp.bonds && typeof sp.bonds === 'object' ? sp.bonds : {};
       // 【突破极限】(设计稿 §3): this player's own cap from the battle spec (9999 for the card's owner), else
       // BOND_LAYER_CAP — the same number the sim clamped the live copy with (sim/battle/economy.js _layerCapOf)
@@ -849,6 +856,10 @@ export function createBattleRunner(deps) {
       live: !e.done, battleId: e.battleId, players: e.members.slice(), local: true, speed: e.speed,
       // the watched player's effects column (user playtest #2; undefined for 联防 / boss pairs and server-run fields)
       effects: spectateEffects(e.spec, e.members),
+      // ...and every member's, for the shared fields whose column follows the player the screen shows (联防 / boss
+      // pairs, ui/watchBonds.js bondOwnerId → battle/observe.js effectsForOwner; 业主 2026-10-31「联防时不能正确显示
+      // 联防队友的协议源石」). Absent when the spec carries no playerEffects at all.
+      effectsByPlayer: spectateEffectsByPlayer(e.spec, e.members),
       // which half each player holds (联防: the first helper takes the right half; boss pairs: L / R)
       sides: Object.fromEntries((e.spec.players || []).filter((p) => p && p.playerId).map((p) => [p.playerId, p.side === 'R' || Number(p.colOffset) >= 8 ? 'R' : 'L'])),
     };

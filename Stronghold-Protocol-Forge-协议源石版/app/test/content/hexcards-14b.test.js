@@ -40,6 +40,20 @@ function refOf(hexId, effect) {
   };
 }
 
+/**
+ * The same ref shape, but the GIVEN effect wins over the data record — the "reads the card face" cases (a card whose
+ * numbers differ from data/hextech.json must follow the ref, not the record).
+ */
+function refWith(hexId, effect) {
+  const rec = (HEXTECH.playerHexes || {})[hexId] || null;
+  const rarity = rec ? rec.rarity : 3;
+  return {
+    id: `hex:${hexId}`, key: `hex:${hexId}`, name: rec ? rec.name : hexId, desc: rec ? rec.desc : hexId,
+    iconKind: 'hex', iconId: hexId, counter: null, battle: true,
+    params: { ...effect, hexId, rarity }, data: { hexId, rarity },
+  };
+}
+
 test('batch14b: data/hextech.json carries every card and its script key', () => {
   const rarity = { hex_tapdance: 'prismatic', hex_ultrefresh: 'prismatic', hex_omenpact: 'prismatic', hex_proteinshake: 'prismatic', hex_heavyhitter: 'silver' };
   for (const [hexId, key] of Object.entries(CARD_KEYS)) {
@@ -327,16 +341,17 @@ test('不祥契约: no card installs nothing', () => {
 });
 
 // =====================================================================================================================
-// 4. 蛋白粉奶昔 — per 100 max HP: +10 DEF, +0.1 RES, recomputed when max HP changes
+// 4. 蛋白粉奶昔 — per 100 max HP: +10 DEF, +0.1 RES, +2 % 受到的治疗量; recomputed when max HP changes
 
-test('蛋白粉奶昔: floor(maxHp / 100) × (10 DEF, 0.1 RES), re-scales when max HP changes', () => {
+test('蛋白粉奶昔: floor(maxHp / 100) × (10 DEF, 0.1 RES, +2 % 受到治疗量), re-scales when max HP changes', () => {
   const defs = { chess: { test_op: opRec() } };
-  const h = field([seat('p1', 0, { effects: [refOf('hex_proteinshake', { proteinshake: { perHp: 100, def: 10, res: 0.1 } })], units: [at(1, 10, 5)] })], { defs });
+  const h = field([seat('p1', 0, { effects: [refOf('hex_proteinshake', { proteinshake: { perHp: 100, def: 10, res: 0.1, healTakenPct: 2 } })], units: [at(1, 10, 5)] })], { defs });
   const inst = installProteinShake(hexHooks(h.battle));
   h.run(1);
   const u = ops(h)[0];
   assert.equal(u.s.def, 200, '2000 HP → 20 steps × 10 DEF');
   assert.equal(u.s.res, 2, '20 steps × 0.1 RES (2, NOT 200)');
+  assert.ok(Math.abs(u.s.healingTakenMul - 1.4) < 1e-9, '20 steps × 2 % = +40 % 受到的治疗量');
   assert.equal(inst.applied, 20);
 
   h.battle.addBuff(u, { key: 'test:hp', mods: { hpFlat: 350 } });
@@ -344,25 +359,63 @@ test('蛋白粉奶昔: floor(maxHp / 100) × (10 DEF, 0.1 RES), re-scales when m
   assert.equal(u.s.maxHp, 2350);
   assert.equal(u.s.def, 230, '2350 HP → 23 steps');
   assert.ok(Math.abs(u.s.res - 2.3) < 1e-9);
+  assert.ok(Math.abs(u.s.healingTakenMul - 1.46) < 1e-9, '23 steps × 2 % = +46 %');
 
   h.battle.removeBuff(u, 'test:hp');
   h.run(0.1);
   assert.equal(u.s.def, 200, 'back to 2000 HP');
   assert.equal(u.s.res, 2);
+  assert.ok(Math.abs(u.s.healingTakenMul - 1.4) < 1e-9);
+  h.invariants();
+});
+
+test('蛋白粉奶昔: steps 1 / 2 / 3 的 def / res / 受到治疗量（每档 +2%），治疗按这个乘区结算', () => {
+  for (const { maxHp, steps } of [{ maxHp: 100, steps: 1 }, { maxHp: 200, steps: 2 }, { maxHp: 300, steps: 3 }]) {
+    const defs = { chess: { test_op: opRec({ stats: { maxHp, atk: 500, def: 0, res: 0, aspd: 100, bat: 1 } }) } };
+    const h = field([seat('p1', 0, { effects: [refOf('hex_proteinshake', { proteinshake: { perHp: 100, def: 10, res: 0.1, healTakenPct: 2 } })], units: [at(1, 10, 5)] })], { defs });
+    installProteinShake(hexHooks(h.battle));
+    h.run(1);
+    const u = ops(h)[0];
+    assert.equal(u.s.maxHp, maxHp, `premise: ${maxHp} 最大生命`);
+    assert.equal(u.s.def, steps * 10, `${maxHp} HP ⇒ ${steps} steps × 10 DEF`);
+    assert.ok(Math.abs(u.s.res - steps * 0.1) < 1e-9, `${steps} steps × 0.1 RES`);
+    const mul = 1 + 0.02 * steps;
+    assert.ok(Math.abs(u.s.healingTakenMul - mul) < 1e-9, `${steps} steps ⇒ 受到的治疗量 ×${mul}`);
+
+    // 端到端：一次 50 点治疗按 healingTakenMul 结算（自疗也吃这个乘区）
+    u.hp = 1;
+    const healed = h.battle.heal(u, u, 50);
+    assert.ok(Math.abs(healed - 50 * mul) < 1e-9, `50 × ${mul} = ${50 * mul}（实际 ${healed}）`);
+    h.invariants();
+  }
+});
+
+test('蛋白粉奶昔: 数值读卡面 — perHp 50 / healTakenPct 10 时按卡面算', () => {
+  const defs = { chess: { test_op: opRec() } };
+  const custom = refWith('hex_proteinshake', { proteinshake: { perHp: 50, def: 4, res: 0.05, healTakenPct: 10 } });
+  const h = field([seat('p1', 0, { effects: [custom], units: [at(1, 10, 5)] })], { defs });
+  installProteinShake(hexHooks(h.battle));
+  h.run(1);
+  const u = ops(h)[0];
+  assert.equal(u.s.def, 160, '2000 / 50 = 40 steps × 4 DEF');
+  assert.ok(Math.abs(u.s.res - 2) < 1e-9, '40 steps × 0.05 RES');
+  assert.ok(Math.abs(u.s.healingTakenMul - 5) < 1e-9, '40 steps × 10 % ⇒ 受到的治疗量 ×5');
   h.invariants();
 });
 
 test('蛋白粉奶昔: a max HP under 100 grants no step; only the owner’s operators are affected', () => {
   const defs = { chess: { test_op: opRec({ stats: { maxHp: 99, atk: 500, def: 0, res: 0, aspd: 100, bat: 1 } }) } };
   const h = field([
-    seat('p1', 0, { effects: [refOf('hex_proteinshake', { proteinshake: { perHp: 100, def: 10, res: 0.1 } })], units: [at(1, 10, 5)] }),
+    seat('p1', 0, { effects: [refOf('hex_proteinshake', { proteinshake: { perHp: 100, def: 10, res: 0.1, healTakenPct: 2 } })], units: [at(1, 10, 5)] }),
     seat('p2', 1, { effects: [], units: [at(2, 10, 6)] }),
   ], { kind: 'unite', defs });
   installProteinShake(hexHooks(h.battle));
   h.run(1);
   const [mine, theirs] = ops(h);
   assert.equal(mine.s.def, 0, '99 HP is below the first 100-HP step');
+  assert.equal(mine.s.healingTakenMul, 1, '没有档位就没有受治疗量加成');
   assert.equal(theirs.s.def, 0, 'p2’s operator is not a carrier');
+  assert.equal(theirs.s.healingTakenMul, 1);
   h.invariants();
 });
 
@@ -372,15 +425,17 @@ test('蛋白粉奶昔: no card installs nothing', () => {
   assert.equal(installProteinShake(hexHooks(h.battle)), 0);
   h.run(1);
   assert.equal(ops(h)[0].s.def, 0);
+  assert.equal(ops(h)[0].s.healingTakenMul, 1);
   h.invariants();
 });
 
 // =====================================================================================================================
-// 5. 重量级打击手 — normal attacks add 10 % max HP ARTS damage (owner's correction 2026-10-19: it was phys)
+// 5. 重量级打击手 — normal attacks add 20 % max HP ARTS damage
+//    (owner's correction 2026-10-19: it was phys; 2026-10-31: 10 % → 20 %)
 
-test('重量级打击手: every normal attack adds a separate 10 % max-HP ARTS instance', () => {
+test('重量级打击手: every normal attack adds a separate 20 % max-HP ARTS instance', () => {
   const defs = { chess: { test_op: opRec() }, enemies: { dummy: dummy('dummy') } };
-  const h = field([seat('p1', 0, { effects: [refOf('hex_heavyhitter', { heavyhitter: { maxHpPct: 10 } })], units: [at(1, 10, 5)] })], { defs, enemies: [{ key: 'dummy', time: 0, pos: [10, 6] }] });
+  const h = field([seat('p1', 0, { effects: [refOf('hex_heavyhitter', { heavyhitter: { maxHpPct: 20 } })], units: [at(1, 10, 5)] })], { defs, enemies: [{ key: 'dummy', time: 0, pos: [10, 6] }] });
   const inst = installHeavyHitter(hexHooks(h.battle));
   h.run(1);
   const u = ops(h)[0];
@@ -392,13 +447,13 @@ test('重量级打击手: every normal attack adds a separate 10 % max-HP ARTS i
   assert.equal(body.length, 1, 'one normal attack');
   assert.equal(body[0].amount, 500, 'premise: 500 ATK against 0 DEF');
   assert.equal(extra.length, 1, 'one extra instance');
-  assert.equal(extra[0].amount, 200, '10 % of 2000 max HP');
+  assert.equal(extra[0].amount, 400, '20 % of 2000 max HP');
   assert.equal(extra[0].dmg.type, 'arts', '额外法术伤害（业主 2026-10-19 改成法术）');
   assert.equal(extra[0].dmg.isAttack, false, 'a separate instance, not the attack itself');
-  assert.equal(foe.hp, 1e6 - 700, 'the enemy lost the body hit + the bonus');
+  assert.equal(foe.hp, 1e6 - 900, 'the enemy lost the body hit + the bonus');
   assert.equal(inst.fired, 1);
 
-  // the bonus reads MAX HP, never the attack multiplier: 500 → 1000 ATK leaves it at 200
+  // the bonus reads MAX HP, never the attack multiplier: 500 → 1000 ATK leaves it at 400
   const bodiesOf = () => hits().filter((c) => c.dmg && c.dmg.isAttack);
   const extrasOf = () => hits().filter((c) => c.dmg && Array.isArray(c.dmg.tags) && c.dmg.tags.includes(HEAVY));
   h.battle.addBuff(u, { key: 'test:atk', mods: { atkPct: 1 } });
@@ -412,16 +467,30 @@ test('重量级打击手: every normal attack adds a separate 10 % max-HP ARTS i
   assert.equal(bodies.length, seen.body + 1, 'exactly one more body hit');
   assert.equal(bodies[bodies.length - 1].amount, 1000, 'the body hit follows the attack multiplier');
   assert.equal(extras.length, seen.extra + 1, 'exactly one more bonus');
-  assert.equal(extras[extras.length - 1].amount, 200, 'the bonus does not');
+  assert.equal(extras[extras.length - 1].amount, 400, 'the bonus does not');
   const depth = h.battle.errors.filter((e) => String(e.label).includes('hookDepth'));
   assert.deepEqual(depth, [], 'the bonus never triggers itself');
+  h.invariants();
+});
+
+test('重量级打击手: 数值读卡面 — maxHpPct 50 时额外伤害 = 最大生命 × 50%', () => {
+  const defs = { chess: { test_op: opRec() }, enemies: { dummy: dummy('dummy') } };
+  const custom = refWith('hex_heavyhitter', { heavyhitter: { maxHpPct: 50 } });
+  const h = field([seat('p1', 0, { effects: [custom], units: [at(1, 10, 5)] })], { defs, enemies: [{ key: 'dummy', time: 0, pos: [10, 6] }] });
+  installHeavyHitter(hexHooks(h.battle));
+  h.run(1);
+  const u = ops(h)[0];
+  h.runUntil(() => u.stats.attacks > 0, 5);
+  const extra = h.hooksOf('damaged').filter((c) => c.dmg && Array.isArray(c.dmg.tags) && c.dmg.tags.includes(HEAVY));
+  assert.equal(extra.length, 1);
+  assert.equal(extra[0].amount, 1000, '2000 × 50 %');
   h.invariants();
 });
 
 test('重量级打击手: skill attacks and other players’ operators gain nothing', () => {
   const defs = { chess: { test_op: opRec() }, enemies: { dummy: dummy('dummy') } };
   const h = field([
-    seat('p1', 0, { effects: [refOf('hex_heavyhitter', { heavyhitter: { maxHpPct: 10 } })], units: [at(1, 10, 5)] }),
+    seat('p1', 0, { effects: [refOf('hex_heavyhitter', { heavyhitter: { maxHpPct: 20 } })], units: [at(1, 10, 5)] }),
     seat('p2', 1, { effects: [], units: [at(2, 10, 6)] }),
   ], { kind: 'unite', defs, enemies: [{ key: 'dummy', time: 0, pos: [10, 6] }, { key: 'dummy', time: 0, pos: [10, 15] }] });
   installHeavyHitter(hexHooks(h.battle));

@@ -513,3 +513,18 @@ test('骑士金神: 数据表里这张卡的记录与设计稿口径一致（接
   assert.deepEqual(rec.effect.onSpend, { goldDamage: { per: 3, pct: 20 } }, '备战侧：每 3 金 +20%');
   assert.deepEqual(rec.effect.onRoundStart, { goldDamageReset: true }, '备战侧：回合开始清零');
 });
+
+test('骑士金神: 击杀金币标了 { hex: true } —— 协议源石来源，结算据此豁免 n19 的一回合上限', () => {
+  // 业主 2026-11-01「海克斯提供的钱不计入 n19 的 30 块上限」：走悬赏通道的那笔钱也要分得出来。
+  // 战斗里 `addCoins(pid, 1, { hex: true })` 另记 `_perPlayer[pid].coinsHex`，战报带 `coinsHex`，
+  // server/match/match/settle.js 把它记进 `ps.pendingHexFunds`（test/match/n19-bounty-hex-funds.test.js）。
+  const h = field([seatWithCard(board(['test_kz1']))]);
+  installKazimierzKnightGold(hexHooks(h.battle));
+  h.step(1);
+  killDummies(h, opOf(h, 'test_kz1'), 4);
+  assert.equal(purseOf(h), 1, '4 杀 1 金（前提）');
+  assert.equal(h.battle._perPlayer.p1.coinsHex, 1, '这 1 金同时记在 coinsHex 上');
+  h.b.forceEnd('forced');
+  assert.equal(h.result().perPlayer.p1.coinsHex, 1, '战报里带着它');
+  h.invariants();
+});

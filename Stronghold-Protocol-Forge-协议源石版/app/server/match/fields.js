@@ -806,7 +806,14 @@ export function specBounds(spec, gd = null) {
     // 缺省 / 非法值 = BOND_LAYER_CAP，所以老 spec（没有这个字段）的校验与以前完全一样。
     const capRaw = Number(p.bondLayerCap);
     const bondLayerCap = Number.isFinite(capRaw) && capRaw > 0 ? capRaw : BOND_LAYER_CAP;
-    players.set(p.playerId, { chess, all, names, defIds, bonds: gd ? layerBondsOf(p, gd) : null, startLayers, bondLayerCap, layerAllow: gd ? layerAllowanceOf(p, gd) : new Map() });
+    // 这一场里**这个玩家**能不能加层（【突破极限】, 业主 2026-11-01）：联防战场整场 `layerGainsEnabled: false`，另有
+    // `layerGainsByPlayer` 点名拥有者（unitePhase.js `_uniteOpts`）。没有这张表 ⇒ 与从前完全一样（整场 flag 说了算）。
+    const gainsByPlayer = spec && spec.flags && spec.flags.layerGainsByPlayer && typeof spec.flags.layerGainsByPlayer === 'object'
+      ? spec.flags.layerGainsByPlayer : null;
+    const layerGainsOn = gainsByPlayer && typeof gainsByPlayer[p.playerId] === 'boolean'
+      ? gainsByPlayer[p.playerId]
+      : !(spec && spec.flags && spec.flags.layerGainsEnabled === false);
+    players.set(p.playerId, { chess, all, names, defIds, bonds: gd ? layerBondsOf(p, gd) : null, startLayers, bondLayerCap, layerGainsOn, layerAllow: gd ? layerAllowanceOf(p, gd) : new Map() });
   }
   const round = Number(spec && spec.round) || 0;
   return {
@@ -999,7 +1006,8 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         // BOND_LAYER_CAP 999, or the 9999 of 【突破极限】 — `own.bondLayerCap` from the spec's PlayerBattleInput)
         const bound = Math.min(B.layerCap + (own.layerAllow.get(bondId) || 0), layerGainRoom(own.startLayers.get(bondId) || 0, Infinity, own.bondLayerCap));
         if (!finiteIn(n, 0, bound)) return bad('layer bound');
-        if (n > 0 && spec.flags && spec.flags.layerGainsEnabled === false) return bad('layers disabled');
+        // 按**玩家**判（【突破极限】的联防拥有者）：`own.layerGainsOn` 来自 spec 的每玩家开关，缺省 = 整场 flag
+        if (n > 0 && !own.layerGainsOn) return bad('layers disabled');
         if (gd && typeof gd.bond === 'function' && !gd.bond(bondId)) return bad('bond');
         if (n > 0 && own.bonds && !own.bonds.has(bondId)) return bad('layer bond');
         if (n > 0) layerGains[bondId] = n;
@@ -1054,6 +1062,11 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       // the HUD capsule's numerator: kept only when the client reported one (an absent value must stay absent — the
       // teammate UI then falls back to `killed`, never to a fabricated 0); clamped to the denominator
       if (Number.isInteger(p.resolved) && p.resolved >= 0) perPlayer[pid].resolved = Math.min(p.total, p.resolved);
+      // 协议源石来源的那部分悬赏金（骑士金神击杀金币…，sim/spec.js 的 `coinsHex`）：只在客户端报了、且**不超过它自己
+      // 报的 coins** 时才保留 —— 这个数只决定「这一笔钱豁免不豁免 n19 的额度」，永远不能凭空多出一分钱，所以夹住即可
+      // （不因此打回一份诚实的战报）。
+      const hexCoins = Math.max(0, Math.trunc(Number(p.coinsHex) || 0));
+      if (hexCoins > 0) perPlayer[pid].coinsHex = Math.min(coins, hexCoins);
     }
     if (coinsSum > B.bountyCoins + 1e-6) return bad('coins');
     const result = { time: raw.time, reason: raw.reason, perPlayer, killed: 0, total: 0, errors: Math.max(0, Math.trunc(Number(raw.errors) || 0)) };

@@ -1507,10 +1507,10 @@ test('恶魔形态 (demonForm): only the operator CARRYING 恶魔之契 gains +1
   two.invariants();
 });
 
-test('群蛇形态 (serpentKills): the count the match wrote into the ref kills that many enemies at the start', () => {
+test('群蛇形态 (serpentHpLossPct): the match’s percentage cuts enemy max HP on arrival (capped, bosses untouched)', () => {
   const ref = {
     ...refOf('hex_serpentform'),
-    params: { ...hex('hex_serpentform').effect, serpentKills: { perPoint: 1, count: 2 } },
+    params: { ...hex('hex_serpentform').effect, serpentHpLossPct: { pct: 50 } },
   };
   const wave = [
     { key: 'enemy_walker', time: 0, route: 0 },
@@ -1518,14 +1518,21 @@ test('群蛇形态 (serpentKills): the count the match wrote into the ref kills 
     { key: 'enemy_walker', time: 0, route: 0 },
     { key: 'enemy_walker', time: 0, route: 0 },
   ];
-  const h = soloBattle({ hexes: [ref], enemies: wave, timeLimit: 30, hooks: ['death'], captureNoisy: true });
+  const h = soloBattle({ hexes: [ref], enemies: wave, timeLimit: 30 });
   h.run(0.5);
-  assert.equal(h.b.enemies.filter((e) => e.alive).length, 2, 'two of the four died on arrival');
-  assert.equal(h.hooksOf('death').length, 2, 'each one a real knock-out (they were spawned, then killed)');
-  // the ref's own perPoint is what the match reads; a ref without a count kills nothing
+  const foes = h.b.enemies.filter((e) => e.alive);
+  assert.equal(foes.length, 4, 'nobody dies on arrival — only max HP is cut');
+  for (const e of foes) assert.ok(Math.abs(e.s.maxHp - e.def.maxHp * 0.5) < 1e-6, `half max HP (got ${e.s.maxHp} of ${e.def.maxHp})`);
+  // a mid-battle spawn is cut too
+  h.spawn('enemy_walker', { route: 0 });
+  h.run(0.2);
+  const late = h.b.enemies.filter((e) => e.alive).find((e) => !foes.includes(e));
+  assert.ok(late, 'the late spawn arrived (premise)');
+  assert.ok(Math.abs(late.s.maxHp - late.def.maxHp * 0.5) < 1e-6, 'the late spawn is cut as well');
+  // no percentage ⇒ nothing is cut
   const none = soloBattle({ hexes: ['hex_serpentform'], enemies: wave, timeLimit: 30 });
   none.run(0.5);
-  assert.equal(none.b.enemies.filter((e) => e.alive).length, 4, 'no count, no kills');
+  for (const e of none.b.enemies.filter((e) => e.alive)) assert.ok(Math.abs(e.s.maxHp - e.def.maxHp) < 1e-6, 'no pct, no cut');
   h.invariants();
   none.invariants();
 });

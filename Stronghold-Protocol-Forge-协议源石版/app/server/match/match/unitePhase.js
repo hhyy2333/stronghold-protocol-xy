@@ -35,6 +35,71 @@ import { uniteLeft } from '../../sim/spec.js';
 import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 import { onStartUnite } from '../botEmotes.js';
+import { BREAK_LIMIT_HEX_ID } from '../hextech.js';
+
+/**
+ * 【突破极限】`hex_break_limit` 的「联防里也能叠层」开关（业主 2026-11-01：「只有拥有这张卡的玩家在联防战斗里也能叠
+ * 盟约层，其他人照旧不加」）。
+ *
+ * 读**卡面参数** `effect.bondCap.uniteLayers === true`（`addHexRef` 把 effect 摊平进 ref 的 `params`，所以 ref 上是
+ * `params.bondCap`）；`uniteLayers === false` 明确关掉。没有这个字段的老 ref / 手写 ref 退而按「拥有这张卡」算 ——
+ * 数值（`cap`）与开关（`uniteLayers`）本来就是同一张卡的同一格 [ASSUMED]。
+ * 认卡的两种写法与 `hextech.js bondLayerCapOf` 一致：`data.hexId`（常规）或 `key === 'hex:hex_break_limit'`
+ * （手写 / 存档 / 策略「管理员」的复制件：id 带 `#N`，key 与 data.hexId 不变）。
+ *
+ * 谁读它：`_uniteOpts`（写每玩家开关 `flags.layerGainsByPlayer`）、`settle`（只把拥有者那份层数入账）。
+ * 战斗内真正的闸门在 sim（server/sim/battle/economy.js `layerGainsOn`），读的是同一张表。
+ * @param {{ effects?: any[] } | null} ps
+ * @returns {boolean}
+ */
+export function uniteLayerGainsOn(ps) {
+  for (const e of (ps && ps.effects) || []) {
+    if (!e || typeof e !== 'object') continue;
+    const id = e.data && e.data.hexId;
+    if (id !== BREAK_LIMIT_HEX_ID && e.key !== `hex:${BREAK_LIMIT_HEX_ID}`) continue;
+    const spec = e.params && e.params.bondCap;
+    if (!spec || typeof spec !== 'object') continue;
+    if (spec.uniteLayers === false) return false;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 联防 spec 的**每玩家**加层开关：`{ [playerId]: true }`，只列拥有【突破极限】的帮手；**一个都没有时返回 null**，
+ * 调用方据此完全不写这个键 —— 于是没有这张卡的房间造出的 spec 与这个功能落地之前逐字节相同。
+ * @param {any[]} helpers the plan's helpers (PlayerState[])
+ * @returns {Record<string, boolean> | null}
+ */
+export function uniteLayerGainsByPlayer(helpers) {
+  let out = null;
+  for (const ps of Array.isArray(helpers) ? helpers : []) {
+    if (!ps || typeof ps.playerId !== 'string') continue;
+    if (!uniteLayerGainsOn(ps)) continue;
+    if (!out) out = {};
+    out[ps.playerId] = true;
+  }
+  return out;
+}
+
+/**
+ * 把一份联防战果里的 `layerGains` 并进另一份。`combineUniteResults`（server/match/unite.js）只并 coins / killed /
+ * damageDealt / healingDone / unitStats，会把层数丢掉；而 relay 的两个阶段都真打过，两份增量都要算。
+ */
+function mergeUniteLayerGains(target, src) {
+  const per = (src && src.perPlayer) || {};
+  for (const [pid, pp] of Object.entries(per)) {
+    const gains = pp && pp.layerGains;
+    if (!gains || typeof gains !== 'object') continue;
+    if (!target.perPlayer[pid]) target.perPlayer[pid] = { leaked: [] };
+    const into = (target.perPlayer[pid].layerGains = target.perPlayer[pid].layerGains || {});
+    for (const [bondId, n] of Object.entries(gains)) {
+      const v = Number(n);
+      if (!Number.isFinite(v) || v <= 0) continue;
+      into[bondId] = (into[bondId] || 0) + v;
+    }
+  }
+}
 
 export class MatchUnite {
   /**
@@ -362,6 +427,10 @@ export class MatchUnite {
     //   * 战果：只取**阶段 2**的漏怪与 unspawned；阶段 1 的击杀 / 金币 / 统计照旧并入（那是真打过的）
     const merged = combineUniteResults([p1.plan, plan], [null, result]);
     const p1Stats = combineUniteResults([p1.plan], [p1.result]).result;
+    // 【突破极限】的联防层数：`combineUniteResults` 不并 layerGains（见 mergeUniteLayerGains），所以两个阶段各自那份
+    // 都要并回最终战果 —— 结算（settle.js）按每玩家闸门与 9999 上限入账。
+    mergeUniteLayerGains(merged.result, p1.result);
+    mergeUniteLayerGains(merged.result, result);
     for (const [pid, pp] of Object.entries(p1Stats.perPlayer || {})) {
       if (!pp) continue;
       const cur = merged.result.perPlayer[pid] || (merged.result.perPlayer[pid] = { leaked: [] });
@@ -382,6 +451,9 @@ export class MatchUnite {
    */
   _uniteOpts(plan, limit, fieldId = 'u') {
     const { wave, players } = uniteBattleOpts(this, plan, limit);
+    // 【突破极限】(业主 2026-11-01): 联防战场**整场**仍然不加层（`layerGainsEnabled: false`，老 spec 逐字节不变），
+    // 另给一份每玩家开关，只点名拥有这张卡的帮手。一个拥有者都没有 ⇒ 不写这个键。
+    const gainsByPlayer = uniteLayerGainsByPlayer(plan.helpers);
     return {
       seed: deriveSeed(this.seed, fieldId === 'u' ? `u:${this.round}` : `u:${this.round}:${fieldId}`),
       kind: 'unite',
@@ -394,7 +466,7 @@ export class MatchUnite {
       spawns: this._sanitizeSpawns(wave.spawns),
       routes: wave.routes,
       sharedBoss: null,
-      flags: { layerGainsEnabled: false, ...this.gd.dp },
+      flags: { layerGainsEnabled: false, ...(gainsByPlayer ? { layerGainsByPlayer: gainsByPlayer } : {}), ...this.gd.dp },
       fieldId,
       // leaked enemies re-enter with the stats they had: the round template's stat overrides apply again
       enemyOverrides: this.wave && this.wave.overrides ? this.wave.overrides : {},

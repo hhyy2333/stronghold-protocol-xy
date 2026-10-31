@@ -25,10 +25,15 @@
 //   * 战斗开始时召唤（`battleStart` 优先级 -10，排在【炎】盟约自己的召唤之后）：对每名在场己方【炎】干员
 //     `spawnYanyou(battle, pid, { atk: u.s.atk × pct, hp: u.s.maxHp × pct, count: 1 })`，`pct = (summonPct +
 //     summonPerLayerPct × L) / 100` —— spawnYanyou 把这两个数**加到模板属性上**（PRTS「最终加算」）。
-//   * 生命共享（同血池口径，业主 §0）：配对的一人一兽，任一方受到 HP 伤害时对另一方 `battle.loseHp(other, amount,
-//     { tags: ['hpLoss', 'hex:yanbeasts:share'] })` —— 同样数值，不是 50/50 分摊。带 `hex:yanbeasts:share` 的流失
-//     不再镜像（防递归），元素损伤（`type === 'element'`）不是 HP 伤害、不参与。炎佑模板自带【禁疗】，`loseHp`
-//     不受禁疗影响，所以照常掉血。
+//     防御 / 法抗另有口径（业主 2026-11-01「防御力/法抗 100% 继承」）：`def` / `res` **直接等于**对应干员的
+//     def / res（比例读卡面 `inheritDefPct` / `inheritResPct`，缺省 100），**替换** token 模板的 200 / 0；
+//     与 atk / hp 同一时点（召唤那一刻），之后干员面板变化不回溯。
+//   * 生命共享（同血池口径，业主 §0）：配对的一人一兽，**两个方向、掉血回血都共享** ——
+//     - 掉血：任一方受到 HP 伤害时对另一方 `battle.loseHp(other, amount, { tags: ['hpLoss', 'hex:yanbeasts:share'] })`
+//       —— 同样数值，不是 50/50 分摊。带 `hex:yanbeasts:share` 的流失不再镜像（防递归），元素损伤
+//       （`type === 'element'`）不是 HP 伤害、不参与。炎佑是友方召唤物，引擎不给它别的来源的治疗，`loseHp` 不受影响。
+//     - 回血（业主 2026-11-01「干员被回血对应的炎佑不回血」）：任一方被治疗时，另一方按**实际落下的治疗量**同样回复
+//       （比例读卡面 `shareHealPct`，默认 100 = 同血池的同样数值），见下面 `heal` 钩子那段注释。
 //   * 5 名档：每名在场己方【炎】干员挂常驻 buff `hex:yanbeasts:regen`，`mods: { hpRegen: regen + regenPerLayer × L }`
 //     （引擎的每秒生命回复属性 `s.hpRegen`）。层数变化（`layerGain`）后按新层数刷新（同名 buff `refresh: 'replace'`）。
 //   * 7 名档：对**所有**己方炎佑（原【炎】盟约召唤的 + 本卡召唤的）设置运行时覆盖 `u.mem.flameTargets = flameTargets`
@@ -36,13 +41,17 @@
 //     读这两个字段（onStart 锁 `flameTargets` 个目标、onTick 用 `flameScaleFn()` 当伤害倍率）。7 名档未达成时不设置，
 //     炎佑就保持数据里的 1 目标 / 60%。
 //
-// [ASSUMED]（设计稿里点名的两处，加上实现时定下的两处）：
+// [ASSUMED]（设计稿里点名的两处，加上实现时定下的四处）：
 //   1. 干员阵亡时配对的那只炎佑一起撤退（`battle.retreat(y, { reason: 'retreat', permanent: true })`）；反方向不做 ——
 //      炎佑先死不会带走干员（干员还有自己的血条与再部署）。
 //   2. 「在场」沿用 `hexHooks.onField`（`alive && deployed && !hidden`）。
 //   3. 生命共享对**任何** HP 伤害生效（普攻 / 技能 / 反伤 / 流失都算，只有元素损伤与共享自身的流失例外）——
 //      卡面写的是「两者生命共享」，没有限定来源。
 //   4. 技力消耗的 5 名 / 7 名档阈值直接读卡面的 `regenCount` / `flameCount`（卡面只有这两个档位数字，不另造参数）。
+//   5. 防御 / 法抗继承（业主 2026-11-01 口头拍板，卡面原文只写了「属性为对应干员的 80%」的攻击力 / 生命值）：
+//      炎佑的 def / res **直接等于**对应干员（100%，替换模板的 200 / 0），比例走卡面参数，缺省 100。
+//   6. 「回血共享」的比例卡面没写：按同血池的「同样数值」（`shareHealPct` 缺省 100）实现，并连 5 名档的每秒回血
+//      （引擎的 `hpRegen` 走 heal，`opts.regen`）一起镜像 —— 业主说的「回血」不限于医疗干员的治疗。
 //
 // 确定性：无 Math.random / Date / Node API；计时只用 battle.every / battle.after。
 //
@@ -62,6 +71,8 @@ const BOND = 'yanShip';
 const REGEN_KEY = 'hex:yanbeasts:regen';
 /** 生命共享那条流失的 tag：带它的流失不再镜像（防递归）。 */
 const SHARE_TAG = 'hex:yanbeasts:share';
+/** 生命共享那条**回复**的标记（挂在 `battle.heal` 的 opts 上）：带它的回复不再镜像（防递归）。 */
+const SHARE_HEAL = 'hexYanBeastsShare';
 /** 技力消耗只乘一次的 flag（挂在 Skill 实例上；`reset()` 不会还原 `spCostMul`）。 */
 const SP_FLAG = 'hexYanBeastsSp';
 
@@ -71,6 +82,11 @@ const SP_FLAG = 'hexYanBeastsSp';
 const FALLBACK = Object.freeze({
   spCostPct: 5, spCostTierPct: 5, censerKey: 'chess_item_6_03_e',
   summonPct: 80, summonPerLayerPct: 0.4,
+  // 防御 / 法抗继承比例（业主 2026-11-01「防御力/法抗 100% 继承」）：缺省 100 = 炎佑的 def / res 直接等于对应干员的。
+  inheritDefPct: 100, inheritResPct: 100,
+  // 生命共享的回复比例：卡面没写比例（只写了属性 80%），设计稿 §0 定的「同血池」是**同样数值**，所以 100。
+  // 业主若要按 80% 走，roster 里给 `yanBeasts.shareHealPct` 一个数即可，模块不用改。
+  shareHealPct: 100,
   regenCount: 5, regen: 20, regenPerLayer: 0.5,
   flameCount: 7, flameTargets: 2, flameScale: 60, flameScalePerLayer: 0.2,
 });
@@ -119,6 +135,9 @@ export function installYanBeasts(hooks) {
       censerKey: spec && typeof spec.censerKey === 'string' && spec.censerKey ? spec.censerKey : FALLBACK.censerKey,
       summonPct: numOf(spec, 'summonPct', FALLBACK.summonPct),
       summonPerLayerPct: numOf(spec, 'summonPerLayerPct', FALLBACK.summonPerLayerPct),
+      shareHealPct: numOf(spec, 'shareHealPct', FALLBACK.shareHealPct),
+      inheritDefPct: numOf(spec, 'inheritDefPct', FALLBACK.inheritDefPct),
+      inheritResPct: numOf(spec, 'inheritResPct', FALLBACK.inheritResPct),
       regenCount: Math.max(0, Math.round(numOf(spec, 'regenCount', FALLBACK.regenCount))),
       regen: numOf(spec, 'regen', FALLBACK.regen),
       regenPerLayer: numOf(spec, 'regenPerLayer', FALLBACK.regenPerLayer),
@@ -167,6 +186,27 @@ export function installYanBeasts(hooks) {
   const wearsCenser = (u) => {
     const p = plan.get(u.ownerId);
     return !!p && itemsOf(u).some((id) => itemKeyOf(id) === p.censerKey);
+  };
+
+  /**
+   * 防御 / 法抗继承（业主 2026-11-01「防御力/法抗 100% 继承」）：炎佑的 def / res **直接等于**对应干员的 def / res，
+   * 比例读卡面 `inheritDefPct` / `inheritResPct`（缺省 100 = 100%，不是攻击力/生命值那 80%）。
+   *
+   * 时点与 atk / hp 完全一致：只取**召唤那一刻**的干员面板（`u.s.def` / `u.s.res`，含当时已有的 buff），
+   * 之后干员的面板变化不会回写到已经登场的炎佑 —— spawnYanyou 对 atk / hp 也是同一口径（只写一次 u.base），
+   * 本模块也没有任何重算。
+   *
+   * 比例 0 ⇒ **不传**（炎佑沿用 token 模板的 200 防御 / 0 法抗，等于「不继承」）；比例 > 0 时即使干员 def 是 0
+   * 也照传 —— 「直接等于」意味着 0 防御的干员，它的炎佑也是 0 防御。
+   * [ASSUMED] 卡面文字没写这一条（业主 2026-11-01 口头拍板），比例做成参数是为了以后调数不改代码。
+   */
+  const inheritOf = (p, u) => {
+    const out = {};
+    const defPct = p.inheritDefPct / 100;
+    const resPct = p.inheritResPct / 100;
+    if (defPct > 0) out.def = Math.max(0, u.s.def) * defPct;
+    if (resPct > 0) out.res = Math.max(0, u.s.res) * resPct;
+    return out;
   };
 
   /** 技力消耗 ×倍率（写一次；`skill.hexYanBeastsSp` 防重复乘）。 */
@@ -231,7 +271,7 @@ export function installYanBeasts(hooks) {
       const pct = Math.max(0, (p.summonPct + p.summonPerLayerPct * L) / 100);
       for (const u of battle.allyUnits.slice()) {
         if (u.ownerId !== pid || !isYanOp(u) || !isField(u)) continue;
-        const out = spawnYanyou(battle, pid, { atk: u.s.atk * pct, hp: u.s.maxHp * pct, count: 1 });
+        const out = spawnYanyou(battle, pid, { atk: u.s.atk * pct, hp: u.s.maxHp * pct, ...inheritOf(p, u), count: 1 });
         const y = out && out[0];
         if (!y) continue;
         pairOf.set(u, y);
@@ -272,6 +312,39 @@ export function installYanBeasts(hooks) {
     const amount = Number(c.amount);
     if (!(amount > 0)) return;
     battle.loseHp(other, amount, { tags: ['hpLoss', SHARE_TAG] });
+  });
+
+  // ---- 生命共享 · 回复方向（业主 2026-11-01：「干员被回血对应的炎佑不回血」） -----------------------------------
+  // 「两者生命共享」是双向的：掉血双向镜像（上面那条 damaged），**回血也要双向镜像**。
+  //
+  // 引擎的 heal 钩子在**写 HP 之前**触发，`c.amount` 是即将落下的量（已经乘过治疗加成），所以这里先按引擎自己的
+  // 口径算出「实际能落下的量」（`min(amount, 上限 − 当前)`）再镜像 —— 超量治疗不会给另一方凭空造血。
+  //
+  // 镜像走 `battle.heal(other, other, …)`（自己治自己）：
+  //   * 炎佑是友方召唤物（`kind !== 'op'`），引擎的 heal 有一条规则「友方召唤物收不到别人的治疗」（damage.js
+  //     heal: `target.side === 'ally' && target.kind !== 'op' && !through && !self` 直接返回 0）—— 这就是设计稿说的
+  //     【禁疗】。**自我回复**不受这条规则限制，所以镜像用 source === target 才能真的把炎佑那条血条抬起来。
+  //   * `regen: true`：这是「同一个血池里的血量移动」，不是一次新的治疗能力 —— 不再乘一遍受治疗者的
+  //     `healingDealtMul`（引擎的自我治疗会吃自己那份治疗量加成）、也不受禁疗影响；治疗量与治疗加成已经在原来那一次
+  //     heal 里算过了。
+  //   * `SHARE_HEAL` 标记：镜像出来的这次 heal 也会触发本钩子，带标记就直接返回（防递归）。
+  //
+  // 比例读卡面 `shareHealPct`（默认 100 = 同血池的「同样数值」，与掉血那条一致；卡面没写治疗比例）。
+  // [ASSUMED] 5 名档的每秒回血（`hpRegen`，引擎按 `opts.regen` 走 heal）也算「回血」，同样镜像。
+  battle.on('heal', (c) => {
+    if (!c || (c.opts && c.opts[SHARE_HEAL])) return;    // 共享自己发出的回复不再镜像
+    const t = c.target;
+    const other = t ? pairOf.get(t) : null;
+    if (!other || !other.alive || !other.deployed) return;
+    const amount = Number(c.amount);
+    if (!(amount > 0)) return;
+    const actual = Math.max(0, Math.min(amount, t.s.maxHp - t.hp));   // 与引擎同口径：超量治疗不计
+    if (!(actual > 0)) return;
+    const p = plan.get(other.ownerId);
+    const share = (p ? p.shareHealPct : 100) / 100;
+    const give = actual * share;
+    if (!(give > 0)) return;
+    battle.heal(other, other, give, { [SHARE_HEAL]: true, regen: true });
   });
 
   // ---- 干员阵亡：配对的炎佑一起撤退（[ASSUMED] 设计稿 §2.3 点名的那条） ---------------------------------------

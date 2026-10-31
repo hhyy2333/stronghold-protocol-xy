@@ -225,9 +225,13 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_massprod',
     name: '量产线',
-    desc: '每回合开始时，随机获得 1 名当前等级阶的干员。',
+    desc: '获得时，立即获得 1 名当前等级阶的干员；每回合开始时，随机获得 1 名当前等级阶的干员。',
     rarity: 'gold',
-    effect: { onRoundStart: { chess: { tier: 'level', count: 1 } } },
+    // 业主 2026-11-01：加「获得时立即得到一名当前阶级的干员」。`onPick.chess` 与每回合那条同一个 tier 口径。
+    effect: {
+      onPick: { chess: { tier: 'level', count: 1 } },
+      onRoundStart: { chess: { tier: 'level', count: 1 } },
+    },
   },
   {
     id: 'hex_drill',
@@ -756,12 +760,15 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_serpentform',
     name: '群蛇形态',
-    desc: '每卖出一个干员累积 0.5 个敌人；战斗开始时，按累积的整数部分每 1 个敌人杀死 1 个敌人，并扣掉这部分累积。',
+    desc: '本回合每卖出一名干员，下一场战斗中敌人出场时最大生命值 −10%（最多 −50%）；回合开始时清零。',
     rarity: 'prismatic',
     effect: {
-      onSold: { serpentPoints: { per: 0.5 } },
+      onSold: { serpentHpLoss: { per: 10, cap: 50 } },
+      onRoundStart: { serpentReset: true },
       onBattleStart: { serpentArm: true },
-      serpentKills: { perPoint: 1 },
+      // top-level so `hasBattlePart` sees it (addHexRef marks the ref battle-visible from the card's own params; the
+      // match overwrites `pct` at battle start with this round's sales).
+      serpentHpLossPct: { pct: 0 },
     },
   },
   {
@@ -865,10 +872,10 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_emergencygrant',
     name: '紧急拨款',
-    // Owner's rebalance of 2026-10-15: the payout is 2 funds (was 6). The rest of the card is unchanged.
-    desc: '每当你卖出一名精锐（三星）干员，立刻获得 2 资金；下一次刷新必定出现你场上人数最多盟约的干员。',
+    // Owner's rebalance of 2026-10-15: the payout is 2 funds (was 6); 2026-10-31: 2 → 3.
+    desc: '每当你卖出一名精锐（三星）干员，立刻获得 3 资金；下一次刷新必定出现你场上人数最多盟约的干员。',
     rarity: 'gold',
-    effect: { onSold: { eliteGrant: { funds: 2 } }, onRefresh: { eliteGrantRefresh: true } },
+    effect: { onSold: { eliteGrant: { funds: 3 } }, onRefresh: { eliteGrantRefresh: true } },
   },
   {
     id: 'hex_bondequalize',
@@ -934,9 +941,13 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_mastergamble',
     name: '赌狗大师',
-    desc: '获得时立即得到 2 件【拟态物质】。',
+    desc: '获得时立即得到 2 件【拟态物质】；此后每 3 个回合开始时再获得 1 件【拟态物质】。',
     rarity: 'gold',
-    effect: { onPick: { item: { id: 'chess_item_5_05_e_a', count: 2 } } },
+    effect: {
+      onPick: { item: { id: 'chess_item_5_05_e_a', count: 2 } },
+      // 业主 2026-10-31：「每3回合再给一个拟态物质」——获得后每 3 个回合（第 3、6、9… 个回合开始）。
+      onRoundStart: { item: { id: 'chess_item_5_05_e_a', count: 1 }, everyRounds: 3, skipFirst: true },
+    },
   },
   {
     id: 'hex_hrsupply',
@@ -1097,9 +1108,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_proteinshake',
     name: '蛋白粉奶昔',
-    desc: '作战中，己方干员每 100 点最大生命值提升 10 点防御力与 0.1 点法术抗性。',
+    desc: '作战中，己方干员每 100 点最大生命值提升 10 点防御力、0.1 点法术抗性，并使其受到的治疗量 +2%。',
     rarity: 'prismatic',
-    effect: { proteinshake: { perHp: 100, def: 10, res: 0.1 } },
+    effect: { proteinshake: { perHp: 100, def: 10, res: 0.1, healTakenPct: 2 } },
   },
   {
     id: 'hex_frostghost',
@@ -1111,9 +1122,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_heavyhitter',
     name: '重量级打击手',
-    desc: '作战中，己方干员的攻击额外造成相当于自身最大生命值 10% 的法术伤害。',
+    desc: '作战中，己方干员的攻击额外造成相当于自身最大生命值 20% 的法术伤害。',
     rarity: 'silver',
-    effect: { heavyhitter: { maxHpPct: 10 } },
+    effect: { heavyhitter: { maxHpPct: 20 } },
   },
   // ---- fourteenth batch (业主 2026-10-19, 原话照抄；卡级脚本在 server/sim/content/hexcards/batch15a.js / batch15b.js) ----
   // 残光 · 玻璃大炮 · 旧日之力（2 阶）· 破伞 · 万物归虚 · 尸山（3 阶）· 身负重担 · 加护（1 阶）
@@ -1398,7 +1409,7 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_forge',
     name: '锻炉',
-    desc: '仅【维多利亚】盟约激活时才会出现。获得时立即获得干员【薄绿】与【洛洛】。你的干员装备第 2 件装备时，两件装备融合为装备【百变】：百变同时拥有这两件装备的全部效果，不会再被融合，仍可被【变形同构体】识别。',
+    desc: '仅【维多利亚】盟约激活时才会出现。获得时立即获得干员【薄绿】与【洛洛】。你的干员装备第 2 件装备时，两件装备融合为装备【百变】：百变同时拥有这两件装备的全部效果，不会再被融合，仍可被【变形同构体】识别；融合时若其中的装备有进阶形态，会自动进阶（已经融合的百变也会追溯进阶）。',
     rarity: 'gold',
     requiresBond: 'victoriaShip',
     effect: {
@@ -1528,7 +1539,7 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_yan_beasts',
     name: '炎百兽',
-    desc: '仅【炎】盟约激活时才会出现。【炎】干员技力消耗 +5%，装备天师古鼎的【炎】干员不受影响。战斗开始时为每名【炎】干员召唤一只与其生命共享的“炎佑”，该炎佑的攻击力、生命值为对应干员的 80%（随层数增长）。<在场5名不同【炎】干员>技力消耗额外 +5%；【炎】干员每秒回复 20 点生命（随层数增长）。<在场7名不同【炎】干员>技力消耗额外 +5%；【炎】佑的“祛恶之焰”改为锁定 2 个目标持续施法，最多持续 20 秒，每秒对目标周围半径 1 范围内的所有敌方单位造成攻击力 60%（随层数增长）的法术伤害。',
+    desc: '仅【炎】盟约激活时才会出现。【炎】干员技力消耗 +5%，装备天师古鼎的【炎】干员不受影响。战斗开始时为每名【炎】干员召唤一只与其生命共享的“炎佑”（干员掉血、回血时炎佑同数值跟随），该炎佑的攻击力、生命值为对应干员的 80%（随层数增长），防御力与法术抗性与其对应干员相同。<在场5名不同【炎】干员>技力消耗额外 +5%；【炎】干员每秒回复 20 点生命（随层数增长）。<在场7名不同【炎】干员>技力消耗额外 +5%；【炎】佑的“祛恶之焰”改为锁定 2 个目标持续施法，最多持续 20 秒，每秒对目标周围半径 1 范围内的所有敌方单位造成攻击力 60%（随层数增长）的法术伤害。',
     rarity: 'gold',
     requiresBond: 'yanShip',
     effect: {
@@ -1537,6 +1548,9 @@ export const PLAYER_HEXES = [
         spCostTierPct: 5,
         censerKey: 'chess_item_6_03_e',
         summonPct: 80, summonPerLayerPct: 0.4,
+        // 业主 2026-11-01：炎佑与干员「生命共享」双向 —— 掉血与回血都按同数值镜像（shareHealPct 是回血那半的比例，
+        // 100 = 同数值）；防御力/法抗 100% 继承对应干员（inheritDefPct / inheritResPct）。
+        shareHealPct: 100, inheritDefPct: 100, inheritResPct: 100,
         regenCount: 5, regen: 20, regenPerLayer: 0.5,
         flameCount: 7, flameTargets: 2, flameScale: 60, flameScalePerLayer: 0.2,
       },
@@ -1548,7 +1562,7 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_kjerag_frostdeath',
     name: '困毙之雪',
-    desc: '仅【谢拉格】盟约激活时才会出现。【谢拉格】干员冻结敌人时获得 1 层霜寒；每层霜寒使防御力 +5%、攻击速度 −5。霜寒达到 5 层时消耗全部霜寒进入「冰封」5 秒：无法攻击、无法使用技能、无法被治疗，但阻挡数 +1 且免疫所有伤害。<在场3名不同【谢拉格】干员>每有 1 层霜寒，攻击时有 30% 概率施加寒冷；敌人冻结结束时未被击杀，则该敌人周围半径 1.5 内所有【谢拉格】干员获得 1 层霜寒；若场上没有任何敌人处于冻结状态，所有【谢拉格】干员每 5 秒累积 1 层霜寒；冰封干员阻挡的敌人每秒受到 100 点真实伤害（随【谢拉格】层数每层 +40）。<在场6名不同【谢拉格】干员>【谢拉格】干员死亡时，冻结全场敌人 5 秒，并为全体【谢拉格】干员移除 2 层霜寒；若场上所有【谢拉格】干员同时处于冰封状态，则对所有敌人每秒造成 100 点真实伤害（随【谢拉格】层数每层 +50）并施加寒冷，持续 15 秒。',
+    desc: '仅【谢拉格】盟约激活时才会出现。【谢拉格】干员冻结敌人时获得 1 层霜寒；每层霜寒使防御力 +5%、攻击速度 −5。所有【谢拉格】干员每 5 秒获得 1 层霜寒。霜寒达到 5 层时消耗全部霜寒进入「冰封」5 秒：无法攻击、无法使用技能、无法被治疗，但阻挡数 +1 且免疫所有伤害。<在场3名不同【谢拉格】干员>每有 1 层霜寒，攻击时有 30% 概率施加寒冷；敌人冻结结束时未被击杀，则该敌人周围半径 1.5 内所有【谢拉格】干员获得 1 层霜寒；冰封干员阻挡的敌人每秒受到 100 点真实伤害（随【谢拉格】层数每层 +40）。<在场6名不同【谢拉格】干员>【谢拉格】干员死亡时，冻结全场敌人 5 秒，并为全体【谢拉格】干员移除 2 层霜寒；若场上所有【谢拉格】干员同时处于冰封状态，则对所有敌人每秒造成 100 点真实伤害（随【谢拉格】层数每层 +50）并施加寒冷，持续 15 秒。',
     rarity: 'gold',
     requiresBond: 'kjeragShip',
     effect: {
@@ -1562,6 +1576,8 @@ export const PLAYER_HEXES = [
         coldSec: 5,
         freezeEndRadius: 1.5,
         idleFrostSec: 5,
+        // 业主 2026-11-01：每 5 秒 +1 层霜寒改成**基础效果** —— 不要求在场 3 名谢拉格，也不要求「场上没有敌人被冻结」。
+        idleFrostUnconditional: true,
         sealedBlockDmg: 100, sealedBlockDmgPerLayer: 40,
         highCount: 6,
         deathFreezeSec: 5,
@@ -1605,16 +1621,23 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_break_limit',
     name: '突破极限',
-    desc: '获得时，你的盟约叠层上限从 999 提升到 9999（备战期加层、战斗内加层、回合结算与界面显示一起提升）。',
+    desc: '获得时，你的盟约叠层上限从 999 提升到 9999（备战期加层、战斗内加层、回合结算与界面显示一起提升）；你在联防战斗中也能获得盟约层数。',
     rarity: 'prismatic',
-    effect: { bondCap: { cap: 9999 } },
+    // 业主 2026-11-01「联防也能叠层」：只有拥有这张卡的玩家在 unite 战场里 layerGainsEnabled = true
+    // （server/match/match/unitePhase.js 按玩家写；没这张卡的玩家照旧不加层）。
+    effect: { bondCap: { cap: 9999, uniteLayers: true } },
   },
   {
     id: 'hex_mode_modules',
     name: '特限恢复',
-    desc: '获得时，你的干员解锁 3 级模组（有模组的干员；普通形态也算）；特限模组（ISW / SO / RA）的专属效果在卫戍协议中生效。',
+    desc: '获得时，你的干员解锁 3 级模组（有模组的干员；普通形态也算）；特限模组（ISW / SO / RA）的专属效果在卫戍协议中生效。有特限模组（ISW / SO / RA）的干员购买价格 −2（最低 1）。',
     rarity: 'gold',
-    effect: { modeModules: { level: 3, types: ['ISW', 'SO', 'RA'] } },
+    effect: {
+      modeModules: { level: 3, types: ['ISW', 'SO', 'RA'] },
+      // 业主 2026-11-01：有特限模组的干员购买价 −2、最低 1。读取点走 onPrice（applySpec 的 specialLimitDiscount），
+      // 判据与 modeModules 同一个 types 名单（ISW / SO / RA）。
+      onPrice: { specialLimitDiscount: { delta: -2, min: 1, types: ['ISW', 'SO', 'RA'] } },
+    },
   },
   // 第二十四批（业主 2026-10-31）：3 阶普通卡【死亡之舞】。
   // 设计稿：04-文档/协议源石-死亡之舞与四张卡调整-设计稿-20261031.md。

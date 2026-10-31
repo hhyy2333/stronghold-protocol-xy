@@ -36,6 +36,9 @@ const { applyHex, FORGE_ITEM_ID } = await import('../../server/match/hextech.js'
 
 const HAMMER = 'chess_item_1_01_e_a';   // 维式重锤
 const SHIELD = 'chess_item_1_02_e_a';   // 坚守盾牌
+// 业主 2026-10-31：融合时能进阶的组件自动进阶 —— 百变里记的是进阶（golden）形态的 id
+const GOLDEN_HAMMER = 'chess_item_1_01_e_b';
+const GOLDEN_SHIELD = 'chess_item_1_02_e_b';
 
 /** The text of a vnode tree; the panel's own hook-free components are expanded (RichText stays unexpanded). */
 const EXPAND = new Set(['Section', 'ItemRow', 'MorphPairings', 'MorphGrantLine', 'FusedFrom']);
@@ -78,7 +81,7 @@ describe('百变 (锻炉): off the operator, the item card still names its two c
     // what the player's tap resolves to (game.js pieceClick → { kind: 'piece', uid })
     const detail = resolveDetail({ kind: 'piece', uid: fused.uid }, pieces, { priv });
     assert.equal(detail.type, 'item');
-    assert.deepEqual(detail.piece.merged, [HAMMER, SHIELD], 'the card is handed the two component ids');
+    assert.deepEqual(detail.piece.merged, [GOLDEN_HAMMER, GOLDEN_SHIELD], 'the card is handed the two component ids (advanced)');
     const body = textOf(ItemDetail({ item: detail.item, piece: detail.piece, editable: true, onDestroy() {}, offBonds: null }));
     assert.match(body, /【锻炉】融合的两件装备：/);
     assert.match(body, /维式重锤/, 'component A by name');

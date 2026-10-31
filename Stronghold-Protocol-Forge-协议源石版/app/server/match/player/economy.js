@@ -10,7 +10,7 @@ import { ERR, PHASE, layerGainRoom } from '../../../shared/constants.js';
 import { behaviourIsDefault } from '../../../shared/behaviour.js';
 import { freeSlot } from '../board.js';
 import { bondBiasPreference } from '../pool.js';
-import { layerGainMulOf, bondLayerCapOf, refreshPriceOverrideOf } from '../hextech.js';
+import { layerGainMulOf, bondLayerCapOf, refreshPriceOverrideOf, specialLimitDiscountOf } from '../hextech.js';
 import { OK, fail } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 
@@ -51,19 +51,37 @@ export class PlayerEconomy {
    * - `force: true` = 不是「获得」：跳过上限、也不计入额度。测试场自己的发钱（`g.testFunds`、首领测试的起步资金）与
    *   只把钱挪去立刻花掉的内部过路（天人形态的免费升级）用它。
    *
+   * **协议源石的钱不占这个额度**（业主 2026-11-01「海克斯提供的钱不计入 n19 的 30 块上限」）：
+   *  1. 直接由协议源石发的钱 —— 全游戏唯一的 reason 约定：**`reason` 以 `hex` 开头**（`server/sim/content/hextech.js`
+   *     applySpec 的每一笔都写 `'hex'`；`server/match/hextech.js` 的债务写 `'hex_debt'`；天人形态 / 测试场的过路钱
+   *     已经是 `force: true`）。这类钱既不占额度、也不把额度用掉；
+   *  2. 协议源石**结算到下回合**的钱（战损回收 / 过路费 / 破财消灾…）—— 它们先进 `pendingFunds`，回合开始时由
+   *     `round.js startRound` 用 `addFunds(income + pending, 'income')` 一次性付出。这类钱由
+   *     `effectsMeta.js ctx.addPendingFunds` 同时记在 `pendingHexFunds` 上，`reason === 'income'` 的这一笔按它豁免
+   *     （见 `_hexFundsExempt`）。
+   * 回合收入 / 卖出返还 / 悬赏 / 盟约与装备发钱**照旧受上限约束**。
+   *
+   * [ASSUMED] 结算里走**悬赏通道**的 hex 钱（骑士金神的击杀金币、过路费的赔付：`battle.addCoins` → 结果的 `coins` →
+   * `settle.js` 的 `pendingFunds`）与真正的悬赏金在 `coins` 里已经混在一起，`settle.js` 不在本文件能改的范围，所以
+   * 这部分目前仍计入上限；要精确豁免需要在 settle.js 落账时同时记 `ps.pendingHexFunds`（见交付说明）。
+   *
    * @returns {number} 真正动了的资金（被上限削掉时就是这个更小的数）
    */
   addFunds(n, { reason = '', force = false } = {}) {
     if (!Number.isFinite(n) || n === 0) return 0;
     const gained = Number.isFinite(this.round.fundsGained) ? this.round.fundsGained : 0;
     let v = Math.trunc(n);
+    /** 这一笔里**不计入**额度的部分（协议源石来源）。 */
+    let exempt = 0;
     if (v > 0 && !force) {
+      exempt = this._hexFundsExempt(reason, v);
+      const counted = v - exempt;
       const cap = Number.isFinite(this.gd.fundsGainCapPerRound) && this.gd.fundsGainCapPerRound > 0
         ? this.gd.fundsGainCapPerRound : Infinity;
       const room = Math.max(0, cap - gained);
-      if (v > room) {
+      if (counted > room) {
         this._fundsGainCapped(cap);
-        v = room;
+        v = exempt + room;
       }
       if (v === 0) return 0;
     }
@@ -71,13 +89,33 @@ export class PlayerEconomy {
     this.funds = Math.max(0, this.funds + v);
     const delta = this.funds - before;
     if (delta > 0) {
-      if (!force) this.round.fundsGained = gained + delta;
+      if (!force) this.round.fundsGained = gained + Math.max(0, delta - exempt);
       this.stats.fundsGained += delta;
     } else if (delta < 0 && !force) {
       this.round.fundsGained = Math.max(0, gained + delta);
     }
     this.dirty();
     return delta;
+  }
+
+  /**
+   * 这一笔 `addFunds` 里有多少是**协议源石来源**（不计入 n19 的一回合上限）。见 addFunds 的注释。
+   * @param {string} reason @param {number} n 这一笔的（已截断的）金额
+   * @returns {number} 豁免的金额（0 … n）
+   */
+  _hexFundsExempt(reason, n) {
+    if (!(n > 0)) return 0;
+    // 1) 直接由协议源石发：reason 约定（'hex' / 'hex_debt' / 'hex:…' —— 'hex' 后面跟的不是字母数字就算）
+    if (typeof reason === 'string' && /^hex(?:$|[^a-z0-9])/i.test(reason)) return n;
+    // 2) 上一回合结算里协议源石那部分：`round.js startRound` 把 income + pending 合成一笔付出来
+    if (reason === 'income') {
+      const hex = Math.max(0, Math.trunc(Number(this.pendingHexFunds) || 0));
+      if (hex <= 0) return 0;
+      const use = Math.min(n, hex);
+      this.pendingHexFunds = hex - use;
+      return use;
+    }
+    return 0;
   }
 
   /** 本回合的获得额度刚被削掉：把上限告诉本人一条（每回合一次，机器人没有 toast）。 */
@@ -200,7 +238,14 @@ export class PlayerEconomy {
     const ev = { slot, kind: slot.kind, id: slot.id, price: slot.basePrice };
     this.m.dispatch(this, 'onPrice', ev, { quiet: true });
     const p = Number(ev.price);
-    return Number.isFinite(p) ? Math.max(0, Math.round(p)) : slot.basePrice;
+    let price = Number.isFinite(p) ? Math.max(0, Math.round(p)) : slot.basePrice;
+    // 【特限恢复】(`hex_mode_modules`, 业主 2026-11-01): 拥有者的商店里「有特限模组的干员」购买价格 −delta，最低 min。
+    // 数值与「什么算特限」都从卡面读（`effect.onPrice.specialLimitDiscount { delta, min }` + `effect.modeModules.types`），
+    // 所以调数值不用改代码。这里在 onPrice 派发之后算，于是它和别的折扣（盟约专属折扣 / 升级刷新 / 商店契约）叠加，
+    // 且 `min` 是最后一道地板 —— 与 冰雪消融 的 `bondPriceDiscount` 同一个读法（那条在 onPrice 里、这条在定价点）。
+    const disc = slot.kind === 'chess' ? specialLimitDiscountOf(this, slot.id) : null;
+    if (disc) price = Math.max(disc.min, price + disc.delta);
+    return price;
   }
 
   _rollChessSlot() {

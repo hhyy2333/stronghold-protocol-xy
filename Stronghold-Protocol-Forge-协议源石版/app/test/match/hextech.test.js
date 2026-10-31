@@ -1009,22 +1009,26 @@ test('恶魔形态: in a REAL match the takeover runs at the next round’s prep
   m.dispose();
 });
 
-test('群蛇形态: a sale banks half an enemy, and the battle it arms spends the whole ones', () => {
+test('群蛇形态: each sale this round cuts enemy max HP 10% next battle (capped 50%, round start resets)', () => {
   const { h, m, ps } = solo1(109);
   applyHex(m, ps, m.gd.hex('hex_serpentform'));
   for (let i = 0; i < 5; i++) m.dispatch(ps, 'onSold', { piece: { kind: 'chess', id: 'test' }, gain: 1 });
-  assert.equal(ps.counters['hex:hex_serpentform:serpent'], 2.5, 'five sales bank 2.5 enemies');
+  assert.equal(ps.counters['hex:hex_serpentform:serpentSold'], 50, 'five sales → 50%');
+  for (let i = 0; i < 3; i++) m.dispatch(ps, 'onSold', { piece: { kind: 'chess', id: 'test' }, gain: 1 });
+  assert.equal(ps.counters['hex:hex_serpentform:serpentSold'], 50, 'capped at 50%');
+  const pctOf = (i) => {
+    const ref = i.playerEffects.find((e) => e.data && e.data.hexId === 'hex_serpentform');
+    return ref && ref.params && ref.params.serpentHpLossPct ? ref.params.serpentHpLossPct.pct : null;
+  };
   const input = ps.battleInput();
   m.dispatch(ps, 'onBattleStart', { input, kind: 'normal', round: m.round, spawns: [] });
-  const killsOf = (i) => {
-    const ref = i.playerEffects.find((e) => e.data && e.data.hexId === 'hex_serpentform');
-    return ref && ref.params && ref.params.serpentKills ? ref.params.serpentKills.count : null;
-  };
-  assert.equal(killsOf(input), 2, 'two whole points → two enemies killed at the battle’s start');
-  assert.equal(ps.counters['hex:hex_serpentform:serpent'], 0.5, 'and the halves stay banked');
+  assert.equal(pctOf(input), 50, 'the battle input carries this round’s 50%');
+  // 回合开始清零：下一场战斗不再带旧百分比
+  m.dispatch(ps, 'onRoundStart', { round: m.round + 1 });
+  assert.equal(ps.counters['hex:hex_serpentform:serpentSold'], 0, 'a new round resets the sales');
   const input2 = ps.battleInput();
-  m.dispatch(ps, 'onBattleStart', { input: input2, kind: 'normal', round: m.round, spawns: [] });
-  assert.equal(killsOf(input2), 0, 'no whole point in the bank ⇒ nothing killed (no stale count)');
+  m.dispatch(ps, 'onBattleStart', { input: input2, kind: 'normal', round: m.round + 1, spawns: [] });
+  assert.equal(pctOf(input2), 0, 'no stale percentage');
   h.invariants();
   m.dispose();
 });
@@ -1390,21 +1394,23 @@ test('均衡盟约: the noStack bonds are left out of the redistribution, and th
 test('the stats preview runs the battle-start cards without changing the match (群蛇形态)', () => {
   const { h, m, ps } = solo1(733);
   applyHex(m, ps, m.gd.hex('hex_serpentform'));
-  ps.counters['hex:hex_serpentform:serpent'] = 3; // two banked enemies at 0.5 each
+  ps.counters['hex:hex_serpentform:serpentSold'] = 30; // three sales this round
   ps.recompute();
-  const bankedBefore = ps.counters['hex:hex_serpentform:serpent'];
-  assert.equal(bankedBefore, 3, 'premise: 群蛇形态 has banked points');
+  const bankedBefore = ps.counters['hex:hex_serpentform:serpentSold'];
+  assert.equal(bankedBefore, 30, 'premise: 群蛇形态 has this round’s sales');
   // ask for the stats three times, exactly as the client does while the card stays open
   for (let i = 0; i < 3; i++) {
     m._unitStatsCache = null;
     assert.deepEqual(m.handle('p_0', { t: 'g.unitStats', seq: i }), { ok: true });
   }
-  assert.equal(ps.counters['hex:hex_serpentform:serpent'], bankedBefore, '群蛇形态 spends nothing on a preview');
-  // the REAL battle start (no preview flag) cashes the bank in, once
+  assert.equal(ps.counters['hex:hex_serpentform:serpentSold'], bankedBefore, 'a preview changes nothing');
+  // the REAL battle start (no preview flag) writes the percentage onto the ref — and does not spend it
   const realInput = ps.battleInput({ side: 'L', colOffset: 0 });
   const realEv = { input: realInput, kind: 'normal', round: m.round, spawns: [] };
   m.dispatch(ps, 'onBattleStart', realEv);
-  assert.equal(ps.counters['hex:hex_serpentform:serpent'], 0, '群蛇形态 cashes its 3 points in');
+  const ref = realInput.playerEffects.find((e) => e.data && e.data.hexId === 'hex_serpentform');
+  assert.equal(ref.params.serpentHpLossPct.pct, 30, 'the real battle carries 30%');
+  assert.equal(ps.counters['hex:hex_serpentform:serpentSold'], 30, 'and the sales are not spent');
   h.invariants();
   m.dispose();
 });
@@ -1941,11 +1947,12 @@ test('锻炉: two worn items fuse into 百变 — one item, both effects, never 
   assert.deepEqual(ps.equip(b.uid, piece.uid), { ok: true }, 'the second one lands');
   assert.equal(piece.items.length, 1, 'and the two fure into ONE item');
   assert.equal(piece.items[0].id, FORGE_ITEM_ID, '百变');
-  assert.deepEqual(piece.items[0].merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'it remembers both components');
-  // 「百变的效果是两件被融合装备的效果」: the BATTLE input carries both original ids, so the sim installs both items
+  // 业主 2026-10-31: 融合时能进阶的组件自动进阶（维式重锤 / 坚守盾牌都有进阶形态）
+  assert.deepEqual(piece.items[0].merged, ['chess_item_1_01_e_b', 'chess_item_1_02_e_b'], 'it remembers both components, advanced');
+  // 「百变的效果是两件被融合装备的效果」: the BATTLE input carries both (advanced) ids, so the sim installs both items
   const input = ps.battleInput();
   const u = input.units.find((x) => x.uid === piece.uid);
-  assert.deepEqual([...u.items].sort(), ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'both records reach the battle');
+  assert.deepEqual([...u.items].sort(), ['chess_item_1_01_e_b', 'chess_item_1_02_e_b'], 'both advanced records reach the battle');
   // 「百变不会被融合」: a scan finds no second unfused pair on that operator
   assert.equal(applyForgeFusion(ps, piece), 0, 'no re-fusion');
   assert.equal(piece.items.length, 1);
@@ -1969,7 +1976,7 @@ test('锻炉: 百变回到整备区后，道具卡仍写得出是哪两件（业
   assert.deepEqual(ps.equip(giveItem(m, ps, 'chess_item_1_01_e_a').uid, piece.uid), { ok: true });   // 维式重锤
   assert.deepEqual(ps.equip(giveItem(m, ps, 'chess_item_1_02_e_a').uid, piece.uid), { ok: true });   // 坚守盾牌
   const fused = piece.items[0];
-  assert.deepEqual(fused.merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'premise: a fused 百变');
+  assert.deepEqual(fused.merged, ['chess_item_1_01_e_b', 'chess_item_1_02_e_b'], 'premise: a fused 百变 (components advanced)');
   // 「取下来」: selling the carrier returns its equipment to the 整备区 — as ONE piece (the 百变), not as its two components
   assert.deepEqual(ps.sell(piece.uid), { ok: true });
   const back = [...(ps.hand || []), ...(ps.temp || [])].filter(Boolean).find((p) => p && p.uid === fused.uid);
@@ -1977,10 +1984,10 @@ test('锻炉: 百变回到整备区后，道具卡仍写得出是哪两件（业
   // the card the player opens reads the PIECE VIEW (detailPanel ItemDetail → FusedFrom ← piece.merged): without `merged`
   // here the card showed the generic 百变 text and named no component (业主 2026-10-27 的截图)
   const view = ps.pieceView(back);
-  assert.deepEqual(view.merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'the client is told which two it fused');
+  assert.deepEqual(view.merged, ['chess_item_1_01_e_b', 'chess_item_1_02_e_b'], 'the client is told which two it fused (advanced)');
   const priv = ps.privateView();
   const inFrame = [...(priv.hand || []), ...(priv.temp || [])].filter(Boolean).find((p) => p && p.uid === fused.uid);
-  assert.deepEqual(inFrame.merged, ['chess_item_1_01_e_a', 'chess_item_1_02_e_a'], 'and the frame it receives carries it');
+  assert.deepEqual(inFrame.merged, ['chess_item_1_01_e_b', 'chess_item_1_02_e_b'], 'and the frame it receives carries it (advanced)');
   // every other piece is unchanged: an ordinary item has no `merged` key at all (an older client reads it as before)
   const plain = giveItem(m, ps, 'chess_item_1_01_e_a');
   assert.equal('merged' in ps.pieceView(plain), false, 'an ordinary item view is byte-identical');

@@ -14,8 +14,11 @@
 //   1. 无卡 ⇒ install 返回 0 且没有任何效果；
 //   2. 技力消耗：N=3 → ×1.05、N=5 → ×1.10、N=7 → ×1.15；装备【天师古鼎】的【炎】干员豁免；非【炎】干员不受影响；
 //      引擎读到的 spCost 跟着涨；重新部署不重复乘（skill 上的 flag）；
-//   3. 召唤：战斗开始时每名在场己方【炎】干员各一只炎佑，属性 = 模板 + 对应干员的 (80+0.4L)%；
+//   3. 召唤：战斗开始时每名在场己方【炎】干员各一只炎佑，属性 = 模板 + 对应干员的 (80+0.4L)%；防御力 / 法抗
+//      **直接等于**对应干员（业主 2026-11-01，比例读卡面 inheritDefPct / inheritResPct，缺省 100）；
 //   4. 生命共享（同血池）：对干员造成 X ⇒ 配对的炎佑掉 X；对炎佑造成 X ⇒ 干员掉 X；元素损伤不镜像；
+//   4b. 生命共享的**回复方向**（业主 2026-11-01「干员被回血对应的炎佑不回血」）：治干员 ⇒ 炎佑同样回血、
+//      治炎佑 ⇒ 干员回血、不递归、超量治疗不凭空造血、比例读卡面 shareHealPct、5 名档每秒回血也镜像；
 //   5. 5 名档：炎干员 s.hpRegen = 20+0.5L，N=4 没有；层数变化后刷新；
 //   6. 7 名档：己方炎佑 mem.flameTargets === 2、mem.flameScaleFn() = (60+0.2L)/100，N=6 没有；原盟约召唤的炎佑
 //      同样被覆盖；跑到祛恶之焰真的开起来，锁定 2 个目标；
@@ -24,7 +27,9 @@
 // [ASSUMED]（模块头注释里有完整口径，这里是测试侧的断言口径）：
 //   a. 「在场」= alive && deployed && !hidden（hexHooks.onField），N 按 baseChessId 去重；
 //   b. 生命共享对任何 HP 伤害生效（元素损伤与共享自身的流失除外），流失用 battle.loseHp 结算、无来源；
-//   c. 干员阵亡时配对的那只炎佑一起撤退（反方向不做）。
+//   c. 干员阵亡时配对的那只炎佑一起撤退（反方向不做）；
+//   d. 回血共享的比例按「同血池 = 同样数值」（shareHealPct 缺省 100），5 名档的每秒回血也算「回血」；
+//   e. 防御 / 法抗按「直接等于」继承（替换模板的 200 / 0，干员 0 防 ⇒ 炎佑 0 防），只取召唤那一刻的面板。
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -92,6 +97,10 @@ const yanUnits = (n, o = {}) => Array.from({ length: n }, (_, i) => at(i + 1, TI
 const CHESS = Object.freeze(Object.fromEntries([
   ...Array.from({ length: 7 }, (_, i) => [`test_yan${i + 1}`, yanOp(`test_yan${i + 1}`)]),
   ['test_yan20', yanOp('test_yan20', { skill: { spCost: 20 } })],
+  ['test_medic', plainOp('test_medic', { profession: 'MEDIC' })],
+  // 防御 / 法抗继承用：一条「高防 + 中法抗」，一条「0 防 + 高法抗」的对照
+  ['test_yan_def', yanOp('test_yan_def', { stats: { maxHp: 2000, atk: 500, def: 300, res: 40, blockCnt: 1, respawnTime: 20 } })],
+  ['test_yan_res', yanOp('test_yan_res', { stats: { maxHp: 2000, atk: 500, def: 0, res: 70, blockCnt: 1, respawnTime: 20 } })],
   ['test_plain', plainOp('test_plain')],
 ]));
 
@@ -270,6 +279,56 @@ test('炎百兽: 非【炎】干员、别人的【炎】干员都不召唤', () 
   h.invariants();
 });
 
+// ---- 3b. 防御 / 法抗继承（业主 2026-11-01：「防御力/法抗 100% 继承」） ------------------------------------------
+
+test('炎百兽: 炎佑的防御力 / 法抗直接等于对应干员（100%，不是 80%，也不是模板的 200 / 0）', () => {
+  const h = field([seat('p1', 0, {
+    effects: [refOf()],
+    units: [at(1, 9, 4, 'test_yan_def'), at(2, 9, 5, 'test_yan_res')],
+    bonds: bondsOf(2),
+  })]);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const hiDef = h.unit('test_yan_def');
+  const hiRes = h.unit('test_yan_res');
+  assert.deepEqual([hiDef.s.def, hiDef.s.res], [300, 40], 'premise: 高防 / 中法抗');
+  assert.deepEqual([hiRes.s.def, hiRes.s.res], [0, 70], 'premise: 0 防 / 高法抗');
+  const yy = yanyouOf(h);
+  assert.equal(yy.length, 2, 'premise: 两只炎佑');
+  // 一只 300/40、一只 0/70 —— 模板的 200 与 0 都不该出现
+  assert.deepEqual(yy.map((y) => `${y.s.def}/${y.s.res}`).sort(), ['0/70', '300/40']);
+  h.invariants();
+});
+
+test('炎百兽: 防御 / 法抗继承比例读卡面 inheritDefPct / inheritResPct', () => {
+  const h = field([seat('p1', 0, {
+    effects: [refOf({ inheritDefPct: 50, inheritResPct: 50 })],
+    units: [at(1, 9, 4, 'test_yan_def')],
+    bonds: bondsOf(1),
+  })]);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const [y] = yanyouOf(h);
+  close(y.s.def, 150, 'inheritDefPct 50 ⇒ 300 × 50% = 150');
+  close(y.s.res, 20, 'inheritResPct 50 ⇒ 40 × 50% = 20');
+  h.invariants();
+});
+
+test('炎百兽: inheritDefPct 0 ⇒ 不继承（炎佑沿用 token 模板的 200 / 0）', () => {
+  const h = field([seat('p1', 0, {
+    effects: [refOf({ inheritDefPct: 0, inheritResPct: 0 })],
+    units: [at(1, 9, 4, 'test_yan_def')],
+    bonds: bondsOf(1),
+  })]);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const [y] = yanyouOf(h);
+  close(y.s.def, 200, '比例 0 ⇒ 模板防御 200');
+  close(y.s.res, 0, '比例 0 ⇒ 模板法抗 0');
+  h.invariants();
+});
+
+
 // =====================================================================================================================
 // 4. 生命共享（同血池）
 
@@ -332,6 +391,129 @@ test('炎百兽: 干员阵亡时配对的炎佑一起撤退', () => {
   assert.equal(op.alive, false, 'premise: 干员阵亡');
   assert.equal(op.removeReason, 'killed', 'premise: 真的被击倒（不是撤退）');
   assert.equal(yy.filter((y) => y.alive).length, 1, '只剩搭档没死的那一只炎佑');
+  h.invariants();
+});
+
+// =====================================================================================================================
+// 4b. 生命共享 · 回复方向（业主 2026-11-01：「干员被回血对应的炎佑不回血」）
+
+/** 一个带医疗干员的场：`n` 名【炎】干员 + 1 名非【炎】医疗（治疗来源，避免被当成共享对象）。 */
+const healField = (n = 2, effect = {}) => field([seat('p1', 0, {
+  effects: [refOf(effect)],
+  units: [...yanUnits(n), at(90, 10, 4, 'test_medic')],
+  bonds: bondsOf(n),
+})]);
+
+test('炎百兽: 干员被治疗 ⇒ 配对的炎佑同样回血（同血池：同样数值，不是分摊）', () => {
+  const h = healField(2);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const yy = yanyouOf(h);
+  assert.equal(yy.length, 2, 'premise: 两只炎佑');
+  const op = h.unit('test_yan1');
+  const med = h.unit('test_medic');
+  hitTrue(h, op, 400);                                   // 先掉血，才有得治（炎佑也掉 400）
+  const opHp0 = op.hp;
+  const y0 = yy.map((y) => y.hp);
+  close(h.battle.heal(med, op, 300), 300, '医疗干员治了 300');
+  close(op.hp, opHp0 + 300, '干员回血 300');
+  const gained = yy.map((y, i) => y.hp - y0[i]);
+  assert.equal(gained.filter((d) => Math.abs(d - 300) < 1e-9).length, 1, '正好一只炎佑也回了 300');
+  assert.equal(gained.filter((d) => Math.abs(d) < 1e-9).length, 1, '另一只炎佑没回血');
+  h.invariants();
+});
+
+test('炎百兽: 回血共享不递归，超量治疗不给炎佑凭空造血', () => {
+  const h = healField(2);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const yy = yanyouOf(h);
+  const op = h.unit('test_yan1');
+  const med = h.unit('test_medic');
+
+  // 1) 干员满血：治疗落不下 ⇒ 炎佑一点都不涨
+  const yFull = yy.map((y) => y.hp);
+  close(h.battle.heal(med, op, 500), 0, '满血治不上');
+  yy.forEach((y, i) => close(y.hp, yFull[i], '炎佑没有被凭空治疗'));
+
+  // 2) 干员差 100、治 500：引擎只落下 100 ⇒ 炎佑也只涨 100（不是 500，也不会来回弹）
+  hitTrue(h, op, 100);
+  const y0 = yy.map((y) => y.hp);
+  const opHp0 = op.hp;
+  close(h.battle.heal(med, op, 500), 100, '超量治疗只落下 100');
+  close(op.hp, opHp0 + 100, '干员只涨 100（镜像没有回灌到自己身上）');
+  const gained = yy.map((y, i) => y.hp - y0[i]);
+  assert.equal(gained.filter((d) => Math.abs(d - 100) < 1e-9).length, 1, '炎佑只涨 100');
+  assert.equal(gained.filter((d) => Math.abs(d) < 1e-9).length, 1, '另一只炎佑没涨');
+  h.invariants();
+});
+
+test('炎百兽: 炎佑被回复 ⇒ 配对的干员也回血（反方向）', () => {
+  const h = healField(2);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const yy = yanyouOf(h);
+  const op = h.unit('test_yan1');
+  const med = h.unit('test_medic');
+  hitTrue(h, op, 400);                                   // 干员 -400，配对的炎佑 -400
+  const y = yy.find((x) => x.hp < x.s.maxHp);
+  assert.ok(y, 'premise: 有一只炎佑掉了血');
+  const opHp0 = op.hp;
+  const y0 = y.hp;
+  // 引擎不给友方召唤物「别人的治疗」（damage.js heal 的规则，也就是设计稿说的【禁疗】）：
+  assert.equal(h.battle.heal(med, y, 500), 0, '别人治不到炎佑');
+  // 能真的治到炎佑的只有它自己的回复 —— 共享走的就是这条路（self heal）
+  close(h.battle.heal(y, y, 150), 150, '炎佑自我回复 150');
+  close(y.hp, y0 + 150, '炎佑回血 150');
+  close(op.hp, opHp0 + 150, '配对的干员也跟着回 150');
+  h.invariants();
+});
+
+test('炎百兽: 回血共享的比例读卡面 shareHealPct', () => {
+  const h = healField(2, { shareHealPct: 50 });
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const yy = yanyouOf(h);
+  const op = h.unit('test_yan1');
+  const med = h.unit('test_medic');
+  hitTrue(h, op, 400);
+  const y0 = yy.map((x) => x.hp);
+  close(h.battle.heal(med, op, 300), 300, '干员回血 300');
+  const gained = yy.map((x, i) => x.hp - y0[i]);
+  assert.equal(gained.filter((d) => Math.abs(d - 150) < 1e-9).length, 1, 'shareHealPct 50 ⇒ 炎佑只回一半（150）');
+  assert.equal(gained.filter((d) => Math.abs(d) < 1e-9).length, 1, '另一只炎佑没回血');
+  h.invariants();
+});
+
+test('炎百兽: 没有配对的干员被治疗时，炎佑一点不动（只认配对）', () => {
+  const h = healField(2);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const yy = yanyouOf(h);
+  const med = h.unit('test_medic');
+  // 治疗来源自己：不是任何炎佑的搭档
+  hitTrue(h, med, 400);
+  const y0 = yy.map((y) => y.hp);
+  close(h.battle.heal(med, med, 300), 300, '医疗干员给自己治了 300');
+  yy.forEach((y, i) => close(y.hp, y0[i], '没有配对 ⇒ 炎佑不跟着回血'));
+  h.invariants();
+});
+
+test('炎百兽: 5 名档的每秒回血也按生命共享镜像给炎佑（[ASSUMED]）', () => {
+  const h = field([seat('p1', 0, { effects: [refOf()], units: yanUnits(5), bonds: bondsOf(5, 0) })]);
+  installYanBeasts(hexHooks(h.battle));
+  h.run(1);
+  const yy = yanyouOf(h);
+  const op = ops(h)[0];
+  assert.ok(op.findBuff(REGEN_KEY), 'premise: 5 名档的回血 buff 在');
+  hitTrue(h, op, 200);                                   // 掉 200，炎佑也掉 200
+  const opHp0 = op.hp;
+  const y0 = yy.map((y) => y.hp);
+  h.run(2);
+  const opGain = op.hp - opHp0;
+  assert.ok(opGain > 0, 'premise: 干员的每秒回血在走');
+  const total = yy.reduce((s, y, i) => s + (y.hp - y0[i]), 0);
+  close(total, opGain, '炎佑那边涨的总量 = 干员回的血（同一份回复，不是另造一份）', 1e-6);
   h.invariants();
 });
 

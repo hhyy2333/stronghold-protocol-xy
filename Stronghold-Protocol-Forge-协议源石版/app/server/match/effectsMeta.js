@@ -632,7 +632,11 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
   // Counter namespace of this handler call: '' for an ordinary effect ref, `<ref id>::` for a 策略「管理员」copy
   // (server/match/hextech.js addHexRef copySeq) — the copy is a second ref of the same card and must keep its own
   // ladder/total counters (see the counters section below).
-  const COUNTER_PREFIX = source && source.ref && source.ref.data && Number(source.ref.data.copySeq) > 1 ? `${source.ref.id}::` : '';
+  // 例外（业主 2026-11-01「多张卡（含复制）不重复发」）：`data.sharedCounters === true` 的 ref —— 层数里程碑
+  // （`effect.onLayers.layerGift`，目前只有绿洲）的 rung 是「每档一次/局」，复制出来的第二份 ref 必须与原件共用同一个
+  // 计数器，否则同一档会发两次。addHexRef 会给这类卡打上这个标记。
+  const sharedCounters = !!(source && source.ref && source.ref.data && source.ref.data.sharedCounters === true);
+  const COUNTER_PREFIX = source && source.ref && source.ref.data && Number(source.ref.data.copySeq) > 1 && !sharedCounters ? `${source.ref.id}::` : '';
   // the player's view of the data: its slotted 自选 slots are its operators (0.2.0, player/diy.js) — chessRecord,
   // pieceBonds, a strategy's / 特质's bond and tier reads see the operator; the match's GameData for everyone else
   const gd = ps.gd || m.gd;
@@ -768,7 +772,21 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
       ps.dirty();
       return ps.lp;
     },
-    addPendingFunds: (n) => { const v = finiteInt(n); if (v > 0) { ps.pendingFunds += v; ps.dirty(); } return v > 0 ? v : 0; },
+    addPendingFunds: (n) => {
+      const v = finiteInt(n);
+      if (v > 0) {
+        ps.pendingFunds += v;
+        // 协议源石发到下回合的钱（战损回收 / 过路费 …）单独记一笔：回合开始时 `addFunds(income + pending, 'income')`
+        // 把它整笔付出去，而 `addFunds` 按这个数把「协议源石那部分」从 n19 的一回合获得上限里豁免掉
+        // （业主 2026-11-01「海克斯提供的钱不计入 n19 的 30 块上限」）。非 hex 来源（盟约 / 特质 / 策略）不记，
+        // 照旧受上限约束。
+        if (source && typeof source.key === 'string' && source.key.startsWith('hex:')) {
+          ps.pendingHexFunds = Math.max(0, Math.trunc(Number(ps.pendingHexFunds) || 0)) + v;
+        }
+        ps.dirty();
+      }
+      return v > 0 ? v : 0;
+    },
     spendFunds: (n) => { const v = finiteInt(n); if (!ps.spend(v)) return false; ps._afterSpend(v, 'effect'); return true; },
     grantFreeRefresh: (n = 1) => { const v = finiteInt(n); if (v > 0) { ps.shop.freeRefreshes += v; ps.dirty(); } return ps.shop.freeRefreshes; },
     /**

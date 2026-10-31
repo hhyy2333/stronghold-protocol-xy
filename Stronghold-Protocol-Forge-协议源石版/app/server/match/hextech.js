@@ -165,9 +165,30 @@ export function applyForgeFusion(ps, piece = null) {
   const list = piece ? [piece] : [
     ...(ps.board ? ps.board.values() : []), ...(ps.hand || []), ...(ps.temp || []),
   ];
+  // 业主 2026-10-31「如果百变里面的装备能被进阶就自动进阶」：the components inside a 百变 are advanced to their golden form
+  // when one exists (维多利亚的锤子常在被合成时还没升级). Applied at fusion time AND retroactively to every 百变 already
+  // fused (the pick itself re-runs this function, so an old fused item catches up on the next 获得 / 出售).
+  const goldenOf = (id) => {
+    const gd = ps.m && ps.m.gd;
+    const rec = gd && typeof gd.item === 'function' ? gd.item(id) : null;
+    const gold = rec && typeof rec.goldenId === 'string' ? rec.goldenId : null;
+    return gold && !rec.isGolden ? gold : id;
+  };
   let made = 0;
+  let advanced = 0;
   for (const c of list) {
-    if (!c || c.kind !== 'chess' || !Array.isArray(c.items) || c.items.length < 2) continue;
+    if (!c || c.kind !== 'chess' || !Array.isArray(c.items)) continue;
+    // 追溯：already-fused 百变 items get their components advanced too (no second fusion, same item)
+    for (let i = 0; i < c.items.length; i++) {
+      const it = c.items[i];
+      if (!it || it.kind !== 'item' || !Array.isArray(it.merged)) continue;
+      const next = it.merged.map(goldenOf);
+      if (next.every((id, k) => id === it.merged[k])) continue;
+      c.items = c.items.slice();
+      c.items[i] = { ...it, merged: next };
+      advanced++;
+    }
+    if (c.items.length < 2) continue;
     // one 百变 per operator: an operator that already carries a fused piece keeps it, and a third/fourth item (整装待发's
     // 3 slots) never forges a SECOND one — 「融合成装备百变」 is one item, not a growing pile.
     if (c.items.some((it) => it && Array.isArray(it.merged))) continue;
@@ -181,12 +202,12 @@ export function applyForgeFusion(ps, piece = null) {
     const state = mergeItemState(a.state, b.state);
     const fused = {
       uid: ps.m && typeof ps.m.nextUid === 'function' ? ps.m.nextUid() : b.uid,
-      kind: 'item', id: itemId, merged: [a.id, b.id], ...(state ? { state } : null),
+      kind: 'item', id: itemId, merged: [goldenOf(a.id), goldenOf(b.id)], ...(state ? { state } : null),
     };
     c.items.splice(Math.max(0, Math.min(at, c.items.length)), 0, fused);
     made++;
   }
-  if (made) {
+  if (made || advanced) {
     try { if (typeof ps.recompute === 'function') ps.recompute(); } catch { /* the fusion is already written; a recompute fault is the caller's */ }
     if (typeof ps.dirty === 'function') ps.dirty();
   }
@@ -300,6 +321,12 @@ export function applyHex(m, ps, hex, opts = {}) {
     applyHexLp(m, p, hex);
     // every other source observes the pick (the hex's own key already ran above)
     m.dispatch(p, 'onHexPick', ev, { skipKey: `hex:${hex.id}` });
+    // 层数里程碑的「获得时」半段 (业主 2026-11-01「层数一到就立刻发」): 绿洲 的 rung 声明在 `effect.onLayers.layerGift`
+    // 上，`runOnPick` 只是让它在获得时也评估一次 —— 但派发器给 onHexPick 的是 `effect.onPick`，那份 spec 里没有
+    // layerGift，于是「拿到卡时层数已经过线」的局要等下一次加层（通常是下一回合）才发。这里在获得时用**当前层数**回放
+    // 一次该卡自己的 onLayers，rung 立刻结算；计数器是模拟器自己的那一套（`hex:<id>:layerGift:<at>`），所以
+    // 回放与真正加层时的那次互斥，不会发两次。
+    replayLayerGift(m, p, hex, gainedRef);
     // 复制 (业主 2026-10-25)：「随机复制一个拥有协议源石，自身消失」。 The spec handler only QUEUED it (a copy is another
     // GAIN, and only applyHex may grant one); drain here, after the pick has fully settled, so the copy cannot re-enter
     // the dispatch that armed it.
@@ -380,24 +407,16 @@ export function applyBandHexCopy(m, ps, hex, { depth = 0, gift = false } = {}) {
   ps.counters[BAND_HEX_COPY_USED] = 1;
   let n = 0;
   for (let i = 0; i < count; i++) {
-    const copySeq = i + 2;   // the copy is the 2nd, 3rd … ref of the same card
     try {
       // A SECOND REF, not a second `applyHex`: the dispatcher walks refs one at a time (effectsMeta.js step 6), so every
       // hook the card has — 获得时 here, plus every 每回合 / 每 N 回合 half — settles once per ref. `makeCtx` namespaces
       // this ref's counters by its id, so a ladder card keeps two independent ladders instead of overwriting one
       // (业主 2026-10-26「好多协议源石被'管理员'复制后只会触发1个」: the old code re-ran only the 获得时 half and one ref
       // meant 盟约回响 / 量产线 / 神器整备… never doubled).
-      const ref = addHexRef(m, ps, hex, { copySeq });
-      const ev = { hex: { ...hex }, picker: ps.playerId, forTeammate: false, copySeq };
-      m.dispatcher.runKey(ps, ref.key, 'onHexPick', { kind: 'hex', hex, ref, copySeq }, ev);
-      applyHexLp(m, ps, hex);
-      // …and the 获得时 EXTRAS of a second copy: 二次抽取 rolls its 「额外随机两枚」 in `applyHexExtras`, not in the
-      // card handler, so without this line a copied 二次抽取 granted two random cards instead of four — the owner's
-      // 「为什么二次抽取只生效了一个」 (2026-10-24). `depth: 1` is the same slot the picker's own gain uses; the
-      // helper's `depth >= 2` guard still stops a card that re-enters itself.
-      applyHexExtras(m, ps, hex, { depth: 1, ref });
-      m.dispatch(ps, 'onHexPick', ev, { skipKey: ref.key });
-      ps.recompute();
+      // 业主 2026-11-01: the copy is the SAME `applyCopiedHex` 复制 uses — a team card reaches every teammate there too
+      // (one copy per target, the picker once), so 管理员 and 复制 can never diverge.
+      const ref = applyCopiedHex(m, ps, hex, { depth: 1 });
+      if (!ref) break;
       n++;
     } catch (e) { m.reportError(`hex ${hex.id} (管理员)`, e); }
   }
@@ -438,19 +457,9 @@ function drainPendingHexCopies(m, ps, hex) {
     if (candidates.length) {
       const pickId = candidates[Math.floor(m.rngHex() * candidates.length) % candidates.length];
       const target = m.gd.hex(pickId);
-      if (target) {
-        // the copy is a second ref of the SAME card: reuse the next free copySeq so counters never collide
-        let copySeq = 2;
-        while ((ps.effects || []).some((e) => e && e.id === `hex:${pickId}#${copySeq}`)) copySeq++;
-        try {
-          const ref = addHexRef(m, ps, target, { copySeq });
-          const ev = { hex: { ...target }, picker: ps.playerId, forTeammate: false, copySeq, copiedBy: srcId };
-          m.dispatcher.runKey(ps, ref.key, 'onHexPick', { kind: 'hex', hex: target, ref, copySeq }, ev);
-          applyHexLp(m, ps, target);
-          applyHexExtras(m, ps, target, { depth: 1, ref });
-          m.dispatch(ps, 'onHexPick', ev, { skipKey: ref.key });
-        } catch (e) { m.reportError(`hex ${pickId} (复制)`, e); }
-      }
+      // 业主 2026-11-01: 复制的**team 卡**（战争机器）要按 applyHex 的 targets 发到每个队友，不只是复制者自己 ——
+      // applyCopiedHex 就是 applyHex 的「第二个 ref」版本（见它的注释）。
+      if (target) applyCopiedHex(m, ps, target, { depth: 1, copiedBy: srcId });
     }
     // 2) 自身消失: drop every ref of 复制 from this player
     const before = (ps.effects || []).length;
@@ -462,7 +471,8 @@ function drainPendingHexCopies(m, ps, hex) {
 }
 
 /** `effect.onPick.lp` (the ctx has no LP mutator and LP is match state, not sim state). */
-function applyHexLp(m, ps, hex) {  const spec = hex.effect && hex.effect.onPick;
+function applyHexLp(m, ps, hex) {
+  const spec = hex.effect && hex.effect.onPick;
   const lp = spec ? spec.lp : 0;
   if (typeof lp === 'number' && Number.isFinite(lp) && lp !== 0) {
     ps.lp = Math.max(0, ps.lp + Math.trunc(lp));
@@ -476,6 +486,183 @@ function applyHexLp(m, ps, hex) {  const spec = hex.effect && hex.effect.onPick;
     ps.dirty();
   }
   void m;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 层数里程碑的「获得时」半段 (业主 2026-11-01)
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * 这张卡的 `effect.onLayers` / `effect.onPick` 上有没有层数里程碑（`layerGift`）。目前只有【绿洲】
+ * （`data/hextech.json` hex_sargon_oasis：60 层给缇缇、325 层给黄沙罗盘）。
+ * @param {any} hex
+ */
+function hasLayerGift(hex) {
+  const eff = hex && hex.effect;
+  if (!eff || typeof eff !== 'object') return false;
+  for (const k of ['onLayers', 'onPick']) {
+    const spec = eff[k];
+    if (spec && typeof spec === 'object' && spec.layerGift && typeof spec.layerGift === 'object') return true;
+  }
+  return false;
+}
+
+/**
+ * 层数里程碑的「获得时」评估（业主 2026-11-01「层数一到就立刻发」）。
+ *
+ * 根因：绿洲 的 rung 挂在 `effect.onLayers.layerGift` 上（`runOnPick: true` 只是让它在获得时也评估一次），可是派发器
+ * 给 `onHexPick` 的 spec 是 `effect.onPick` —— 那份里没有 layerGift。于是「拿到卡时该盟约的层数已经过线」的局
+ * （后期常见）在获得的那一刻什么都不发，要等下一次加层（往往就是下一回合的回合开始）才补上，业主看到的就是
+ * 「有时候要拖到下回合才发」。
+ *
+ * 做法：用**当前层数**回放这张卡自己的 `onLayers` 一次（`from === to`），让模拟器那份 handler 自己判断 rung、
+ * 自己发奖、自己记计数器 —— 这里不复制发奖逻辑，所以将来 rung 的写法变了也不用改两处。计数器键与真正加层时同一个
+ * （`hex:<id>:layerGift:<at>`，见 server/sim/content/hextech.js applySpec），因此互斥、同一 rung 只发一次；
+ * 一张卡的多个 ref（策略「管理员」/ 复制）共用同一个计数器（`addHexRef` 的 `data.sharedCounters`），所以复制不会重复发。
+ *
+ * [ASSUMED] 回放会跑该卡 `effect.onLayers` 上的**全部** spec（不只 layerGift）—— 目前只有绿洲一张卡用这一格，
+ * 且它只有 layerGift；将来若有卡在 onLayers 上挂别的、对「层数没变」敏感的效果，这里要改成按 spec 过滤。
+ * @param {any} m @param {any} ps @param {any} hex @param {any} [ref] 这次获得自己的 ref（计数器命名空间）
+ * @returns {boolean} 是否回放了
+ */
+function replayLayerGift(m, ps, hex, ref = null) {
+  if (!hasLayerGift(hex)) return false;
+  const eff = hex.effect;
+  const spec = (eff.onLayers && eff.onLayers.layerGift) || (eff.onPick && eff.onPick.layerGift) || null;
+  const bondId = spec && typeof spec.bondId === 'string' ? spec.bondId : '';
+  if (!bondId || !m || !m.dispatcher || typeof m.dispatcher.runKey !== 'function') return false;
+  const cur = Number((ps.layers && ps.layers[bondId]) || 0);
+  try {
+    m.dispatcher.runKey(ps, `hex:${hex.id}`, 'onLayers', { kind: 'hex', hex, ref }, { bondId, from: cur, to: cur, reason: 'hex_pick' });
+  } catch (e) { m.reportError?.(`hex ${hex.id} (layer gift)`, e); }
+  return true;
+}
+
+/**
+ * 一张卡的「复制」（策略「管理员」/ 复制）：把同一张卡再获得一次，作为第二个 EffectRef（`hex:<id>#<copySeq>`）。
+ *
+ * 口径与 `applyHex` 一致（业主 2026-11-01 bug 报告：三阶【战争机器】被【复制】后队友没拿到第二次 +5 目标生命）：
+ * **team 卡按 `applyHex` 的 targets 发** —— 每个目标（复制者自己 + 每个存活队友，各一次）都跑自己的 `onHexPick`、
+ * 自己的 `applyHexLp`、自己的 `m.dispatch`；已死亡的队友不发，复制者自己只发一次。
+ * 与 `applyHex` 的差别只有两处：这是**第二个 ref**（每个目标在自己的 ref 列表里取下一个空号），
+ * 以及 `applyHexExtras` 只对复制者跑一次（债务 / 二次抽取 / 盟约寄生 这些是「获得者」的半段，不是每个队友的）。
+ *
+ * @param {any} m @param {any} ps 复制者 @param {any} hex 被复制的卡记录
+ * @param {{ depth?: number, copiedBy?: string|null }} [opts]
+ * @returns {any|null} 复制者自己那份 ref（没有则 null）
+ */
+function applyCopiedHex(m, ps, hex, { depth = 1, copiedBy = null } = {}) {
+  if (!m || !ps || !hex) return null;
+  const team = !!(hex.effect && hex.effect.team);
+  const targets = team ? [ps, ...m.alivePlayers().filter((p) => p !== ps)] : [ps];
+  let pickerRef = null;
+  for (const p of targets) {
+    // the copy is a second ref of the SAME card: the next free copySeq in THIS player's own ref list
+    let copySeq = 2;
+    while ((p.effects || []).some((e) => e && e.id === `hex:${hex.id}#${copySeq}`)) copySeq++;
+    const ref = addHexRef(m, p, hex, { copySeq });
+    if (p === ps) pickerRef = ref;
+    const ev = { hex: { ...hex }, picker: ps.playerId, forTeammate: p !== ps, copySeq, copiedBy };
+    try {
+      m.dispatcher.runKey(p, ref.key, 'onHexPick', { kind: 'hex', hex, ref, copySeq }, ev);
+      applyHexLp(m, p, hex);
+      m.dispatch(p, 'onHexPick', ev, { skipKey: ref.key });
+      // 层数里程碑：副本也是一次「获得」（计数器与原件共用 ⇒ 同一 rung 不会因为复制而发第二次）
+      replayLayerGift(m, p, hex, ref);
+      p.recompute?.();
+    } catch (e) { m.reportError?.(`hex ${hex.id} (copy)`, e); }
+  }
+  if (pickerRef) applyHexExtras(m, ps, hex, { depth, ref: pickerRef });
+  return pickerRef;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 【特限恢复】(`hex_mode_modules`) 的价格半边：有特限模组的干员购买价格 −N（业主 2026-11-01）
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * 【特限恢复】的价格参数（卡面参数驱动，数值不写死）。卡面（roster，业主 2026-11-01 定稿）：
+ *   `effect.onPrice.specialLimitDiscount = { delta: -2, min: 1, types: ['ISW','SO','RA'] }`
+ *   `effect.modeModules = { level: 3, types: ['ISW','SO','RA'] }`
+ * `types` 优先取 `specialLimitDiscount.types`（卡面定稿的形状），退到 `modeModules.types`，再退到三个特限类型；
+ * 也接受把 `specialLimitDiscount` 直接写在 `effect` 顶层（手写 ref / 老写法）。没有这张卡 ⇒ null。
+ *
+ * 只读 `params`（`addHexRef` 把 `effect` 摊平进去），所以存档里的老 ref、测试手搓的 ref 都能被读到。
+ * 不做缓存：`ps.effects` 是**原地 push/filter 的同一个数组**（获得卡时长度会变），按数组身份缓存会读到上一次的旧答案
+ * （踩过：先缓存了 null，之后拿到卡也永远 null）。ref 数量很小，逐条扫就够了。
+ * @param {{ effects?: any[] } | null} ps
+ * @returns {{ delta: number, min: number, types: string[] } | null}
+ */
+export function specialLimitPriceOf(ps) {
+  const effects = ps && Array.isArray(ps.effects) ? ps.effects : null;
+  if (!effects) return null;
+  for (const e of effects) {
+    if (!e || typeof e !== 'object') continue;
+    const p = e.params && typeof e.params === 'object' ? e.params : {};
+    const raw = (p.onPrice && p.onPrice.specialLimitDiscount) || p.specialLimitDiscount;
+    if (!raw || typeof raw !== 'object') continue;
+    const delta = Number.isFinite(Number(raw.delta)) ? Math.trunc(Number(raw.delta)) : -2;
+    const min = Number.isFinite(Number(raw.min)) ? Math.max(0, Math.trunc(Number(raw.min))) : 1;
+    const list = Array.isArray(raw.types) ? raw.types
+      : (p.modeModules && Array.isArray(p.modeModules.types) ? p.modeModules.types : null);
+    const types = (list || ['ISW', 'SO', 'RA']).map((x) => String(x).toUpperCase().replace(/-$/, '')).filter(Boolean);
+    return { delta, min, types };
+  }
+  return null;
+}
+
+/** base chess id → 是否有特限模组，按 `gd` 缓存（一局一份数据，商店定价每格都会问）。 */
+const SPECIAL_LIMIT_MODULE_CACHE = new WeakMap();
+
+/**
+ * 该干员（普通或精锐形态都算同一个人）**存在特限模组**吗 —— 模组类型以 `types` 之一开头（ISW- / SO- / RA-）。
+ * 读精锐记录的 `modules[]`：普通形态的记录没有模组列表，只有默认模组的 id/type（`module`），所以要看它的精锐兄弟。
+ * @param {any} gd GameData（`ps.gd` / `m.gd`）
+ * @param {unknown} chessId 商店格子里的 id（`_a` / `_b` 都行）
+ * @param {string[]} [types] 模组类型前缀
+ */
+export function hasSpecialLimitModule(gd, chessId, types = ['ISW', 'SO', 'RA']) {
+  if (!gd || typeof chessId !== 'string' || !chessId) return false;
+  let perGd = SPECIAL_LIMIT_MODULE_CACHE.get(gd);
+  if (!perGd) { perGd = new Map(); SPECIAL_LIMIT_MODULE_CACHE.set(gd, perGd); }
+  const key = `${chessId}|${types.join(',')}`;
+  const hit = perGd.get(key);
+  if (hit !== undefined) return hit;
+  let found = false;
+  const seen = new Set();
+  const consider = (rec) => {
+    if (!rec || typeof rec !== 'object' || seen.has(rec) || found) return;
+    seen.add(rec);
+    for (const m of Array.isArray(rec.modules) ? rec.modules : []) {
+      if (!m || typeof m !== 'object') continue;
+      const type = String(m.typeName ?? m.type ?? '').toUpperCase();
+      if (types.some((t) => type.startsWith(`${t}-`))) { found = true; return; }
+    }
+  };
+  try {
+    const base = typeof gd.baseIdOf === 'function' ? gd.baseIdOf(chessId) : chessId;
+    if (typeof gd.chess === 'function') {
+      consider(gd.chess(base));
+      if (!found && typeof gd.goldenIdOf === 'function') consider(gd.chess(gd.goldenIdOf(base)));
+      if (!found) consider(gd.chess(chessId));
+    }
+  } catch { /* a data view that refuses the id: no discount */ }
+  perGd.set(key, found);
+  return found;
+}
+
+/**
+ * 【特限恢复】对这个商店棋子的价格修正：`{ delta, min }` 或 null（拥有卡 + 该干员有特限模组才生效）。
+ * 读取点：`server/match/player/economy.js priceOf`（商店显示、购买扣款、测试场干员选择器都走它）。
+ * @param {{ effects?: any[], gd?: any, m?: any } | null} ps
+ * @param {unknown} chessId
+ */
+export function specialLimitDiscountOf(ps, chessId) {
+  const spec = specialLimitPriceOf(ps);
+  if (!spec || !(spec.delta < 0)) return null;
+  const gd = (ps && ps.gd) || (ps && ps.m && ps.m.gd) || null;
+  if (!hasSpecialLimitModule(gd, chessId, spec.types)) return null;
+  return { delta: spec.delta, min: spec.min };
 }
 
 /**
@@ -699,6 +886,9 @@ function applyHexExtras(m, ps, hex, { depth = 0, ref: gainRef = null } = {}) {
     const cardText = String(hex.desc || '');
     const mates = m.alivePlayers().filter((p) => p !== ps);
     if (!mates.length) {
+      // `reason: 'hex_debt'` 的 `hex` 前缀 = 协议源石发的钱（业主 2026-11-01）：`player/economy.js addFunds` 按这个前缀
+      // 把它从协议等级 19 的「一回合最多获得 30 资金」上限里豁免掉，所以这里不需要（也不该）用 `force: true`
+      // —— `force` 还会把 `stats.fundsGained` 一起跳过，而这张卡的钱是玩家真正获得的。
       ps.addFunds(funds, { reason: 'hex_debt' });
       // Solo: the first half falls on the player itself, so the card says 自己 instead of naming a teammate that is not there
       if (ref) {
@@ -772,7 +962,13 @@ function addHexRef(m, ps, hex, { copySeq = 0 } = {}) {
     counter: null,
     battle: hasBattlePart(params),
     params,
-    data: { hexId: hex.id, rarity: hex.rarity, ...(copySeq > 0 ? { copySeq } : {}) },
+    // 层数里程碑（业主 2026-11-01「多张卡（含复制）不重复发」）：`layerGift` 的 rung 是「每档一次/局」，不是每个 ref 一条
+    // 独立的梯子 —— 复制 / 策略「管理员」的第二个 ref 必须与原件共用同一个计数器（`makeCtx` 的 COUNTER_PREFIX 会读这个
+    // 标记），否则同一张绿洲的两份 ref 会在同一档各发一次（实测：60 层给两只缇缇）。
+    data: {
+      hexId: hex.id, rarity: hex.rarity, ...(copySeq > 0 ? { copySeq } : null),
+      ...(hasLayerGift(hex) ? { sharedCounters: true } : null),
+    },
   };
   ps.effects.push(ref);
   ps.dirty();

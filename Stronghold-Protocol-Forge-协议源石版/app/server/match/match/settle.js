@@ -5,6 +5,7 @@
 
 import { PHASE, layerGainRoom } from '../../../shared/constants.js';
 import { uniteSurvivors } from '../unite.js';
+import { uniteLayerGainsOn } from './unitePhase.js';
 import { buildResult } from '../results.js';
 import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
@@ -92,15 +93,38 @@ export class MatchSettle {
       // 过路费 (业主 2026-10-20): the enemy card pays for what leaked — the same coin channel the bounties use (next
       // prep's pendingFunds), capped per battle. Counted off the battle's OWN `leaked` list so the LP charge and the
       // payment always speak about the same enemies (a 器物 / 首领漏怪 costs no LP and therefore buys no funds).
-      coins += enemyHexPayoutFor(this, r.leaked);
+      const hexPayout = enemyHexPayoutFor(this, r.leaked);
+      coins += hexPayout;
       if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }
+      // 悬赏通道里的**协议源石**那一份（业主 2026-11-01「海克斯提供的钱不计入 n19 的 30 块上限」）：
+      //   ① 骑士金神的击杀金币（battle.addCoins(pid, 1, { hex: true }) → 战报的 `coinsHex`，sim/battle/economy.js）；
+      //   ② 过路费（`hexPayout`，纯协议源石来源）。
+      // 这两笔与真悬赏金在同一条 `pendingFunds` 里，所以另记一份 `pendingHexFunds`：回合开始时 round.js startRound
+      // 把 income + pending 合成一笔 `addFunds(…, 'income')`，economy.js `_hexFundsExempt` 按这一份豁免上限。
+      // 只豁免**协议源石那部分** —— `r.coins` / `up.coins` 里剩下的、以及战术特训的 perfect 悬赏照旧计入额度；
+      // `bountyMul`（悬赏倍增）只乘在悬赏上，所以 `coinsHex` 按**原始数**豁免：被乘出来的零头仍计入额度。
+      const hexCoins = Math.max(0, Math.trunc(Number(r.coinsHex) || 0))
+        + Math.max(0, Math.trunc(Number(up && up.coinsHex) || 0))
+        + hexPayout;
+      if (hexCoins > 0) ps.pendingHexFunds = (ps.pendingHexFunds || 0) + hexCoins;
       for (const b of ps.bounties) b.roundsLeft--;
       ps.bounties = ps.bounties.filter((b) => b.roundsLeft > 0);
-      // IN_BATTLE layer gains (normal battles only), at most the room left under THIS player's cap (BOND_LAYER_CAP 999 —
-      // 9999 with 【突破极限】, hextech.js bondLayerCapOf; the battle's live copy clamped the same way, Battle.addLayers);
-      // a bond at the cap gains nothing and dispatches nothing
+      // IN_BATTLE layer gains: the player's own battle, plus — for a 【突破极限】 owner only (业主 2026-11-01) — the 联防
+      // field's gains (the unite spec turns them on per player: flags.layerGainsByPlayer, unitePhase.js). At most the
+      // room left under THIS player's cap (BOND_LAYER_CAP 999 — 9999 with the card, hextech.js bondLayerCapOf; the
+      // battle's live copy clamped the same way, Battle.addLayers); a bond at the cap gains nothing and dispatches nothing.
+      // A NON-owner's 联防 gains are dropped even when a report carries them: the client-result check refuses them first
+      // (fields.js), this is the second gate.
       const layerCap = bondLayerCapOf(ps);
-      for (const [bondId, n] of Object.entries(r.layerGains || {})) {
+      const battleGains = { ...(r.layerGains || {}) };
+      if (up && up.layerGains && uniteLayerGainsOn(ps)) {
+        for (const [bondId, n] of Object.entries(up.layerGains)) {
+          const v = Number(n);
+          if (!Number.isFinite(v) || v <= 0) continue;
+          battleGains[bondId] = (battleGains[bondId] || 0) + v;
+        }
+      }
+      for (const [bondId, n] of Object.entries(battleGains)) {
         if (!this.gd.bond(bondId) || !(n > 0)) continue;
         const before = ps.layers[bondId] || 0;
         const add = layerGainRoom(before, Math.floor(n), layerCap);

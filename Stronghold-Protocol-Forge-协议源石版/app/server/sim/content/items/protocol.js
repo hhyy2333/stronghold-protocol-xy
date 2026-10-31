@@ -18,7 +18,7 @@
 // grant's Scope `S`, so a lend that ends disposes it again. Determinism: no Math.random / Date / Node API; rolls go
 // through `battle.rng()` and timers through `S.every` / `battle.every`.
 
-import { makeDamageInfo, isChained, mitigate } from '../../damage.js';
+import { makeDamageInfo, isChained, isHpLoss, mitigate } from '../../damage.js';
 import { num, itemKeyOf, itemsOf, isMember, battleStore } from '../support/index.js';
 // 骑士徽章 (业主 2026-10-26)：三个互相独立的半边（转移 / 真伤 ×3 / 致命锁血）单独一个模块，见该文件头。
 import { knightBadge } from './knightbadge.js';
@@ -64,10 +64,17 @@ function demonPact(battle, u, rec, S) {
 //   * x 是**装备者自己**本场战斗的普攻次数（技能命中不算）；
 //   * 每打一次：先按**触发前的** x 掷一次 4x% —— 命中就受一次「自身攻击力」的伤害，然后把 x 归零；没命中则 x += 1；
 //   * 伤害倍率（1 + perHitPct% × x）挂在 `hit` 上改 `dmg.mul`，读的是命中瞬间的 x。
+//   * **致命锁血**（业主 2026-10-31 追加；data/items.json 的 desc：「装备者受到致命伤害时锁血 5 秒（每场一次）」）：
+//     装备者**本人**每场战斗一次 —— 第一次受到致命伤害时 `c.prevented = true`（引擎把 HP 抬到 ≥1，damage.js
+//     applyHpLoss），并开一个 `battle.time + lockSec` 的窗口；窗口内再受致命伤只免死（**不重复计数、不延长窗口**，
+//     否则 1 点血上会被每一击续成无限锁血）；窗口结束后正常阵亡，本场不再开第二个窗口。锁血期间不额外治疗 —— HP 由
+//     引擎留在 1 点（与【骑士徽章】同一条口径）。生命流失不是「受到伤害」，不免死。
 //
 // [ASSUMED: 1) 只有普攻计数，技能命中不算；2) 掷骰用触发前的 x（「触发后 x 归零」）；3) 自伤是「自身攻击力」一击，
 //   走正常减伤与闪避，不是真实伤害；4) 自伤不再触发本装备的掷骰（`canlightSelf` 标记），避免链式；5) x 只属于装着
-//   这件装备的干员 —— 没有装备者就没有任何效果。]
+//   这件装备的干员 —— 没有装备者就没有任何效果；6) 锁血只保护装备者自己（`c.unit === u`），`c.prevented` 已为真
+//   （别人先免死了这一发）时不消耗本装备的窗口；7) 锁血**不**因再部署刷新（卡面只写「每场一次」，与【骑士徽章】的
+//   「再部署刷新锁血」不同）。]
 
 /**
  * 残光: the carrier's damage becomes ×(1 + perHitPct% × x); every normal attack rolls 4x% for a self-hit that resets x.
@@ -77,8 +84,12 @@ function canlight(battle, u, rec, S) {
   const p = paramsOf(rec);
   const perHit = pos(p.perHitPct, 30) / 100;
   const riskPer = pos(p.perHitRiskPct, 4);
+  const lockSec = pos(p.lockSec, 5);
   /** x — this battle's NORMAL attack count of THIS carrier. */
   let x = 0;
+  /** 致命锁血的窗口终点（battle time）与「本场已用过」标记 —— 每名装备者各自一份。 */
+  let lockUntil = -Infinity;
+  let lockUsed = false;
   // 打出伤害：装备者的伤害 ×(1 + perHit% × x)。读的是命中瞬间的 x（计数在 attack 里已经更新过）
   S.on('hit', (c) => {
     if (!c || !c.dmg || c.dmg.cancel) return;
@@ -100,6 +111,17 @@ function canlight(battle, u, rec, S) {
       return;
     }
     x += 1;
+  });
+  // 致命锁血：每场一次，窗口内再致命只免死（业主 2026-10-31；引擎在 applyHpLoss 里把 HP 抬回 ≥1）
+  S.on('fatal', (c) => {
+    if (!c || c.prevented) return;                 // 别人已经免死过这一发：不消耗本装备的窗口
+    if (c.unit !== u) return;                      // 「装备者受到致命伤害时」——只保护装备者自己
+    if (isHpLoss(c.dmg)) return;                   // 生命流失不是「受到伤害」（PRTS 作战机制）
+    if (battle.time < lockUntil) { c.prevented = true; return; }   // 窗口内：只免死，不续窗口
+    if (lockUsed) return;                          // 本场已经用过：正常阵亡，不再开第二个窗口
+    lockUsed = true;
+    lockUntil = battle.time + lockSec;
+    c.prevented = true;
   });
 }
 

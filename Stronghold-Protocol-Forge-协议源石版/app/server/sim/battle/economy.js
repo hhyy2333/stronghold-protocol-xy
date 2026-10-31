@@ -13,6 +13,30 @@ export class BattleEconomy {
   }
 
   /**
+   * Whether IN_BATTLE layer gains are ON for ONE player of this battle (【突破极限】 `hex_break_limit`, 业主 2026-11-01:
+   * 「拥有者在联防战斗里也能叠层，其他人照旧」).
+   *
+   * 口径：整场仍然是 `flags.layerGainsEnabled`（普通战场 true；联防 / 首领 / 隐藏 false），另有一份**每玩家**的表
+   * `flags.layerGainsByPlayer: { [playerId]: boolean }` —— 表里点名的玩家听表，没点名的（以及根本没有这张表的整场）
+   * 听整场 flag。于是**没有这张表的 spec 与从前逐字节相同**：`layerGainsOn(pid) === !!flags.layerGainsEnabled`。
+   * match 侧只在真有拥有者时才写这张表（server/match/match/unitePhase.js `_uniteOpts`）。客户端跑同一份 sim、同一份
+   * spec，所以服务端与浏览器的判断一致。
+   *
+   * 为什么闸门必须在这里（而不是只在结算）：联防战场是多人共用一个 battle，层数在战斗内就参与战况（层数阈值 / 特质
+   * 加成），「先让大家加、结算时再只给拥有者」会改变战斗结果；也只有这里能同时拦住 `support.gainLayers`（特质那条主路径）。
+   * @param {number|string|null} playerId
+   * @returns {boolean}
+   */
+  layerGainsOn(playerId) {
+    const byPlayer = this.flags && this.flags.layerGainsByPlayer;
+    if (byPlayer && typeof byPlayer === 'object' && playerId != null) {
+      const v = byPlayer[playerId];
+      if (typeof v === 'boolean') return v;
+    }
+    return !!(this.flags && this.flags.layerGainsEnabled);
+  }
+
+  /**
    * The 盟约叠层上限 of ONE player of this battle (【突破极限】, 设计稿 §3): the `bondLayerCap` the match wrote on that
    * player's PlayerBattleInput (player/round.js battleInput → `bondLayerCapOf(ps)`: 9999 for the card's owner, 999
    * otherwise), else a battle-level `this.bondLayerCap` when a caller set one (a spec-driven battle, the workshop API),
@@ -33,14 +57,15 @@ export class BattleEconomy {
   }
 
   /**
-   * Record an IN_BATTLE layer gain (no-op when gains are disabled). Returns the layers added: at most the room left
-   * under this player's cap (BOND_LAYER_CAP 999 — 9999 with 【突破极限】, `_layerCapOf`) on the live copy — the client's
-   * AddBondCount `min(L + n, 999)`; the `layerGain` hook (魔王's +1 …) runs first, then the clamp; a bond already at the
-   * cap gains 0 (no hook, no event). Without a live copy of the bond (a partial PlayerBattleInput) the battle's own
-   * gains count; the match's settle clamps the persistent count the same way (hextech.js bondLayerCapOf).
+   * Record an IN_BATTLE layer gain (no-op when THIS player's gains are off — `layerGainsOn`). Returns the layers added:
+   * at most the room left under this player's cap (BOND_LAYER_CAP 999 — 9999 with 【突破极限】, `_layerCapOf`) on the live
+   * copy — the client's AddBondCount `min(L + n, 999)`; the `layerGain` hook (魔王's +1 …) runs first, then the clamp; a
+   * bond already at the cap gains 0 (no hook, no event). Without a live copy of the bond (a partial PlayerBattleInput)
+   * the battle's own gains count; the match's settle clamps the persistent count the same way (hextech.js
+   * bondLayerCapOf) and applies the same per-player switch (unitePhase.js `uniteLayerGainsOn`).
    */
   addLayers(playerId, bondId, n, reason = '', opts = {}) {
-    if (!this.flags.layerGainsEnabled || !(n > 0) || !Number.isFinite(n) || playerId == null) return 0;
+    if (!this.layerGainsOn(playerId) || !(n > 0) || !Number.isFinite(n) || playerId == null) return 0;
     const pp = this._pp(playerId);
     if (!pp) return 0;
     const cap = this._layerCapOf(playerId);
@@ -88,10 +113,24 @@ export class BattleEconomy {
     return this._ownerForTile([Math.round(unit.y), Math.round(unit.x)]);
   }
 
-  addCoins(playerId, n) {
+  /**
+   * 悬赏通道的金币（击杀悬赏 / 过路费 / 协议源石自己的击杀金币…）。
+   *
+   * `opts.hex === true` = 这一笔**来自协议源石**（骑士金神 `hex_kazimierz_knightgold` 的击杀金币；业主 2026-11-01
+   * 「海克斯提供的钱不计入 n19 的 30 块上限」）：除了 `pp.coins` 之外**另记一份** `pp.coinsHex`，结算
+   * （server/match/match/settle.js）把这一份记进 `ps.pendingHexFunds`，回合开始时 `round.js startRound` 的
+   * income 那一笔按它豁免上限（server/match/player/economy.js `_hexFundsExempt`）。
+   *
+   * 不带 `opts` 的老调用**逐字节不变**：`pp.coins` 照旧、`coinsHex` 不动（战报里也就没有这个键）。
+   * @param {number|string} playerId @param {number} n @param {{ hex?: boolean }} [opts]
+   * @returns {number} coins added
+   */
+  addCoins(playerId, n, opts = {}) {
     const pp = this._pp(playerId);
     if (!pp || !(n > 0) || !Number.isFinite(n)) return 0;
     pp.coins += n;
+    // 协议源石来源的那一份：与 `coins` 并列记着，结算据此区分「真悬赏」与「海克斯的钱」
+    if (opts && opts.hex === true) pp.coinsHex = (Number.isFinite(pp.coinsHex) ? pp.coinsHex : 0) + n;
     this._ev(['bounty', playerId, n]);
     return n;
   }

@@ -1424,11 +1424,17 @@ function airTile(battle, playerId, taken) {
  * numbers). atk / hp (0.3 × the 炎 sums at battle start) are ADDED to the template stats (600 / 12000): PRTS "登场时使
  * 自身攻击力、生命值增加召唤自身的玩家场地上的所有【炎】盟约干员攻击力、生命值的30%（最终加算）". atkMul (9 炎: ×1.5,
  * [ASSUMED] on the whole ATK) and dmgTakenMul (9 炎: 0.1) are applied as a persistent buff. Returns the spawned units.
+ *
+ * `def` / `res` (optional): the token's defence / resistance — they **REPLACE** the template values (200 / 0) instead
+ * of adding to them, and 0 is a legal value ("等于干员的 def/res": a 0-DEF operator's 炎佑 has 0 DEF). Omitted ⇒ the
+ * template stands. 协议源石【炎百兽】(hex_yan_beasts) passes the paired 【炎】 operator's own def / res here (业主
+ * 2026-11-01「防御力/法抗 100% 继承」), snapshotted at summon time exactly like atk / hp — nothing re-reads the
+ * operator's panel afterwards (this function never recomputes atk / hp either).
  */
-export function spawnYanyou(battle, playerId, { atk, hp, atkMul = 1, dmgTakenMul = 1, count = 1 } = {}) {
+export function spawnYanyou(battle, playerId, { atk, hp, def, res, atkMul = 1, dmgTakenMul = 1, count = 1 } = {}) {
   const rec = battle.data.rawToken?.(TOKEN_IDS.yanyou) ?? battle.data.rawEnemy?.(TOKEN_IDS.yanyou) ?? null;
   if (!rec) return [];
-  const def = yanyouFallbackDef(battle);
+  const fallbackDef = yanyouFallbackDef(battle);
   const n = Math.max(0, Math.min(Math.floor(num(count, 1)), Math.max(1, Math.floor(num(rec.deployLimit ?? rec.stats?.deployLimit, 2)))));
   const out = [];
   const taken = new Set();
@@ -1436,12 +1442,15 @@ export function spawnYanyou(battle, playerId, { atk, hp, atkMul = 1, dmgTakenMul
   const stats = {};
   if (num(atk, -1) >= 0) stats.atk = num(base.atk, 0) + num(atk, 0);
   if (num(hp, 0) > 0) stats.maxHp = num(base.maxHp, 0) + num(hp, 1);
+  // 防御 / 法抗：显式给了就**替换**模板值（0 也是合法值 —— 「直接等于对应干员的 def / res」），res 收在 0–100 的百分比区间
+  if (num(def, -1) >= 0) stats.def = Math.max(0, num(def, 0));
+  if (num(res, -1) >= 0) stats.res = Math.min(100, Math.max(0, num(res, 0)));
   const ps = battle.getPlayer(playerId);
   for (let i = 0; i < n; i++) {
     const tile = airTile(battle, playerId, taken);
     if (!tile) break;
     taken.add(tile[0] * COLS + tile[1]);
-    const u = battle.spawnToken(playerId, TOKEN_IDS.yanyou, tile[0], tile[1], { ...(def ? { def } : {}), stats, dir: ps ? ps.dir : 'RIGHT' });
+    const u = battle.spawnToken(playerId, TOKEN_IDS.yanyou, tile[0], tile[1], { ...(fallbackDef ? { def: fallbackDef } : {}), stats, dir: ps ? ps.dir : 'RIGHT' });
     if (!u) continue;
     const mods = {};
     if (num(atkMul, 1) !== 1 && num(atkMul, 1) >= 0) mods.atkMul = num(atkMul, 1);

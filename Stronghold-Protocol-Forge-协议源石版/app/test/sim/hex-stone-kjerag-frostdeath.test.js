@@ -316,17 +316,56 @@ test('困毙之雪: 场上没有任何敌人处于冻结状态 ⇒ 每 5 秒所�
   h.invariants();
 });
 
-test('困毙之雪: 场上有敌人被冻结时，5 秒的累积不触发', () => {
+test('困毙之雪 基础效果: 场上有敌人被冻结时，每 5 秒照样 +1 层（业主 2026-11-01：完全无条件）', () => {
   const h = field([seatWithCard([at(1, 9, 4, 'test_kj1'), at(2, 10, 4, 'test_kj2'), at(3, 11, 4, 'test_kj3')])]);
   installKjeragFrostDeath(hexHooks(h.battle));
   h.run(1);
   const foe = foes(h)[0];
-  const [u] = kjOnField(h);
-  h.battle.applyStatus(foe, 'freeze', { duration: 30, source: u });   // 只有 u 叠了 1 层
-  assert.equal(stacksOf(u), 1);
-  h.run(4.5);                                                         // 跨过 t=5s 的累积点
-  assert.equal(stacksOf(u), 1, '有敌人被冻结 ⇒ 不累积');
-  for (const other of kjOnField(h).slice(1)) assert.equal(stacksOf(other), 0, '其他人一层都没有');
+  const ops = kjOnField(h);
+  h.battle.applyStatus(foe, 'freeze', { duration: 30, source: ops[0] });   // 场上确实有敌人被冻结
+  assert.ok(foe.findBuff('freeze'), 'premise: 敌人处于冻结');
+  assert.equal(stacksOf(ops[0]), 1, 'premise: 冻结敌人给了他 1 层');
+  h.run(4.5);                                                              // 跨过 t=5s 的累积点
+  assert.equal(stacksOf(ops[0]), 2, '有冻结敌人也照样 +1 层');
+  for (const other of ops.slice(1)) assert.equal(stacksOf(other), 1, '其他人也各 +1 层');
+  h.invariants();
+});
+
+test('困毙之雪 基础效果: idleFrostUnconditional = false ⇒ 退回旧口径（3 名档 + 场上无冻结才 +1）', () => {
+  const effect = { ...FD, idleFrostUnconditional: false };
+  const h = field([seatWithCard([at(1, 9, 4, 'test_kj1'), at(2, 10, 4, 'test_kj2'), at(3, 11, 4, 'test_kj3')], { effect })]);
+  installKjeragFrostDeath(hexHooks(h.battle));
+  h.run(1);
+  const foe = foes(h)[0];
+  const ops = kjOnField(h);
+  h.battle.applyStatus(foe, 'freeze', { duration: 30, source: ops[0] });
+  h.run(4.5);
+  assert.equal(stacksOf(ops[0]), 1, '旧口径：有敌人被冻结 ⇒ 这一拍不叠');
+  for (const other of ops.slice(1)) assert.equal(stacksOf(other), 0);
+  h.invariants();
+});
+
+test('困毙之雪 基础效果: 只有 1–2 名谢拉格干员（N < 3）也每 5 秒 +1 层，并照样能叠到冰封', () => {
+  // 1 名谢拉格 + 1 名非成员：N = 1，3 名档没解锁，但基础效果照样生效
+  const h = field([seatWithCard([at(1, 9, 4, 'test_kj1'), at(2, 10, 4, 'test_plain')])]);
+  installKjeragFrostDeath(hexHooks(h.battle));
+  h.run(1);
+  const u = kjOnField(h).find((x) => x.defId === 'test_kj1');
+  const plain = kjOnField(h).find((x) => x.defId === 'test_plain');
+  assert.ok(u && plain, 'premise: 一名谢拉格 + 一名非成员');
+
+  h.run(4.3);                                        // t ≈ 5.3：第一拍（t=5）
+  assert.equal(stacksOf(u), 1, 'N < 3 也每 5 秒 +1 层');
+  assert.equal(plain.findBuff(FROST), null, '非谢拉格成员不叠');
+
+  h.run(5);                                          // t ≈ 10.3
+  assert.equal(stacksOf(u), 2, '第二拍');
+  assert.equal(u.findBuff(SEAL), null, 'premise: 还没到 5 层');
+
+  h.run(15);                                         // t ≈ 25.3：第 5 拍（t=25）叠满 ⇒ 冰封
+  assert.equal(u.findBuff(FROST), null, '5 层消耗清零');
+  assert.ok(u.findBuff(SEAL), 'N < 3 也照样进冰封（层数上限仍是 frostMax 5）');
+  assert.equal(plain.findBuff(SEAL), null, '非成员没有冰封');
   h.invariants();
 });
 
@@ -604,5 +643,100 @@ test('困毙之雪: 只认拥有者自己的【谢拉格】干员 —— 自己�
   h.battle.applyStatus(foe, 'freeze', { duration: 30, source: theirs, reenter: true });
   assert.equal(theirs.findBuff(FROST), null, '别人的谢拉格干员不归这张卡管');
   assert.equal(h.battle.allyUnits.filter((u) => u && u.findBuff && u.findBuff(FROST)).length, 0, '场上没有任何霜寒');
+  h.invariants();
+});
+
+// =====================================================================================================================
+// 6 名档 · 真伤窗口（业主 2026-11-01「六人口的真伤效果没持续到15s」）
+//
+// 根因：触发原来只在 `battle.every(0.25)` 里**采样**「全员冰封」，而每名干员的冰封只有 sealSec（5 秒）、且是**各自**
+// 开始的 —— 全员重叠的窗口完全可能短于 0.25 秒，于是整段被漏掉：15 秒效果根本不触发，玩家看到的「几秒真伤」其实是
+// 3 名档的「冰封干员阻挡的敌人每秒真伤」（它只在冰封期间生效 ⇒ 正好 ~5 秒）。
+// 现在：进入冰封的那一刻**事件驱动**判定；持续时间是**绝对截止时刻**（触发时刻 + allSealedSec），与冰封是否还在、
+// 人数是否还够、来源是否还活着都无关；来源每一拍现取。
+
+/** 6 名不同谢拉格干员的棋盘（站位彼此分开、都够不到木桩）。 */
+const sixKjerag = () => KJ_IDS.map((id, i) => at(i + 1, 9 + (i % 4), 4 + (i >= 4 ? 1 : 0), id));
+
+/** 记下「本卡自己打出的真伤」（tags 带 hex:kjeragfrost）的每一拍时刻。 */
+function pulseBeats(h) {
+  const beats = [];
+  h.battle.on('damaged', (c) => {
+    const d = c && c.dmg;
+    if (d && Array.isArray(d.tags) && d.tags.includes('hex:kjeragfrost')) beats.push(h.battle.time);
+  });
+  return beats;
+}
+
+test('困毙之雪 6 名档: 全员冰封的窗口只有 0.1 秒（短于 0.25s 轮询）也照样触发，并跑满 15 拍', () => {
+  const h = field([seatWithCard(sixKjerag(), { bonds: bondsOf({ kjeragShip: { layers: 2 } }) })]);
+  const beats = pulseBeats(h);
+  installKjeragFrostDeath(hexHooks(h.battle));
+  h.run(1);
+  const ops = kjOnField(h);
+  const foe = foes(h)[0];
+  assert.equal(ops.length, HIGH, 'premise: 六名谢拉格干员在场');
+
+  // 前 5 名：t≈1.0 进入冰封，5 秒后（≈6.0）解封
+  for (const u of ops.slice(0, 5)) stackFrost(h, u, foe, 5);
+  h.run(4.9);                                        // t ≈ 5.9：前 5 名的冰封只剩 0.1 秒
+  const t0 = h.battle.time;                          // 触发时刻（第 6 名进入冰封的那一刻）
+  stackFrost(h, ops[5], foe, 5);                     // 第 6 名此刻才冰封 ⇒ 全员冰封的窗口 ≈0.1s
+  assert.equal(ops.filter((u) => u.findBuff(SEAL)).length, HIGH, 'premise: 此刻确实全员冰封');
+
+  h.run(0.4);                                        // 越过 6.0：前 5 名已经解封
+  assert.equal(ops.filter((u) => u.findBuff(SEAL)).length, 1, 'premise: 只剩第 6 名还冰封');
+
+  const hp0 = foe.hp;
+  h.run(20);                                         // 窗口 = 触发时刻 + 15 秒（≈20.9）
+  near(hp0 - foe.hp, 15 * (100 + 50 * 2), '15 拍 × (100 + 50 × 2) = 3000 真伤');
+  assert.equal(beats.length, 15, '恰好 15 拍（旧实现这里是 0 拍）');
+  // 时间线：触发后 1 秒第一拍、触发后 15 秒最后一拍（span 正好 14 秒 = 15 拍）
+  near(beats[0], t0 + 1, '第一拍 = 触发 + 1 秒');
+  near(beats[14], t0 + 15, '最后一拍 = 触发 + 15 秒（跑满，不提前收尾）');
+  near(beats[14] - beats[0], 14, '15 拍铺满 14 秒的间隔');
+  h.invariants();
+});
+
+test('困毙之雪 6 名档: 冰封 5 秒结束后真伤照打满 15 拍；触发那名干员阵亡也不哑', () => {
+  const h = field([seatWithCard(sixKjerag(), { bonds: bondsOf({ kjeragShip: { layers: 2 } }) })]);
+  const beats = pulseBeats(h);
+  installKjeragFrostDeath(hexHooks(h.battle));
+  h.run(1);
+  const ops = kjOnField(h);
+  const foe = foes(h)[0];
+  for (const u of ops) stackFrost(h, u, foe, 5);      // t≈1.0 全员冰封 ⇒ 窗口 1.0 … 16.0
+  const hp0 = foe.hp;
+
+  h.run(6);                                           // t≈7.0：冰封早在 6.0 就结束了
+  assert.equal(ops.filter((u) => u.findBuff(SEAL)).length, 0, 'premise: 全员都已解封');
+  h.battle.kill(ops[0]);                              // 触发那一刻的来源干员阵亡
+  h.run(12);                                          // t≈19.0：窗口已在 16.0 结束
+  near(hp0 - foe.hp, 15 * (100 + 50 * 2), '冰封结束后真伤照打：仍然 15 拍 × 200');
+  assert.equal(beats.length, 15);
+  h.invariants();
+});
+
+test('困毙之雪 6 名档: 窗口是闩 —— 中途再次全员冰封不重启；窗口结束后可以再触发一次', () => {
+  const h = field([seatWithCard(sixKjerag(), { bonds: bondsOf({ kjeragShip: { layers: 2 } }) })]);
+  const beats = pulseBeats(h);
+  installKjeragFrostDeath(hexHooks(h.battle));
+  h.run(1);
+  const ops = kjOnField(h);
+  const foe = foes(h)[0];
+  const hp0 = foe.hp;
+
+  for (const u of ops) stackFrost(h, u, foe, 5);      // 窗口 A：t≈1.0 … 16.0
+  h.run(6);                                           // t≈7.0：冰封结束，窗口还在跑
+  for (const u of ops) stackFrost(h, u, foe, 5);      // 中途再次全员冰封 ⇒ 不重启、不延长
+  h.run(10);                                          // t≈17.0：窗口 A 已在 16.0 结束
+  near(hp0 - foe.hp, 15 * (100 + 50 * 2), '窗口 A 一共 15 拍（中途重新冰封没有续时长）');
+  assert.equal(beats.length, 15);
+
+  for (const u of ops) stackFrost(h, u, foe, 5);      // 窗口结束后再全员冰封 ⇒ 第二次触发
+  const hp1 = foe.hp;
+  h.run(16);                                          // 窗口 B：≈17.0 … 32.0
+  near(hp1 - foe.hp, 15 * (100 + 50 * 2), '窗口 B 又跑满 15 拍');
+  assert.equal(beats.length, 30, '两次窗口共 30 拍（每次都是固定的 15 拍）');
   h.invariants();
 });

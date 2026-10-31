@@ -273,10 +273,11 @@ export const BATTLE_SPEC_KEYS = Object.freeze([
   // owner's list of 2026-10-12: 不灭壁垒's per-operator revive (its `battle.maxHpPct` already carries the ref, but the
   // mechanic itself has to be declared beside its `install` reader like every other one).
   'immortalRevive',
-  // eighth batch (the same day's second list, §29.23): 群蛇形态's battle-start kills (the match writes their counts into
-  // the ref's params at battle creation). 恶魔形态's per-second ATK growth moved to its equipment 恶魔之契
-  // (items/protocol.js) — the card's own half is the prep takeover, which never needs a battle (2026-10-26).
-  'serpentKills',
+  // eighth batch (the same day's second list, §29.23): 群蛇形态's battle-start enemy max-HP cut (the match writes this
+  // round's sale percentage into the ref's params at battle creation; reworked 2026-10-31). 恶魔形态's per-second ATK
+  // growth moved to its equipment 恶魔之契 (items/protocol.js) — the card's own half is the prep takeover, which never
+  // needs a battle (2026-10-26).
+  'serpentHpLossPct',
   // tenth batch (the owner's list of 2026-10-12, §29.27): 逻各斯's execution aura and 你我一体's shared pool / focus
   // fire. Both are ownership-only mechanics (no `params.battle`), so each has to be declared here beside its `install`
   // reader or `addHexRef` marks the ref prep-only and the battle never sees the card.
@@ -842,29 +843,32 @@ function applySpec(ctx, spec, hex = null, hook = '') {
     if (due) ctx.demonTakeover();
     did = true;
   }
-  // 群蛇形态: every sale banks `per` enemy-points …
-  if (spec.serpentPoints && isPos(spec.serpentPoints.per)) {
-    ctx.incCounter(`${HEX_KEY}${id}:serpent`, spec.serpentPoints.per);
+  // 群蛇形态 (业主 2026-10-31 rework): 本回合每卖出一名干员，下一场战斗敌人出场时最大生命 −per%（封顶 cap%）。
+  if (spec.serpentHpLoss && isPos(spec.serpentHpLoss.per)) {
+    const k = `${HEX_KEY}${id}:serpentSold`;
+    const cap = isPos(spec.serpentHpLoss.cap) ? spec.serpentHpLoss.cap : 50;
+    ctx.setCounter(k, Math.min(cap, ctx.counter(k) + spec.serpentHpLoss.per));
     did = true;
   }
-  // … and when a battle is built the integer part is cashed in as that many enemies killed at its start. The count
-  // rides the ref's own params (`serpentKills.count`), which the sim's install() reads; the points are spent here.
+  if (spec.serpentReset) {
+    ctx.setCounter(`${HEX_KEY}${id}:serpentSold`, 0);
+    did = true;
+  }
+  // … and when a battle is built this round's banked percentage rides the ref's own params
+  // (`serpentHpLossPct.pct`), which the sim's install() reads. It is NOT spent here — the round start resets it.
   if (spec.serpentArm) {
     const ref = ctx.effect(`hex:${id}`);
-    const cfg = (ref && ref.params && ref.params.serpentKills) || {};
-    const perPoint = isPos(cfg.perPoint) ? cfg.perPoint : 1;
-    const k = `${HEX_KEY}${id}:serpent`;
-    const pts = ctx.counter(k);
-    const whole = Math.floor(pts);
-    const kills = whole * perPoint;
-    if (ref) ctx.addEffect({ id: `hex:${id}`, params: { ...(ref.params || {}), serpentKills: { perPoint, count: kills } } });
+    const cfg = (ref && ref.params && ref.params.serpentHpLoss) || {};
+    const cap = isPos(cfg.cap) ? cfg.cap : 50;
+    const pct = Math.max(0, Math.min(cap, ctx.counter(`${HEX_KEY}${id}:serpentSold`)));
+    const value = { pct };
+    if (ref) ctx.addEffect({ id: `hex:${id}`, params: { ...(ref.params || {}), serpentHpLossPct: value } });
     // the battle input carries its own COPY of the ref (it was built before onBattleStart ran) — patch that one too, so
     // the sim sees the number whichever side simulates the battle
     const ev = ctx.event();
     const list = ev && ev.input && Array.isArray(ev.input.playerEffects) ? ev.input.playerEffects : null;
     const inRef = list ? list.find((r) => r && (r.key === `hex:${id}` || (r.data && r.data.hexId === id))) : null;
-    if (inRef && inRef !== ref) inRef.params = { ...(inRef.params || {}), serpentKills: { perPoint, count: kills } };
-    ctx.setCounter(k, pts - whole);
+    if (inRef && inRef !== ref) inRef.params = { ...(inRef.params || {}), serpentHpLossPct: value };
     did = true;
   }
   // ---- eleventh batch (the owner's own list of 2026-10-13, §29.34) -------------------------------------------
@@ -1515,21 +1519,25 @@ export function install(battle) {
     }, { priority: -10 });
   }
 
-  // ---- 群蛇形态 (owner 2026-10-12, §29.23): the match spends the banked enemy-points into this ref's
-  // `serpentKills.count` when the battle is built; here they are cashed in — that many enemies die the moment they
-  // arrive, so they never walk a tile. The earliest spawns go first; a boss or a part is skipped [ASSUMED: the card
-  // means wave enemies, and one point must not delete the Final Assault].
+  // ---- 群蛇形态 (业主 2026-10-31 rework): the match writes this round's sale percentage into the ref's
+  // `serpentHpLossPct.pct`; here every enemy that arrives (the field at battle start + every later spawn) has its max
+  // HP cut by that share. A boss / part is skipped [ASSUMED: the card means wave enemies, and the Final Assault's shared
+  // pool must not be shrunk by a sale counter].
   for (const pid of ownersOf('hex_serpentform')) {
-    let left = Math.max(0, Math.trunc(Number(specOf(pid, 'hex_serpentform', 'serpentKills').count) || 0));
-    if (!(left > 0)) continue;
-    const killOne = (e) => {
-      if (!(left > 0) || !e || !e.alive || e.side !== 'enemy' || e.tag === 'boss' || e.tag === 'part' || e.isBoss) return false;
-      left--;
-      battle.kill(e, null);
-      return true;
+    const pct = Math.max(0, Math.min(100, Number(specOf(pid, 'hex_serpentform', 'serpentHpLossPct').pct) || 0));
+    if (!(pct > 0)) continue;
+    const mul = 1 - pct / 100;
+    const apply = (e) => {
+      if (!e || !e.alive || e.side !== 'enemy') return;
+      if (e.tag === 'boss' || e.tag === 'part' || e.isBoss || e.bossPool) return;
+      if (e.mem && e.mem.hexSerpentHp) return;
+      if (e.mem) e.mem.hexSerpentHp = true;
+      e.base.maxHp = Math.max(1, Number(e.base.maxHp) * mul);
+      e.markDirty();
+      e.hp = Math.min(e.hp, e.s.maxHp);
     };
-    for (const e of battle.enemies.slice()) killOne(e);
-    battle.on('enemySpawn', ({ enemy }) => { killOne(enemy); });
+    for (const e of battle.enemies.slice()) apply(e);
+    battle.on('enemySpawn', ({ enemy }) => apply(enemy));
   }
 
   // ---- 盟约裂变: the two bonds the cap keeps gain ×mul layers, prep side and battle side alike ----

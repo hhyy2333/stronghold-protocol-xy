@@ -55,11 +55,14 @@ and are worth stating, because they are what make the numbers readable:
   override the post's HP), no `BOSS_HIT_LIMIT` 限伤 (300 000 — it cancels a big hit whole and would eat exactly what this
   round measures), no overtime LP drain.
 - *a measuring device, not an enemy*: `enemy_9901_dummy` is `enemy_9033_acdeer` (“萨米的意志”) cloned with `atk` 0,
-  `moveSpeed` 0, `lpr` 0, `def`/`res` **0** and a **325 亿** (32 500 000 000) HP pool that regenerates 1000/s — the owner raised it from 20 000 000 on 2026-10-30「木桩太脆了，血量改为325亿」after a fully-built team emptied a 20 000 000 post inside one window. The unarmoured target is the
-  point — `max(A − D, 5 %·A)` would floor every low-ATK operator at 5 % against 萨米's own 800 DEF, and the reading would
-  be “output vs an 800-DEF target” rather than the operator's own (docs/DATA.md "The training post"). The pool is sized so
-  no team empties it inside the 60 s window; there is deliberately **no** 免死/无敌, because an invulnerable post would read
-  0 damage.
+  `moveSpeed` 0, `lpr` 0, `def`/`res` **0**, a **20 亿** (2 000 000 000) HP pool that regenerates **20 亿/s** and **锁血**
+  (owner 2026-10-31「修改木桩至20亿血，加上每秒回20亿和锁血」). The three numbers go together: a 20 亿 pool *can* be exceeded by
+  one burst, so the post survives on 自愈 (one whole bar per second — any hit is undone on the next tick) plus the lock
+  (the kit's `fatal` hook keeps it on 1 HP instead of dying) rather than on pool size, which is what the 2026-10-30
+  325 亿 pool did. 锁血 does not skew the reading: damage is counted as HP actually removed, so a hit that lands while
+  locked still reads as the whole hit (an 无敌 buff would read 0 and defeat the round's purpose). The unarmoured target is
+  the point — `max(A − D, 5 %·A)` would floor every low-ATK operator at 5 % against 萨米's own 800 DEF, and the reading
+  would be “output vs an 800-DEF target” rather than the operator's own (docs/DATA.md "The training post").
 - *readable while it runs*: the in-battle 伤害统计 panel carries a 秒伤 (DPS) column — damage dealt ÷ the seconds the
   battle on screen has run (`public/js/ui/damageReport.js`; the panel itself stays a pure view and takes `elapsed` from the
   game screen's battle clock) — and the panel opens itself, frozen, once when this round settles. The dummy round and that
@@ -107,7 +110,7 @@ The offer is recipient-private, including after reconnect, and never enters `m.p
 - `count` = number of **distinct base chess** on the board carrying the bond (`BOARD`); `BOARD_AND_DECK` bonds also count the hand; 绝技 counts elites on board; 调和 adds +1 to each core bond count that has a real member on the board (the views mark such an entry `harmony: 1`, §21.26), etc. (research 02).
 - 变形同构体: an operator wearing it together with an item that has a `giveBondId` is a member of that bond — counted like any member (BOARD: on the board only; once per operator), in the battle, and in the client's member list (tagged 同构) and bond chips (§21.11). A fused 百变 (锻炉) counts as wearing both items it swallowed: every reader expands the piece's `merged: [idA, idB]` through `shared/morph.js itemRecs`, so the pairing survives the fusion while the 百变 still uses one equipment slot.
 - `tier` from thresholds; `active = tier ≥ 1`.
-- `layers[bondId]` persist all match; gains come from garrisons/bands/items/choices/bond effects; IN_BATTLE gains are collected from `BattleResult.layerGains` at SETTLE (disabled in unite/boss/hidden).
+- `layers[bondId]` persist all match; gains come from garrisons/bands/items/choices/bond effects; IN_BATTLE gains are collected from `BattleResult.layerGains` at SETTLE (disabled in unite/boss/hidden — except a 【突破极限】 owner in 联防, whose gains the unite spec turns on per player via `flags.layerGainsByPlayer`; 业主 2026-11-01).
 - Layer milestones (维多利亚's 维式重锤 every 25, 远见's funds every 10 and its 80 / 150 discounts, 奇迹's funds every 100) pay only while the bond is active; those owed for layers gained while it was off pay as soon as it lights up — `PlayerState.recompute` dispatches `onActiveBonds` whenever the set of active bonds changes, so placing the third 维多利亚 member in prep grants the hammer at once (the maintainer's report of the official game, 2026-10-15; §34.14.31). Each milestone pays once, however often the bond goes off and on.
 - A bond holds at most `BOND_LAYER_CAP` = 999 layers (the client's `MAX_GARRISON_STACK`, §20.12): every writer — `PlayerState.addLayers`, the SETTLE merge, `Battle.addLayers`, the dev tools — adds `layerGainRoom(before, n)` = min(n, 999 − before); a gain at the cap adds 0 and dispatches nothing (no onLayers, no `layerGain` hook, no 'layer' event), so the per-N milestones stop with the count.
 - Σ activated layers (hidden-core check) = Σ layers over bonds that are active at the moment of the check (end of R14 prep, per research).
@@ -375,6 +378,10 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 - 【突破极限】`hex_break_limit`（3 阶）：盟约叠层上限 999 → **9999**。`bondLayerCapOf(ps)` 从卡面
   `params.bondCap.cap` 读每玩家上限；备战加层/预览、战斗内加层、回合结算、客户端显示全部跟着抬
   （`shared/constants.js layerGainRoom(before, n, cap)`；`PlayerBattleInput.bondLayerCap`）。
+  **联防里也能叠层**（2026-11-01 业主追加，卡面 `params.bondCap.uniteLayers`）：联防 spec 整场仍是
+  `layerGainsEnabled: false`，另给 `flags.layerGainsByPlayer = { [pid]: true }`（`unitePhase.js _uniteOpts`，只点名拥有者；
+  一个拥有者都没有时不写这个键）；sim `Battle.layerGainsOn(playerId)`（`support.gainLayers` 同一条闸门）、结算
+  `uniteLayerGainsOn(ps)` 与客户端盟约条都按它放行，没这张卡的玩家照旧不加层。
 - 【特限恢复】`hex_mode_modules`（2 阶）：① 拥有者的干员使用 **3 级模组**数据 ——
   `data/moduleLevels.json`（`tools/build-data.mjs` 生成，按 `uniEquipId` 记录 equipLevel 3 的 attr / traitOverride /
   talentChanges），战斗与备战预览按 `loadout.moduleLevel = 3` 组合（普通形态用默认模组的 3 级数据）；
@@ -407,6 +414,22 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 - 【先锋之势】`hex_vanguard`（2 阶）：先锋首次击杀的 4 资金保留；首次攻击的 +30% 攻击力改为
   **每名己方先锋的第一次攻击直接秒杀目标**（ELITE / BOSS 无效；击杀仍记在先锋身上，所以加钱照常）。
 - 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-死亡之舞与四张卡调整-设计稿-20261031.md`（工作区级）。
+
+## 协议源石：七张卡调整（2026-10-31，业主裁定）
+
+- 【重量级打击手】`hex_heavyhitter`（1 阶）：额外法术伤害 10% → **20%** 最大生命。
+- 【残光】`hex_canlight`（2 阶）的装备：新增**锁血 5 秒、每场一次**——装备者本人受到致命伤害时 `fatal` 免死并开
+  5 秒窗口（窗口内再致命只免死不续窗；窗口后正常阵亡；流失不算「受到伤害」）。
+- 【蛋白粉奶昔】`hex_proteinshake`（3 阶）：每 100 最大生命再加 **+2% 受到的治疗量**（与 +10 防御 / +0.1 法抗同档位，
+  `healingTakenMul`）。
+- 【锻炉】`hex_forge`（2 阶）：融合时组件若有进阶形态**自动进阶**（`merged` 写 golden id），**已融合的百变也追溯进阶**。
+- 【赌狗大师】`hex_mastergamble`（2 阶）：获得后第 3、6、9… 个回合开始时再给 1 件【拟态物质】
+  （`onRoundStart` + `everyRounds: 3` + `skipFirst`）。
+- 【紧急拨款】`hex_emergencygrant`（2 阶）：精锐干员出售资金 2 → **3**。
+- 【群蛇形态】`hex_serpentform`（3 阶）：**替换**旧机制——本回合每卖 1 名干员，下一场敌人出场时最大生命 **−10%**
+  （封顶 −50%，回合开始清零）；`serpentHpLossPct` 由备战写进 ref、战斗侧在开场与每次 `enemySpawn` 时压缩敌人最大生命
+  （BOSS / 部位 / 领袖共享池跳过）。
+- 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-七张卡调整-设计稿-20261031.md`（工作区级）。
 
 ## 协议源石：第 6 回合的「点卡刷新」（2026-10-30 定规则；2026-10-31 改成点卡界面，业主裁定）
 
@@ -449,3 +472,45 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 - **回归**：`test/match/hex-recycle.test.js`（抽卡阶段换 / 休整期换 / 一次 2 张 / 各条拒绝 / 不回收一次性收益 / 同种子同结果）、
   `test/ui/hexRecycle.test.js`（客户端纯函数与面板）、`test/match/fuzz.test.js`（新意图进 `GAME` 后的随机序列）。
   **golden 不移动**：这是备战层的规则，不进战斗模拟。
+
+## 协议源石与首领：十条 bug / 增强（2026-11-01，业主裁定）
+
+- **首领【伤心的大锁】**（boss_13）：受击反击（每 20 次受击 → 全场 100% 攻击力法术溅射）的计数只算**「可触发受击
+  回复」的伤害** —— 生命流失 / 反伤 / `noSp` 的持续伤害不再推进计数（PRTS「每受到20次可触发受击回复的伤害后」，引擎
+  自己的判据就是 `applyHpLoss` 里那行 `!dmg.noSp && dmg.type !== 'element'`）。另外**有意偏离官方**（业主 2026-11-01
+  拍板）：溅射加**最小间隔 4 秒**（`aoetrigger.min_interval`，缺省取大锁自己的攻击间隔，0 = 关闸回到官方口径）——
+  本模式 8–12 人全在打一个静止、全场射程的领袖，20 次受击 1–3 秒就攒满，官方口径下会变成每 1–2 秒一发全场溅射。
+  攒满后被闸压住**不丢计数**，到点立刻打出。「无视不屈」不复现：不屈只保**地面**干员（官方口径），同一次溅射里高台
+  干员本来就不会被拉回；`fatal.prevented` 免死也照常生效。
+- **【困毙之雪】**`hex_kjerag_frostdeath`（2 阶）：① 「每 5 秒获得 1 层霜寒」从 <在场3名> 分支提升为**完全无条件**的
+  基础效果（不看在场人数、不看有没有敌人被冻结，`idleFrostUnconditional: true`；3 名档的攻击施寒 / 解冻回层 / 冰封
+  阻挡真伤仍要 N ≥ 3）；② <在场6名> 的 15 秒真伤改成**事件驱动触发**（进入冰封那一刻判定，0.25 秒轮询只做兜底）+
+  **绝对截止时刻**（`until = time + 15`），不再因为「全员冰封的重叠窗口短于轮询间隔」整段丢掉，也不会被拍数吞掉。
+- **【炎百兽】**`hex_yan_beasts`（2 阶）：① 生命共享改成**双向** —— 干员被治疗时炎佑按同数值回血（`shareHealPct: 100`，
+  自我回复形式，绕开「友方召唤物收不到别人治疗」的引擎规则；超量治疗不凭空造血，标记防递归）；② 炎佑**100% 继承**
+  对应干员的防御力与法术抗性（`inheritDefPct` / `inheritResPct`，替换模板值；比例 0 = 关掉）。
+- **【突破极限】**`hex_break_limit`（3 阶）：**拥有者在联防（unite）战斗中也能叠层**。联防 spec 仍是整场
+  `layerGainsEnabled: false`，另加**每玩家** `flags.layerGainsByPlayer`（只点名拥有者，`uniteLayers: true` 为判据）；
+  唯一读法 `Battle.layerGainsOn(playerId)`，消费方 5 处：sim `addLayers`、`support.gainLayers`、结算（非拥有者战报里的
+  层数丢弃）、`fields.js` 客户端战报校验、`runner.js` 盟约条显示。没有拥有者时**不写这个键**，spec 逐字节不变。
+- **赤刃明霄陈 S3 剑气 vs 木桩**：剑气「每段直行命中一次」被 `w.hit.clear()` 每帧清空破坏 —— 被墙角卡住时一帧转 4 次、
+  位置不动，同一目标**每 tick 命中一次（30 次/秒）**、每次 6% 当前生命。改成「转向 **且** 这一帧确实在走 **且** 方向与
+  当前直行不同」才清空命中表（PRTS「转向后忘记打过的敌人」保留）。木桩锁血未被绕过（同 tick 30 发致死仍停在 1 血），
+  百分比伤害**不封顶**（6% 是 PRTS 的 `hp_ratio`）。
+- **【特限恢复】**`hex_mode_modules`（2 阶）：有特限模组（ISW / SO / RA）的干员购买价格 **−2（最低 1）**。卡面
+  `onPrice.specialLimitDiscount { delta, min, types }`，读取点 `economy.js priceOf`（商店显示 / 购买扣款 / 测试场选人
+  同一处），判据读 `gd.chess().modules[].typeName` 前缀，不新造数据源；复制第二份 ref 不会叠成 −4。
+- **协议源石发的钱不计入 n19「一回合最多 30 资金」**：`addFunds` 加 reason 前缀约定（`hex` 开头 = 协议源石来源，全额
+  豁免且不占额度；`applySpec` 的每一笔钱本来就写 `'hex'`，债务写 `'hex_debt'`）；结算到下回合的钱由
+  `ctx.addPendingFunds` 记 `ps.pendingHexFunds`，回合开始那笔 `income` 按它豁免；走悬赏通道的过路费与骑士金神金币
+  （`addCoins(..., { hex: true })` → `coinsHex`）也在 `settle.js` 记进 `pendingHexFunds`。回合收入 / 卖出 / 真悬赏照旧受限。
+- **【战争机器】**`hex_warmachine`（3 阶）被【复制】复制时，**逐目标**发放（复制者 + 所有存活队友各跑自己的
+  `onHexPick` + `onPick.lp`），不再只给复制者；`applyCopiedHex()` 与 `applyHex()` 同一口径，复制 / 策略「管理员」两条
+  复制路共用。
+- **【绿洲】**`hex_sargon_oasis`（3 阶）的层数里程碑（60 层【缇缇】/ 325 层【黄沙罗盘】）：`runOnPick` 原本是死代码
+  （`onHexPick` 派发的是 `effect.onPick`，不含 `onLayers`），所以「拿到卡时该盟约已 ≥60 层」要等下一回合才补发。现在
+  获得时用**当前层数回放**这张卡自己的 `onLayers`（`replayLayerGift`），并让一张卡的所有 ref 共用计数器
+  （`data.sharedCounters`），复制不会发两只。
+- **【量产线】**`hex_massprod`（2 阶）：获得时**立即**得到 1 名当前等级阶的干员（`onPick.chess` 与每回合那条同一个
+  tier 口径）。
+- 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-十条bug与增强-设计稿-20261101.md`（工作区级）。

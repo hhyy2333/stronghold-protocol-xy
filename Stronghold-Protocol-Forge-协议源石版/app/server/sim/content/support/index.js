@@ -444,7 +444,8 @@ export function battleStore(battle, ns, init = () => ({})) {
 // battle: IN_BATTLE layer gains
 
 /**
- * Add IN_BATTLE layers (no-op in 联防 / boss / hidden fields: `battle.flags.layerGainsEnabled`).
+ * Add IN_BATTLE layers (no-op in 联防 / boss / hidden fields: `battle.flags.layerGainsEnabled` — or, when the spec names
+ * players, per player: `battle.layerGainsOn(playerId)`, the 【突破极限】 owner in a 联防 field, 业主 2026-11-01).
  *   playerId       receiving player
  *   bonds          bond id or array of ids (each gets `n`)
  *   n              layers per bond (floored)
@@ -455,7 +456,10 @@ export function battleStore(battle, ns, init = () => ({})) {
  * Returns the layers actually added (sum over bonds).
  */
 export function gainLayers(battle, { playerId, bonds, n, requireActive = true, source = null, reason = 'content', cap = Infinity, capKey = null } = {}) {
-  if (!battle || !battle.flags || !battle.flags.layerGainsEnabled || playerId == null) return 0;
+  if (!battle || !battle.flags || playerId == null) return 0;
+  // 【突破极限】的每玩家闸门（server/sim/battle/economy.js layerGainsOn）：没有这张表时等价于整场 flag。
+  const gainsOn = typeof battle.layerGainsOn === 'function' ? battle.layerGainsOn(playerId) : !!battle.flags.layerGainsEnabled;
+  if (!gainsOn) return 0;
   const k0 = Math.floor(num(n, 0));
   if (!(k0 > 0)) return 0;
   const list = Array.isArray(bonds) ? bonds : [bonds];

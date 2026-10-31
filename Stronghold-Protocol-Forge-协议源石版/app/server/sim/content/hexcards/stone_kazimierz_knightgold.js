@@ -216,7 +216,9 @@ export function installKazimierzKnightGold(hooks) {
     const cap = goldCapNow(pid);
     // 一次多杀（技能一波清场）也要把该补的金补齐；`paid` 记的是本场**已经发出去**的枚数，所以到上限后自然停手。
     while (st.paid < cap && st.kills >= (st.paid + 1) * p.killStep) {
-      if (!(battle.addCoins(pid, 1) > 0)) break;     // addCoins 在玩家不在场时返回 0（不记已发）
+      // 【hex: true】这笔金币是**协议源石**发的（业主 2026-11-01「海克斯提供的钱不计入 n19 的 30 块上限」）：
+      // 战斗里另记 `coinsHex`，结算把它记进 `pendingHexFunds`，回合开始时不占 n19 的额度。
+      if (!(battle.addCoins(pid, 1, { hex: true }) > 0)) break;     // addCoins 在玩家不在场时返回 0（不记已发）
       st.paid++;
       coins++;
     }

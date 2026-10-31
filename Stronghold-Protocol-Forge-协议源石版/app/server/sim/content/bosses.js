@@ -88,6 +88,7 @@ import {
   castSlot, setForm, spawnChildren, attackTurnSkill,
 } from './enemies.js';
 import { hypot, powi } from '../detmath.js';
+import { isHpLoss, isRetaliation } from '../damage.js';
 
 // ---------------------------------------------------------------------------------------------------------------
 // constants
@@ -185,13 +186,23 @@ const DECREE_CLIP = 3.667;
  *     [ASSUMED, the value the page's own 数值换算 section derives].
  *   · 受击反击 800 (800 × 100 %): PRTS 天赋 「每受到20次可触发受击回复的伤害后…造成自身攻击力100%的法术溅射伤害」 —
  *     the page notes the data's `aoe.atk_scale` 1.5 「因为不明原因并未生效，故页面取 100%」. Warning at the 10th
- *     (`aoetrigger.warning_stack_cnt`).
+ *     (`aoetrigger.warning_stack_cnt`). 计数只算**可触发受击回复**的伤害（生命流失 / 反伤 / `noSp` 的持续伤害不算），
+ *     并且加了**最小间隔 4 s**（`DOLL_AOE_MIN_IV`，业主 2026-11-01 拍板的有意偏离，理由见该常量的注释）。
  *   · 屏障期间全场其他敌人 move speed 200 %: PRTS 「移动速度最终提升至200%」 (`movespeedup.move_speed` 2).
  *   · 终结 480 s: PRTS 技能 终结 + the data's `Doom` (cd/icd 480, `value` −30, `atk_scale` 2).
  */
 const DOLL_SELF_HEAL = 0.0025;
 const DOLL_BARRIER_RATIO = 0.15, DOLL_BARRIER_SUMMON_IV = 20;
 const DOLL_AOE_HITS = 20, DOLL_AOE_WARN = 10, DOLL_AOE_SCALE = 1;
+/**
+ * 受击反击的**最小间隔**（秒）—— 有意偏离官方，业主 2026-11-01 拍板：「大锁的受击反击溅射加最小间隔 4 秒」。
+ * 官方口径只有「每受到20次可触发受击回复的伤害后」这一条，没有间隔下限；本模式 8~12 名干员全在打一个静止、全场
+ * 射程的领袖，20 次受击 1~3 秒就攒满，于是全场 100 % 攻击力的法术溅射变成每 1~2 秒一发，开场就把盘面打穿
+ * （业主报障「大锁开局秒人」）。缺省值 = 大锁自己的攻击间隔（`e.s.interval` = 4.0 s，数据 bat 4 / aspd 100），
+ * blackboard 里有 `aoetrigger.min_interval` 就听它的（0 = 关掉这道闸，回到官方口径）。
+ * [ASSUMED] 第一发也按「上场后满 minIv 秒」算（`P.burstAt` 从 `b.time` 起算），否则开场那一发仍然立刻落地。
+ */
+const DOLL_AOE_MIN_IV = 4;
 const DOLL_RUSH_MUL = 2, DOLL_RUSH_KEY = 'boss:dollRush', DOLL_RUSH_FRESH = 0.6;
 const DOLL_BARRIER_KEY = 'boss:dollBarrier';
 /**
@@ -1642,8 +1653,13 @@ function kitDoll(ab, e, b) {
   const rushMul = T(ab, 'movespeedup.move_speed') ?? DOLL_RUSH_MUL;
   const barrierRatio = DOLL_BARRIER_RATIO;                          // PRTS 15 %
   const barrierSummonIv = ab.sk.shield && ab.sk.shield.bb.interval > 0 ? ab.sk.shield.bb.interval : DOLL_BARRIER_SUMMON_IV;
+  // 受击反击的最小间隔（业主 2026-11-01 拍板的**有意偏离**官方，见常量块 `DOLL_AOE_MIN_IV`）：blackboard 给了
+  // `aoetrigger.min_interval` 就听它（0 = 关掉这道闸，回到官方口径），没给就用大锁自己的攻击间隔（4 s）。
+  const aoeMinIv = Math.max(0, T(ab, 'aoetrigger.min_interval') ?? e.s.interval ?? DOLL_AOE_MIN_IV);
   const shield = ab.sk.shield, doom = ab.sk.Doom;
-  const P = { t0: b.time, acc: Infinity, hits: 0, barrier: false, summonAt: 0, rushAt: 0, step: 0, due: Infinity, done: false };
+  // `charged` = 已经攒满 `aoeHits` 次、只等间隔闸放行（计数不清零：待发期间每一发真实受击都重新判一次间隔）。
+  // `burstAt` 从**上场时刻**起算，所以第一发也不早于上场后 `aoeMinIv` 秒 —— 开场那 1~2 秒不会再立刻吃一发全场。
+  const P = { t0: b.time, acc: Infinity, hits: 0, barrier: false, summonAt: 0, rushAt: 0, step: 0, due: Infinity, done: false, charged: false, burstAt: b.time };
   /**
    * The 召唤 ladder as absolute times after the spawn: the three chained windows of the blackboard, each counting from its
    * own `start` (the previous window's `duration`) — 24/48/72 s, 110/130/150/170 s, then 196 + 16k. `nextSummon` walks the
@@ -1737,12 +1753,31 @@ function kitDoll(ab, e, b) {
       // 受击反击: every `aoeHits`-th instance of damage it takes ⇒ 100 % ATK arts on every operator it can select.
       taken(c, b2, e2) {
         if (!(c.amount > 0) || P.done || e2.hp <= 0) return;
+        // 「每受到20次**可触发受击回复**的伤害后」(PRTS 天赋, see the constants block): only instances that would give
+        // 受击回复 advance the counter. 生命流失 (`isHpLoss` — Battle.loseHp) and every instance the engine marks `noSp`
+        // never trigger 受击回复 (PRTS 作战机制「生命流失…不会触发反伤、受击回复」; the engine's own rule is the SP line in
+        // damage.js applyHpLoss: `!dmg.noSp && dmg.type !== 'element'`), and neither does 反伤 (`isRetaliation`: it is an
+        // answer to being hit, not a hit). Counting them advanced the counter with damage the official boss never counts,
+        // so the board-wide splash came early (业主 2026-11-01「大锁开局秒人」: a board full of 反伤 / 流失 / 持续伤害
+        // crosses the 20-hit line in about a second).
+        const d = c.dmg;
+        if (isHpLoss(d) || isRetaliation(d) || (d && d.noSp)) return;
         P.hits++;
         if (P.hits % aoeHits === warnAt) {                          // 「每受到10次…出现蓄力预警特效」
           b2.fx('telegraph', { x: e2.x, y: e2.y, r: 99, dur: 0.5, kind: 'dollCharge', id: e2.id });
           return;
         }
-        if (P.hits % aoeHits !== 0) return;
+        // 攒满 `aoeHits` 次 ⇒ 进入待发。计数**不清零**：待发期间每一发真实受击都重新判一次间隔，间隔一到就打出去
+        // （所以闸卡住时不会白丢这一发，也不会因为「又不是第 20 次」而永远等不到下一发）。
+        if (P.hits % aoeHits === 0) P.charged = true;
+        if (!P.charged) return;
+        // 最小间隔闸 —— 业主 2026-11-01 拍板的**有意偏离**官方（官方原文「每受到20次可触发受击回复的伤害后…」没有
+        // 任何间隔下限）。本模式 8~12 名干员全在打一个静止、全场射程的领袖，20 次受击 1~3 秒就攒满，官方口径下
+        // 全场 100 % 攻击力的法术溅射会变成每 1~2 秒一发，开场就把盘面打穿（业主报障「大锁开局秒人」）。
+        // 闸只作用于**真正结算伤害的那一发**：预警特效（上面那条）的节奏不动。
+        if (aoeMinIv > 0 && b2.time - P.burstAt < aoeMinIv - 1e-9) return;
+        P.charged = false;
+        P.burstAt = b2.time;
         b2.fx('explode', { x: e2.x, y: e2.y, r: 99, kind: 'dollBurst', id: e2.id });
         for (const u of fieldAllies(b2, e2)) hurt(b2, e2, u, e2.s.atk * aoeScale, 'arts', { tags: ['dollBurst'] });
       },

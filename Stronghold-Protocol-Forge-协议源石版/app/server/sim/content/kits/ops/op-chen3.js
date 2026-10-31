@@ -226,7 +226,9 @@ export default {
           attack: { atkScale: num(b3['attack@atk_scale'], 1), hits: 3 },   // `_additionalTimes` 2
           onStart({ battle, unit, skill }) {
             const [dr, dc] = unit.fwd;
-            unit.mem.chen3Wave = { x: unit.x, y: unit.y, dr, dc, hit: new Set(), act: skill.activations, seq: unit.deploySeq,
+            // `runDr` / `runDc` = 当前这一段「直行」的方向（命中表 `hit` 属于它）。只有真的换了一段直行才清空命中表，
+            // 见下面 tick 里的注释（业主 2026-11-01「龙剑气对同一只木桩反复命中」）。
+            unit.mem.chen3Wave = { x: unit.x, y: unit.y, dr, dc, runDr: dr, runDc: dc, hit: new Set(), act: skill.activations, seq: unit.deploySeq,
               fx: 0, fxX: unit.x, fxY: unit.y };
             battle.fx('dash', { x: unit.x, y: unit.y, id: unit.id, skill: 'chen3:wave' });
           },
@@ -298,14 +300,33 @@ export default {
           if (!w) return;
           const sk = unit.skill;
           if (!up(unit) || unit.deploySeq !== w.seq || !sk || !sk.active || sk.activations !== w.act) { unit.mem.chen3Wave = null; return; }
+          // 转向：撞上高地 / 场地边缘 / 侵入点 / 保护目标时顺时针转 90°（一帧最多 4 次，四个方向都堵住就原地等）。
+          //
+          // 这里**不**逐次清空命中表（业主 2026-11-01「龙剑气对同一只木桩反复命中、血量被打穿」的根因）：
+          // 被墙角卡住时一帧会连转 4 次、位置一动不动，而每一转都 `w.hit.clear()` ⇒ 命中表每帧被清空一次，
+          // 下一帧命中循环就把同一只目标再结算一次 = **每 tick 命中一次（30 次/秒）**，而不是「每段直行一次」。
+          // 木桩 20 亿血 × 6% 当前生命 = 每次 1.2 亿，30 次/秒 ⇒ 血量被打到 ~52% 并卡在那里。
+          //
+          // 正确口径（PRTS「转向后忘记打过的敌人」）：忘记的时机是**真的开始了一段新的直行**——转了向、并且这一帧
+          // 确实在走。原地等的那一帧不是新的直行，所以不清空；转满 4 次又转回原方向时也不是新的直行。
+          let turned = false;
           for (let i = 0; i < 4 && waveBlocked(battle, w); i++) {   // turn 90° clockwise (row up, col right)
             const dr = w.dr;
             w.dr = 0 - w.dc;    // (`0 - x`: never a negative zero)
             w.dc = dr;
-            w.hit.clear();
+            turned = true;
             w.fxX = w.x; w.fxY = w.y;   // the drawn trail starts again at the corner (no streak across the turn)
           }
-          if (!waveBlocked(battle, w)) { w.x += w.dc * WAVE_SPEED * dt; w.y += w.dr * WAVE_SPEED * dt; }
+          if (!waveBlocked(battle, w)) {
+            w.x += w.dc * WAVE_SPEED * dt;
+            w.y += w.dr * WAVE_SPEED * dt;
+            if (turned && (w.dr !== w.runDr || w.dc !== w.runDc)) {
+              // 一段新的直行开始：这一段里打过的敌人才作废（同一段直行对同一目标只结算一次）
+              w.hit.clear();
+              w.runDr = w.dr;
+              w.runDc = w.dc;
+            }
+          }
           // the 龙剑气 itself: tell the client where it is now (and where it came from) so it can be drawn — while it
           // runs, while it is boxed in waiting, and after a turn (the direction comes along for the renderer)
           w.fx += dt;

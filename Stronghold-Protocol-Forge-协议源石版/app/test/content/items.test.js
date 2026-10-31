@@ -1462,6 +1462,130 @@ test('残光 (9_92): the equipment alone — no 协议源石 card — deals ×(1
   checkInvariants(h.b);
 });
 
+// ---------------------------------------------------------------------------------------------------------------
+// 残光 (9_92) 的第三个半边（业主 2026-10-31）：装备者受到致命伤害时锁血 5 秒，每场一次。
+//
+// 口径与【骑士徽章】的锁血同一套引擎约定：`fatal` 钩子里 `c.prevented = true`（damage.js applyHpLoss 随后把 HP 抬回
+// ≥1），窗口 = `battle.time + params.lockSec`（卡面 5 秒）；窗口内再受致命伤只免死、**不续窗口**；窗口结束后正常阵亡、
+// 本场不再开第二个窗口。生命流失（`isHpLoss`）不是「受到伤害」，不免死。数值全部读装备记录的 `params`。
+
+/** 一发致命的真实伤害（0 防御 / 0 法抗 ⇒ 最终伤害 = amount），来源是场上的木桩。 */
+const lethal = (h, tgt, amount = 5000) => hitTrue(h, foe(h), tgt, amount);
+
+test('残光 (9_92) 致命锁血: 没有致命伤害时不触发；第一次致命不死，HP 被引擎留在 1', () => {
+  const ITEM = 'chess_item_9_92_e_a';
+  assert.equal(DATA.items[ITEM].params.lockSec, 5, 'premise: 卡面 lockSec = 5');
+  const h = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }], foes: [[9, 4]] });
+  h.run(0.2);
+  const u = h.unit('t_op');
+  forceRng(h, 0.999);                    // 4x% 自伤掷骰不参与这一条线
+  close(u.hp, 2000, 'premise: 满血');
+
+  // ① 不是致命伤害：照常掉血，一点免死都没有
+  hitTrue(h, foe(h), u, 1000);
+  close(u.hp, 1000, 'a normal hit lands normally');
+  assert.equal(u.alive, true);
+
+  // ② 第一次致命：不死，HP 由引擎留在 1
+  lethal(h, u);
+  assert.equal(u.alive, true, 'first fatal: prevented');
+  assert.equal(u.hp, 1, 'HP held at 1 by the engine (applyHpLoss)');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('残光 (9_92) 致命锁血: 窗口内再致命仍不死，且窗口不被续长（5 秒后正常阵亡）', () => {
+  const ITEM = 'chess_item_9_92_e_a';
+  const h = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }], foes: [[9, 4]] });
+  h.run(0.2);
+  const u = h.unit('t_op');
+  forceRng(h, 0.999);
+
+  lethal(h, u);                          // t ≈ 0.2 ⇒ 窗口到 ≈ 5.2
+  assert.equal(u.alive, true);
+  close(h.b.time, 0.2, 'premise: 第一次致命发生在 t≈0.2');
+
+  h.run(4);                              // t ≈ 4.2：窗口内
+  lethal(h, u);
+  assert.equal(u.alive, true, 'a fatal inside the window is prevented too');
+  assert.equal(u.hp, 1);
+
+  h.run(0.9);                            // t ≈ 5.1：仍在「第一次致命 + 5 秒」的窗口里
+  lethal(h, u);
+  assert.equal(u.alive, true, 'still inside the original 5 s window');
+
+  h.run(0.2);                            // t ≈ 5.3：窗口已过（第二次致命没有续窗口）
+  lethal(h, u);
+  assert.equal(u.alive, false, 'after the window the carrier dies normally');
+  assert.equal(u.removeReason, 'killed');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('残光 (9_92) 致命锁血: 非装备者不受保护；生命流失不免死', () => {
+  const ITEM = 'chess_item_9_92_e_a';
+  const h = fight({
+    ops: { t_op: op('t_op'), t_mate: op('t_mate') },
+    units: [
+      { chessId: 't_op', row: 10, col: 4, items: [ITEM] },
+      { chessId: 't_mate', row: 11, col: 4 },
+    ],
+    foes: [[9, 4]],
+  });
+  h.run(0.2);
+  const u = h.unit('t_op');
+  const mate = h.unit('t_mate');
+  forceRng(h, 0.999);
+
+  // ① 同样一发致命打在没装备的干员身上：照常阵亡
+  hitTrue(h, foe(h), mate, 5000);
+  assert.equal(mate.alive, false, 'a carrier-less operator dies normally');
+
+  // ② 装备者：生命流失不是「受到伤害」，不免死
+  h.b.loseHp(u, 5000, { source: null });
+  assert.equal(u.alive, false, '生命流失不触发锁血');
+  assert.equal(u.removeReason, 'killed');
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
+test('残光 (9_92) 致命锁血: 每场战斗一次 —— 新的一场重新可用；同一场两名装备者各算各的', () => {
+  const ITEM = 'chess_item_9_92_e_a';
+  // 每一场都自带干员记录（fight() 默认只声明 t_op；两名装备者的那场要额外声明 t_mate）
+  const mk = (units, ops = { t_op: op('t_op') }) => {
+    const h = fight({ ops, units, foes: [[9, 4]] });
+    h.run(0.2);
+    forceRng(h, 0.999);
+    return h;
+  };
+
+  // 第一场：第一次致命被挡（本场的窗口用掉了）
+  const a = mk([{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }]);
+  lethal(a, a.unit('t_op'));
+  assert.equal(a.unit('t_op').alive, true, 'battle 1: prevented');
+
+  // 第二场（全新的战斗）：窗口重新可用 —— 状态是「每场」的，不是模块级的
+  const b = mk([{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }]);
+  lethal(b, b.unit('t_op'));
+  assert.equal(b.unit('t_op').alive, true, 'battle 2: prevented again');
+
+  // 同一场里两名装备者：各自有自己的那一次
+  const h = mk([
+    { chessId: 't_op', row: 10, col: 4, items: [ITEM] },
+    { chessId: 't_mate', row: 11, col: 4, items: [ITEM] },
+  ], { t_op: op('t_op'), t_mate: op('t_mate') });
+  const p1 = h.unit('t_op');
+  const p2 = h.unit('t_mate');
+  lethal(h, p1);
+  lethal(h, p2);
+  assert.equal(p1.alive, true, 'carrier 1: prevented');
+  assert.equal(p2.alive, true, 'carrier 2: prevented by its own copy');
+  assert.equal(p1.hp, 1);
+  assert.equal(p2.hp, 1);
+  cover(ITEM);
+  checkInvariants(h.b);
+});
+
 test('加护 (9_93): the equipment alone cuts a hit of the carrier’s own damage type by 60 %', () => {
   const ITEM = 'chess_item_9_93_e_a';
   const h = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [ITEM] }], foes: [[9, 4]] });
