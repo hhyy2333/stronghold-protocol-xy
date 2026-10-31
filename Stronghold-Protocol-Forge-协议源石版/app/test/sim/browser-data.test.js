@@ -121,3 +121,17 @@ test('a battle gets the same verbs on both sides: the flag and the roster agree'
     assert.ok(SIM_DATA_FILES.includes('hextech'), `${id} needs the roster in the browser to run`);
   }
 });
+
+test('the browser sim can apply 3 级模组: moduleLevels is fetched, and the data path reads it', async () => {
+  // 协议源石【特限恢复】: `simdata.rawModuleLevels()` falls back to the process-wide `generatedCache` in Node — a page has
+  // no such fallback, so the file MUST be in SIM_DATA_FILES or the client-run battle (the default) fights with 1 级模组
+  // while every Node test passes. 业主 2026-10-31 报「特限恢复不生效」.
+  assert.ok(SIM_DATA_FILES.includes('moduleLevels'), 'moduleLevels MUST be in SIM_DATA_FILES');
+  const levels = JSON.parse(read('data/moduleLevels.json'));
+  assert.ok(Object.keys(levels).length >= 170, `data/moduleLevels.json carries ${Object.keys(levels).length} 3 级记录`);
+  // the injected object is built from SIM_DATA_FILES only (the loader test above pins that), and a source over it answers
+  const { DataSource } = await import('../../server/sim/simdata.js');
+  const ds = new DataSource({ moduleLevels: levels });
+  assert.equal(ds.moduleLevel3('uniequip_002_inside')?.level, 3, 'the browser data path resolves the 3 级 record');
+  assert.equal(ds.rawModuleLevels(), levels);
+});

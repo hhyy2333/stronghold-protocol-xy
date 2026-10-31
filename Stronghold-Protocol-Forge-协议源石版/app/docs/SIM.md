@@ -1111,7 +1111,11 @@ owned 6★'s `kits/ops/op-<codename>.js` (kits/index.js `OPERATOR_KIT_FILES`, ki
 (自选)"), a prototype's stand-in kit, a 预备干员's generic kit; no default skill either (the pick chooses any of the
 three). `KITTED_CHARS` lists who has one — shared/diy.js offers no other pick.
 Operator loadouts (DESIGN §16): the unit's def is `getChess(chessId, { skillIndex, moduleId })` of its PlayerBattleInput
-entry (no loadout fields = the default). The skill spec is `kit.skills[selectedSkillId]` when authored, else `kit.skill`
+entry (no loadout fields = the default); `potential` (潜能) and `moduleLevel: 3` (协议源石【特限恢复】: the module's
+equipLevel 3 record from `data/moduleLevels.json`, which the browser loader lists in `SIM_DATA_FILES` — a page has no
+Node fallback) ride along and are resolved the same way. A **normal** form's `moduleId` is the one picked in 干员调配
+(its record has no `modules` list, so `resolveLoadout` alone would drop it; `PlayerState.battleInput` fills it in with
+`shared/loadoutRecord.js selectedModuleOf`). The skill spec is `kit.skills[selectedSkillId]` when authored, else `kit.skill`
 only when the selected skill is the default one, else the GENERIC spec of the selected skill (its generic install is
 chained after the kit's; `kit.skillSource` = 'skills' | 'generic', absent for the default spec) — talents, trait and
 `install` always come from the kit, so keep default-skill logic inside `skill` (or check `unit.skill.id`). Under a

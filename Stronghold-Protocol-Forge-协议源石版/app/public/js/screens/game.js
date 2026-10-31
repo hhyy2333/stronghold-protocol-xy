@@ -115,7 +115,7 @@ import {
   terrainInfo, deviceInfo, deviceTipAt, noteDeviceUnits, deviceUnitsForEntry,
   countdownState, shopBlockReason, stageOverrides, effectiveStage, watchTarget, dropFailureReason,
   previewEnemyKey, prepCamera, prepCameraFor, foldCamera, prepFieldMismatch, deployFoldsShop, deployFieldOf, fieldTile, panelSide, panelSlots, bondPopupPlace, unitLoadout, deployedRecord,
-  mergeTarget, modeOffBonds, readyFundsPrompt, readyShopFold, ownerBandId, ownDiyRecord, ownStandIn, roundStartReplay,
+  mergeTarget, modeOffBonds, readyFundsPrompt, readyShopFold, ownerBandId, ownDiyRecord, ownStandIn, roundStartReplay, ownsModeModules,
 } from '../ui/gameLogic.js';
 import { toast } from '../ui/toasts.js';
 import { BriefingScreen } from './briefing.js';
@@ -1830,6 +1830,15 @@ function MatchScreen() {
     }
     return priv?.loadout ?? null; // own pieces, shop / reward / bond-member cards
   })();
+  // 协议源石【特限恢复】(hex_mode_modules): the owner's operators fight with 3 级模组 (the card's ①). The detail card
+  // composes the same record (shared/loadoutRecord.js withModuleLevel3) — own pieces only: a teammate's unit is another
+  // player's data, and a 补位 stand-in never gets it (server PlayerState.battleInput marks moduleLevel the same way).
+  const detailModuleLevel = (() => {
+    if (!resolved || resolved.type !== 'chess') return null;
+    if (!ownsModeModules(priv)) return null;
+    const mine = detailTarget?.kind === 'unit' ? (!!resolved.piece || detailTarget.unit?.ownerId === myId) : true;
+    return mine ? 3 : null;
+  })();
   // the open detail card's unit draws its attack range on the field (screens/game/range.js inspectRange, GitHub PR #281):
   // an own board piece or read-only prepared map character in prep; in battle or on a scouted board an ally
   // operator / summon on the field — the range it fights with now (the live stats' `range` and `dir`, the snapshot's
@@ -2034,6 +2043,7 @@ function MatchScreen() {
 
       ${resolved ? html`<${DetailPanel} detail=${resolved} editable=${editable} snapHp=${snapHp} onClose=${() => { setDetail(null); setSel(null); }}
         bonds=${detailBonds} offBonds=${offBonds} loadout=${detailLoadout} ops=${priv?.ops ?? null} side=${dSide} shopOpen=${shopOpen} live=${liveStats} voice=${true}
+        moduleLevel=${detailModuleLevel}
         equipCap=${priv?.equipCap ?? 2}
         onBond=${(id) => openBond(id, detailOwner, 'detail')}
         onUnequip=${(itemUid) => actions.unequip(itemUid)} />` : null}

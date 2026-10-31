@@ -8,6 +8,10 @@ export const SIM_DATA_FILES = Object.freeze([
   // 协议源石: installEnemyVerbs resolves every enemy verb card through gameData().hextech, and the player-side battle
   // scripts (hexcards/*) need the same roster paths. Without it the browser sim silently fights with no enemy verbs.
   'hextech',
+  // 协议源石【特限恢复】的 3 级模组 (data/moduleLevels.json): the browser sim resolves `loadout.moduleLevel === 3` through
+  // `simdata.rawModuleLevels()`, whose Node fallback (`generatedCache`) does not exist in a page — without this file the
+  // client-run battle (the default, DESIGN §14) silently fought with 1 级模组 while every Node test passed.
+  'moduleLevels',
 ]);
 
 function deepFreeze(root) {

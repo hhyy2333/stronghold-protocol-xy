@@ -390,6 +390,10 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   用 `shared/loadoutRecord.js selectedModuleOf` 按**精锐记录的模组表**校验后补 `moduleId`，战斗按该模组的 3 级数据打，
   特限模组（ISW）的专属效果与「可以部署在目标点」对普通形态同样生效；没选 / 选默认模组 ⇒ 默认模组的 3 级；选
   「不装备」⇒ 一个模组都不套。补位干员仍不适用（它打的是另一名干员的身体与模组）。
+  客户端同样接上：`ui/gameLogic/loadout.js chessLoadout(..., { moduleLevel: 3, moduleLevels })` 组合同一份 3 级记录，
+  局内详情卡（`ui/detailPanel.js`）对普通形态也画「模组」区块（名字 / 类型 / 已调配 + 3 级特性追加行与天赋），
+  `moduleLevel` 由 `screens/game.js` 只对**自己的**棋子给出（队友的干员按他们自己的卡）。`data/moduleLevels.json`
+  因此进了 `GAME_FILES`（局内 UI 等它）与 `SIM_DATA_FILES`（浏览器端跑的默认战斗要它，页面没有 Node 的 fallback）。
 - 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md`（工作区级）。
 
 ## 协议源石：【死亡之舞】新增 + 四张卡调整（2026-10-31，业主裁定）

@@ -272,7 +272,7 @@ export function tileAllows(ctx, piece, row, col) {
  * source: a hex entry's `iconId` is the ref id (`hex:<cardId>` / `hex:<cardId>#<copySeq>`).
  * @param {any} priv m.private
  */
-function ownsModeModules(priv) {
+export function ownsModeModules(priv) {
   for (const e of Array.isArray(priv?.effects) ? priv.effects : []) {
     if (!isObj(e) || e.iconKind !== 'hex') continue;
     const id = String(e.iconId || e.id || '').replace(/^hex:/, '').split('#')[0];

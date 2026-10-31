@@ -22,7 +22,10 @@ const cx = (...p) => p.flat().filter(Boolean).join(' ');
  * cards silently drop to the drawn glyph plate instead of the tier art.
  */
 export const GAME_FILES = ['config', 'assets', 'chess', 'bonds', 'items', 'bands', 'enemies', 'bosses', 'stages', 'tokens',
-  'choices', 'effects', 'garrisons', 'factions', 'local', 'backups', 'hextech'];
+  'choices', 'effects', 'garrisons', 'factions', 'local', 'backups', 'hextech',
+  // 协议源石【特限恢复】: the detail card composes a 3 级模组 record (shared/loadoutRecord.js withModuleLevel3) for the
+  // owner's operators, so the match screen has to wait for data/moduleLevels.json too.
+  'moduleLevels'];
 
 /**
  * Load every in-match data file; returns lookups (sync, null until loaded).
