@@ -40,6 +40,12 @@
 // dropped or kept differently either way, and a run whose files are all present
 // produces the same manifest byte for byte.
 //
+// The dubs already installed under public/assets/audio/voice/ are listed in `audio.voiceLangs` by every rebuild, with
+// or without --voice-langs. They used to be listed only when the flag was passed, so a rebuild without it silently
+// dropped every non-default dub the manifest had: the files stayed on disk, the 设置 → 配音语言 setting still offered
+// 中文, and the client played the default dub instead (docs/ASSETS.md). What the disk already has is therefore only
+// LISTED — never downloaded: --voice-langs stays the one thing that fetches a dub (downloadableLeaves below).
+//
 // Beyond research 07's ids the plan covers what data/*.json adds: spawnable
 // enemies / tokens (data/enemies.json, data/tokens.json), the 自选 owned-6★ picks
 // of data/backups.json `units` (art from 07's URL patterns) and their summons
@@ -74,7 +80,7 @@
 //                                    [--local-spines] [--no-optional-voice] [--help]
 
 import { readFile, writeFile, mkdir, rename, readdir, unlink } from 'node:fs/promises';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Downloader, PART_SUFFIX } from './assets/downloader.mjs';
@@ -134,6 +140,8 @@ const HELP = `Usage: node tools/fetch-assets.mjs [options]
                     download MORE dubs beside the default one (comma separated, cn | jp | en | kr). They land in
                     audio.voiceLangs[lang][charId][slot] and the game's 干员语音 setting lets each operator pick one.
                     Every dub is the same file names under its own folder: ≈ 2674 files / 66 MB per dub.
+                    A dub already installed under public/assets/audio/voice/ is listed in audio.voiceLangs without
+                    this flag (never downloaded because of that) — the flag is what fetches one.
                     audio.voiceJp (upstream 0.2.2's 日本語 tree) is planned as well and is always the JP dub.
   --voice-all       plan every official voice slot, including the prep-only lines no battle plays
                     (干员报到 / 编入队伍 / 任命队长; 360 files / 19.3 MB more per run — off by default)
@@ -374,6 +382,80 @@ export function orphanFiles(onDisk, referenced) {
   return onDisk.filter((r) => !listed.has(r.toLowerCase()) && !r.startsWith('local/') && !r.endsWith(PART_SUFFIX));
 }
 
+/**
+ * True when a directory holds at least one real file anywhere below it. An interrupted download (`<file>.part`, the
+ * resume point of a run that stopped) is not one: a dub whose only bytes are `.part` is not installed, and listing it
+ * would put 2674 lines of nothing into `audio.voiceLangs` (resolveTemplate would drop them again, one warning each).
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function hasFilesUnder(dir) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+  for (const e of entries) {
+    if (e.isFile()) { if (!e.name.endsWith(PART_SUFFIX)) return true; continue; }
+    if (e.isDirectory() && hasFilesUnder(join(dir, e.name))) return true;
+  }
+  return false;
+}
+
+/**
+ * The dubs already installed under `public/assets/audio/voice/`: a folder named like one of the CDN's dub folders
+ * (audio.mjs VOICE_DIRS) that holds at least one file.
+ *
+ * Why the disk gets a say: `audio.voiceLangs` used to be written only when `--voice-langs` was passed, so a rebuild
+ * without the flag silently dropped every non-default dub the manifest had — the files stayed on disk, 设置 → 配音语言
+ * still offered 中文, and the client (which reads the manifest, not the disk) played the default dub. A plain
+ * `npm run assets` on a machine that already had the dubs was enough to lose them.
+ * @param {string} voiceRoot public/assets/audio/voice
+ * @returns {string[]} the dub folder names found (cn | jp | en | kr), sorted
+ */
+export function dubsOnDisk(voiceRoot) {
+  const out = [];
+  let entries;
+  try { entries = readdirSync(voiceRoot, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (!e.isDirectory() || !Object.hasOwn(VOICE_DIRS, e.name)) continue;
+    if (!hasFilesUnder(join(voiceRoot, e.name))) continue;
+    out.push(e.name);
+  }
+  return out.sort();
+}
+
+/**
+ * The dubs a rebuild writes into `audio.voiceLangs`: the ones `--voice-langs` names (those also get downloaded) unioned
+ * with the ones already on disk (listed only), minus the default dub — that one IS `audio.voice`, and a dub must never
+ * appear in both trees (public/js/audio.js reads `voice` as the fallback for every other table, docs/ASSETS.md).
+ * @param {string[]} explicit --voice-langs entries
+ * @param {string[]} onDisk dubsOnDisk() of this checkout
+ * @param {string} defaultLang the manifest's `voiceLang` (--voice-lang, `jp` by default)
+ * @returns {string[]} sorted, de-duplicated dub names
+ */
+export function mergeVoiceLangs(explicit = [], onDisk = [], defaultLang = '') {
+  const named = (list) => (Array.isArray(list) ? list : []);
+  return [...new Set([...named(explicit), ...named(onDisk)]
+    .filter((l) => typeof l === 'string' && Object.hasOwn(VOICE_DIRS, l) && l !== defaultLang))].sort();
+}
+
+/**
+ * The leaves `downloadLeaves` may fetch: the whole plan minus the dubs nobody asked for. A dub found on disk is only
+ * LISTED — its files are already there, and fetching 2674 more per dub is exactly what "rebuild the manifest" must not
+ * do to a machine that happens to have them. Only a lang named by `--voice-langs` is downloaded.
+ *
+ * `resolveTemplate` still walks the full template, so a listed dub keeps whatever it has on disk and a dub whose
+ * folder turned out to be empty simply resolves to nothing.
+ * @param {{path:string, leaf:any}[]} leaves collectLeaves(plan.template)
+ * @param {string[]} explicitLangs --voice-langs entries (the dubs the user asked to download)
+ * @returns {{path:string, leaf:any}[]}
+ */
+export function downloadableLeaves(leaves, explicitLangs = []) {
+  const explicit = new Set((Array.isArray(explicitLangs) ? explicitLangs : []).filter((l) => Object.hasOwn(VOICE_DIRS, l)));
+  return leaves.filter(({ path }) => {
+    const m = /^audio\.voiceLangs\.([^.]+)\./.exec(path || '');
+    return !m || explicit.has(m[1]);
+  });
+}
+
 const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
 const log = (m) => console.log(m);
 
@@ -536,9 +618,19 @@ async function main() {
   const localEnemySpines = await syncLocalSpines(opts, 'enemy');
   const localTokenSpines = await syncLocalSpines(opts, 'token');
   const statsTemplate = await statsTemplateJobs(ROOT, { offline: opts.offline || opts.dryRun, log });
+  // 盘上已经装好的配音一并进清单（--voice-langs 只是额外下载）。重建清单的人常常不带这个旗标，而
+  // public/assets/audio/voice/<lang>/ 里的文件本来就在；只看旗标就是「盘上有、清单没有」——玩家在
+  // 设置 → 配音语言 里选 中文，客户端按清单找不到中文行，退回默认档（实际播日文）。
+  const dubs = dubsOnDisk(join(ASSETS, 'audio', 'voice'));
+  const voiceLangs = mergeVoiceLangs(opts.voiceLangs, dubs, opts.voiceLang);
+  if (voiceLangs.length) {
+    const explicit = new Set(opts.voiceLangs);
+    log(`[voice] dubs ${voiceLangs.map((l) => `${l.toUpperCase()}${explicit.has(l) ? '(--voice-langs)' : '(盘上已装，只列出)'}`).join(' ')}` +
+      ` → audio.voiceLangs（盘上已装的配音一并列出；--voice-langs 只是额外下载）`);
+  }
   const plan = buildPlan({
     assets07, ops03, enemies05, maps05, audio, modelsData, charword, voiceLang: opts.voiceLang,
-    voiceLangs: opts.voiceLangs,
+    voiceLangs,
     // default: only the slots a battle can play (plan.mjs VOICE_BATTLE_SLOTS); --voice-all takes the whole official set
     voiceSlots: opts.voiceAll ? null : undefined,
     // --optional-voice: plan upstream's extra dub trees beside our `voiceLangs` model (off by default: see parseArgs)
@@ -553,13 +645,18 @@ async function main() {
     statsTemplate,
   });
   const leaves = collectLeaves(plan.template);
+  // 自动发现出来的档只「列出」不「下载」：它们的文件已经在盘上，plan 里为它们多出的行（每档 ≈2674 个）不该变成一次
+  // 66 MB 的下载，否则「重建清单」会顺手把三档配音全下下来。--voice-langs 点名的档照旧下载（downloadableLeaves）。
+  const toDownload = downloadableLeaves(leaves, opts.voiceLangs);
   log(`[plan] ${leaves.length} files + ${plan.models.size} Spine models ` +
     `(${Object.keys(plan.template.chars).length} chars, ${Object.keys(plan.template.enemies).length} enemies, ` +
     `${Object.keys(plan.template.tokens).length} tokens, ${Object.keys(plan.template.ui).length} UI sprites, ` +
     `${Object.keys(plan.template.audio.sfx.units).length} units with SFX, ` +
     `${Object.keys(plan.template.audio.voice).length} operators with ${opts.voiceLang.toUpperCase()} voice` +
-    `${opts.voiceLangs.length ? ` + dubs ${opts.voiceLangs.filter((l) => l !== opts.voiceLang).map((l) => l.toUpperCase()).join('/')}` : ''}, ` +
-    `${Object.keys(plan.template.audio.voiceJp || {}).length} with JP voice)`);
+    `${voiceLangs.length ? ` + dubs ${voiceLangs.map((l) => l.toUpperCase()).join('/')}` : ''}, ` +
+    `${Object.keys(plan.template.audio.voiceJp || {}).length} with JP voice` +
+    // a listed dub adds its lines to the plan but not to the downloads; --dry-run is where that difference shows
+    `${toDownload.length === leaves.length ? '' : `; ${toDownload.length} of them to download`})`);
   if (opts.dryRun) {
     for (const n of plan.notes) log(`  note: ${n}`);
     return 0;
@@ -570,7 +667,7 @@ async function main() {
     concurrency: opts.concurrency, force: opts.force, keepExisting: opts.addOnly, log, ...network,
   });
   await dl.loadLedger();
-  const downloadErrors = opts.offline ? [] : await downloadLeaves(leaves, dl, ASSETS, 'files');
+  const downloadErrors = opts.offline ? [] : await downloadLeaves(toDownload, dl, ASSETS, 'files');
 
   let current = null;
   if (existsSync(MANIFEST)) {

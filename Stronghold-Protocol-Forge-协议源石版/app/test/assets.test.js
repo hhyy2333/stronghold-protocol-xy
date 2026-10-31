@@ -19,7 +19,7 @@ import { pngSize, isCompletePng, isMp3, validate } from '../tools/assets/formats
 import { encodeWoff2, decodeWoff2Tables, readSfnt, uintBase128 } from '../tools/assets/woff2.mjs';
 import { assetToPath, pickUnitSfx, indexAudio } from '../tools/assets/audio.mjs';
 import { mirrorUrl, safeName, encodePath } from '../tools/assets/sources.mjs';
-import { collectEnemyIds, skillIndicesByChar, buildPlan, GUIDE_PAGES, UI_EXTRAS } from '../tools/assets/plan.mjs';
+import { collectEnemyIds, skillIndicesByChar, buildPlan, GUIDE_PAGES, UI_EXTRAS, HAND_BAND_ICONS, HAND_BAND_ICON_ALIASES } from '../tools/assets/plan.mjs';
 import { resolveTemplate, collectLeaves } from '../tools/assets/manifest.mjs';
 import { FULL_ZIP_JP_VOICE, JP_VOICE_DIR } from '../tools/package.mjs';
 import { spineEntry } from '../public/js/assets.js';
@@ -154,9 +154,20 @@ describe('animation-role resolver (research 07 §5.4)', () => {
       const { bad, seen } = walk(/^Skill_?0*[1-9](?:$|_)/i, (a, id) => !id.startsWith('enemies.') || !!a.skills);
       assert.ok(seen >= 10, `models with numbered skill clips (${seen})`);
       assert.deepEqual(bad, []);
+      // The official ability's own clip per slot (PREFAB_SPINE_ROLES: the prefabs do not follow Skill_n = slot n-1):
+      // 大潮 Skill_02 and 崩坍 Skill_01 in every form, 断裂生殖 Skill_03, 物种爆发 Skill_04.
       const q = manifest.enemies.enemy_1521_dslily.spine.anims;
-      assert.deepEqual(Object.values(q.skills).map((c) => c.loop), ['Skill_01', 'Skill_02', 'Skill_03', 'Skill_04']);
-      assert.equal(q.skill.loop, 'Skill_01', 'the primary clip is unchanged');
+      assert.deepEqual(Object.values(q.skills).map((c) => c.loop),
+        ['Skill_02', 'Skill_01', 'Skill_03', 'Skill_02', 'Skill_01', 'Skill_03', 'Skill_02', 'Skill_01', 'Skill_03', 'Skill_04']);
+      assert.equal(q.skill.loop, 'Skill_02', 'the primary clip is the tide (slot 0)');
+      // the other five enemy fixes of the same change
+      const slots = (id) => Object.values(manifest.enemies[id].spine.anims.skills).map((c) => c.loop);
+      assert.deepEqual(slots('enemy_1511_mdrock'), ['Skill_2', 'Skill_1'], '泥岩: the two slots are swapped');
+      assert.deepEqual(slots('enemy_9013_acstmk'), ['Skill_1', 'Skill_3', 'Revive'], '胄: 死亡集群 is Skill_3, not Skill_2');
+      assert.deepEqual(slots('enemy_1517_xi'), ['Skill_01_02', 'Skill_02_Loop', 'Skill_02_Loop'], '自在: 纬地经天 is Skill_01_02');
+      assert.deepEqual(slots('enemy_9014_acstma'), ['Launch_Begin', 'Back_End'], '斩胄之剑: 掷剑 / 收回');
+      assert.deepEqual(slots('enemy_1525_blkswb'), ['A_Skill2', 'A_Attack', 'B_Skill2', 'B_Attack'], '锏: 肆虐风雪 in each form');
+      assert.deepEqual(slots('enemy_9032_aclionk'), ['Skill_1', 'Skill_2', 'Skill_2', 'Skill_1', 'Skill_3'], '阿利斯泰尔');
       // operators keep their pool's indices (宴's fix, PREFAB_SPINE_ROLES / DESIGN §25.22.9, stays as it was)
       const utage = manifest.chars.char_337_utage.spine.front.anims;
       assert.deepEqual(Object.keys(utage.skills).sort(), ['0', '1']);
@@ -938,6 +949,26 @@ describe('generated manifest data/assets.json', () => {
     for (const id of Object.keys(a07.items)) assert.ok(manifest.items[id], id);
     for (const id of Object.keys(a07.bands)) assert.ok(manifest.bands[id], id);
     for (const id of Object.keys(a07.enemies)) assert.ok(manifest.enemies[id]?.icon, id);
+  });
+
+  // 业主 2026-10-31「把管理员2，3策略图像加上，用管理员策略的图像」: every strategy the game offers has a portrait, and the two
+  // extra 管理员 strategies borrow 管理员's own (tools/assets/plan.mjs HAND_BAND_ICON_ALIASES — a full `fetch-assets` rebuild
+  // writes it; tools/asset-aliases.mjs applies it to the committed manifest without a rebuild).
+  test('every strategy in data/bands.json has a portrait; 管理员2 / 管理员3 share 管理员\'s', { skip: !haveManifest && 'data/assets.json not generated' }, () => {
+    const bands = readJson('data/bands.json');
+    const miss = Object.keys(bands).filter((id) => !manifest.bands[id]);
+    assert.deepEqual(miss, [], 'a strategy with no entry here draws its name\'s first character instead of its picture');
+    assert.equal(manifest.bands.band_admin2, manifest.bands.band_admin, '管理员2 uses 管理员\'s portrait');
+    assert.equal(manifest.bands.band_admin3, manifest.bands.band_admin, '管理员3 uses 管理员\'s portrait');
+    assert.equal(Object.keys(manifest.bands).length, 43, '40 official + the three hand-authored 管理员 strategies');
+  });
+
+  test('the band-portrait aliases name a strategy on one side and a hand-authored file on the other', { skip: !haveManifest && 'data/assets.json not generated' }, () => {
+    const bands = readJson('data/bands.json');
+    for (const [bandId, of] of Object.entries(HAND_BAND_ICON_ALIASES)) {
+      assert.ok(bands[bandId], `${bandId} is a strategy of data/bands.json (tools/build-data.mjs CUSTOM_BANDS)`);
+      assert.ok(HAND_BAND_ICONS.includes(of), `${of} ships its own file (tools/assets/plan.mjs HAND_BAND_ICONS)`);
+    }
   });
 
   test('DESIGN §16 loadouts: every selectable skill has its icon; a multi-skill operator model has a clip per skill index', { skip }, () => {

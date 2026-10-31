@@ -74,7 +74,7 @@ npm run assets       # = node tools/vendor.mjs && node tools/fetch-assets.mjs
 | `--index-ttl=H` | Re-download a cached index older than `H` hours. Unset (or `0`) = never: a parsable cache is used however old it is, which is what every run before this did. Environment: `SP_INDEX_TTL`. |
 | `--cache-dir=DIR` | Where the cache lives: the ledger, `.cache/assets-report.json`, the Spine parse cache and the three indexes. Relative paths are from the repository root; the default is `.cache`. Environment: `SP_CACHE_DIR`. |
 | `--voice-lang=jp` | The manifest's DEFAULT 干员战斗语音 dub: `jp` (default since 0.9.0 — the dub the released bundle ships) | `cn` | `en` | `kr` — these are the CDN's own folder names (`voice_cn/`, `voice/`, `voice_en/`, `voice_kr/`); the local layout is always `audio/voice/<lang>/<charId>/cn_<n>.mp3` (the same file names in every dump, only the folder differs). |
-| `--voice-langs=cn,jp,en,kr` | Download MORE dubs beside the default one (`cn` \| `jp` \| `en` \| `kr`, comma separated). They land in `audio.voiceLangs[lang]` and the game's 设置 → 配音语言 / 干员详情 → 配音 let a player pick one per operator (v0.7.1). About **2,674 files / 66 MB per dub** — the four dubs are ≈ 262 MB. A release bundle ships the default dub only and the others travel as a separate voice pack (`scripts/make-voice-pack.mjs`, v0.7.2); the client falls back to the default dub for a line the installed dubs lack (`public/js/audio.js`), and `public/js/voiceDubs.js` probes one line per dub so the UI offers only what is really there. |
+| `--voice-langs=cn,jp,en,kr` | Download MORE dubs beside the default one (`cn` \| `jp` \| `en` \| `kr`, comma separated). **It is the only thing that downloads a dub**: a dub already installed under `public/assets/audio/voice/<lang>/` is written into `audio.voiceLangs` by every rebuild, flag or no flag, and being listed that way never triggers a download. They land in `audio.voiceLangs[lang]` and the game's 设置 → 配音语言 / 干员详情 → 配音 let a player pick one per operator (v0.7.1). About **2,674 files / 66 MB per dub** — the four dubs are ≈ 262 MB. A release bundle ships the default dub only and the others travel as a separate voice pack (`scripts/make-voice-pack.mjs`, v0.7.2); the client falls back to the default dub for a line the installed dubs lack (`public/js/audio.js`), and `public/js/voiceDubs.js` probes one line per dub so the UI offers only what is really there. |
 | (every run) | `audio.voiceJp` (upstream 0.2.2's 日本語 tree) is planned as well — always the JP dub, beside the default `audio.voice` |
 | `--voice-all` | Plan every official voice slot, including the prep-only lines no battle plays (干员报到 / 编入队伍 / 任命队长 — 360 files, one per operator and slot). Off by default: nothing requests them, so planning them only makes every run download more. |
 | `--prune` | Delete files under `public/assets/` that the manifest no longer references, for example after a mapping change. Without this flag they are only listed in the report. `public/assets/local/` (written by `tools/local-extract`) is never pruned. Implies `--allow-shrink`. |
@@ -297,7 +297,7 @@ node tools/fetch-assets.mjs --cache-dir=D:\sp-cache  # an absolute path
 | Bond icons (the real autochess glyphs) | ArknightsAssets2 `cn` `ui/autochess/[uc]autochesscommon/arts/bondicon/`. Fallback: the camp logo. | `bond/{bondId}.png` |
 | Shop item icons | AA2 `…/arts/shopitemicon/` | `item/{trapId}.png` |
 | Band (strategy) icons | AA2 `…/arts/bandicon/` | `band/{bandId}.png` |
-| 策略「管理员」's icon (the one hand-authored band, `tools/build-data.mjs CUSTOM_BANDS`) | **none** — no official band exists, so the file ships in the tree (square, 680², the owner's art) | `band/band_admin.png`; `tools/assets/plan.mjs HAND_BAND_ICONS` gives the leaf no URL, so a `fetch-assets` rebuild keeps the entry from the file on disk (`resolveTemplate` publishes what it finds) instead of dropping it as a miss |
+| 策略「管理员」's icon (the one hand-authored band, `tools/build-data.mjs CUSTOM_BANDS`) | **none** — no official band exists, so the file ships in the tree (square, 680², the owner's art) | `band/band_admin.png`; `tools/assets/plan.mjs HAND_BAND_ICONS` gives the leaf no URL, so a `fetch-assets` rebuild keeps the entry from the file on disk (`resolveTemplate` publishes what it finds) instead of dropping it as a miss. 管理员2 / 管理员3 have no art of their own and share this file (业主 2026-10-31「把管理员2，3策略图像加上，用管理员策略的图像」): `HAND_BAND_ICON_ALIASES` points `band_admin2` / `band_admin3` at the same URL, and `node tools/asset-aliases.mjs` applies that to the committed manifest without a full rebuild |
 | Profession, sub-profession and battle-card icons | AA2 `arts/profession_hub`, `arts/ui/subprofessionicon`, `ui_battle_new/battlecard` | `prof/icon_{p}.png`, `prof/large_{p}.png`, `prof/battlecard_{p}.png`, `prof/sub/{subProfessionId}.png` |
 | UI sprites (see below) | AA2 `ui/autochess/**`, `arts/**`, `activity/[uc]act2autochess/**`, `battle/[pack]common/sprites` | `ui/{group}/{key}.png` |
 | Statistics artwork and fonts | [Official statistics template](https://ak-webview.hypergryph.com/autoChess/act1autochess) | `ui/statistics/`; fetched by asset setup, or separately with `node tools/fetch-stats-assets.mjs` |
@@ -425,7 +425,10 @@ All paths are URL paths relative to the site root, for example `/assets/char/ava
     voiceLang: 'jp',                                       // which dub `voice` holds (shared/constants.js DEFAULT_VOICE_LANG)
     voiceLangs: { [lang]: { [charId]: { …same slots… } } }, // the OTHER dubs (cn / en / kr beside the default), one table per language, decided by the
                            // player (设置 → 配音语言, 干员详情 → 配音 overrides it per operator; v0.7.1). Planned with
-                           // `--voice-langs=cn,jp,en,kr`: every dub carries the same file names under its own folder
+                           // `--voice-langs=cn,jp,en,kr` — and, for a dub already on disk, by every rebuild: what is
+                           // installed is listed whether the flag is passed or not, and a listed dub is never
+                           // downloaded (`--voice-langs` is what fetches one). Every dub carries the same file names
+                           // under its own folder
                            // (audio/voice/<lang>/<charId>/cn_<n>.mp3), so a language is a folder swap. A dub this
                            // machine did not download — or a single line the official dump lacks for that dub — is
                            // simply absent, and public/js/audio.js voiceLinesFor falls back to the default table:
@@ -667,6 +670,93 @@ Other renderer rules from research 07 §5.4–5.5:
 | `subProfIcon` | `sub_fastshot_icon` | `prof.sub[id minus "sub_" and "_icon"]` |
 - **Missing unit SFX:** use `audio.sfx.battle.enemyHit` or a WebAudio blip (research 07 §6.4).
 - **Bond icons:** if the real glyph ever fails, the stored file is the nation camp logo.
+
+## 本机素材清单 `data/local-assets.json`：漏一个 group 会静默退回兜底
+
+这一节讲的是**每台机器**的那份清单，不是发给大家的 `data/assets.json`。代码：`tools/local-assets-groups.mjs`（判据）、
+`tools/asset-pack-doctor.mjs check-groups`（体检入口）、`tools/local-extract/extract.py`（写出清单）、
+`test/assets/manifest-groups.test.js`（判据的测试）。
+
+### 它是什么
+
+客户端所有「本机素材」—— 干员/敌人的 spine 模型、战场 3D 场景、协议源石的阶位图与装备图标、首页图标与主题、
+玩法说明页、模块类型图标、召唤物 token —— 的 URL 都从 `data/local-assets.json` 里查：`public/js/data.js` 的
+`localAsset(group, name)` 读 `data.get('local').groups[group][name].path`，查不到就 **返回 null**。
+
+这份清单**是这台机器的状态**，不是仓库里的生成物：它 git-ignored，由本机的 `tools/local-extract/extract.py`
+从本机客户端里抽出来写出（`--only` 那次只替换它自己那几个 group，其余原样保留）。所以它会漂 —— 重新提取一次、
+手动删一批、从别的机器拷一份旧的过来、或者一次只跑了一部分 job，都会让它和磁盘上的 `public/assets/local/` 对不上。
+**这不是一次性的意外**：0.19.24 出过一次同类事故（阿里云 `admin` 家目录里还留着那一刻的备份
+`backup-b-local-assets.json.01924-bad`：1853 条 / 130 group，2026-10-25），当时靠手工拷回好清单修好；0.19.36 又
+来了一次（1803 条 / 130 group，线上旧版 0.19.35 是 1955 条 / 153 group，少 23 个 group）。
+
+### 漏 group 的表现：客户端不报错，只是画别的东西
+
+`localAsset()` 拿不到就返回 null，**每个调用方都退回兜底**：协议源石卡片退回去画「战/共/均」首字、装备图标退回
+画形状、战场 3D 场景退回金属棋盘、自定义干员立绘退回占位图、首页主题退回纯色。没有报错、没有日志、测试也不会红
+—— 因为文件、目录、服务器上的静态文件全都在，只是**清单里没登记**，客户端就当成这台服务器没有那份素材。
+
+0.19.36 发出去的那份清单少了 23 个 group：`hextech/tier`、`hextech/item`、`hextech/audio`、`char/char_4182_oblvns`、
+`char/char_4217_makoto`、`char/char_9002_yana`、`scene/act1autochess_m01..m07`、`scene/act2autochess_m01..m04`、
+`scene/tex`、`ui/homeicon`、`ui/hometheme`、`spine/enemy/enemy_10109_mjcgst`、`spine/enemy/enemy_1130_infstr`。这些目录
+和文件在两台服务器与本机的 `public/assets/local/` 下**全都还在**，正是这一节开头说的「客户端当成没有」。
+
+### 体检怎么跑
+
+```bash
+node tools/asset-pack-doctor.mjs check-groups              # 看这个 checkout
+node tools/asset-pack-doctor.mjs check-groups --root <dir> # 看别的 checkout
+node tools/asset-pack-doctor.mjs check-groups --json       # 给发版脚本用
+```
+
+判据只有一条：**磁盘上「直接含文件」的目录就是一个 group**，`groups` 必须把它列上。
+
+- group 名 = 目录相对 `public/assets/local/` 的路径：`guide`、`scene/tex`、`ui/homeicon`、`hextech/tier`、
+  `spine/enemy/enemy_10004_trdiam`、`char/char_4182_oblvns`。所以一层（`guide`）、两层（`scene/tex`）、
+  三层（`spine/enemy/<id>`）都认。
+- 只装子目录的中间层不是 group（`spine/`、`spine/enemy/`、`char/`），已经是一个 group 的目录也不再往下走
+  （`char/<charId>/spine/front/*.png` 属于 `char/<charId>` 这个 group 的文件）。
+- 目录里没有任何文件（空目录、只有子目录）算不存在。
+
+两个方向分开报：**磁盘有、清单没有**是致命项（exit 1，客户端静默退回兜底）；**清单有、磁盘没有**默认只是警告
+（清单指向空处，客户端会去取不存在的文件 —— 目录被撤下或这台机器没提取过）。
+
+`check-groups --strict` 把「清单有、磁盘没有」也算失败（exit 1）。开关的用法按场合分：**在服务器上体检请带
+`--strict`**（那里 404 就是玩家可见的退回兜底），**在出包工作区/出包机上不要带**（lite 包、只带 `spine/enemy/*`
+的发版包本来就不带全套 `public/assets`，带了会误报）。
+
+出包时这道体检自动跑：`npm run package`（全量包与更新包）在 `tools/package.mjs` 的 `plan()` 里对同一个纯函数求值，
+有缺口就变成 `PROBLEMS`、出包失败并逐条打印缺的 group。**没有 `public/assets/local/` 的机器**（干净 checkout、CI、
+只开服务器的主机）优雅跳过：那里本来就没有本机素材，不该被挡下来。lite 包不带本机素材，也不查。
+
+本机的正例（2026-10-30 修好之后）：`count 1941 / 152 group`，其中 `hextech/tier` 3 条、`hextech/item` 7 条、
+`hextech/audio` 2 条、`char/*` 3 个 group、`scene/*` 12 个 group、`ui/homeicon` 2 条、`ui/hometheme` 6 条 ——
+`check-groups` 在这台机器上应当一个 group 都不缺。
+
+### `fx` 为什么例外
+
+官方特效（`public/assets/local/fx/`）**有自己的一份清单** `data/local-fx.json`（客户端用
+`public/js/assetPack.js mergeLocalManifests` 把两份合起来看，DESIGN §35）。`tools/local-extract/extract.py` 是
+**故意**把 `fx` group 从 `data/local-assets.json` 里丢掉的（见 `extract.py` 头部说明和 `fx.py` 的
+`FX_GROUPS` / `ran_groups` 注释：一次 fx 跑会把残留的 `fx` / `fx/*` group 一起换掉）。所以
+体检必须排除 `fx` 与 `fx/*`，否则每次都是假警报；反过来也**不要**把 `fx` 补进 `data/local-assets.json`。
+
+### 救援步骤：漏 group 时重新登记，不是重新解包
+
+素材文件通常在 `public/assets/local/<group>/` 下都还在（`du -sh public/assets/local/*` 能看到体量），所以修法是把
+**group 条目补回 `data/local-assets.json`**，不是重新跑一遍解包（也不该重打素材）。顺序：
+
+1. 先体检，确认到底是「磁盘有、清单没有」还是「清单有、磁盘没有」：
+   `node tools/asset-pack-doctor.mjs check-groups`。
+2. 补登记：`node tools/local-extract/rebuild-enemy-groups.mjs` 能重建 `spine/enemy/*` 那一批；其余 group 用
+   `node tools/local-extract/extract.py --only <job>`（只替换它自己那几个 group，别的原样保留），或者从一台**已经
+   体检通过**的机器的 `data/local-assets.json` 里把缺的 group 条目整个拷过来。
+3. 补完再跑一次 `check-groups`，必须 0 缺口。**另外**要确认清单里每一条 `path` 在磁盘上都存在 —— 一个指向空处的
+   清单同样不能上线（`server/update.js` 的 `listedArtFiles` 会读它，客户端 `data.js` 的 `localAsset()` 拿不到就
+   静默退回画字）。体检的 `--json` 输出里 `dangling` 非空就是这个信号。
+4. 不要手写 `fx` 条目（见上一节）。`count` 字段只是给人看的，客户端只读 `groups`。
+5. 重新出包，`npm run package` 会在 `plan()` 里再拦一次；`node tools/asset-pack-doctor.mjs check-groups` 在服务器上
+   也能跑（它不碰网络）。
 
 ## Verification
 
