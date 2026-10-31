@@ -22,7 +22,7 @@ import { SkinSection } from '../ui/skinPicker.js';
 // deployed as its official stand-in (room.ownership; ui/ownershipModel.js) — with its own 导出 / 导入 / 全部持有.
 // The third tab, 自选编队 (0.2.0 DIY, screens/diy.js): the operators of the four DIY slots (room.diy; ui/diyModel.js) —
 // with its own 导出 / 导入 / 全部清空.
-// The fourth tab, 协议源石 (业主 2026-10-21, screens/hexBans.js): up to 3 protocol-originium cards this player's own
+// The fourth tab, 协议源石 (业主 2026-10-21, screens/hexBans.js): up to 6 protocol-originium cards this player's own
 // draws skip (room.hexBans; ui/hexBanModel.js) — out of match like the two tabs above, applied by the next match.
 // Keyboard: Esc closes, ←/→ move through the (filtered) roster when focus is not in the search field (干员调配 tab).
 // Motion (2026-10-13, the owner's request, as the hub's screens): the overlay darkens what is below, then comes up from
@@ -1101,7 +1101,7 @@ function LoadoutScreen({ st, leaving = false }) {
           <button type="button" role="tab" aria-selected=${tab === 'diy' ? 'true' : 'false'} data-tab="diy" class=${cx('lo-tab', tab === 'diy' && 'is-on')} onClick=${() => setTab('diy')}
             title=${t('5阶、6阶的自选名额：持有的 6★ 干员或原型干员')}>${t('自选编队')}${nDiy ? html`<span class="lo-tab__n num" aria-label=${t('{n} 个自选名额已选择', { n: nDiy })}>${nDiy}</span>` : null}</button>
           <button type="button" role="tab" aria-selected=${tab === 'hexBans' ? 'true' : 'false'} data-tab="hexBans" class=${cx('lo-tab', tab === 'hexBans' && 'is-on')} onClick=${() => setTab('hexBans')}
-            title=${t('局外禁用最多 3 张协议源石，只影响你自己的抽取')}>${t('协议源石')}${nHexBans ? html`<span class="lo-tab__n num" aria-label=${t('{n} 张协议源石已禁用', { n: nHexBans })}>${nHexBans}</span>` : null}</button>
+            title=${t('局外禁用最多 {n} 张协议源石，只影响你自己的抽取', { n: HEX_BANS_LIMIT })}>${t('协议源石')}${nHexBans ? html`<span class="lo-tab__n num" aria-label=${t('{n} 张协议源石已禁用', { n: nHexBans })}>${nHexBans}</span>` : null}</button>
         </div>`}
       </div>
       ${tab === 'hexBans' ? html`<div class="lo-top__right">
@@ -1334,7 +1334,7 @@ export function HexBanButton({ from = 'lobby', size = 'lg', class: cls }) {
   const n = Array.isArray(banned) ? banned.length : 0;
   return html`<button type="button" class=${cx('btn', 'btn--secondary', `btn--${size}`, 'lo-entry', 'lo-entry--hexbans', cls)}
       data-testid="hexbans-open" onClick=${() => openLoadout(from, null, 'hexBans')}
-      title=${t('局外禁用最多 3 张协议源石，只影响你自己的抽取')}>
+      title=${t('局外禁用最多 {n} 张协议源石，只影响你自己的抽取', { n: HEX_BANS_LIMIT })}>
     <${Icon} name="dots" class="btn__icon" />
     <span class="btn__label">${t('协议源石禁用')}</span>
     <span class="lo-entry__own num" aria-label=${t('{n} 张协议源石已禁用', { n })}>${t('禁用')} <b class="num">${n}</b><span class="t-dim">/${HEX_BANS_LIMIT}</span></span>

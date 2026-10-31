@@ -20,8 +20,13 @@
 //   node tools/asset-pack-doctor.mjs make  --live https://game.xyys.fun --out .cache/asset-pack-snapshot.json
 //   node tools/asset-pack-doctor.mjs check --snapshot <快照.json> [--live <base>] [--json]
 //        [--max-drift 5]   容忍的「要走网络」百分比（缺省 5），超过则退出码 3
+//   node tools/asset-pack-doctor.mjs check-groups [--root <dir>] [--json] [--strict]
+//        本机素材清单（data/local-assets.json）必须覆盖 public/assets/local 上真实存在的 group
+//        —— 0.19.36 那次「清单少 23 个 group，客户端静默退回兜底」的守卫。纯本地，不碰网络。
+//        --strict 把「清单有、磁盘没有」也算失败（在服务器上体检时带它；出包工作区不要带）。
 //
-// 退出码：0 = 包仍然可用（漂移在阈值内）；3 = 漂移过大，该重打了；1 = 参数/网络/格式错误。
+// 退出码：0 = 包仍然可用（漂移在阈值内）；3 = 漂移过大，该重打了；1 = 参数/网络/格式错误
+// （check-groups：1 = 磁盘上有 group 没进清单；带 --strict 时「清单有、磁盘没有」也算 1）。
 //
 // `make` 从**线上清单**取（那是唯一的真相：玩家会拿到的就是它）。`check` 也默认取线上，
 // 所以它既能在这台服务器上跑（`--live http://127.0.0.1`），也能在任意机器上对着公网跑。
@@ -30,7 +35,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { LOCAL_DIR, LOCAL_MANIFEST, localGroupGaps } from './local-assets-groups.mjs';
+
+/** 这个 checkout 的根（`check-groups` 缺省就看它）。 */
+export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** 与服务端 `assetIndex.js hash16()` 同一个截断：SHA-256 的前 16 位小写十六进制。 */
 const sha256_16 = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16);
@@ -54,6 +63,12 @@ const USAGE = `usage:
   --timeout <ms>     单次取清单的超时，缺省 300000（清单 2 MB，跨公网慢）
   --attempts <n>     每份清单最多取几次，缺省 3
   --json             机器可读输出（给发版脚本用）
+
+体检本机素材清单的 group（纯本地，不取任何清单）：
+node tools/asset-pack-doctor.mjs check-groups [--root <dir>] [--json] [--strict]
+  --root <dir>       看哪个 checkout（缺省这个仓库；<dir>/data/local-assets.json 与 <dir>/public/assets/local）
+  --json             机器可读输出；有缺口退出码 1
+  --strict           「清单有、磁盘没有目录」也算失败（exit 1）。服务器上体检带它，出包工作区不要带
 `;
 
 /** 清单里一个带内容哈希的 URL：`/assets/~<16 hex>/…` 或 `/fonts/~<16 hex>/…`。 */
@@ -487,6 +502,52 @@ const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
 /** 报告一行。 */
 function say(line = '') { process.stdout.write(`${line}\n`); }
 
+/**
+ * `check-groups`：本机素材清单必须覆盖磁盘上真实存在的 group（0.19.36 事故的守卫，见 local-assets-groups.mjs）。
+ *
+ * 为什么要在出包前单独能跑：它不碰网络、不看版本号，只看两样 git-ignored 的东西 —— 所以它是「这台机器准不准
+ * 备好出包」的判据，而不是「包发出去以后还能不能用」（那是 make / check 的事）。
+ *
+ * 退出码：0 = 对齐（或这台机器没有本机素材，跳过并说明原因）；1 = 磁盘上有 group 没进清单（永远致命）。
+ * `清单有、磁盘没有`（dangling）默认只是警告 —— 它在**出包工作区**上经常是正常的（lite 包、只带 `spine/enemy/*`
+ * 的包本来就不带 `public/assets`）；但在**服务器**上它是玩家可见的（客户端取 404 → 退回兜底），所以在服务器上
+ * 体检请带 `--strict`：那时 dangling 也算失败。
+ * @param {{ root?: string, json?: boolean, strict?: boolean }} [args]
+ */
+export function checkGroups(args = {}) {
+  const strict = !!args.strict;
+  const root = path.resolve(String(args.root || REPO));
+  const r = localGroupGaps(root);
+  const ok = r.error ? false
+    : r.skipped ? true
+      : r.unlisted.length === 0 && (!strict || r.dangling.length === 0);
+  if (args.json) {
+    say(JSON.stringify({ ok, strict, root, ...r }));
+    return ok ? 0 : 1;
+  }
+  if (r.skipped) { say(`跳过：${r.skipped}`); return 0; }
+  if (r.error) { say(`local-assets：${r.error}`); return 1; }
+  if (r.dangling.length) {
+    say(`${strict ? '失败' : '警告'}：${r.dangling.length} 个 group 在清单里但磁盘上没有目录`
+      + `（指向空处，客户端会去取不存在的文件；${strict ? '服务器上这就是玩家可见的退回兜底' : '--strict 时算失败'}）：`);
+    for (const g of r.dangling) say(`  ${g}`);
+  }
+  if (!r.unlisted.length) {
+    if (strict && r.dangling.length) {
+      say('这份清单指着的目录在磁盘上不存在：服务器上先补齐素材，或者把不该有的 group 从清单里去掉，再上线。');
+      return 1;
+    }
+    say(`local-assets：${r.groups} 个 group 全部列在 ${LOCAL_MANIFEST} 里（磁盘 ${LOCAL_DIR}/；fx 有自己的清单 data/local-fx.json，不参与这次体检）`);
+    return 0;
+  }
+  say(`local-assets：磁盘上有 ${r.unlisted.length} 个 group 没进 ${LOCAL_MANIFEST}（${r.files} 个文件）——`);
+  for (const g of r.unlisted) say(`  ${g}`);
+  say('客户端读不到这些 group 不会报错，只会静默退回画字/画形状，所以这份清单不能这么发出去。');
+  say('这份清单是**每台机器的状态**（git-ignored），会漂：0.19.24 与 0.19.36 都是这么漏的（都是 130 group）。');
+  say('修：node tools/local-extract/extract.py（只重建敌人模型用 node tools/local-extract/rebuild-enemy-groups.mjs），然后重新出包。');
+  return 1;
+}
+
 export async function main(argv) {
   const args = {};
   const mode = argv[0];
@@ -495,12 +556,14 @@ export async function main(argv) {
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') { args.json = true; continue; }
+    if (a === '--strict') { args.strict = true; continue; }
     if (a === '-h' || a === '--help') { say(USAGE); return 0; }
     if (!a.startsWith('--')) { say(`未知参数：${a}\n${USAGE}`); return 1; }
     const v = argv[++i];
     if (v === undefined) { say(`${a} 需要值\n${USAGE}`); return 1; }
     args[a.slice(2)] = v;
   }
+  if (mode === 'check-groups') return checkGroups(args);
   const live = String(args.live || 'http://127.0.0.1');
   const netOpts = {
     timeoutMs: Number(args.timeout ?? 300000),

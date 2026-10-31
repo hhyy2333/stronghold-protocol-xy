@@ -157,7 +157,12 @@ function withTimeout(p, ms, what, signal) {
     };
     const onAbort = () => finish(reject, abortError(signal));
     signal?.addEventListener('abort', onAbort, { once: true });
-    timer = setTimeout(() => finish(reject, new Error(`${what} timed out`)), ms);
+    timer = setTimeout(() => {
+      const err = new Error(`${what} timed out`);
+      // a load that ran out of time is retried on its own clock; a real error (no engine / no WebGL) is not
+      err.timedOut = true;
+      finish(reject, err);
+    }, ms);
     // Keep a rejection handler attached even when cancellation wins before this promise settles.
     Promise.resolve(p).then((value) => finish(resolve, value), (err) => finish(reject, err));
     if (signal?.aborted) onAbort();
@@ -219,9 +224,10 @@ export function seedAssets(store) {
  * @param {{ signal?: AbortSignal }} [options] Cancels a pending mount without creating a fallback.
  * @returns {Promise<ReturnType<typeof guardView>>}
  */
-export async function mountFieldView(host, { signal } = {}) {
+export async function mountFieldView(host, { signal, quiet = false } = {}) {
   checkActive(signal);
   const pref = renderPref();
+  let timedOut = false;
   const opts = { data, assets: data.get('assets'), audio, settings: settingsStore.get(), padding: hudPadding, hud: hudBands };
   if (pref !== 'fallback') {
     const controller = new AbortController();
@@ -259,13 +265,19 @@ export async function mountFieldView(host, { signal } = {}) {
       controller.abort();
       dispose(engineView);
       checkActive(signal);
-      console.warn('[field] render engine unavailable, using the simplified view:', err?.message || err);
+      timedOut = err?.timedOut === true;
+      // one notice per mounted screen, however many automatic retries follow (upstream #664)
+      if (!quiet) console.warn('[field] render engine unavailable, using the simplified view:', err?.message || err);
     } finally {
       signal?.removeEventListener('abort', onAbort);
     }
   }
   checkActive(signal);
-  return guardView(createFallbackView(host, { ...opts, assets: data.get('assets') }), 'fallback');
+  const fallback = guardView(createFallbackView(host, { ...opts, assets: data.get('assets') }), 'fallback');
+  // #664: only a load that ran out of time is retried on a timer (2 s, then 8 s); a missing engine or WebGL is a
+  // real error and stays on the simplified board
+  fallback.fellBackAfterTimeout = timedOut;
+  return fallback;
 }
 
 /**
@@ -276,19 +288,37 @@ export function useFieldView(hostRef) {
   const [state, setState] = useState({ view: null, kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const retries = useRef(0);
+  const autoRetries = useRef(0);
+  const notified = useRef(false);
   const viewRef = useRef(null);
   useEffect(() => {
     let dead = false, retrying = false;
+    const timers = new Set();
     const host = hostRef.current;
     if (!host) return undefined;
     setState({ view: null, kind: 'loading' });
     const controller = new AbortController();
-    mountFieldView(host, { signal: controller.signal }).then((view) => {
+    mountFieldView(host, { signal: controller.signal, quiet: notified.current }).then((view) => {
       if (dead) { view.destroy(); return; }
       viewRef.current = view;
-      if (view.kind === 'engine') retries.current = 0;
+      if (view.kind === 'engine') { retries.current = 0; autoRetries.current = 0; }
+      // one fallback notice per mounted screen, not one per automatic retry
+      notified.current = true;
       globalThis.__SP_VIEW__ = view; // dev / E2E introspection (view.raw.stats?.())
       setState({ view, kind: view.kind });
+      // #664: a render stage that TIMED OUT (a cold start, a re-entry into a running match) used to leave the
+      // player on the simplified board for the rest of the match. Retry it on a presentation clock: 2 s, then 8 s,
+      // at most twice. A missing engine / WebGL never comes back, so it is not retried.
+      if (view.kind === 'fallback' && view.fellBackAfterTimeout && renderPref() !== 'fallback' && autoRetries.current < 2) {
+        const delay = autoRetries.current === 0 ? 2000 : 8000;
+        const timer = setTimeout(() => {
+          if (dead || retrying || document.visibilityState !== 'visible') return;
+          autoRetries.current++;
+          retrying = true;
+          setAttempt((n) => n + 1);
+        }, delay);
+        timers.add(timer);
+      }
     }, (err) => { if (!dead && !controller.signal.aborted) console.error('[field] mount failed', err); });
     const unsub = settingsStore.subscribe((s) => viewRef.current?.setSettings?.(s));
     const onResize = () => viewRef.current?.resize();
@@ -305,6 +335,8 @@ export function useFieldView(hostRef) {
     return () => {
       dead = true;
       controller.abort();
+      for (const t of timers) clearTimeout(t);
+      timers.clear();
       unsub();
       window.removeEventListener('resize', onResize);
       window.removeEventListener('online', onRetry);

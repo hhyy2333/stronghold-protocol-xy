@@ -1262,10 +1262,26 @@ function yanyouKit(bb, raw) {
   const flameScale = num(sk.bb?.atk_scale, 0);
   const flameDur = num(sk.bb?.hit_duration, 0);
   const flameR = num(sk.bb?.range_radius, 0);
-  /** The channel's locked target while it is still valid (alive, on the field, targetable), else null. */
-  const lockOf = (u) => {
-    const t = u.mem.flame?.target;
-    return t && t.alive && canTargetEnemy(u, t, YANYOU_PROFILE) ? t : null;
+  /**
+   * The channel's locked targets still valid (alive, on the field, targetable), in lock order. A 协议源石 may widen the
+   * lock (`unit.mem.flameTargets`, 炎百兽 hex_yan_beasts: "祛恶之焰…锁定2个目标"): the kit reads it here at cast time and
+   * on every tick, so a card can set it after the token was spawned (the 炎 bond summons before the cards' battleStart
+   * handlers run). Absent ⇒ exactly the old single lock.
+   */
+  const locksOf = (u) => {
+    const f = u.mem.flame;
+    if (!f) return [];
+    const list = Array.isArray(f.targets) ? f.targets : f.target ? [f.target] : [];
+    return list.filter((t) => t && t.alive && canTargetEnemy(u, t, YANYOU_PROFILE));
+  };
+  /** The channel's first locked target while it is still valid, else null (movement hover / "锁定1个目标"). */
+  const lockOf = (u) => locksOf(u)[0] ?? null;
+  /** The 祛恶之焰 tick damage scale: a card may override it live (`unit.mem.flameScaleFn`, per-layer growth). */
+  const flameScaleOf = (u) => {
+    const fn = u.mem.flameScaleFn;
+    if (typeof fn === 'function') { const v = Number(fn()); if (Number.isFinite(v) && v >= 0) return v; }
+    const v = Number(u.mem.flameScale);
+    return Number.isFinite(v) && v >= 0 ? v : flameScale;
   };
   const refreshKeys = (u) => {
     // cached while it hovers in place — unless the engine rebuilt the range from the (dummy) grid meanwhile
@@ -1287,27 +1303,32 @@ function yanyouKit(bb, raw) {
       kind: 'duration', duration: flameDur, spType: 'time', spCost: cd, initSp: Math.max(0, cd - initCd), trigger: 'DEFAULT',
       attack: { noAttack: true },                                  // channelling: no normal attacks
       onStart({ battle, unit }) {
-        // "触发索敌和普通攻击相同": the normal attack's first target
+        // "触发索敌和普通攻击相同": the normal attack's first target — widened by `unit.mem.flameTargets` (炎百兽).
         const list = battle.enemiesInKeys(unit.rangeKeys, unit, YANYOU_PROFILE);
         sortEnemyTargets(battle, unit, list, null);
-        unit.mem.flame = { target: list[0] ?? null, acc: 1 };
-        if (!list[0]) unit.skill.end('noTarget');
+        const want = Math.max(1, Math.min(3, Math.floor(num(unit.mem.flameTargets, 1))));
+        const targets = list.slice(0, want);
+        unit.mem.flame = { target: targets[0] ?? null, targets, acc: 1 };
+        if (!targets.length) unit.skill.end('noTarget');
       },
       onTick({ battle, unit, dt }) {
         const f = unit.mem.flame;
         if (!f) return;
         if (unit.s.flags.silence) { unit.skill.end('silence'); return; }
-        const t = lockOf(unit);
-        if (!t) { unit.skill.end('targetLost'); return; }
+        const locked = locksOf(unit);
+        if (!locked.length) { unit.skill.end('targetLost'); return; }
         if (!unit.canAct) return;                                  // stunned / frozen: the lock holds, no damage
         f.acc += dt ?? battle.dt;
         if (f.acc < 1 - 1e-9) return;
         f.acc -= 1;
-        // centre-point AoE around the locked target, searched again every second (the target itself included)
-        const hit = flameR > 0 ? battle.foesInRadius(t.x, t.y, flameR) : [];
-        if (!hit.includes(t)) hit.unshift(t);
-        for (const e of hit) battle.dealDamage(unit, e, { amount: unit.s.atk * flameScale, type: 'arts', isSkill: true, tags: ['flame'] });
-        battle.fx('yanyouFlame', { x: t.x, y: t.y, id: unit.id, target: t.id, r: flameR, n: hit.length, dur: 1 });
+        const scale = flameScaleOf(unit);
+        // centre-point AoE around each locked target, searched again every second (the target itself included)
+        for (const t of locked) {
+          const hit = flameR > 0 ? battle.foesInRadius(t.x, t.y, flameR) : [];
+          if (!hit.includes(t)) hit.unshift(t);
+          for (const e of hit) battle.dealDamage(unit, e, { amount: unit.s.atk * scale, type: 'arts', isSkill: true, tags: ['flame'] });
+          battle.fx('yanyouFlame', { x: t.x, y: t.y, id: unit.id, target: t.id, r: flameR, n: hit.length, dur: 1 });
+        }
       },
       onEnd({ unit }) { unit.mem.flame = null; },
     } : null,

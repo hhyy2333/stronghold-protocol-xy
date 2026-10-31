@@ -106,11 +106,16 @@ export function abOf(b, e) {
  * its data record's skills[] (`s.slot`) and, when the skill's blackboard has one, its `duration` (render/app.js: the
  * slot's skill clip, render/vfx/skillfx.js: that skill's official effects for the window). No gameplay effect: no state,
  * no random draw (DESIGN §8.2; golden counts the event, nothing else moves).
+ * `turnClip` (s, optional): this cast took the normal attack's turn and its official clip is that long — the event then
+ * carries a **fifth field** `['cast', id, slot, duration, turnClip]` (1.667 for 昆图斯's 大潮 …). The client plays that
+ * slot's clip for that long in place of the attack clip (render/units.js holdCast). Not declared ⇒ the event is exactly
+ * what it was before (three or four fields), so an old consumer reads it unchanged.
  */
-export function castSlot(b, e, s) {
+export function castSlot(b, e, s, turnClip = null) {
   if (!b || !e || !s || !Number.isInteger(s.slot)) return;
   const d = s.bb && typeof s.bb.duration === 'number' && s.bb.duration > 0 ? Math.round(s.bb.duration * 100) / 100 : 0;
-  b._ev(d > 0 ? ['cast', e.id, s.slot, d] : ['cast', e.id, s.slot]);
+  if (turnClip != null) b._ev(['cast', e.id, s.slot, d, Math.round(Math.max(0, turnClip) * 1000) / 1000]);
+  else b._ev(d > 0 ? ['cast', e.id, s.slot, d] : ['cast', e.id, s.slot]);
 }
 
 /** Attach abilities to an enemy (calls their spawn()). */
@@ -329,7 +334,14 @@ export function stepToward(u, tx, ty, dist) {
 }
 
 /**
- * Set a 频次 unit's hits (maxHp := hits, full): `n` rounded to a whole count, at least 1.
+ * 次数怪（频次 / 器物）的生命值上限，即「最多要打多少次」—— 业主 2026-10-28:「先限制次数怪的最大生命值为150」。
+ * 这些单位的 maxHp 就是命中次数，回合 / 联防的 HP 倍率（`mods.hpMul`）会把它成倍放大；封顶后任何一场里都不会出现
+ * 要打上百次才倒的器物。
+ */
+export const HIT_COUNT_MAX_HP = 150;
+
+/**
+ * Set a 频次 unit's hits (maxHp := hits, full): `n` rounded to a whole count, 1 … HIT_COUNT_MAX_HP.
  *
  * ⚠️ **这会覆盖 `base.maxHp`** —— 它只该用在**器物 / 频次怪**身上（它们**本来就是**"打 N 次才倒"，没有血量可言）。
  * 「给敌人加一层能挡 N 次攻击的盾」是另一套东西：`ab.hitShield`（enemies.js `onHitIn`：整段伤害被 cancel、扣 1 层）。
@@ -337,7 +349,7 @@ export function stepToward(u, tx, ty, dist) {
  * 「莱茵护甲怎么把怪的生命值改了」（server/sim/content/hextech.js hitShield 的注释）。
  */
 export function setHits(e, n) {
-  const h = Math.max(1, Math.round(n));
+  const h = Math.max(1, Math.min(HIT_COUNT_MAX_HP, Math.round(n)));
   e.base.maxHp = h;
   e.markDirty();
   void e.s;

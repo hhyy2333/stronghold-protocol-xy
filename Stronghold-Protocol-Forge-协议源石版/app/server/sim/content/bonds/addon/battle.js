@@ -74,7 +74,7 @@
 import { canTargetEnemy, enemyStealthed, extendedGrid } from '../../../targeting.js';
 import { normDir, rotateOffset, localOrder, localBefore } from '../../../dir.js';
 import { bodyKeys, bodyInRange } from '../../../body.js';
-import { applyRedirectCut, isHpLoss, redirectShare } from '../../../damage.js';
+import { applyRedirectCut, isHpLoss, isRedirectShare, redirectShare } from '../../../damage.js';
 // 本仓库把 `COLS` 改成了「画布步长」(GEO.CANVAS_COLS = 33，百人线留的余量)，官方的 19×21 图幅另有 `FIELD_COLS`
 // (= GEO.COLS = 21)。上游 0.2.4 的 `raidBoard` 是在上游 `COLS === GEO.COLS` 的前提下写的，于是那里的 COLS 是
 // **图幅**语义 ⇒ 移植到本仓库必须改用 `FIELD_COLS`，否则空半场的列上界会从 18 悄悄放宽到 30。
@@ -652,10 +652,20 @@ export function install(battle) {
         const sp = num(bb.sp);
         if (sp > 0) for (const o of st.ops) if (onField(o) && o.skill) o.skill.gainSp(sp, 'bond');
       }
-      if (u.alive || u.removed || u.mem[ID.indom] === battle.time) return;
+      // One revive per call, never per instant. The old guard was `u.mem[ID.indom] === battle.time`, which also
+      // swallowed a SECOND, genuine knock-out later in the same tick: `battle.time` is fixed for a whole tick, and two
+      // ranged enemies of one wave fire in lockstep, so at p = 1 the operator came back from the first shot, fell to
+      // the second in the same tick and never rolled again — down for its whole 70 s timer (owner's report 2026-10-30
+      // 「不屈盟约100%时有概率不生效」, reproduced 8/8 seeds with two identical ranged enemies at 300 layers). Each
+      // knock-out rolls on its own, as the official line reads; only a knock-out that arrives INSIDE this revive's own
+      // `redeploy` call (a deploy hook that kills again) is refused, which is what the guard was there for.
+      if (u.alive || u.removed || u.mem.indomBusy) return;
       if (banked || (st && battle.rng() < prob(bb, L(battle, st, ID.indom)))) {
-        u.mem[ID.indom] = battle.time;
-        if (battle.redeploy(u, { free: true })) {
+        u.mem[ID.indom] = battle.time; // 〖不屈〗fired at this instant (tests / tools read this)
+        let back = false;
+        u.mem.indomBusy = true;
+        try { back = battle.redeploy(u, { free: true }); } finally { u.mem.indomBusy = false; }
+        if (back) {
           fxOn(battle, 'revive', u, 'bond:indomShip', 'redeploy');
           // 〖不屈〗真的触发了一次（立刻免费再部署成功）—— 协议源石战斗脚本读这个事件：
           //   不屈余烬（旧版）/ 不区区！的「所有已激活盟约层数 +1」。
@@ -681,8 +691,12 @@ export function install(battle) {
   if (stead) {
     battle.on('hit', (c) => {
       const t = c.target, dmg = c.dmg;
-      if (!t || t.side !== 'ally' || t.kind !== 'op' || !dmg || dmg.cancel || dmg.steadShare || dmg.steadCut
-        || dmg.tags?.includes('bond:stead:share') || dmg.type === 'element') return;
+      // A redirect's output is final (owner, 2026-10-29): a hit another effect transferred (`isRedirectShare`) or one a
+      // 100 % transfer CLAIMED (`redirectClaim`) is never cut again. 坚守's share is derived from the HP that reaches the
+      // victim (redirectShare over `damaged.amount`) and such a hit leaves 0 there — cutting first deletes the share
+      // instead of moving it (a 500 transfer became 300 + 200 to the members; the 0.2.4 #464 numbers assume it does not).
+      if (!t || t.side !== 'ally' || t.kind !== 'op' || !dmg || dmg.cancel || dmg.steadCut
+        || dmg.redirectClaim || isRedirectShare(dmg) || dmg.type === 'element') return;
       const st = byPid[t.ownerId];
       if (!st || (st.tiers[ID.stead] ?? 0) < 2 || st.members[ID.stead].has(t)) return;
       let any = false;

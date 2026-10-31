@@ -14,7 +14,10 @@
 //     the older one. A unit missing from the newer snapshot (died/left mid-buffer) holds its last position
 //     until renderT reaches the newer snapshot; a unit that only exists in the newer one (spawned mid-buffer)
 //     appears when renderT reaches it. Moves longer than `teleport` tiles between two snapshots snap, and so does a
-//     unit whose deploy animation starts in between (a redeploy while it stays listed: 乌尔比安's 【移动】, a 突袭 jump).
+//     unit whose deploy animation starts in between (a redeploy while it stays listed: 乌尔比安's 【移动】, a 突袭 jump),
+//     and a finite step the sim marks with a `teleport` fx of kind 'parasite' (淤困 附着 to its blocker: a blink no
+//     distance can tell from a walk, content/enemies/element.js) — that unit holds its old tile until the blink's game
+//     time and then stands on the new one, never sliding across.
 //   * event queue: a `b.ev` batch is stamped with its game time (`gt`, the snapshot it was drained with); a batch
 //     without one is placed inside the latest snapshot interval (newest snapshot time minus half an interval),
 //     and handed out by `takeEvents()` once renderT passes the stamp. Stale cosmetic events (> `eventMaxLag`
@@ -37,6 +40,9 @@
 //     and two the official effects read (render/vfx/talentfx.js, skillfx.js), the same way:
 //       `layers`  [[id, n]] (the hit-negating 护盾 layers, n ≥ 1)                → sample().layers  number (0: none)
 //       `charges` [[id, stored, maximum]] (a charge skill's stored charges)   → sample().charges [stored, maximum] | null
+//     and one the model's turn reads (render/units.js syncView → UnitView.setFacing):
+//       `face` [[id, ±1]] (the frames where a unit's horizontal sign CHANGES — 心虚设计师's front follows its blocker;
+//             an edge, not state: a frame without an entry means "as before", and UnitInfo carries the spawn value) → sample().face  ±1 | null
 //     An entry that is malformed, or names a unit the snapshot does not list, is dropped; a snapshot without the list
 //     clears the readout (render/units.js: the segmented ammo bar, the wolf pips, the red bar of 斩业星熊's 我执).
 //   * `stand` [[id, until]] — the game time an enemy's attack recovery ends (sim atkStandUntil, PR #381): the position
@@ -158,7 +164,14 @@ export function normalizeSnapshot(snap) {
       (standCut || (standCut = new Map())).set(e[0], e[1]);
     }
   }
-  return { t, units, down, ammo, wolves, coins, energy, charges, layers, neg, stand, standCut, raw: snap };
+  let face = null;
+  if (Array.isArray(snap.face)) {
+    for (const e of snap.face) {
+      if (!Array.isArray(e) || !units.has(e[0]) || (e[1] !== -1 && e[1] !== 1)) continue;
+      (face || (face = new Map())).set(e[0], e[1]);
+    }
+  }
+  return { t, units, down, ammo, wolves, coins, energy, charges, layers, neg, stand, standCut, face, raw: snap };
 }
 
 /**
@@ -206,6 +219,8 @@ export class SnapshotBuffer {
     this.interval = 0.1 * this.defaultRate / 2; // game s between snapshots (estimated)
     /** @type {{t:number, ev:any}[]} */
     this.events = [];
+    /** @type {Map<any, number[]>} 淤困 blink times (game s), kept after the cosmetic `teleport` fx itself is consumed. */
+    this.parasiteBlinkTimes = new Map();
     this.meta = null; // latest snapshot's extra fields (dp, killed, total, boss…)
     return this;
   }
@@ -248,6 +263,12 @@ export class SnapshotBuffer {
     // (no animation frames) snapshots keep arriving and must not pile up; a clock left behind is clamped.
     const horizon = s.t - this.keep * this.rate;
     while (this.snaps.length > 2 && this.snaps[1].t < horizon) this.snaps.shift();
+    // a blink older than the oldest snapshot can no longer split an interval — drop it (a bounded map: ≤ 32 per unit)
+    for (const [id, times] of this.parasiteBlinkTimes) {
+      const kept = times.filter((bt) => bt > this.snaps[0].t);
+      if (kept.length) this.parasiteBlinkTimes.set(id, kept);
+      else this.parasiteBlinkTimes.delete(id);
+    }
     if (!Number.isFinite(this.renderT)) this.renderT = Math.max(this.snaps[0].t, s.t - this.delay * this.rate);
     else if (this.renderT < this.snaps[0].t) this.renderT = this.snaps[0].t;
     return true;
@@ -268,6 +289,17 @@ export class SnapshotBuffer {
     for (const ev of evs) {
       if (!Array.isArray(ev) || typeof ev[0] !== 'string') continue;
       this.events.push({ t: stamp, ev });
+      // 淤困's 附着 blink: keep its time per unit, so sample() can cut the interval it falls in (the fx itself is
+      // cosmetic and may be dropped; the cut is state and must not be)
+      if (ev[0] === 'fx' && ev[1] === 'teleport' && ev[4]?.kind === 'parasite') {
+        const id = ev[4]?.id;
+        if ((typeof id === 'number' && Number.isFinite(id)) || (typeof id === 'string' && id)) {
+          const times = this.parasiteBlinkTimes.get(id) ?? [];
+          times.push(stamp);
+          if (times.length > 32) times.shift();
+          this.parasiteBlinkTimes.set(id, times);
+        }
+      }
       added++;
     }
     // bounded queue (hidden tab: nothing consumes it) — shed the oldest cosmetic events first
@@ -327,6 +359,16 @@ export class SnapshotBuffer {
   }
 
   /**
+   * Game time of the first 淤困 blink of `id` inside (from, to] — Infinity when there is none. sample() snaps such an
+   * interval instead of sliding it, whatever the distance says.
+   */
+  _parasiteBlinkAt(id, from, to) {
+    let first = Infinity;
+    for (const t of this.parasiteBlinkTimes.get(id) ?? []) if (t > from && t <= to && t < first) first = t;
+    return first;
+  }
+
+  /**
    * Game time of the first snapshot after `time` (default renderT) — the newer end of the interval sample() interpolates
    * — or NaN when there is none (extrapolating). render/app.js starts a push's slide while that interval is shown.
    */
@@ -350,8 +392,9 @@ export class SnapshotBuffer {
   /**
    * Interpolated state at `time` (default renderT). Fills and returns `out` (a Map id → sample object reused
    * across calls: `{ id, x, y, hp, maxHp, sp, spMax, flags, anim, vx, vy, seen, el, elFill, elUntil, elDur, ammo, wolves,
-   * neg }` — `el` = the shown element gauge (null: none), `ammo` / `wolves` / `neg` the HP-bar readouts (null / null / 0:
-   * none), see header). Samples of units no longer present are deleted from `out`.
+   * neg, face }` — `el` = the shown element gauge (null: none), `ammo` / `wolves` / `neg` the HP-bar readouts (null /
+   * null / 0: none), `face` the ±1 sign when THIS frame changes it (null: as before), see header). Samples of units no
+   * longer present are deleted from `out`.
    */
   sample(time = this.renderT, out = new Map()) {
     const s = this.snaps;
@@ -367,17 +410,20 @@ export class SnapshotBuffer {
     const stamp = A.t;
     for (const [id, a] of A.units) {
       let o = out.get(id);
-      if (!o) { o = { id, x: 0, y: 0, hp: 0, maxHp: 0, sp: 0, spMax: 0, flags: 0, anim: 0, vx: 0, vy: 0, seen: 0, el: null, elFill: 0, elUntil: 0, elDur: 0, ammo: null, wolves: null, neg: 0 }; out.set(id, o); }
+      if (!o) { o = { id, x: 0, y: 0, hp: 0, maxHp: 0, sp: 0, spMax: 0, flags: 0, anim: 0, vx: 0, vy: 0, seen: 0, el: null, elFill: 0, elUntil: 0, elDur: 0, ammo: null, wolves: null, neg: 0, face: null }; out.set(id, o); }
       const b = B ? B.units.get(id) : null;
       if (b) {
         const dx = b[1] - a[1], dy = b[2] - a[2];
         // (a deployment in between — the newer snapshot starts its deploy animation — lands on its tile, no slide)
-        const tele = dx * dx + dy * dy > this.teleport * this.teleport || redeployed(a, b);
+        // (and 淤困's 附着 blink: it is a short hop, so the distance rule cannot see it — the sim's teleport fx can)
+        const jumpAt = this._parasiteBlinkAt(id, A.t, B.t);
+        const tele = dx * dx + dy * dy > this.teleport * this.teleport || redeployed(a, b) || jumpAt < Infinity;
+        const afterJump = alpha >= 1 || time >= jumpAt;
         const start = movementStart(A, B, id);
         const moveSpan = B.t - start;
         const moveAlpha = moveSpan > 0 ? clamp((time - start) / moveSpan, 0, 1) : 0;
-        o.x = tele ? (alpha < 1 ? a[1] : b[1]) : a[1] + dx * moveAlpha;
-        o.y = tele ? (alpha < 1 ? a[2] : b[2]) : a[2] + dy * moveAlpha;
+        o.x = tele ? (afterJump ? b[1] : a[1]) : a[1] + dx * moveAlpha;
+        o.y = tele ? (afterJump ? b[2] : a[2]) : a[2] + dy * moveAlpha;
         o.vx = !tele && moveSpan > 0 && (start === A.t || time >= start) ? dx / moveSpan : 0;
         o.vy = !tele && moveSpan > 0 && (start === A.t || time >= start) ? dy / moveSpan : 0;
         o.hp = a[3] + (b[3] - a[3]) * alpha;
@@ -394,7 +440,8 @@ export class SnapshotBuffer {
           const moveSpan = A.t - movementStart(P, A, id);
           if (p && dtp > 0 && moveSpan > 0) {
             const dx = a[1] - p[1], dy = a[2] - p[2];
-            if (dx * dx + dy * dy <= this.teleport * this.teleport && !redeployed(p, a)) {
+            if (dx * dx + dy * dy <= this.teleport * this.teleport && !redeployed(p, a)
+              && this._parasiteBlinkAt(id, P.t, A.t) === Infinity) {
               vx = dx / moveSpan; vy = dy / moveSpan;
             }
           }
@@ -418,6 +465,8 @@ export class SnapshotBuffer {
       o.charges = A.charges?.get(id) ?? null;
       o.layers = A.layers?.get(id) ?? 0;
       o.neg = A.neg ? A.neg.get(id) || 0 : 0;
+      // an edge: the frame that changes the sign hands it out, every other frame says null ("as before")
+      o.face = A.face ? A.face.get(id) ?? null : null;
       o.seen = stamp;
     }
     for (const id of out.keys()) if (!A.units.has(id)) out.delete(id);

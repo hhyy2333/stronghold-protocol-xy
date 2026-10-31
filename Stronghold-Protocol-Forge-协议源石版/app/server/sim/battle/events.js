@@ -57,12 +57,17 @@ export class BattleEvents {
    *         effect it shows;
    *   charges: [[id, stored, maximum]] — the charges an ally's charge skill stores (snapshot.js chargeView: 卡涅利安's): the
    *         official sand armour of her charges;
+   *   face: [[id, ±1]] — a unit's horizontal sign, sent **only on the frames where it changes** (心虚设计师's front follows
+   *         its blocker, content/enemies/special.js faceCrshd; anything else that turns a unit tick by tick): the client
+   *         turns the model with it (render/interp.js sample().face → render/units.js syncView), so a model no longer
+   *         keeps the sign it was born with until the next reconnect. UnitInfo already carries the spawn value and a
+   *         battle where nobody turns sends no entry at all;
    *   stand: [[id, until]] — when each enemy's attack recovery ends (atkStandUntil; alive, deployed, visible, not
    *         feared or stunned) — display metadata (render/interp.js holds the position until then);
    *   standCut: [[id, at]] — the latest time each listed enemy's recovery was cut or ignored (_cutAttackStand), the
    *         dying ones in their death window included.
-   * ammo / wolves / neg / energy / layers / charges / stand / standCut are display only: no sim state reads them, and the
-   * nine-field unit tuples are unchanged.
+   * ammo / wolves / neg / energy / layers / charges / stand / standCut / face are display only: no sim state reads them,
+   * and the nine-field unit tuples are unchanged.
    */
   snapshot() {
     const snap = {
@@ -92,7 +97,7 @@ export class BattleEvents {
       (down || (down = [])).push([u.id, r2(u.respawnAt), r2(Math.max(0, u.respawnAt - u.deathAt)), this._downState(u), ...this.restTile(u)]);
     }
     if (down) snap.down = down;
-    let elem = null, ammo = null, wolves = null, neg = null, energy = null, stand = null, standCut = null;
+    let elem = null, ammo = null, wolves = null, neg = null, energy = null, stand = null, standCut = null, face = null;
     let listed = null;   // the ids in snap.units, built for the first enemy with a cut to report
     for (const u of this.units) {
       if (u.side === 'enemy' && u.atkStandCutAt >= 0) {
@@ -104,6 +109,11 @@ export class BattleEvents {
       if (u.side === 'enemy' && !u.s.flags.fear && !u.s.flags.stun && Number.isFinite(until) && until > snap.t) {
         (stand || (stand = [])).push([u.id, until]);
       }
+      // 逐 tick 朝向: an edge, not state — the client keeps the sign it last applied and UnitInfo already carries the
+      // spawn value, so only a frame whose sign differs from the one this unit last published carries an entry.
+      const fsign = u.facing === -1 ? -1 : 1;
+      if (u.mem.facePub !== undefined && u.mem.facePub !== fsign) (face || (face = [])).push([u.id, fsign]);
+      u.mem.facePub = fsign;
       const v = elementView(u, this.time);
       if (v) (elem || (elem = [])).push([u.id, v[0], v[1], v[2], v[3]]);
       const am = ammoView(u);
@@ -128,6 +138,7 @@ export class BattleEvents {
     if (energy) snap.energy = energy;
     if (stand) snap.stand = stand;
     if (standCut) snap.standCut = standCut;
+    if (face) snap.face = face;
     // 伤害统计 (the client's in-battle DAMAGE REPORT): the damage each ally unit has dealt so far
     const dmg = damageView(this.allyUnits);
     if (dmg) snap.dmg = dmg;

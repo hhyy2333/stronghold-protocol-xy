@@ -921,6 +921,7 @@
 .field--code .field__input { font-family: var(--font-num); font-size: .34rem; font-weight: 700; letter-spacing: .42em; text-transform: uppercase; }
 .field--code .field__input::placeholder { font-family: var(--font-cjk); font-size: .18rem; letter-spacing: .06em; font-weight: 400; text-transform: none; }
 .field.is-invalid .field__box { border-color: var(--red); --bk-c: var(--red-premium); }
+.field.is-invalid .field__hint { color: var(--red-premium); }
 .field.is-disabled { opacity: .5; }
 
 /* ---- toasts -------------------------------------------------------------------------------------------- */

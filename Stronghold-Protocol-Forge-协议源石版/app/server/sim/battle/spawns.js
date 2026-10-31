@@ -51,7 +51,7 @@ export class BattleSpawns {
     const now = this.time + 1e-9;
     while (this._pending.length && this._pending[0].time <= now) { // loop-cap: pending spawn queue
       const p = this._pending.shift();
-      this._safe(() => this.spawnEnemy(p.enemyKey, { ...p, _precounted: p.precounted }), 'spawnEnemy');
+      this._safe(() => this.spawnEnemy(p.enemyKey, { ...p, _precounted: p.precounted, _scheduled: true }), 'spawnEnemy');
     }
   }
 
@@ -151,6 +151,13 @@ export class BattleSpawns {
       if (end) e.route.legs.push({ t: 'move', r: end[0], c: end[1], final: true });
     }
     e.counted = opts.countInTotal ?? (!def.notCountInTotal && e.tag !== 'boss' && e.tag !== 'part');
+    // 联防 (GitHub #675 / upstream Forge 0.3.1 §36.19, player report 2026-10-16): on a 联防 field only the enemies the
+    // escaped wave SENT IN are billable. An enemy that appears while the field runs — a split child (磨砻's 木制瑞印,
+    // 沉沙's 断刃), a summon, a 变身 copy, a boss phantom — never crossed the leaker's own goal, so it must raise neither
+    // the HUD's ×N nor the LP the round settles: server/match/unite.js uniteSurvivors, server/sim/spec.js uniteLeft and
+    // server/match/fields.js uniteBillBounds filter exactly this flag. It stays a real enemy of the fight — `counted`
+    // (kills, 破坏完美作战) reads as on every field. `_scheduled` is the stage's own queue above (`_queueSpawn`), the wave.
+    if (this.kind === 'unite' && !opts._scheduled) e.uniteRuntime = true;
     // inTotal (the HUD capsule's own counter, DESIGN §14): only an enemy the stage scheduled (`_queueSpawn`, which
     // pre-counts it) — or, for future content, an explicit `opts.inTotal: true` — and that counts. Everything spawned
     // while the battle runs (a split child, a summon — bosses included —, a part, a 变身 copy) stays out of the capsule's

@@ -115,6 +115,18 @@ export function spTap(armed, idx, pickable) {
 }
 
 /**
+ * Whether the 破财消灾 pseudo-card may be taken right now — my turn, no pick of mine yet, nothing in flight. Money is
+ * NOT part of it (业主 2026-10-30「没钱也能选，下回合从收入里扣」): the 1 资金 rides as a debt and is collected at the
+ * next round's start, so an empty purse may take it too — and the balance stays on the server (it is private).
+ * @param {any} sp normalizeSp(...) @param {{ myId: string, solo: boolean, busyIdx?: number|null }} o
+ */
+export function payoffPickable(sp, { myId, solo, busyIdx = null } = {}) {
+  if (!sp || !sp.payoff || !myId) return false;
+  const myTurn = solo || sp.turnPid === myId;
+  return myTurn && sp.pickOf.get(myId) == null && busyIdx == null;
+}
+
+/**
  * The selected card while it can still be picked (my turn, not taken, nothing in flight), else null — a selection
  * never outlives the state that allowed it.
  * @param {number|null} armed @param {any} sp @param {{ myId: string, solo: boolean, busyIdx?: number|null }} o
@@ -127,8 +139,7 @@ export function armedCard(armed, sp, o) {
    * the same conditions that enabled the button still hold.
    */
   if (sp.payoff && armed === sp.payoff.idx) {
-    const canPay = !!(o && o.myId && (o.solo || sp.turnPid === o.myId) && sp.pickOf.get(o.myId) == null && o.busyIdx == null);
-    return canPay ? armed : null;
+    return payoffPickable(sp, o || {}) ? armed : null;
   }
   const card = sp.cards.find((c) => c && c.idx === armed);
   return cardPickable(sp, card, o) ? armed : null;
@@ -152,8 +163,14 @@ export function ChoiceOverlay(props) {
   }, [armed]);
   if (!sp) return null;
   const tap = (idx) => {
-    const card = sp.cards.find((c) => c && c.idx === idx);
-    const r = spTap(armed, idx, cardPickable(sp, card, { myId, solo, busyIdx }));
+    // 破财消灾 (业主 2026-10-25): the payoff is not in `sp.cards` — a lookup would hand `cardPickable` an undefined card
+    // and swallow the tap, so the pseudo index gets its own gate. Missing that gate is what left the button inert.
+    const payIdx = sp.payoff ? sp.payoff.idx : null;
+    const isPayoff = payIdx != null && idx === payIdx;
+    const pickable = isPayoff
+      ? payoffPickable(sp, { myId, solo, busyIdx })
+      : cardPickable(sp, sp.cards.find((c) => c && c.idx === idx), { myId, solo, busyIdx });
+    const r = spTap(armed, idx, pickable);
     setSel(r.armed);
     if (r.pick != null) onPick(r.pick);
   };
@@ -252,18 +269,19 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
           </button>`;
         })}
       </div>
-      ${/* 破财消灾 (业主 2026-10-25)：悬赏决策轮里额外的一颗按钮 —— 花 1 资金本回合不拿悬赏。
+      ${/* 破财消灾 (业主 2026-10-25)：悬赏决策轮里额外的一颗按钮 —— 花 1 资金本回合不拿悬赏（那 1 资金下回合开始才扣）。
             它不是一张卡（不进 taken、人人可用），所以画在栅格下面而不是混进卡片里。 */ ''}
       ${sp.payoff ? (() => {
-        // 资金是私有信息，客户端这里不读（服务端会拒绝付不起的那次），所以按钮的可点性只看「轮到我 + 还没选」。
-        const canPay = !!(myId && myTurn && mine == null && busyIdx == null);
+        // 钱不参与可点性：客户端读不到余额（私有），而 2026-10-30 起服务端也不再因为没钱拒绝 —— 欠账下回合从收入里扣。
+        // 与 tap() 同一个判据（payoffPickable），按钮亮着就一定点得动。
+        const canPay = payoffPickable(sp, { myId, solo, busyIdx });
         const isArmedPay = canPay && armed === sp.payoff.idx;
         return html`<button type="button" class=${cx('spov__payoff', canPay && 'is-pickable', isArmedPay && 'is-armed')}
             disabled=${!canPay} onClick=${() => canPay && onTap(sp.payoff.idx)}
-            aria-label=${isArmedPay ? t('破财消灾，已选中，再次点击确认') : t('破财消灾：支付 {cost} 资金，本回合不拿悬赏', { cost: sp.payoff.cost })}>
+            aria-label=${isArmedPay ? t('破财消灾，已选中，再次点击确认') : t('破财消灾：下回合开始支付 {cost} 资金，本回合不拿悬赏', { cost: sp.payoff.cost })}>
           <${GIcon} name="coin" />
           <b>${t('破财消灾')}</b>
-          <small>${t('支付 {cost} 资金，本回合不拿悬赏', { cost: sp.payoff.cost })}</small>
+          <small>${t('下回合开始支付 {cost} 资金，本回合不拿悬赏', { cost: sp.payoff.cost })}</small>
           ${isArmedPay ? html`<span class="spcard__confirm" role="status"><b>${t('确认选择')}</b><small>${t('再次点击')}</small></span>` : null}
         </button>`;
       })() : null}

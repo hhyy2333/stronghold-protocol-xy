@@ -16,7 +16,12 @@
 //   before(c,…) (beforeAttack of e) · attack(c,…) · blocked(c,…) · killed(c,…) (return true = revived; the kill is then
 //   hidden from later 'kill' handlers) · death(c,…) · status(c,…) (statusApplied on e) · burst(c,…) (elementBurst on e)
 //   · tick(b,e,a,dt) every `iv` s (every tick when iv is 0) · skill: `cd`/`left`(=icd)/`cond`/`fire` (cooldown runs
-//   continuously; fires when ready, the enemy can act and `cond` holds). `sil: true` = the ability's handbook line
+//   continuously; fires when ready, the enemy can act and `cond` holds; `clip` = the skill's clip length in s, its
+//   cooldown then counting from the clip's end — castNow; `atk: true` = an attack-class skill, cast in place of a normal
+//   attack when ready at a swing's damage frame — attackSlotSkill; `own: true` with it = the skill has a trigger selector
+//   of its own (`cond`), so its turn also comes with the attack ready and no swing — onTick. Attack-class skills of kits
+//   this file does not own (battle leaders' parts, bounty / normal enemies in enemies/*.js) are stamped from
+//   ATTACK_TURN_CLIP by markAttackTurn). `sil: true` = the ability's handbook line
 //   is flagged SILENCE (沉默 disables it: exactly the data's `format: "SILENCE"` lines). 萨卡兹枯朽战士 / 组长's
 //   【污染秽蚀】 death fog is the one NORMAL line also silenced (archetypes.js kitPolluted, `enemy_1267_nhpbr` and
 //   `_2` only): the owner's official-play recall of 2026-10-12 is that a death while silenced creates no fog, and
@@ -119,6 +124,7 @@ import { REFLECTION_KITS } from './enemies/reflection.js';
 import { FLY_KITS } from './enemies/fly.js';
 import { SPECIAL_KITS } from './enemies/special.js';
 import { FORK_WAVE_KITS } from './enemies/forkwave.js';
+import { DUMMY_KITS } from './enemies/dummy.js';
 import { LEADER_KITS } from './enemies/leaders.js';
 import { hypot } from '../detmath.js';
 
@@ -213,7 +219,79 @@ function onDamaged(b, c) {
 
 function onBeforeAttack(b, c) {
   const a = c.attacker;
-  if (a && a.side === 'enemy' && a.mem.ab) dispatch(b, a, 'before', c);
+  if (!a || a.side !== 'enemy' || !a.mem.ab) return;
+  // An attack-class skill takes this attack's turn (upstream 0.3.2, DESIGN §37.19 / §37.29): the skill is cast instead
+  // of the strike and the swing is cancelled by clearing the target list.
+  if (!c.isSkill && attackSlotSkill(b, a, c)) return;
+  dispatch(b, a, 'before', c);
+}
+
+/**
+ * An attack-class skill (`atk: true`: its official ability is a MeleeAttack / RangedAttack, the class of the normal
+ * attack — PRTS 「触发索敌和普通攻击相同」) takes the attack's turn instead of running beside it — PRTS 盐风主教昆图斯, the
+ * site's 「关于技能」 rules: 「大多数技能自动触发会占用攻击间隔（即可以攻击时不进行攻击，改为触发技能…）」. When a swing
+ * reaches its damage frame and such a skill is ready (cooldown run out), castable and its `cond` holds, the skill is cast
+ * and the strike is not made, the attack cooldown restarting as after a strike; no target, no swing, no skill. Several
+ * ready: the highest data priority, equal ones at random (`b.rng`) — 「同时存在多个可触发的技能时，优先级最高的技能优先
+ * 触发，优先级相同则随机触发其中之一」. Its cooldown counts from the end of its clip (`clip`, castNow: 「同一技能的冷却时间
+ * 于该技能结束时开始计时」), so 盐风主教昆图斯's third-form 【大潮】 (cooldown 3.5 + its 1.667 s clip, attack interval 3.5)
+ * is not ready at the next turn and alternates with the attack — arknights.wiki.gg: never "Great Tide twice in a row".
+ * The next swing waits for the skill's clip when that is longer than the attack interval (attackCdAfter: 高准度伦蒂尼姆
+ * 城防自行炮's 10 s Cannon over its 6 s interval, W's 4.8 s C4 over 4: the official unit is held by its ability's clip and
+ * cannot attack inside it). [ASSUMED] (no source): readiness checked at the damage frame, not when the swing starts; the
+ * attack cooldown restarting at the skill (a clip shorter than the interval: the interval as after a strike); the skill's
+ * effect at the attack's damage frame (not its own clip's).
+ */
+function attackSlotSkill(b, e, c) {
+  const a = attackTurnSkill(b, e);
+  if (!a) return false;
+  c.targets = [];
+  e.atkCd = attackCdAfter(e, a);
+  return true;
+}
+
+/** The attack cooldown of enemy `e` after it cast attack-class skill `a` in the attack's turn: the interval, or the skill's
+ * clip when that is longer [ASSUMED: the unit is held by the clip]. */
+const attackCdAfter = (e, a) => Math.max(e.s.interval, a.clip > 0 ? a.clip : 0);
+
+/**
+ * The attack's turn of enemy `e` has come: cast its ready attack-class skill (`atk`) — the highest priority (`a.pr`, else
+ * the data's `sk.pr`), equal ones at random (`b.rng`) — and return that ability, or return null (the turn goes to the
+ * attack).
+ * The engine's swing calls it at the damage frame (attackSlotSkill); a kit whose leader attacks through its own loop
+ * (假想敌：管 / 弦's strikes on 余音, “萨米的意志”'s 【冰凌】: bosses.js) calls it when that loop's attack is due and has a
+ * target, and skips the attack when it returns true. `ownOnly`: only the skills with a trigger selector of their own
+ * (`own`) — the turn of an attack that is ready with no swing (onTick).
+ */
+export function attackTurnSkill(b, e, ownOnly = false) {
+  const ab = e.mem.ab;
+  if (!ab) return null;
+  markAttackTurn(e, ab);
+  let ready = null, top = -Infinity;
+  for (const a of ab.list) {
+    if (!a || !a.atk || !a.fire || a.cd == null || a.left > 1e-9 || (ownOnly && !a.own)) continue;
+    if (!canCast(e, a.sil, b) || (a.cond && !safe(b, e, () => a.cond(b, e, a)))) continue;
+    const pr = a.pr ?? ((a.sk && a.sk.pr) || 0);
+    if (pr > top) { top = pr; ready = [a]; } else if (pr === top) ready.push(a);
+  }
+  if (!ready) return null;
+  const a = ready.length > 1 ? b.rng.pick(ready) : ready[0];
+  castNow(b, e, a);
+  return a;
+}
+
+/**
+ * Cast content skill `a` of enemy `e` now: its cooldown restarts — counted from the end of its clip when the kit gives
+ * its length (`a.clip`, s: PRTS 「同一技能的冷却时间于该技能结束时开始计时」), else from the cast —, then it fires.
+ */
+function castNow(b, e, a) {
+  a.left = Math.max(TICK, a.cd + (a.clip > 0 ? a.clip : 0));
+  a.casts = (a.casts ?? 0) + 1;
+  e.skillAnimUntil = b.time + 0.5;
+  // display only: the skill slot it uses (render/app.js 'cast'); an attack-slot cast also names its clip so the client
+  // plays that clip in place of the attack animation (render/units.js holdCast; 0 = the ability names no clip)
+  if (a.sk) castSlot(b, e, a.sk, a.atk ? (a.clip > 0 ? a.clip : 0) : null);
+  safe(b, e, () => a.fire(b, e, a));
 }
 
 function onKill(b, c) {
@@ -249,6 +327,7 @@ function onTick(b, dt) {
     const e = list[i];
     if (!e || !e.alive || e.mem.carrier || !e.mem.ab) continue;
     const ab = e.mem.ab;
+    markAttackTurn(e, ab);   // once per enemy: the ATTACK_TURN_CLIP fields and ab.ownTurn
     for (let j = 0; j < ab.list.length; j++) {
       const a = ab.list[j];
       if (!e.alive) break;
@@ -264,16 +343,75 @@ function onTick(b, dt) {
       }
       if (a.fire && a.cd != null) {
         a.left -= dt;
-        if (a.left <= 1e-9 && canCast(e, a.sil, b) && (!a.cond || safe(b, e, () => a.cond(b, e, a)))) {
-          a.left = Math.max(TICK, a.cd);
-          a.casts = (a.casts ?? 0) + 1;
-          e.skillAnimUntil = b.time + 0.5;
-          if (a.sk) castSlot(b, e, a.sk);   // display only: the skill slot it uses (render/app.js 'cast')
-          safe(b, e, () => a.fire(b, e, a));
-        }
+        // an attack-class skill (`atk`) waits for the attack's turn instead (attackSlotSkill / attackTurnSkill)
+        if (!a.atk && a.left <= 1e-9 && canCast(e, a.sil, b) && (!a.cond || safe(b, e, () => a.cond(b, e, a)))) castNow(b, e, a);
       }
     }
+    // An attack-class skill with a trigger selector of its own (`own`: 卢西恩 / 不祥幻影's aoe — 「仅在半径2范围内存在我方
+    // 单位时触发」) also takes a turn when the attack is ready and no swing started this tick — the attack has no target (a
+    // melee enemy nobody blocks: 卢西恩 past his blocker) —, PRTS 「可以攻击时不进行攻击，改为触发技能」 read as the attack's
+    // cooldown being over. The attack cooldown restarts as after a strike, or at the skill's longer clip (attackCdAfter).
+    // [ASSUMED] the effect comes at once (no wind-up: no swing), and the refusals of a normal attack hold (恐惧 / 缴械 /
+    // 战栗 while blocked); an enemy that makes no normal attack (`profile.noAttack`) has none to give up, its cooldown
+    // still running out.
+    if (ab.ownTurn && e.alive && !e.swing && !(e.atkCd > 0)
+      && !e.s.flags.fear && !e.s.flags.disarm && !(e.s.flags.tremble && e.blockedBy)) {
+      const a = attackTurnSkill(b, e, true);
+      if (a) e.atkCd = attackCdAfter(e, a);
+    }
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// attack-class skills of kits this file does not own
+
+/**
+ * Enemy key → skill prefabKey → the length in s of the clip its official ability plays (prefab ability `_animKey` →
+ * `data/assets.json` enemies.<key>.spine.animations), or 0 when the ability names no clip, and `own`: whether the skill's
+ * trigger is a selector of its own (`cond`) rather than the attack's target. Each one is cast in place of a normal attack
+ * (attackTurnSkill — PRTS's skill rules, 「大多数技能自动触发会占用攻击间隔」) and its cooldown counts from its clip's end.
+ * The classes are the client's own (`battle/enm_pfb_*.ab`), as upstream 0.3.2 read them (its ATTACK_SKILL_CLIP and
+ * ENEMY_ATTACK_SKILL_CLIP tables): 卢西恩 / 不祥幻影 `aoe` MeleeAttack, 胄 `1` (灭顶之灾) RangedAttack, 管 `1` (裂管之奏)
+ * MultiRangedAttack, 弦 `1` (断弦之奏) RangedAttack, 阿利斯泰尔 `equip` / `equipA` (王权号令) RangedAttack and `Suicide`
+ * (斥退) MeleeAttack, “萨米的意志” `Lasso` (自然涌动) RangedAttack with no clip and `Doom` MeleeAttack, “自在” `ShieldBurst` /
+ * `ShieldBurstReborn` (破桎而出) and `CrossAttack` (纬地经天) RangedAttackWithExtraActions, 锏 `CircleAttack` / `CircleAttack2`,
+ * 重弩突袭者 `CrossAttack`, 萨卡兹王庭军精锐术师 `DeathEye`, 假想敌：黑云 `FireWeapon`, 高准度伦蒂尼姆城防自行炮 `Cannon`,
+ * W `C4`, 凋零骑士 / 腐败骑士 `TripleAttack` / `ChargeAttack`, 迷路的巨像 `StunAttack`, 陷落雪祀 `ChainBuff`, 鼠王
+ * `DriftSand` / `SandStorm`, 扎罗 `FearCage`, 节日爵士乐手 `fire`.
+ * `own` is explicit per entry: false = the trigger is the attack's own target, so the skill is only ever cast from a
+ * swing (「自在」's 破桎而出 no longer expands its barrier with no operator nearby — upstream 0.3.2's §37.54 fix); true =
+ * the kit's own `cond` is the selector, so it may also take a ready attack's turn with no swing.
+ */
+export const ATTACK_TURN_CLIP = Object.freeze({
+  // 「自在」 —— 它的 kit 在 enemies/leaders.js（本任务不改那个文件），这里只把 破桎而出 标成"要目标才放"（上游 §37.54）：
+  // 附近没有干员时不再白开一次屏障；纬地经天 保留它原有的半径选择器（own），仍可吃"就绪但无挥砍"的那一回合。
+  enemy_1517_xi: { CrossAttack: { clip: 1.333, own: true }, ShieldBurst: { clip: 0, own: false }, ShieldBurstReborn: { clip: 0, own: false } },
+});
+// 上游 0.3.2 另外两张表（ATTACK_SKILL_CLIP / ENEMY_ATTACK_SKILL_CLIP）里的其余 20 余个键**本轮没有搬**：它们的 kit 仍在用
+// "技能自己按冷却放"的写法（胄的 kitHelm 是 tick 循环、阿利斯泰尔的王权号令是 SP 循环、腐败骑士/术师等在 enemies/*.js 里），
+// 只打标不改 kit 会得到既不放技能也不攻击的中间态 —— 这一段是已知缺口，见 04-文档/上游0.3.3对比/移植/fix-attack-slot.md §5。
+
+/**
+ * Stamp the attack-turn fields (ATTACK_TURN_CLIP) on the abilities of enemy `e` once per enemy, and note whether any of
+ * them takes a swing-less turn (`ab.ownTurn`). An entry marked `own: true` needs a `cond` of its own: without one the
+ * ability could only ever fire on a turn with no target and no selector, which is not what its kit says [ASSUMED].
+ */
+function markAttackTurn(e, ab) {
+  if (ab.marked) return;
+  ab.marked = true;
+  const table = ATTACK_TURN_CLIP[e.defId] ?? ATTACK_TURN_CLIP[e.def.raw?.effectRef];
+  if (table && ab.sk) {
+    for (const a of ab.list) {
+      if (!a || a.atk || !a.sk) continue;
+      let hit = null;
+      for (const k in ab.sk) if (ab.sk[k] === a.sk) { hit = table[k]; break; }
+      if (!hit) continue;
+      a.atk = true;
+      a.clip = hit.clip ?? 0;
+      a.own = !!hit.own && typeof a.cond === 'function';
+    }
+  }
+  ab.ownTurn = ab.list.some((a) => a && a.atk && a.own);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -291,6 +429,8 @@ export const KITS = Object.freeze({
   ...LEADER_KITS,
   // the fork's own wave enemies whose handbook line needs a mechanic (docs/research/16-extra-enemies.json batch 2)
   ...FORK_WAVE_KITS,
+  // 木桩演练 (round 16): the training dummy — 不还手 + 自缚 + data regen
+  ...DUMMY_KITS,
 });
 
 /** Keys deliberately left to their data stats (reason). */
@@ -303,7 +443,6 @@ export const STATS_ONLY = Object.freeze({
   enemy_1046_agent: 'plain', enemy_1071_dftman: 'plain', enemy_1092_mdgint: 'plain (bounty)',
   enemy_1251_lysyta: 'R-series armour interaction absent', enemy_1251_lysyta_2: 'same',
   enemy_1252_lysytb_2: 'same', enemy_1254_lypa_2: 'no listed ability', enemy_1325_cbgpro: 'plain', enemy_1325_cbgpro_2: 'plain',
-  enemy_1367_dseed: 'altar pulse absent (骸骨拷打者 leaves them inert, uncounted, in place)',
   enemy_1381_winman: 'plain', enemy_1381_winman_2: 'plain', enemy_1387_winshd: '封冻/供暖器 zones absent', enemy_1415_mmkabi_2: 'chains absent',
   enemy_1433_dsbasi: 'plain', enemy_1433_dsbasi_2: 'plain', enemy_1438_dspred: '赘生甲壳 absent',
   enemy_2002_bearmi: 'plain', enemy_2002_bearmi_2: 'plain',
@@ -332,6 +471,21 @@ export const STATS_ONLY = Object.freeze({
   enemy_1054_norshd_2: 'fork wave enemy: zero skills/talents (data), plain AI',
   enemy_1301_ymcnon: 'fork wave enemy: zero skills/talents (data), plain AI',
   enemy_2046_smwar: 'fork wave enemy: zero skills/talents (data), plain AI',
+  // batch 5's strength variants and the “交通亭” ejectee (docs/research/16-extra-enemies.json b5b): registered data rows
+  // with an extracted model, but `noWave: true` — they never take a pool slot (the base key keeps it) and only reach the
+  // field as a death spawn (“交通警察”) or through a bounty. Their abilities are the base key's own, whose kit is in
+  // forkwave.js, so these plain rows are honest: no new mechanic to author.
+  enemy_1255_lybgpa_2: 'fork wave enemy (b5b): the R-31’s strength variant, `noWave` — plain row, the kit is the base key’s',
+  enemy_1256_lyacpa_2: 'fork wave enemy (b5b): the R-11’s strength variant, `noWave` — plain row, the kit is the base key’s',
+  enemy_1332_cbterm_2: 'fork wave enemy (b5b): the 交通亭’s strength variant, `noWave` — plain row, the kit is the base key’s',
+  enemy_1333_cbbgen: 'fork wave enemy (b5b): the 交通亭’s ejectee, `noWave` — spawned only by that death',
+  enemy_1333_cbbgen_2: 'fork wave enemy (b5b): the 交通亭试做型’s ejectee, `noWave` — spawned only by that death',
+  // 空值体 (enemy_2133_shdopl, b5): its one line is 「初始伪装成一个单位，受到伤害后现身」, and this mode has no disguise
+  // system — a wave enemy that starts drawn as something else would be a lie about what is on the field. Plain stats.
+  enemy_2133_shdopl: 'fork wave enemy: 伪装 absent (no disguise system here), plain AI',
+  // 恶笼草 (enemy_2152_shezlc, b5): its one line is 「进入保护目标后偷取一定源石锭」 — this mode has no 源石锭 theft, and the
+  // handbook gives it nothing else. Plain stats.
+  enemy_2152_shezlc: 'fork wave enemy: 源石锭 theft absent (no such system here), plain AI',
 });
 
 // 圣杯 damage sharing: ground enemies near a living chalice pass `share` of the damage they take to it.

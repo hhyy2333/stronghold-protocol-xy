@@ -170,7 +170,7 @@ export function loadWorkshop(dir = WORKSHOP_DIR, { log = null, c2s = C2S } = {})
     }
     // A pack whose every declared file failed to load contributes nothing: its errors are already reported, so it is
     // not listed as a loaded pack (an empty pack in the boot summary would only be noise). A pack that ships NO data
-    // file at all is a different thing and IS loaded: the reserved 助战 voice pack carries only `voices` (or only
+    // file at all is a different thing and IS loaded: a voice-only pack carries only `voices` (or only
     // `voiceLangs`, for a dub other than the default one), and a pack may also bring only 盟约/装备图标 (`bondIcons` /
     // `itemIcons`) or only 外观素材 (`art`: avatars, portraits, spine models) or only 自选池声明 (`operators`) — all of
     // them are published through assets.json / backups.json by the overlay (shared/workshop.js mergeWorkshopVoices /
@@ -1160,8 +1160,6 @@ export function workshopTouchedFiles(loaded) {
     // `silentPhases()` 也只看得见第一方那两个（DESIGN §28.29）—— 一个不会报错的静默失效。
     if (p.forms && Object.keys(p.forms).length) out.add('assets');
     if (p.fx && Array.isArray(p.fx.silentPhases) && p.fx.silentPhases.length) out.add('assets');
-    // 助战 pool entries are merged into `support` (mergeWorkshopSupport) — the browser picks 助战 from that file.
-    if (p.support && p.support.length) out.add('support');
     // 自选池（mergeWorkshopOperators：`backups.diy.ownedPool` / `backups.diy.operators`）写的是 `backups.json`，
     // 所以那个文件必须合并后发给浏览器 —— 漏掉这一行，作者在编辑器里看到「已声明」，而自选界面上没有这个干员。
     if (p.operators && Object.keys(p.operators).length) out.add('backups');

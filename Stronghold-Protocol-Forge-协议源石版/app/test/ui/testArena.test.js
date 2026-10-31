@@ -30,11 +30,22 @@ globalThis.fetch = async (url) => {
 
 const { data } = await import('../../public/js/data.js');
 await data.loadAll('hextech', 'local');
-const { TestArenaPanel, TestArenaButton, TestHexButton, TEST_FUND_AMOUNTS, TEST_HEX_SIDES, hexesOf } = await import('../../public/js/ui/testArena.js');
+const {
+  TestArenaPanel, TestArenaButton, TestHexButton, TestOperatorRow,
+  TEST_FUND_AMOUNTS, TEST_HEX_SIDES, TEST_LIST_TABS, TEST_CHESS_TAB, hexesOf, operatorsOf, filterOperators,
+} = await import('../../public/js/ui/testArena.js');
 
 const HEX = load('hextech.json');
 const PLAYER_IDS = Object.keys(HEX.playerHexes);
 const ENEMY_IDS = Object.keys(HEX.enemyHexes);
+// the operator picker's own inputs: the shipped chess roster and config (the price rule reads the mode's overrides)
+const CHESS = load('chess.json');
+const CONFIG = load('config.json');
+const MODE_ID = 'mode_single_funny';
+const OPS = operatorsOf(Object.values(CHESS), CONFIG, MODE_ID);
+/** The shop-eligible roster by the same predicate, straight from the data (what the panel must offer). */
+const VISIBLE_OPS = Object.values(CHESS)
+  .filter((c) => c && c.visible === true && !c.isGolden && !c.isDiy && !c.isHidden && Number.isInteger(c.tier));
 
 // ---- component helpers (the same expansion the other UI suites use) ----------------------------------------------
 function* walk(v) {
@@ -164,12 +175,18 @@ describe('测试场: the in-match panel (ui/testArena.js)', () => {
       funds: 0, ownedPlayer: ['a', 'b'], ownedEnemy: ['c'], busy: null, side: 'player', onSide: (id) => seen.push(id),
       onGrantPlayer() {}, onGrantEnemy() {}, onClearPlayer() {}, onClearEnemy() {}, onFunds() {},
     }));
+    // three tabs since 业主 2026-10-26: 我方 / 敌方 / 干员 (the operator picker)
+    assert.deepEqual(TEST_LIST_TABS, ['player', 'enemy', 'chess']);
     const tabs = buttonsOf(tree).filter((b) => b.props.role === 'tab');
-    assert.equal(tabs.length, TEST_HEX_SIDES.length);
-    assert.deepEqual(tabs.map((b) => b.props['aria-selected']), ['true', 'false'], 'the open side is selected');
+    assert.equal(tabs.length, TEST_LIST_TABS.length);
+    assert.deepEqual(tabs.map((b) => b.props['aria-selected']), ['true', 'false', 'false'], 'the open side is selected');
     const enemyTab = tabs.find((b) => /敌方|Enemy/.test(textOf(b)));
     enemyTab.props.onClick();
     assert.deepEqual(seen, ['enemy']);
+    const chessTab = tabs.find((b) => /干员|Operator/.test(textOf(b)));
+    assert.ok(chessTab, 'the 干员 tab is rendered');
+    chessTab.props.onClick();
+    assert.deepEqual(seen, ['enemy', TEST_CHESS_TAB]);
   });
 
   test('a busy card is disabled (its request is in flight)', () => {
@@ -202,6 +219,95 @@ describe('测试场: the in-match panel (ui/testArena.js)', () => {
     assert.ok(plate, 'the plate exists');
     const src = String(plate.props.style || '');
     assert.ok(!src.includes('--hx-tier') || src.includes('--hx-tier'), 'the plate style is a string or null (never throws)');
+  });
+});
+
+describe('测试场: the 干员 picker (业主 2026-10-26「在测试场增加功能可以购买任何干员」)', () => {
+  test('the roster is every shop operator of the data, at the price the server charges', () => {
+    assert.equal(OPS.length, VISIBLE_OPS.length, 'one row per shop-eligible operator');
+    assert.ok(OPS.length > 100, `premise: the shipped roster (${OPS.length})`);
+    const ids = new Set(OPS.map((o) => o.id));
+    for (const rec of VISIBLE_OPS) assert.ok(ids.has(rec.chessId), rec.chessId);
+    // the price is the record's own (the same number GameData.chessPrice answers), never a second table
+    for (const op of OPS) {
+      const rec = CHESS[op.id];
+      assert.equal(typeof op.name, 'string');
+      assert.equal(op.tier, rec.tier);
+      assert.equal(op.price, rec.price, op.id);
+      assert.ok(Number.isInteger(op.price) && op.price >= 0);
+    }
+    // golden / 自选 / hidden / invisible records are NOT offered: the shop could never offer them
+    for (const rec of Object.values(CHESS)) {
+      if (rec && (rec.isGolden || rec.isDiy || rec.isHidden || rec.visible !== true)) assert.ok(!ids.has(rec.chessId), rec.chessId);
+    }
+    // sorted by tier (the panel reads as a tier list), stable within a tier
+    for (let i = 1; i < OPS.length; i++) assert.ok(OPS[i - 1].tier <= OPS[i].tier, `${OPS[i - 1].id} → ${OPS[i].id}`);
+  });
+
+  test('the search box narrows by name and by id, case-insensitively, and keeps the list on an empty query', () => {
+    const one = OPS.find((o) => o.tier === 6);
+    const byName = filterOperators(OPS, one.name);
+    assert.ok(byName.some((o) => o.id === one.id), 'the name matches its own operator');
+    const byId = filterOperators(OPS, one.id.toUpperCase());
+    assert.deepEqual(byId.map((o) => o.id), [one.id], 'an upper-case id finds exactly that operator');
+    assert.equal(filterOperators(OPS, '   ').length, OPS.length, 'a blank query keeps the whole roster');
+    assert.deepEqual(filterOperators(OPS, 'zzzz-no-such-operator'), []);
+  });
+
+  test('the 干员 tab lists every operator as a buy row; a tap buys that operator', () => {
+    const bought = [];
+    const tree = expand(TestArenaPanel({
+      funds: 99, ownedPlayer: [], ownedEnemy: [], busy: null, side: TEST_CHESS_TAB, canBuy: true,
+      operators: OPS, search: '', onSearch() {}, onBuyOperator: (id) => bought.push(id),
+      onGrantPlayer() {}, onGrantEnemy() {}, onClearPlayer() {}, onClearEnemy() {}, onFunds() {},
+    }));
+    const rows = buttonsOf(tree).filter((b) => typeof b.props?.['data-op'] === 'string' && b.props['data-op']);
+    assert.equal(rows.length, OPS.length, 'one row per operator');
+    for (const op of OPS) assert.ok(rows.some((r) => r.props['data-op'] === op.id), op.id);
+    // the row shows the name, the tier and the price (what the tester decides on)
+    const row = rows.find((r) => r.props['data-op'] === OPS[0].id);
+    assert.ok(textOf(row).includes(OPS[0].name));
+    assert.ok(textOf(row).includes(String(OPS[0].price)));
+    // no 清空 on this tab: there is no card list to clear
+    assert.ok(!buttonsOf(tree).some((b) => !b.props?.['data-op'] && !b.props?.['data-hex'] && /清空|Clear/.test(textOf(b))));
+    rows[0].props.onClick();
+    assert.deepEqual(bought, [OPS[0].id]);
+    assert.ok(textOf(tree).includes('无视商店等级'), 'the tab explains that bans / level / pool do not apply');
+  });
+
+  test('the search prop narrows the rendered rows', () => {
+    const one = OPS.find((o) => o.tier === 5);
+    const tree = expand(TestArenaPanel({
+      funds: 99, side: TEST_CHESS_TAB, operators: OPS, search: one.name, onSearch() {}, onBuyOperator() {},
+      onGrantPlayer() {}, onGrantEnemy() {}, onClearPlayer() {}, onClearEnemy() {}, onFunds() {},
+    }));
+    const rows = buttonsOf(tree).filter((b) => typeof b.props?.['data-op'] === 'string' && b.props['data-op']);
+    assert.ok(rows.length < OPS.length, 'the search narrowed the list');
+    assert.ok(rows.some((r) => r.props['data-op'] === one.id));
+  });
+
+  test('outside PREP / after Ready the rows are disabled and the panel says why', () => {
+    const tree = expand(TestArenaPanel({
+      funds: 99, side: TEST_CHESS_TAB, canBuy: false, operators: OPS, search: '', onSearch() {}, onBuyOperator() {},
+      onGrantPlayer() {}, onGrantEnemy() {}, onClearPlayer() {}, onClearEnemy() {}, onFunds() {},
+    }));
+    const rows = buttonsOf(tree).filter((b) => typeof b.props?.['data-op'] === 'string' && b.props['data-op']);
+    assert.ok(rows.length > 0);
+    assert.ok(rows.every((r) => r.props.disabled === true), 'every row is disabled');
+    assert.ok(textOf(tree).includes('休整期'), 'the panel explains the PREP-only rule');
+  });
+
+  test('a row whose purchase is in flight is disabled, the others stay live', () => {
+    const op = OPS[0];
+    const tree = expand(TestArenaPanel({
+      funds: 99, side: TEST_CHESS_TAB, canBuy: true, busy: op.id, operators: OPS, search: op.name,
+      onSearch() {}, onBuyOperator() {}, onGrantPlayer() {}, onGrantEnemy() {}, onClearPlayer() {}, onClearEnemy() {}, onFunds() {},
+    }));
+    const rows = buttonsOf(tree).filter((b) => typeof b.props?.['data-op'] === 'string' && b.props['data-op']);
+    const busy = rows.find((r) => r.props['data-op'] === op.id);
+    assert.equal(busy.props.disabled, true);
+    const other = TestOperatorRow({ op: { id: 'x', name: 'X', tier: 1, price: 2 }, busy: false, canBuy: true, onBuy() {} });
+    assert.equal(other.props.disabled, false);
   });
 });
 
@@ -296,20 +402,30 @@ describe('测试场: the lobby entry (screens/lobby.js)', () => {
     assert.match(src, /actions\.testHexClear\(\)/);
     assert.match(src, /actions\.testEnemyHex\(/);
     assert.match(src, /actions\.testEnemyHexClear\(\)/);
+    // 测试场 买任何干员 (业主 2026-10-26): the roster comes from the same data store the game reads, the price rule is the
+    // shared one, and `canBuy` is the server's own gate (PREP, not Ready) so the picker never sends a doomed tap
+    assert.match(src, /operatorsOf\(data\.list\('chess'\), data\.get\('config'\), pub\?\.modeId\)/);
+    assert.match(src, /operators=\$\{testOperators\}/);
+    assert.match(src, /onBuyOperator=\$\{buyTestOperator\}/);
+    assert.match(src, /canBuy=\$\{pub\?\.phase === PHASE\.PREP && !priv\?\.ready\}/);
+    assert.match(src, /actions\.testChess\(/);
     // the owned lists come from the same frames the game itself reads: the player's own m.public row, the enemy's list
     assert.match(src, /ownedPlayer=\$\{\(pub\?\.players \|\| \[\]\)\.find\(/);
     assert.match(src, /ownedEnemy=\$\{\(pub\?\.enemyHexes \|\| \[\]\)/);
     // the tab is controlled: the screen owns it, so the panel itself stays hook-free and test-renderable
     assert.match(src, /const \[testSide, setTestSide\] = useState\('player'\)/);
     assert.match(src, /side=\$\{testSide\} onSide=\$\{setTestSide\}/);
+    // the search box is controlled too (the panel has no hook of its own)
+    assert.match(src, /const \[testSearch, setTestSearch\] = useState\(''\)/);
+    assert.match(src, /search=\$\{testSearch\} onSearch=\$\{setTestSearch\}/);
   });
 
-  test('the five intents exist in ui/gameActions.js and the protocol knows them', async () => {
+  test('the test intents exist in ui/gameActions.js and the protocol knows them', async () => {
     const { actions } = await import('../../public/js/ui/gameActions.js');
-    const keys = ['testFunds', 'testHex', 'testHexClear', 'testEnemyHex', 'testEnemyHexClear'];
+    const keys = ['testFunds', 'testHex', 'testHexClear', 'testEnemyHex', 'testEnemyHexClear', 'testChess'];
     for (const k of keys) assert.equal(typeof actions[k], 'function', k);
     const { C2S, validateC2S } = await import('../../shared/protocol.js');
-    const types = ['g.testFunds', 'g.testHex', 'g.testHexClear', 'g.testEnemyHex', 'g.testEnemyHexClear'];
+    const types = ['g.testFunds', 'g.testHex', 'g.testHexClear', 'g.testEnemyHex', 'g.testEnemyHexClear', 'g.testChess'];
     for (const t of types) assert.ok(Object.hasOwn(C2S, t), t);
     assert.equal(validateC2S({ t: 'g.testFunds', amount: 10 }), null);
     assert.equal(validateC2S({ t: 'g.testHex', hexId: 'hex_stipend' }), null);
@@ -317,5 +433,8 @@ describe('测试场: the lobby entry (screens/lobby.js)', () => {
     assert.equal(validateC2S({ t: 'g.testEnemyHex', hexId: 'ehex_corrode' }), null);
     assert.equal(validateC2S({ t: 'g.testEnemyHexClear' }), null);
     assert.notEqual(validateC2S({ t: 'g.testEnemyHex', hexId: '' }), null);
+    assert.equal(validateC2S({ t: 'g.testChess', chessId: 'chess_char_1_01_a' }), null);
+    assert.notEqual(validateC2S({ t: 'g.testChess' }), null);
+    assert.notEqual(validateC2S({ t: 'g.testChess', chessId: '' }), null);
   });
 });

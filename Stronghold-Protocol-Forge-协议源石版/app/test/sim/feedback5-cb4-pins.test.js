@@ -93,17 +93,20 @@ test('item 57: a prisoner freed in its own combat leaks and re-enters 联防 con
 test('item 35: the 鸭爵 strategy swaps 0–2 enemies of each player\'s wave, each one of its four at random (two ducks in one wave included), never more', () => {
   const hist = [0, 0, 0];
   let twoSame = 0;
-  for (const seed of [31, 32]) {
+  // ONE draw per round (GitHub #839: bands/meta.js duckGlobal draws on ctx.seedFor('duck:<round>')): the same match and
+  // round always answer the same, so the spread of 0 / 1 / 2 swaps comes from the SEEDS, not from repeated looks.
+  for (let seed = 31; seed <= 60 && (hist[0] === 0 || hist[1] === 0 || hist[2] === 0 || twoSame === 0); seed++) {
     const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', seed, fake: true }).start();
     h.toPrep(6, { band: 'band_ducklord' });
     for (const ps of h.m.alivePlayers()) {
-      for (let k = 0; k < 40; k++) {
-        const ducks = h.m._normalOpts(ps).spawns.filter((x) => x.tag === 'duck');
-        assert.ok(ducks.length <= 2, `${ducks.length} swaps in one wave`);
-        hist[ducks.length]++;
-        if (ducks.length === 2 && ducks[0].enemyKey === ducks[1].enemyKey) twoSame++;
-        for (const d of ducks) assert.deepEqual(d.bounty, { coins: 1, ownerPlayerId: ps.playerId });
-      }
+      const ducks = h.m._normalOpts(ps).spawns.filter((x) => x.tag === 'duck');
+      assert.ok(ducks.length <= 2, `${ducks.length} swaps in one wave`);
+      hist[ducks.length]++;
+      if (ducks.length === 2 && ducks[0].enemyKey === ducks[1].enemyKey) twoSame++;
+      for (const d of ducks) assert.deepEqual(d.bounty, { coins: 1, ownerPlayerId: ps.playerId });
+      // a second look in the same round is the same draw (the stats preview and the battle agree)
+      const again = h.m._normalOpts(ps).spawns.filter((x) => x.tag === 'duck');
+      assert.deepEqual(again.map((d) => d.time + ':' + d.enemyKey), ducks.map((d) => d.time + ':' + d.enemyKey), `seed ${seed}`);
     }
     h.m.dispose();
   }

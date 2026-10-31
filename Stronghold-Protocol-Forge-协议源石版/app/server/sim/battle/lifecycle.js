@@ -72,6 +72,8 @@ export class BattleLifecycle {
     // forceEnd() requested while stepping (content hook, repeated engine errors) is deferred to the end of the
     // current phase: the remaining phases are skipped and the result is built once, so nothing mutates it later.
     this._stepping = true;
+    // per-tick budget: how many damage instances this tick has resolved so far (MAX_TICK_DAMAGE_INSTANCES)
+    this.dmgInstances = 0;
     try {
       if (!this.started) this._phase('start', () => this.start());
       const dt = this.dt;

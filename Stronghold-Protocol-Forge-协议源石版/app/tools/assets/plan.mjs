@@ -68,6 +68,11 @@ export const VOICE_OPTIONAL_TREES = Object.freeze({ voiceEn: 'en', voiceKr: 'kr'
 export const ENEMY_SPINE_ALIAS = Object.freeze({
   enemy_1305_mhslim: 'enemy_1007_slime',
   enemy_1305_mhslim_2: 'enemy_1007_slime',
+  // 木桩 (enemy_9901_dummy, the fork's round-16 training dummy): a data row that exists only in this repo, so no dump has
+  // a model for it. 业主 2026-10-29「木桩用萨米的意志复制改改」— it IS 「萨米的意志」 with different numbers, so it draws
+  // that leader's own model and icon. The alias is deliberately NOT in render/units.js `ALIAS_TINT`: a tint there is for
+  // "a different enemy stands in for a variant", and here the stand-in is the intended picture.
+  enemy_9901_dummy: 'enemy_9033_acdeer',
 });
 
 /** Loading illustrations referenced by act2autochess modeDataDict (non-training). */
@@ -81,6 +86,17 @@ const PROFESSIONS = ['caster', 'medic', 'pioneer', 'sniper', 'special', 'support
  * step with CUSTOM_BANDS — a name here without a file on disk is reported by the fetch as a dropped leaf.
  */
 export const HAND_BAND_ICONS = Object.freeze(['band_admin']);
+
+/**
+ * Hand-authored bands that share ANOTHER hand-authored band's portrait instead of shipping their own file
+ * (业主 2026-10-31「把管理员2，3策略图像加上，用管理员策略的图像」). The three 管理员 strategies are one family with one
+ * picture, so `band_admin2` / `band_admin3` resolve to `band/band_admin.png` — no second copy of the art, and `BandIcon`
+ * shows 管理员's portrait instead of falling back to the name's first character.
+ *
+ * The key must be a `CUSTOM_BANDS` band and the value must be a `HAND_BAND_ICONS` one; a test pins both sides
+ * (test/assets.test.js) so a renamed strategy cannot silently lose its picture again.
+ */
+export const HAND_BAND_ICON_ALIASES = Object.freeze({ band_admin2: 'band_admin', band_admin3: 'band_admin' });
 
 /**
  * The 19 official 玩法说明 (tutorial) pages, in the reading order of public/js/ui/guide.js GUIDE_CHAPTERS (a test keeps
@@ -543,7 +559,14 @@ export function buildPlan({ assets07, ops03, enemies05, maps05, audio, modelsDat
     const icon07 = assets07?.enemies?.[id]?.icon;
     const iconAlts = [alt(`enemy/icon/${id}.png`, `${RAW.yuanyan}enemy/${id}.png`, bytesOf(icon07, `${RAW.yuanyan}enemy/${id}.png`))];
     for (const other of [handbookOf.get(id), baseIdOf(id)]) if (other) iconAlts.push(alt(`enemy/icon/${id}.png`, `${RAW.yuanyan}enemy/${other}.png`));
-    e.icon = leaf(iconAlts);
+    // A key that has no model of its own and draws another enemy's (ENEMY_SPINE_ALIAS) takes that enemy's ICON too — the
+    // same "it IS that picture" the alias means for the model. That alt names the alias target's OWN file and carries NO
+    // url, so it is a "publish what is already on disk" candidate (the pattern HAND_BAND_ICONS uses below) — which is why
+    // this branch cannot go through leaf(), whose job is to keep only alts that have something to download. Every other
+    // key keeps leaf() exactly as before, and the key's own icon is still tried first, so an enemy upstream DOES have an
+    // icon for (1305_mhslim has both of its own) is untouched.
+    const aliasIcon = ENEMY_SPINE_ALIAS[id];
+    e.icon = aliasIcon ? { alts: [...iconAlts, alt(`enemy/icon/${aliasIcon}.png`)] } : leaf(iconAlts);
     // Spine: own model, else alias chain (research 07 §5.6).
     let spine = arkModel(id);
     if (!spine) {
@@ -593,6 +616,12 @@ export function buildPlan({ assets07, ops03, enemies05, maps05, audio, modelsDat
   // `node tools/fetch-assets.mjs` rebuild keeps the entry instead of dropping it as a miss (and `--prune` never sees the
   // file as an orphan, because the resolved manifest references it).
   for (const bandId of HAND_BAND_ICONS) bands[bandId] = { alts: [alt(`band/${bandId}.png`)] };
+  // 业主 2026-10-31「把管理员2，3策略图像加上，用管理员策略的图像」: one portrait, three strategy ids — the alias reuses the
+  // leaf above (so `band_admin2` and `band_admin3` carry band/band_admin.png and the client needs no special case).
+  for (const [bandId, of] of Object.entries(HAND_BAND_ICON_ALIASES)) {
+    if (!bands[of]) continue;
+    bands[bandId] = JSON.parse(JSON.stringify(bands[of]));
+  }
 
   // --- professions ----------------------------------------------------------
   const prof = { icon: {}, large: {}, battlecard: {}, sub: {} };

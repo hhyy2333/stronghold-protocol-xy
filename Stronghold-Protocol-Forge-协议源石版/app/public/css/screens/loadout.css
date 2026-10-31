@@ -900,7 +900,7 @@
 .lo-pop--menu button:disabled { opacity: .4; cursor: default; }
 .lo-pop--menu button.is-danger:hover:not(:disabled) { color: var(--red-premium); background: rgba(255, 84, 84, .1); }
 .lo-pop--menu .icon { width: max(.18rem, 12px); height: max(.18rem, 12px); }
-/* 干员持有 (like the event's 选配助战) and 快速配置: two big blocks at the right */
+/* 干员持有 and 快速配置: two big blocks at the right */
 .lo-assist, .lo-quickbtn { display: inline-flex; align-items: stretch; height: max(.7rem, 40px); padding: 0; font: inherit; border: 0; cursor: pointer; text-align: left; }
 .lo-assist__txt, .lo-quickbtn__txt { display: flex; flex-direction: column; justify-content: center; padding: 0 max(.14rem, 8px); line-height: 1.1; }
 .lo-assist__icon, .lo-quickbtn__icon { display: grid; place-items: center; width: max(.62rem, 34px); }
@@ -1179,13 +1179,17 @@
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .hxb__side {
-  flex: 0 0 max(2.6rem, 160px); display: flex; flex-direction: column; gap: .12rem; min-width: 0;
+  flex: 0 0 max(2.6rem, 160px); display: flex; flex-direction: column; gap: .12rem; min-width: 0; min-height: 0;
   padding: .12rem; background: rgba(0, 0, 0, .18); border: 1px solid var(--line-2);
 }
-.hxb__lead { display: flex; gap: .06rem; margin: 0; font-size: max(.13rem, 9px); line-height: 1.5; color: var(--text-md); }
+.hxb__lead { flex: none; display: flex; gap: .06rem; margin: 0; font-size: max(.13rem, 9px); line-height: 1.5; color: var(--text-md); }
 .hxb__lead .icon { flex: none; width: max(.16rem, 11px); height: max(.16rem, 11px); color: var(--ice); }
-.hxb__help { margin: 0; font-size: max(.12rem, 9px); line-height: 1.5; color: var(--text-lo); }
-.hxb__picked { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .08rem; }
+.hxb__help { flex: none; margin: 0; font-size: max(.12rem, 9px); line-height: 1.5; color: var(--text-lo); }
+/* 六个槽（业主 2026-10-30 由 3 抬到 6）：矮窗口里在侧栏内滚动，不把面板撑出去 */
+.hxb__picked {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .08rem;
+  min-height: 0; overflow: auto; overscroll-behavior: contain;
+}
 .hxb__slot {
   display: flex; align-items: center; gap: .08rem; min-height: max(.36rem, 22px); padding: .06rem .08rem;
   font-size: max(.13rem, 9px); color: var(--text-dim); border: 1px dashed var(--line-2);

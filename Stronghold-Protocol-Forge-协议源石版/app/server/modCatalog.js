@@ -80,7 +80,7 @@ const byPath = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  */
 const MANIFEST_FIELDS = Object.freeze([
   'id', 'name', 'version', 'author', 'license', 'hasAssets', 'description', 'gameVersion', 'api', 'game', 'layer',
-  'combat', 'content', 'overrides', 'voices', 'voiceLangs', 'bondIcons', 'itemIcons', 'art', 'support',
+  'combat', 'content', 'overrides', 'voices', 'voiceLangs', 'bondIcons', 'itemIcons', 'art',
 ]);
 
 /** The route prefix a pack's own JSON is fetched from (`<prefix><pack>/<path inside the pack>`). */

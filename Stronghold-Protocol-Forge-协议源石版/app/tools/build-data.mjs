@@ -390,6 +390,9 @@ async function loadContext() {
     assets: await loadResearch('07-assets.json'),
     extra: await loadResearch('15-extra-bosses.json'),
     waveEnemies: await loadResearch('16-extra-enemies.json'),
+    // 第16回合「木桩演练」(docs/research/17-dummy-round.json, Lead 2026-10-29): the dummy round, its one-spawn wave and
+    // the dummy enemy row. Absent ⇒ every builder below is a no-op and the data is exactly the official 15 rounds.
+    dummy: await loadResearch('17-dummy-round.json'),
   };
 
   return {
@@ -1077,6 +1080,25 @@ function buildChess(ctx) {
           traitOverride: tr ? tr.trait : null,
           talentChanges: moduleTalentChanges(ctx, parts.op, phase, level, `chess ${chessId}`, ctx.potRank),
         });
+        // 3 级模组（协议源石【特限恢复】，业主 2026-10-31）：同一套拆分 / 插值逻辑在 equipLevel 3 上再算一份，按
+        // uniEquipId 收进 data/moduleLevels.json —— 所有干员共用一份，只新增文件、不改其它 data。
+        const ph3 = (battleEquip[id]?.phases || []).find((p) => p.equipLevel === 3) || null;
+        if (ph3) {
+          const parts3 = splitModuleParts(ph3);
+          const hasTrait3 = parts3.op.some((pt) => bestCandidate(pt.overrideTraitDataBundle?.candidates, phase, level, ctx.potRank));
+          const tr3 = hasTrait3 ? traitRecord(ctx, char, phase, level, parts3.op, chessId, ctx.potRank) : null;
+          const levels3 = ctx.moduleLevels3 || (ctx.moduleLevels3 = {});
+          if (!levels3[id]) {
+            levels3[id] = {
+              uniEquipId: id, name: meta.uniEquipName || null,
+              typeName: `${meta.typeName1 || ''}${meta.typeName2 ? '-' + meta.typeName2 : ''}`,
+              typeIcon: meta.typeIcon || null, icon: meta.uniEquipIcon || id, level: 3,
+              attr: moduleAttr(ph3),
+              traitOverride: tr3 ? tr3.trait : null,
+              talentChanges: moduleTalentChanges(ctx, parts3.op, phase, level, `chess ${chessId}`, ctx.potRank),
+            };
+          }
+        }
         if (id !== modId) moduleAlts.push({ id, modulePhase: ph, moduleTokenParts: parts.token });
       }
       if (modId) moduleAlts.push({ id: 'none', modulePhase: null, moduleTokenParts: [] });
@@ -1903,13 +1925,17 @@ const CUSTOM_BAND_EFFECTS = Object.freeze({
     descRaw: '【管理员2】第 <@ba.vup>1、3</> 回合开始时，随机获得<@ba.vup>一枚协议源石</>。',
     buffs: [{ key: 'band_hex_grant_rounds', countType: 'NONE', bb: { roundA: 1, roundB: 3 }, bbStr: {} }],
   },
-  /** 业主 2026-10-25「增加策略『管理员3』：第4，10 回合获得『潘多拉』」— `bbStr.hexId` pins the card (潘多拉魔盒). */
+  /**
+   * 业主 2026-10-25「增加策略『管理员3』：第4，10 回合获得『潘多拉』」, then 2026-10-31「改成第5回合开始时获得」
+   * — `bbStr.hexId` pins the card (潘多拉魔盒). ONE round now, so only `roundA` is written: `Match.bandHexGrants`
+   * drops the missing `roundB` (it keeps integer rounds > 0), the same way a strategy without the buff grants nothing.
+   */
   aceffect_band_admin3: {
     name: '管理员3',
     effectType: 'BAND_INITIAL',
-    desc: '【管理员3】第 4、10 回合开始时，获得【潘多拉魔盒】。',
-    descRaw: '【管理员3】第 <@ba.vup>4、10</> 回合开始时，获得【<@ba.vup>潘多拉魔盒</>】。',
-    buffs: [{ key: 'band_hex_grant_rounds', countType: 'NONE', bb: { roundA: 4, roundB: 10 }, bbStr: { hexId: 'hex_pandora' } }],
+    desc: '【管理员3】第 5 回合开始时，获得【潘多拉魔盒】。',
+    descRaw: '【管理员3】第 <@ba.vup>5</> 回合开始时，获得【<@ba.vup>潘多拉魔盒</>】。',
+    buffs: [{ key: 'band_hex_grant_rounds', countType: 'NONE', bb: { roundA: 5 }, bbStr: { hexId: 'hex_pandora' } }],
   },
 });
 
@@ -2711,6 +2737,30 @@ function customBossDefs(ctx) {
 }
 
 /**
+ * 第16回合「木桩演练」(docs/research/17-dummy-round.json, Lead 2026-10-29): the round AFTER the Hidden Core — one dummy
+ * that does not fight back, does not move, has a very large HP pool and heals itself, so a player can measure their
+ * damage. The official autochess tables carry none of it, so the whole chain (the enemy row, the wave, the round and
+ * the mode's `dummyRound`) comes from the research file:
+ *
+ *   * `enemy`  — the row `data/enemies.json` clones from `copyFrom` (官方 acdeer「萨米的意志」) with the declared stats;
+ *   * `wave`   — `data/waves.json`'s single-spawn template (one route, the dummy standing on its start tile);
+ *   * `round`  — `data/config.json`'s `rounds["16"]` for the listed modes plus their `dummyRound`.
+ *
+ * Returns null when the file is absent or malformed, so a research-free build (`--no-research`) is byte-identical to
+ * the official 15-round data.
+ * @returns {null|{round:{round:number, modes:string[], cfg:object}, wave:object, enemy:object}}
+ */
+function dummyRoundDef(ctx) {
+  const d = ctx.research.dummy;
+  if (!d || typeof d !== 'object') return null;
+  const enemy = d.enemy, wave = d.wave, round = d.round;
+  if (!enemy || typeof enemy.key !== 'string' || !/^enemy_/.test(enemy.key) || typeof enemy.copyFrom !== 'string') return null;
+  if (!wave || typeof wave.id !== 'string' || !Array.isArray(wave.routes) || !wave.spawn || typeof wave.spawn !== 'object') return null;
+  if (!round || !Number.isInteger(round.round) || round.round <= 0 || !Array.isArray(round.modes) || !round.round || !round.cfg) return null;
+  return d;
+}
+
+/**
  * Collect every enemy key that can appear in a match (templates, factions, bounties, bands,
  * bosses, summons), transitively through extraEnemyKeyList and enemy blackboards.
  */
@@ -2812,6 +2862,13 @@ const HIT_AREAS = Object.freeze({
   enemy_1521_dslily: { w: 4.95, h: 2.95, dx: 0, dy: 1 },
   enemy_9032_aclionk: { w: 4.95, h: 2.95, dx: 0, dy: 1 },
   enemy_9033_acdeer: { w: 4.95, h: 2.95, dx: 0, dy: 1 },
+  // 伤心的大锁 (boss_13): PRTS 「巨型单位：受击判定区域为长2.95宽2.95的长方形，向上偏移1」 — a SQUARE body, unlike the
+  // six 4.95 × 2.95 leaders above, so it needs its own row rather than a copy of theirs.
+  enemy_2018_csdoll: { w: 2.95, h: 2.95, dx: 0, dy: 1 },
+  // 木桩 (enemy_9901_dummy, round 16): it draws 「萨米的意志」's model and stands where a leader stands on the boss deploy
+  // field, so it takes that leader's body too (owner 2026-10-30「木桩的受击范围」). Same rectangle as enemy_9033_acdeer —
+  // the picture and the hit body have to agree, or melee looks like it is cutting air next to a huge model.
+  enemy_9901_dummy: { w: 4.95, h: 2.95, dx: 0, dy: 1 },
 });
 
 /**
@@ -3058,7 +3115,53 @@ function buildEnemies(ctx) {
     };
   }
   for (const k of STATIC_BODIES) if (!out[k]) warn(`STATIC_BODIES: ${k} is not an enemy of the mode`);
+  addDummyEnemy(ctx, out);
   return out;
+}
+
+/**
+ * 木桩 enemy_9901_dummy (docs/research/17-dummy-round.json): the official tables have no row for it, so the record is
+ * the template enemy's (默认可 enemy_9033_acdeer「萨米的意志」) with the research's numbers on top. Everything the
+ * research does not name — abilities, talents, skills, immunities, `be` / `attrPower`, `attackAnim`, `hitArea` — is
+ * the template's, which is what 「用萨米的意志复制改改」 means: the same monster, no teeth.
+ *
+ * Two fields are NOT the template's:
+ *   * `stats` — the declared block (maxHp / atk 0 / moveSpeed 0 / lpr 0 / hpRecoveryPerSec …), key by key, same shape;
+ *   * `iconId` / `spine` — the template's model ids, so this row points at 萨米's art in its own right. What the CLIENT
+ *     actually draws comes from data/assets.json (`enemies['enemy_9901_dummy'].spine` / `spineAliasOf`, built by
+ *     tools/fetch-assets.mjs) — that half is the Lead's task; this file only writes the two enemies.json fields.
+ *
+ * Appended AFTER the official rows, so every official key keeps its position and order in data/enemies.json.
+ * @param {object} ctx @param {Record<string, object>} out data/enemies.json in build order (mutated)
+ */
+function addDummyEnemy(ctx, out) {
+  const d = dummyRoundDef(ctx);
+  if (!d) return;
+  const src = out[d.enemy.copyFrom];
+  if (!src) { warn(`dummy round: template enemy ${d.enemy.copyFrom} is not in enemies`); return; }
+  if (out[d.enemy.key]) { warn(`dummy round: ${d.enemy.key} is an official enemy key`); return; }
+  const rec = JSON.parse(JSON.stringify(src));
+  rec.key = d.enemy.key;
+  if (typeof d.enemy.name === 'string' && d.enemy.name) rec.name = d.enemy.name;
+  if (typeof d.enemy.rank === 'string' && d.enemy.rank) rec.rank = d.enemy.rank;
+  const art = d.enemy.art && typeof d.enemy.art === 'object' ? d.enemy.art : {};
+  if (typeof art.iconId === 'string' && art.iconId) rec.iconId = art.iconId;
+  if (typeof art.spine === 'string' && art.spine) rec.spine = art.spine;
+  for (const [k, v] of Object.entries(d.enemy.stats && typeof d.enemy.stats === 'object' ? d.enemy.stats : {})) {
+    if (!(k in rec.stats)) { warn(`dummy round: ${d.enemy.key} has no stat ${k}`); continue; }
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    rec.stats[k] = cleanNum(v);
+  }
+  // NO hitArea (Lead 2026-10-29): 整行照抄 would inherit acdeer's { w: 4.95, h: 2.95 } — the model's own body box. But
+  // `hitArea` comes from the `HIT_AREAS` table like every other row, and the 木桩 IS on it now: it draws 萨米's model on
+  // the boss deploy field, so it takes 萨米's body too (owner 2026-10-30「木桩的受击范围」). That also keeps the
+  // test/sim/playtest5_bossbody.test.js invariant — `hitArea` ⇔ `bosses.js SELF_BOUND` membership — true, because the
+  // key is in both: a body that big must be 自缚 + 无法被阻挡, and the dummy is.
+  // the enemy row is not part of any faction pool / 悬赏 / summons list: it is only reachable through the dummy wave,
+  // so it is a direct spawn key rather than a token (server/match/waves.js buildUniteWave reads `tokenOnly`).
+  rec.tokenOnly = false;
+  rec.inactiveIn = [];
+  out[rec.key] = rec;
 }
 
 // ===== waves ====================================================================================
@@ -3255,8 +3358,64 @@ function buildWaves(ctx, enemies) {
       out[id] = w;
     }
   }
+  addDummyWave(ctx, out, enemies);
   return out;
 }
+
+/**
+ * 第16回合「木桩演练」的波次 custom_dummy (docs/research/17-dummy-round.json): a NORMAL-kind template with exactly ONE
+ * spawn — the dummy — so `server/match/waves.js buildNormalWave` plans it like any ordinary round.
+ *
+ * Why the route is declared instead of cloned from an official wave: the dummy's `moveSpeed` is 0, so it stands on its
+ * route's START tile for the whole battle, and the official normal waves all start on the red gate (9,10) — the tile a
+ * 悬赏 / 协议源石 / 彩蛋首领 spawn would come in on. So the declared route is the **official leader route** of
+ * `act1autochess_h07_07` ([3,10] → [2,2], checkpoint [2,3]): owner 2026-10-30「16回合没有设置成boss回合，导致地图有问题」—
+ * the round is played from the boss deploy field (server/match/match/phases.js _planDummyField), where board tile
+ * (10,10) maps to stage (3,10), i.e. onto the post. `checkpoints` / `end` stay the official ones, so the shape is an
+ * ordinary one.
+ *
+ * The spawn carries no `tag` (so it is neither 'boss' nor 'part': it counts in the round's total, pays no leader
+ * handling and its `lpr` is the dummy's own 0), no `slot` (server/match/waves.js classOf derives it) and `time: 0`
+ * (the dummy is there from the first game second — it has to be measurable for the whole window).
+ * @param {object} ctx @param {Record<string, object>} out data/waves.json (mutated) @param {Record<string, object>} enemies
+ */
+function addDummyWave(ctx, out, enemies) {
+  const d = dummyRoundDef(ctx);
+  if (!d) return;
+  const { wave, enemy, round } = d;
+  if (!enemies[enemy.key]) { warn(`dummy round: wave ${wave.id} has no enemy ${enemy.key}`); return; }
+  if (out[wave.id]) { warn(`dummy round: ${wave.id} is an official wave id`); return; }
+  const spawn = { ...wave.spawn };
+  if (spawn.key !== enemy.key) spawn.key = enemy.key;
+  const routes = wave.routes.map((r) => JSON.parse(JSON.stringify(r)));
+  const spawns = [spawn];
+  const slotCounts = {};
+  let total = 0;
+  for (const sp of spawns) {
+    if (sp.action) continue;
+    if (!routes[sp.routeIndex]) warn(`dummy round: wave ${wave.id} spawn uses missing route ${sp.routeIndex}`);
+    if (!enemies[sp.key]) warn(`dummy round: wave ${wave.id} spawn key ${sp.key} not in enemies`);
+    const n = Math.max(1, Number.isInteger(sp.count) ? sp.count : 1);
+    const slot = enemies[sp.key].templateSlot;
+    if (slot) slotCounts[slot] = (slotCounts[slot] || 0) + n;
+    total += n;
+  }
+  out[wave.id] = {
+    id: wave.id, kind: 'normal', solo: false, bossId: null,
+    maxPlayTime: wave.maxPlayTime ?? null,
+    dp: { init: wave.dp?.init ?? 10, perSec: wave.dp?.perSec ?? 1, max: wave.dp?.max ?? 99 },
+    characterLimit: wave.characterLimit ?? 8, moveMultiplier: wave.moveMultiplier ?? 0.5,
+    bgm: wave.bgm ?? null,
+    routes,
+    extraRoutes: (wave.extraRoutes || []).map((r) => JSON.parse(JSON.stringify(r))),
+    spawns, branches: {}, overrides: {}, devices: [],
+    totalCount: total, slotCounts,
+    // every mode/round that plays this wave, in the same shape the official templates carry (`bossId: null` — this is
+    // not a leader round): data.test.js walks it and expects a real { modeId, round } per entry.
+    usedBy: round.modes.map((modeId) => ({ modeId, round: round.round, bossId: null })),
+  };
+}
+
 
 // ===== stages ===================================================================================
 
@@ -3626,6 +3785,12 @@ const FORK_POWER_BAND_WIDE = Object.freeze([0.7, 1.5]);
 const FORK_EXTRA_PER_POOL = 1;
 /** Slots a batch enemy WITH a kit (research `kit`) may fill per pool — see the rules above. */
 const FORK_EXTRA_PER_POOL_KIT = 3;
+/**
+ * The most a `band: 'wide'` key may overshoot a pool anchor when the over-cap slot is its last resort (see the rescue
+ * pass): 爆破攻坚手组长 P 39000 / 33810 ≈ 1.15 needs it, 撼地遗众 P 136210 / 33810 ≈ 4.03 must not — a 4× overshoot in
+ * one action breaks the per-round enemy count the wide band exists to preserve. A key beyond this stays bounty-only.
+ */
+const OVERCAP_RATIO_MAX = 1.6;
 
 /** A stable [0, 1) number for one pool, so a `share` gate is reproducible (no RNG in the data build). */
 function shareHash(entryKey, cls) {
@@ -3640,6 +3805,10 @@ function attachWaveEnemies(ctx, entries, enemies) {
   const usable = extra.filter((e) => {
     const r = enemies[e.key];
     if (!r) return false;
+    // `noWave` (research): the row exists so a bounty card / a death spawn can name it, but it never takes a pool slot —
+    // the batch's `_2` strength variants would otherwise push the base key out of the pools, and a leader (爱国者,
+    // 狂躁异质裂兽) is not a wave enemy at all.
+    if (e.noWave) return false;
     if (r.notCountInTotal || r.tokenOnly || r.applyWay === 'NONE' || r.staticBody) { warn(`wave enemy ${e.key}: not a plain spawnable enemy`); return false; }
     // `attackAnim` comes from data/assets.json (written by fetch-assets from the extracted model), so a fresh batch is
     // built in two passes: this one writes the enemy rows, fetch-assets then indexes their models, and the next build
@@ -3771,7 +3940,13 @@ function attachWaveEnemies(ctx, entries, enemies) {
           if (!anchor || anchor.rank !== r.rank || !(anchor.attrPower > 0)) continue;
           // a pool may take ONE over-cap key (the 1 + kit slots are full by now on every pool that could hold it)
           if (have.some((x) => x.overCap)) continue;
-          const d = Math.abs(Math.log(r.attrPower / anchor.attrPower));
+          // The over-cap slot is for a key that overpowers EVERY anchor of its class and rank, i.e. one just past the wide
+          // band's top (爆破攻坚手组长 P 39000 vs the 33810 ELITE anchors ≈ 1.15) — NOT a licence to place any key: a
+          // 撼地遗众 (P 136210, 4× the strongest ELITE anchor) would swamp the whole action. The overshoot is capped at
+          // OVERCAP_RATIO_MAX; anything beyond it never enters a pool and stays bounty-only.
+          const ratio = r.attrPower / anchor.attrPower;
+          if (ratio > OVERCAP_RATIO_MAX) continue;
+          const d = Math.abs(Math.log(ratio));
           if (!over || d < over.d) over = { entry, cls, d, have };
         }
       }
@@ -4359,6 +4534,58 @@ function enemyScaleFor(table, type, difficulty, round, isHidden) {
 }
 
 /**
+ * 第16回合「木桩演练」(docs/research/17-dummy-round.json): the round that comes AFTER the Hidden Core — the official
+ * battle tables stop at the hidden round, so the modes listed by the research get `rounds["16"]` and a `dummyRound`
+ * next to `lastRound` / `bossRound` / `hiddenRound`. Those three stay untouched on purpose: 第16回合 is not a regular
+ * round (lastRound stays 14) and not a leader round (bossRound stays 14), and `results.js` computes roundsPassed from
+ * bossRound + hiddenCleared — so the dummy round cannot move the settlement, the rewards or the trophies.
+ *
+ * Only modes that HAVE a hidden round get it (mode_single_funny / mode_training_1 do not), and the round carries the
+ * research's own `template` (custom_dummy), its timers and `isDummy: true`. `prepTime` follows the repo's convention:
+ * SINGLE modes are untimed (`null`, docs/DATA.md §1.1, prep.js prepDeadlineSeconds, test/data.test.js:276), MULTI modes
+ * take the research's 195.
+ *
+ * `enemyScale["16"]` is written too, and must stay NEUTRAL: `enemyScaleFor` clamps a round past the table's end to its
+ * LAST row (ABYSS kHp 7 ⇒ hp ×2.87), and `server/match/waves.js templateSpawns` multiplies every non-leader spawn by
+ * that round's scale — the dummy's declared maxHp would arrive on the field 2.87× larger.
+ * @param {object} ctx @param {Record<string, object>} modes data/config.json `modes` (mutated)
+ */
+function addDummyRound(ctx, modes) {
+  const d = dummyRoundDef(ctx);
+  if (!d) return;
+  const round = d.round;
+  const cfg = round.cfg && typeof round.cfg === 'object' ? round.cfg : {};
+  const r = String(round.round);
+  for (const modeId of round.modes) {
+    const mode = modes[modeId];
+    if (!mode) { warn(`dummy round: mode ${modeId} is not in the official mode table`); continue; }
+    // 只给有隐藏核心的模式：第16回合接在第15回合后面，没有 hiddenRound 的模式根本没有那条路
+    if (!(Number.isInteger(mode.hiddenRound) && mode.hiddenRound > 0)) { warn(`dummy round: ${modeId} has no hiddenRound; skipped`); continue; }
+    if (mode.rounds && mode.rounds[r]) { warn(`dummy round: ${modeId} already has a round ${r}`); continue; }
+    mode.rounds[r] = {
+      template: typeof cfg.template === 'string' ? cfg.template : null,
+      bossTemplates: cfg.bossTemplates ?? null,
+      combatTimeLimit: cfg.combatTimeLimit ?? null,
+      levelMaxPlayTime: cfg.levelMaxPlayTime ?? null,
+      prepTime: mode.type === 'SINGLE' ? (cfg.prepTimeSolo ?? null) : (cfg.prepTime ?? null),
+      prepTimeData: cfg.prepTimeData ?? null,
+      isSpPrepare: !!cfg.isSpPrepare, isBoss: !!cfg.isBoss, isHidden: !!cfg.isHidden,
+      isDummy: cfg.isDummy !== false,
+      bossOvertimeAfter: cfg.bossOvertimeAfter ?? null,
+    };
+    const es = cfg.enemyScale && typeof cfg.enemyScale === 'object' ? cfg.enemyScale : {};
+    mode.enemyScale[r] = {
+      atk: cleanNum(es.atk ?? 1), hp: cleanNum(es.hp ?? 1), speed: cleanNum(es.speed ?? 1),
+      kAtk: Number.isInteger(es.kAtk) ? es.kAtk : 0, kHp: Number.isInteger(es.kHp) ? es.kHp : 0,
+    };
+    // docs/DATA.md §1.1: mode.combatTimeLimit[r] mirrors rounds[r].combatTimeLimit
+    mode.combatTimeLimit[r] = mode.rounds[r].combatTimeLimit;
+    // 照 hiddenRound 的写法（server/match/gamedata.js get dummyRound）
+    mode.dummyRound = round.round;
+  }
+}
+
+/**
  * Build data/config.json: modes (rounds, timers, shop, enemy scaling), economy, bans, timers,
  * titles, tips, broadcasts, trophies and other global tunables.
  */
@@ -4460,6 +4687,8 @@ function buildConfig(ctx, waves, stages, bands, chess, items) {
       }
     }
   }
+
+  addDummyRound(ctx, modes);
 
   const priceTable = act.shopCharChessInfoData || {};
   const chessPrice = {}, chessSell = {}, chessStatus = {};
@@ -4771,6 +5000,8 @@ async function main() {
     passes.push({ ctx: pctx, chess: built.chess, tokenOwners: built.tokenOwners, backups: buildBackups(pctx, built.chess) });
   }
   const { chess, backups } = passes[FULL_RANK];
+  // 3 级模组（协议源石【特限恢复】）：buildChess 在 equipLevel 3 上算出的记录，按 uniEquipId 收成一份。
+  const moduleLevels = passes[FULL_RANK].ctx.moduleLevels3 || {};
   const effects = buildEffects(ctx);
   const bonds = buildBonds(ctx, chess, effects);
   const garrisons = buildGarrisons(ctx, chess);
@@ -4788,7 +5019,7 @@ async function main() {
   // whose bond the mode switches off
   for (const b of Object.values(bands)) b.bondIds = bandBondIds(b, { bonds, pools: choices.pools });
   const config = buildConfig(ctx, waves, stages, bands, chess, items);
-  const files = { config, chess, bonds, garrisons, items, bands, effects, choices, enemies, factions, waves, stages, bosses, tokens, backups };
+  const files = { config, chess, bonds, garrisons, items, bands, effects, choices, enemies, factions, waves, stages, bosses, tokens, backups, moduleLevels };
 
   // the unit forms rebuild every PRESET chess at every rank (before the annotation: each pass as built)
   const errors = [...validateAll(files), ...passes.flatMap((p) => checkUnitFormParity(p.ctx, p.chess).map((e) => `${e} (potential rank ${p.ctx.potRank})`))];
@@ -4801,7 +5032,9 @@ async function main() {
     sizes[name] = Buffer.byteLength(texts[name]);
     total += sizes[name];
   }
-  if (total > 6 * 1024 * 1024) errors.push(`total data size ${total} exceeds 6 MB`);
+  // 8 MB (was 6): data/moduleLevels.json (3 级模组, 协议源石【特限恢复】, 业主 2026-10-31) is one record per module and
+  // pushed the bundle over the old guard; the guard still catches runaway growth.
+  if (total > 8 * 1024 * 1024) errors.push(`total data size ${total} exceeds 8 MB`);
   // Integrity errors keep the previous (valid) output untouched unless --force.
   const write = !errors.length || OPTS.force;
   if (write) {

@@ -2,7 +2,7 @@
 // Conventions of the tier-6 kits: ../shared/tier6.js; kit contract and rules: ../README.md.
 
 import { aggregateMods } from '../../../buffs.js';
-import { applyRedirectCut, redirectShare } from '../../../damage.js';
+import { applyRedirectCut, isRedirectShare, redirectShare } from '../../../damage.js';
 import { COLS } from '../../../constants.js';
 import { bardRegen } from '../../../professions.js';
 import { startCountdown } from '../../tokens.js';
@@ -122,7 +122,9 @@ function skadi2(bb, chess, def) {
         battle.on('hit', (ctx) => {
           const t = ctx.target, d = ctx.dmg;
           if (!(share > 0) || !t || t === unit || t.side !== 'ally' || t.kind === 'device' || !live(unit) || !unit.skill?.active) return;
-          if (d.type === 'element' || d.type === 'elemental' || d.skadiShare || d.tags?.includes('transfer') || !inCover(battle, unit, t)) return;
+          // a redirect's output is final (owner, 2026-10-29): claimed hits and other effects' shares are not cut again
+          if (d.type === 'element' || d.type === 'elemental' || d.skadiShare || d.redirectClaim
+            || isRedirectShare(d) || !inCover(battle, unit, t)) return;
           d.skadiShare = { share, tag: TAG }; // 同类效果取最高: one transfer per damage instance
           applyRedirectCut(d, share); // her share of the pre-redirect hit; the victim keeps the rest
         }, { owner: unit, priority: -20 });

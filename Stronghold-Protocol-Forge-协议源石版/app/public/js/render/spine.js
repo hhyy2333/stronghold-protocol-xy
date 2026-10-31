@@ -701,8 +701,26 @@ export class SpineActor {
     }
   }
 
+  /**
+   * The clip this attack plays. A verified official skill-mode mapping wins while the skill is on
+   * (`skillAttackMode`, set by render/units.js from render/skillAttack.js): 'Attack' means the model's own normal
+   * attack role - Begin/End and the facing variant included -, another name the skill's own attack clip.
+   * Otherwise the skill role (its cast/loop clip) while the skill is on, else the attack role.
+   */
   _attackClip() {
     const sk = this.roles.skill;
+    const mode = this.skillOn ? this.skillAttackMode?.() : null;
+    if (this.skillOn && mode) {
+      if (mode.animKey === 'Attack') {
+        const down = mode.down ? this.roles.attackDown : null;
+        const a = down && this.has(down.loop) ? down : this.roles.attack;
+        if (a && this.has(a.loop)) return a;
+      } else if (this.has(mode.animKey)) {
+        // the same clip the skill role already holds: keep that role, so its idle / End ownership survives
+        if (mode.animKey === (sk && sk.loop)) return sk;
+        return { begin: null, loop: mode.animKey, end: null };
+      }
+    }
     if (this.skillOn && sk && this.has(sk.loop) && sk.via !== 'attack' && !this._skillIsBuffOnly()) return sk;
     const a = this.roles.attack;
     if (a && this.has(a.loop)) return a;

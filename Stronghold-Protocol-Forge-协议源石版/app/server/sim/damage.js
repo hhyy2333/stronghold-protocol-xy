@@ -11,8 +11,9 @@
 //   → 'damaged' hook → SP-on-hurt / TAKE_DAMAGE trigger → fatal/kill.
 // Damage-dealt stats (the source's `stats.dmg`, the player's `damageDealt`) count only HP removed from the other side:
 // self and friendly damage (a 源石溶剂 drain, an operator's own 流失) is the target's `taken` and keeps the kill credit.
-// Phys: max(A − max(0, D×(1−defIgnorePct) − defIgnoreFlat), 5 %·A); Arts: max(A×(1 − R′/100), 5 %·A) with
-// R′ = max(0, R×(1−resIgnorePct) − resIgnoreFlat); True: A; Elemental (元素伤害): max(A×(1 − 元素抗性/100), 5 %·A)
+// Phys: max(A − max(0, D − defIgnoreFlat)×(1−defIgnorePct), 5 %·A); Arts: max(A×(1 − R′/100), 5 %·A) with
+// R′ = max(0, R − resIgnoreFlat)×(1−resIgnorePct) — the FIXED penetration comes off first (official 0.3.2 §37.30 / PR #798);
+// True: A; Elemental (元素伤害): max(A×(1 − 元素抗性/100), 5 %·A)
 // (PRTS 游戏数据基础 DMG_e; 元素抗性 = the target's data `epDamageResistance`: 0 on every enemy in data/enemies.json).
 // Element damage ('element' type + element, 元素损伤) fills a gauge instead of HP (1000; enemy leaders 2000):
 //   gain = amount × dmg.mul × target elemTakenMul (元素损伤倍率: "受到的元素损伤提高/降低…") × max(5 %, 1 − 损伤抵抗/100)
@@ -185,6 +186,28 @@ export function redirectShare(amount, own, cuts) {
   return amount * (o / sum);
 }
 
+/**
+ * Whether `dmg` is a REDIRECT's own output — damage a sharing effect moved from one ally onto another (坚守盟约's
+ * `steadShare`, 浊心斯卡蒂 S1, 燎原's 炎烬 `yanEmberShare`, 骑士徽章's `knightTransfer`) or a retaliation that answers a
+ * hit (`steadThorn`), rather than damage a unit dealt. **A redirect's output is final: no effect redirects it again**
+ * (the owner's decision of 2026-10-29; 坚守 used to cut the share 浊心斯卡蒂 had already moved, 500 → 300 + 200). Two
+ * effects that re-share each other's answers bounce until the hook-depth guard silently drops the rest of the tick (the
+ * 0.14 斯卡蒂 ↔ 坚守 loop), and a share moved a second time lands on a unit the hit never touched.
+ *
+ * The mirror marker is `dmg.redirectClaim`: an instance CLAIMED by a 100 %-scale redirect (骑士徽章's transfer) at `hit`.
+ * The cut-and-share effects skip a claimed instance because their share is derived from the HP that reaches the victim
+ * (`redirectShare` over `damaged.amount`) and a claim leaves 0 there — a cut made first is deleted, not moved (measured:
+ * 1000 into "卡西米尔 + 坚守 tier 2" cost the team only 600).
+ */
+const REDIRECT_TAGS = Object.freeze(['transfer', 'bond:stead:share', 'hex:yanember:share']);
+
+export function isRedirectShare(dmg) {
+  if (!dmg) return false;
+  if (dmg.steadShare || dmg.steadThorn || dmg.yanEmberShare || dmg.knightTransfer) return true;
+  const tags = dmg.tags;
+  return Array.isArray(tags) && tags.some((t) => REDIRECT_TAGS.includes(t));
+}
+
 /** 沉睡 (ba.sleep "无敌且无法行动"): only attackers whose profile has `hitSleep` (or `ignoreSleep` damage) reach a sleeper. */
 function sleepBlocks(target, source, dmg) {
   return !!target.s.flags.sleep && !dmg.ignoreSleep && !(source && source.profile && source.profile.hitSleep);
@@ -210,12 +233,14 @@ function liftoffEvades(target, source, dmg) {
 export function mitigate(amount, type, target, ign = {}) {
   if (type === 'phys') {
     const D = target.def ?? 0;
-    const eff = Math.max(0, D * (1 - clamp01(ign.defIgnorePct ?? 0)) - (ign.defIgnoreFlat ?? 0));
+    // PRTS damage formula (official 0.3.2, DESIGN §37.30 / PR #798): subtract the FIXED penetration first (floored at 0),
+    // then multiply by the percentage. The old order (percentage first, then flat) over-penetrated when both were present.
+    const eff = Math.max(0, D - (ign.defIgnoreFlat ?? 0)) * (1 - clamp01(ign.defIgnorePct ?? 0));
     return Math.max(amount - eff, MIN_DAMAGE_RATIO * amount);
   }
   if (type === 'arts') {
     const R = target.res ?? 0;
-    const eff = Math.max(0, R * (1 - clamp01(ign.resIgnorePct ?? 0)) - (ign.resIgnoreFlat ?? 0));
+    const eff = Math.max(0, R - (ign.resIgnoreFlat ?? 0)) * (1 - clamp01(ign.resIgnorePct ?? 0));
     return Math.max(amount * (1 - Math.min(100, eff) / 100), MIN_DAMAGE_RATIO * amount);
   }
   if (type === 'elemental') {

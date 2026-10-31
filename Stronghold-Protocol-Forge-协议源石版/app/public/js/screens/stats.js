@@ -241,7 +241,7 @@ function AchievementOperator({ unit, gd }) {
     </div>` : null}
     <div class="st-achievement-unit__items">${Array.from({ length: 2 }, (_, i) => html`<div key=${i} class="st-achievement-unit__slot"
       style=${`background-image:url(${uiUrl(gd.m, 'statistics/achievementItemSlot')})`}>
-      ${unit.items?.[i] ? html`<${Img} src=${itemIconUrl(gd.m, gd.item(unit.items[i]))} class="st-achievement-unit__item" />` : html`<i aria-hidden="true"></i>`}
+      ${unit.items?.[i] ? html`<${Img} src=${itemIconUrl(gd.m, gd.item(unit.items[i]), data.get('local'))} class="st-achievement-unit__item" />` : html`<i aria-hidden="true"></i>`}
     </div>`)}</div>
   </li>`;
 }
@@ -628,7 +628,8 @@ function StatsScreen({ tab }) {
       <div class="st-top__center">
         <${MicroLabel} tone="mint">STATISTICS // ${tabInfo.micro}<//>
         <div class="st-tabs" role="tablist" aria-label=${t('统计数据')}>
-          ${TABS.map((x) => html`<button key=${x.id} type="button" role="tab" aria-selected=${x.id === tab ? 'true' : 'false'} data-tab=${x.id}
+          ${TABS.map((x) => html`<button key=${x.id} type="button" role="tab" id=${`st-tab-${x.id}`} aria-controls="st-panel"
+            aria-selected=${x.id === tab ? 'true' : 'false'} data-tab=${x.id}
             class=${cx('st-tab', x.id === tab && 'is-on')} onClick=${() => statsStore.set({ tab: x.id })}>${t(x.name)}</button>`)}
         </div>
       </div>
@@ -643,11 +644,19 @@ function StatsScreen({ tab }) {
     ${stats.damaged ? html`<p class="st-note is-warn"><${Icon} name="warn" />${t('本机保存的统计数据无法读取，已另存为备份，从现在起重新记录。')}</p>` : null}
     ${stats.dropped ? html`<p class="st-note is-warn"><${Icon} name="warn" />${t('有 {n} 条记录已损坏，已忽略。', { n: stats.dropped })}</p>` : null}
     <div class="ui-slot" data-ui-slot="stats.tab" aria-label=${t('界面插件')} dangerouslySetInnerHTML=${{ __html: '' }}></div>
-    <main class="st-body" data-tab=${tab}>
+    <main class="st-body" id="st-panel" role="tabpanel" aria-labelledby=${`st-tab-${tab}`} data-tab=${tab}>
       ${tab === 'ranks' ? html`<${Ranks} />`
         : !ready ? html`<div class="st-loading"><${Spinner} size="md" /></div>`
         : stats.newer ? html`<p class="st-empty">${t('检测到更新版本的统计数据，请先升级客户端再查看，以免覆盖数据。')}</p>`
-          : empty ? html`<p class="st-empty">${t('还没有记录 —— 完成一局对局后，这里会开始积累。')}</p>`
+          // 空态（业主 2026-10-26 界面完善）：原来是孤零零一行字。现在给一块官方统计装饰图 + 一个「导入」入口，
+          // 让从别的设备迁过来的玩家当场就能把战绩导进来。图取自 data/assets.json 的 statistics/decoration
+          // （dash.png）；素材缺失时 <Img> 直接渲染 fallback=null，整块只剩文字，不出现破图。
+          : empty ? html`<div class="st-emptybox" data-testid="stats-empty">
+              <${Img} src=${uiUrl(data.get('assets'), 'statistics/decoration')} class="st-emptybox__art" fallback=${null} />
+              <p class="st-empty">${t('还没有记录 —— 完成一局对局后，这里会开始积累。')}</p>
+              <${Button} variant="secondary" size="sm" data-testid="stats-empty-import" onClick=${() => fileRef.current?.click()}
+                title=${t('从导出的文件导入（与现有记录合并）')}>${t('导入')}<//>
+            </div>`
             : tab === 'bands' ? html`<${Bands} agg=${agg} gd=${gd} records=${stats.records} />`
               : tab === 'totals' ? html`<${CombatSums} agg=${agg} />`
                 : tab === 'history' ? html`<${History} records=${stats.records} gd=${gd} onOpen=${setReplay} />`

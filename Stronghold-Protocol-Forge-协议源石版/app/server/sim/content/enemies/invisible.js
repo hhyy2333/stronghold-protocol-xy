@@ -47,7 +47,10 @@ function kitCrossbow(ab) {
         if (bb.stun > 0 && c.target.alive) b.applyStatus(c.target, 'stun', { duration: bb.stun, source: e });
       } });
     }, { owner: e });
-  }, { sil: true, cond: (b, e) => aligned(b, e).length > 0 })];
+    // 直击 is an attack-class skill (fx/index.json `crossattack`: RangedAttack that names no animKey ⇒ clip 0 — the 2.5 s of
+    // 「技能持续2.5s」 is the skill's own duration, modelled above, not an animation): it takes a normal attack's turn
+    // (upstream 0.3.2 §37.19).
+  }, { sil: true, cond: (b, e) => aligned(b, e).length > 0, atk: true, clip: 0, own: true })];
 }
 
 /**
@@ -85,7 +88,10 @@ function kitJazz(ab, e) {
     // priority: the blocker first), floor(10.6 / 0.5) = 21 ticks at 0.5 … 10.5 s. The channel also ends when that target
     // is gone, makes no normal attacks meanwhile and is never re-cast over itself — the 10 s cooldown (enemy_database
     // skill 'fire') runs out mid-channel, the next cast waits for its end [ASSUMED "持续施法", as 死亡之眼].
-    sil: true, cd: s.cd, icd: s.icd, cond: (b, e2) => revealed(e2) && !(e2.mem.jazzChannel && !e2.mem.jazzChannel.cancelled) && targetsNear(b, e2, r).length > 0,
+    // 狂欢式演奏 is an attack-class skill (fx/index.json `fire`: RangedAttack, no animKey ⇒ clip 0; the 10.6 s channel below is the
+    // skill's own duration): it takes a normal attack's turn (upstream 0.3.2 §37.19).
+    sil: true, cd: s.cd, icd: s.icd, atk: true, clip: 0, own: true,
+    cond: (b, e2) => revealed(e2) && !(e2.mem.jazzChannel && !e2.mem.jazzChannel.cancelled) && targetsNear(b, e2, r).length > 0,
     fire(b, e2) {
       const dur = s.bb['enemy_cnvsax[cd].duration'] ?? 0, iv = s.bb.hit_interval ?? 0.5;
       const t = byPriority(e2, targetsNear(b, e2, r))[0];

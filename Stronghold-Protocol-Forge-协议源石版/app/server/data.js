@@ -211,6 +211,37 @@ export const getBoss = (id, data) => lookup('bosses', id, data);
 /** @param {unknown} id token id @param {object} [data] */
 export const getToken = (id, data) => lookup('tokens', id, data);
 
+// ---------------------------------------------------------------------------------------------------
+// 3 级模组（协议源石【特限恢复】, 04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md §4.1/§4.2）
+// ---------------------------------------------------------------------------------------------------
+//
+// `data/moduleLevels.json` 是 build-data 额外产出的**可选**文件：`{ <uniEquipId>: { uniEquipId, name, typeName,
+// typeIcon, icon, level: 3, attr, traitOverride, talentChanges } }`（每个有 ADVANCED 模组的干员一条 equipLevel 3 的
+// 记录）。它**不在** DATA_FILES 里 —— 那个列表只用于「缺文件时喊一声」，而这里缺文件是完全合法的（老内容集 / 只装了
+// 旧 data 的包），所以缺了就安静地当作空表（rawModuleLevels 返回 `{}`）。loadData 会读 data/*.json 的**每一个**文件，
+// 所以不需要在这里多写一行加载代码；`setData`（内容集）与 workshop overlay 也是整对象拷过来，自然带着它。
+
+/** data/moduleLevels.json 缺失时的空表（冻结，避免每次调用都新建对象）。 */
+const NO_MODULE_LEVELS = Object.freeze({});
+
+/**
+ * data/moduleLevels.json 整张表：`{ [uniEquipId]: level3Record }`。缺文件 / 形状不对时返回 `{}`（不抛错）。
+ * @param {Readonly<Record<string, any>>} [data]
+ * @returns {Readonly<Record<string, any>>}
+ */
+export function rawModuleLevels(data = getData()) {
+  const m = data && typeof data === 'object' && Object.hasOwn(data, 'moduleLevels') ? data.moduleLevels : null;
+  return m !== null && typeof m === 'object' && !Array.isArray(m) ? m : NO_MODULE_LEVELS;
+}
+
+/**
+ * 一个模组的 3 级记录 `moduleLevels[uniEquipId]`，或 null（own-property 查询，与其它 getter 同一条规则）。
+ * @param {unknown} id uniEquipId
+ * @param {Readonly<Record<string, any>>} [data]
+ * @returns {any | null}
+ */
+export const getModuleLevel3 = (id, data) => lookup('moduleLevels', id, data);
+
 /**
  * data/config.json, or null when missing.
  * @param {Readonly<Record<string, any>>} [data]

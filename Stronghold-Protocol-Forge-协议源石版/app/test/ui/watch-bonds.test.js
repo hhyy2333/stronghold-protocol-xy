@@ -380,7 +380,8 @@ test('§20.15 wiring: the game screen feeds the strip, the popup and the detail 
   assert.match(src, /const strip = screenStrip\(\{[^}]*field, layers, layer, who: watchWho, bondLayers:/, 'the field on screen, the ‹ › layers, the picked teammate');
   assert.match(src, /<\$\{BondStrip\} bonds=\$\{stripBonds\}[^>]*owner=\$\{strip\.name\}/);
   // the popup carries the player it was opened for: the strip's owner from the strip, the unit owner from a card's chip
-  assert.match(src, /const bondPop = popupView\(\{ open: bondOpen, pub, priv, myId, field, units: popOps, live: liveLayers \}\)/);
+  // 【突破极限】(设计稿 §3): the popup / the chips clamp the live layers with the OWNER's cap too (runner bondCaps)
+  assert.match(src, /const bondPop = popupView\(\{ open: bondOpen, pub, priv, myId, field, units: popOps, live: liveLayers, bondCaps: liveCaps \}\)/);
   assert.match(src, /battleRunner\.ownerOps\(bondOpen\.ownerId, field\.fieldId\)/, 'a teammate\'s members in play: the battle on screen\'s operators');
   assert.match(src, /<\$\{BondPopup\} bondId=\$\{bondPop\.bondId\} entry=\$\{bondPop\.entry\} priv=\$\{bondPop\.priv\}[^>]*owner=\$\{bondPop\.name\}/);
   assert.match(src, /onOpen=\$\{\(id\) => openBond\(id, strip\.ownerId, 'strip'\)\}/, 'the strip opens its owner\'s bond');

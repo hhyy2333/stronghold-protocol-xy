@@ -35,8 +35,8 @@
 //                     a bond's layers stop at BOND_LAYER_CAP, 999)
 //   --tuning off      ignore data/tuning.json (it only holds title rules now: no effect on the numbers)
 //   --legacy-time     read the combat limits as game seconds (the reading before the fix of docs/BALANCE.md §2.1)
-//   --level N         协议等级 1–18 (only on ABYSS; 0 = off): folds into the enemy mods / income / boss pool exactly
-//                     like a match (shared/protocolLevels.js) — docs/BALANCE.md §8
+//   --level N         协议等级 1–19 (only on ABYSS; 0 = off): folds into the enemy mods / income / boss pool / 19 级的
+//                     一回合资金上限 exactly like a match (shared/protocolLevels.js) — docs/BALANCE.md §8
 //   --boss-lp N       team LP per alive player entering the Final Assault (default 15)
 //   --bots N          also run N bot matches per mode × difficulty (tools/matchrun.mjs logic, 4 AI in multi, the
 //                     match's default bot rehearsal) and print rounds survived / wins

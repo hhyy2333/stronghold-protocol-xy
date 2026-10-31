@@ -45,7 +45,8 @@ const byNatural = (a, b) => String(a).localeCompare(String(b), 'en', { numeric: 
  * The same rules as tools/build-data.mjs buildChess: stats = form stats + the module's `attr`, trait = the module's
  * `traitOverride` or the form's, talents = form talents + the module's `talentChanges`; `module` is active only when
  * `status.equipLevel > 0` and the module has that level; an elite with `equipLevel > 0` carries
- * `statsBase` / `traitBase` / `talentsBase` / `modules[]`; `tokens` are the summons the selection produces. The record is
+ * `statsBase` / `traitBase` / `talentsBase` / `modules[]`; `tokens` are the summons the selection produces; `placeOnRanged`
+ * comes across from the form (shared/highGround.js). The record is
  * composed at ONE potential: pass the form at the wanted potential (shared/potential.js atPotential — a stand-in has none)
  * and the result carries no potential annotation (`potDown`, chained talents).
  * @param {object} identity the data/chess.json record whose identity the unit takes (IDENTITY_FIELDS)
@@ -102,6 +103,11 @@ export function composeUnitRecord(identity, unit, form, { skillIndex, moduleId =
     out.modules = (mods || []).map((m) => ({ ...stripPotential(m), isDefault: m.uniEquipId === moduleId }));
   }
   for (const k of ['kitRef', 'skillSpec', 'talentMods', 'dsl', 'pluginId']) if (Object.hasOwn(form, k) || Object.hasOwn(unit, k)) out[k] = form[k] ?? unit[k];
+  // 高台 (GitHub #676, upstream 0.3.1 shared/standIn.js): the composed record keeps the body's reading of
+  // 「可以放置于远程位」. A translated form no longer holds the line, so the boolean the interface derived from it
+  // (public/js/data.js withReadings; shared/highGround.js meleeOnHighGround) has to come across with the form —
+  // otherwise 自选 温蒂 could not take a 高台 in en / ja / ko / zh-TW while the server, reading the Chinese data, took her.
+  if (form.placeOnRanged === true) out.placeOnRanged = true;
   if (standInFor) out.standInFor = standInFor;
   return out;
 }

@@ -12,17 +12,20 @@
 //   冰雪消融：无卡无效果；寒冷命中 100%→130%、冻结命中 100%→260%；解除状态、+1 层、40% 减速 6 秒；
 //             只有「攻击命中活着的敌人」才算（非攻击实例 / 链式附加 / 反伤 / 流失 / 元素损伤都不算）；
 //             只认拥有者自己的【谢拉格】干员；75 层被动（含掉层撤销、layerGain 现场跨过阈值）；参数读卡面。
-//   圣佑：无卡无效果；每消耗 1 发弹药回复所有己方【拉特兰】干员 5% 最大生命；致命伤害时仍有弹药 ⇒ 免死 +
-//         清空弹药 + 1 层次数盾（下一发被吸收）；无弹药不免死；非【拉特兰】干员 / 别人的干员不免死；流失不免死；
-//         参数读卡面。
+//   圣佑：无卡无效果；每消耗 1 发弹药给所有在场己方【拉特兰】干员挂「自身 5% 最大生命」的护盾（同键累加、
+//         被打掉后再加）；累计子弹量每 3 秒狙击一次（累计 ×325 物理、只挑活敌人、没有敌人时不清零）；
+//         致命伤害时仍有弹药 ⇒ 免死 + 清空弹药 + 1 层次数盾（下一发被吸收）；无弹药不免死；非【拉特兰】干员 /
+//         别人的干员不免死；流失不免死；参数读卡面。
 //   数据：data/hextech.json 里两张卡的记录与设计稿口径一致（Lead 接线用）。
 //
 // [ASSUMED]（模块头注释里有完整口径，这里是测试侧的断言口径）：
 //   1. 「这次伤害提升至 130%/260%」按**最终伤害**的倍率读（DamageInfo 的 `mul`），所以断言的是「同样一发 100 点
 //      伤害，命中带状态的目标结算成 130 / 260」，不是面板攻击力的变化。
 //   2. 「≥75 层」判**当前层数**，掉回阈值以下要撤销被动（不是「本场曾经到过」）。
-//   3. 圣佑的治疗是各自最大生命上限的 5%，只算在场（活着 / 已部署 / 未隐匿）的己方【拉特兰】干员。
-//   4. 免死只认「受到伤害」：生命流失（`isHpLoss`）不免死；护盾是下一次受击才消耗。
+//   3. 圣佑的弹药护盾是各自最大生命上限的 5%，只算在场（活着 / 已部署 / 未隐匿）的己方【拉特兰】干员；同键累加、
+//      被打空后从 0 重新累加。
+//   4. 狙击的累计只算 `ammoUsed` 事件（额外消耗的那 1 发不算）；场上没有活敌人时不发射、也不清零；发射后清零。
+//   5. 免死只认「受到伤害」：生命流失（`isHpLoss`）不免死；护盾是下一次受击才消耗。
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -38,9 +41,9 @@ import { bondLayers } from '../../server/sim/content/support/index.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const HEXTECH = JSON.parse(readFileSync(path.join(ROOT, 'data', 'hextech.json'), 'utf8'));
 
-/** 设计稿 §3.3 / §3.4 的参数（卡面 effect 就是这一份；模块只读卡面）。 */
+/** 设计稿 §3.3 与 2026-10-31 §3.2 的参数（卡面 effect 就是这一份；模块只读卡面）。 */
 const KJ = Object.freeze({ layers: 1, coldMul: 130, frozenMul: 260, slowPct: 40, slowSec: 6, buffLayer: 75, atkPct: 50, hpPct: 50 });
-const LA = Object.freeze({ healPct: 5, shieldHits: 1, aspd: 50, atkPct: 80 });
+const LA = Object.freeze({ shieldPct: 5, shieldHits: 1, aspd: 50, atkPct: 80, snipeEvery: 3, snipePerAmmo: 325 });
 
 const CARD_KJ = 'hex_kjerag_thaw';
 const CARD_LA = 'hex_laterano_sanctuary';
@@ -48,6 +51,10 @@ const CARD_LA = 'hex_laterano_sanctuary';
 const PASSIVE_KJ = 'hex:kjeragthaw';
 /** 免死那 1 层次数盾的 buff 键。 */
 const SHIELD_LA = 'hex:laterano:shield';
+/** 每消耗 1 颗弹药给的护盾的 buff 键（同键累加）。 */
+const SHIELD_AMMO = 'hex:laterano:ammoShield';
+/** 狙击伤害的标签。 */
+const SNIPE_TAG = 'hex:laterano:snipe';
 /** 攻速 / 攻击力被动的 buff 键（与模块一致）。 */
 const PASSIVE_LA = 'hex:laterano:stats';
 
@@ -89,6 +96,12 @@ const plainOp = (o = {}) => chessRec({
 });
 /** 一个血厚、不动、不还手的敌人：整场安静，数字只来自测试自己打的那几发。 */
 const dummy = () => enemyRec({ key: 'enemy_dummy', hp: 1000000, atk: 0, def: 0, speed: 0 });
+/**
+ * 指定弹药数的拉特兰干员：每次 `forceAttack` 扣 2 发（引擎 1 发 + 额外消耗 1 发），所以 `laAmmo(2n)` 正好打 n 次、
+ * 累计 n 发，并且第 n 发之后技能自己结束。`spCost` 调高 ⇒ 技能打空后不会自己再开，`ammoUsed` 不会被自动攻击
+ * 偷偷加上去（狙击用例要精确的累计数）。
+ */
+const laAmmo = (ammo) => laOp({ skill: { ...AMMO_SKILL, spCost: 999, bb: { ammo } } });
 
 /** 盟约状态（战斗内加层的活数据：addLayers 只写已存在的 ps.bonds[bondId]）。 */
 const bondsOf = (o = {}) => ({
@@ -103,17 +116,22 @@ const seat = (playerId, i, { effects = [], units = [], bonds = {} } = {}) => ({
 /** 棋盘上的一枚棋子。 */
 const at = (uid, row, col, chessId) => ({ uid, kind: 'chess', chessId, row, col });
 
-/** 一个安静的测试场（不自动结束；捕获我们关心的钩子）。 */
-function field(players, { kind = 'normal', hooks = ['hit', 'fatal', 'ammoUsed', 'layerGain', 'battleStart', 'deploy'] } = {}) {
+/** 一个安静的测试场（不自动结束；捕获我们关心的钩子）。`defs` / `enemies` 覆盖默认的棋子与出怪（狙击用例要换弹药数 / 多敌人）。 */
+function field(players, {
+  kind = 'normal',
+  hooks = ['hit', 'fatal', 'ammoUsed', 'layerGain', 'battleStart', 'deploy'],
+  defs = null,
+  enemies = null,
+} = {}) {
   return makeBattle({
     kind,
     content: 'generic',
-    defs: {
+    defs: defs ?? {
       chess: { test_kjerag: kjOp(), test_laterano: laOp(), test_plain: plainOp() },
       enemies: { enemy_dummy: dummy() },
     },
     players,
-    enemies: [{ key: 'enemy_dummy', time: 0, route: 0 }],
+    enemies: enemies ?? [{ key: 'enemy_dummy', time: 0, route: 0 }],
     autoFinish: false,
     timeLimit: 30,
     captureNoisy: true,
@@ -130,6 +148,9 @@ const layersOf = (h, pid, bond = 'kjeragShip') => bondLayers(h.battle, pid, bond
 
 /** 一发「攻击命中」实例（isAttack 真：普攻 / 技能覆盖的那次攻击；0 防御的敌人 ⇒ 最终伤害 = amount × mul）。 */
 const attackHit = (h, u, foe, amount = 100, over = {}) => h.battle.dealDamage(u, foe, makeDamageInfo({ amount, type: 'phys', canDodge: false, isAttack: true, ...over }));
+
+/** 本场所有「圣佑狙击」的伤害实例（hit 钩子的记录；干员的普通攻击不算）。 */
+const snipeHits = (h) => h.hooksOf('hit').filter((c) => c && c.dmg && Array.isArray(c.dmg.tags) && c.dmg.tags.includes(SNIPE_TAG));
 
 // =====================================================================================================================
 // 冰雪消融 · 没有卡 / 没有状态
@@ -387,9 +408,9 @@ test('冰雪消融: 命中消融现场把层数推过 75 —— 同一个 tick �
 });
 
 // =====================================================================================================================
-// 圣佑 · 弹药治疗
+// 圣佑 · 弹药护盾（2026-10-31：原来的「回复 5% 最大生命」整条换成护盾）
 
-test('圣佑: 没有这张卡时，消耗弹药不治疗、致命伤害照常致死', () => {
+test('圣佑: 没有这张卡时，消耗弹药不给护盾、也不狙击，致命伤害照常致死', () => {
   const h = field([seat('p1', 0, { effects: [], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
   const inst = installLateranoSanctuary(hexHooks(h.battle));
   assert.equal(inst, 0, '没有卡 ⇒ install 返回 0');
@@ -400,12 +421,16 @@ test('圣佑: 没有这张卡时，消耗弹药不治疗、致命伤害照常致
   assert.equal(u.skill.activate('test', { free: true }), true, 'premise: 弹药技能开起来');
   assert.equal(h.battle.forceAttack(u, [foe]), true, 'premise: 打一发（消耗 1 发弹药）');
   assert.equal(u.hp, 500, '没有治疗');
+  assert.equal(u.s.shield, 0, '没有护盾');
+  assert.equal(u.findBuff(SHIELD_AMMO), null);
+  h.run(3.5);                                        // 跨过 snipeEvery 脉冲
+  assert.equal(snipeHits(h).length, 0, '没有狙击');
   h.battle.dealDamage(foe, u, makeDamageInfo({ amount: 99999, type: 'true', canDodge: false }));
   assert.equal(u.alive, false, '没有免死');
   h.invariants();
 });
 
-test('圣佑: 每消耗 1 颗弹药，回复所有己方【拉特兰】干员 5% 最大生命', () => {
+test('圣佑: 每消耗 1 颗弹药，所有在场己方【拉特兰】干员获得自身 5% 最大生命的护盾（同键累加）', () => {
   const h = field([seat('p1', 0, {
     effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)],
     units: [at(1, 9, 6, 'test_laterano'), at(2, 10, 6, 'test_laterano'), at(3, 9, 4, 'test_plain')],
@@ -417,9 +442,8 @@ test('圣佑: 每消耗 1 颗弹药，回复所有己方【拉特兰】干员 5%
   const foe = foes(h)[0];
   assert.equal(a.defId, 'test_laterano');
   assert.equal(plain.defId, 'test_plain');
-  a.hp = 500;      // 1000 上限 → 5% = 50
-  b.hp = 1000;     // 满血：治疗被上限吃掉
-  plain.hp = 1000; // 不是拉特兰干员
+  assert.equal(a.s.maxHp, 1000, 'premise: 最大生命 1000');
+  assert.equal(a.s.shield, 0, 'premise: 一开始没有护盾');
 
   assert.equal(a.skill.activate('test', { free: true }), true);
   assert.equal(a.skill.ammoLeft, 3, 'premise: 3 发弹药');
@@ -427,14 +451,43 @@ test('圣佑: 每消耗 1 颗弹药，回复所有己方【拉特兰】干员 5%
   assert.equal(a.skill.ammoLeft, 1, 'premise: 一发消耗 1 发 + 额外消耗 1 发 = 2 发（业主 2026-10-27）');
   assert.equal(inst.extraAmmo, 1, '额外消耗记账');
 
-  assert.equal(a.hp, 550, '自己回复 5% 最大生命 = 50');
-  assert.equal(b.hp, 1000, '满血的同伴不会超过上限');
-  assert.equal(plain.hp, 1000, '非【拉特兰】干员不治疗（premise: 本来就是满血，这里只是确认没被动过）');
-  assert.equal(inst.heals, 1, '一次弹药消耗 = 一次治疗结算');
+  assert.equal(a.s.shield, 50, '自己获得 1000 × 5% = 50 的护盾');
+  assert.equal(b.s.shield, 50, '在场的同伴也获得 50');
+  assert.equal(plain.s.shield, 0, '非【拉特兰】干员没有护盾');
+  assert.equal(a.hp, a.s.maxHp, '护盾不是治疗：HP 不动');
+  assert.equal(inst.shields, 1, '一次弹药消耗 = 一次护盾结算');
+
+  // 第二次消耗：同键累加（50 + 50 = 100）
+  assert.equal(h.battle.forceAttack(a, [foe]), true, 'premise: 再打一发');
+  assert.equal(a.s.shield, 100, '同键护盾累加到 100');
+  assert.equal(b.s.shield, 100, '同伴也累加');
+  assert.equal(inst.shields, 2);
   h.invariants();
 });
 
-test('圣佑: 别人的【拉特兰】干员不在治疗名单里', () => {
+test('圣佑: 护盾被打空之后，下一次弹药消耗从 0 重新累加', () => {
+  const h = field([seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
+  installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  h.battle.forceAttack(u, [foe]);
+  assert.equal(u.s.shield, 50, 'premise: 一层 50 的护盾');
+
+  // 60 点伤害：护盾吃 50，剩下 10 打在 HP 上
+  assert.equal(h.battle.dealDamage(foe, u, makeDamageInfo({ amount: 60, type: 'true', canDodge: false })), 10, '护盾吃掉 50，剩下 10 打在 HP 上');
+  assert.equal(u.s.shield, 0, '护盾被打空');
+  assert.equal(u.findBuff(SHIELD_AMMO), null, '护盾 buff 被引擎摘掉（下一次重新挂）');
+  assert.equal(u.hp, 990);
+
+  assert.equal(u.skill.active, true, 'premise: 还有 1 发，技能仍在');
+  assert.equal(h.battle.forceAttack(u, [foe]), true, 'premise: 再消耗 1 发');
+  assert.equal(u.s.shield, 50, '从 0 重新累加到 50');
+  h.invariants();
+});
+
+test('圣佑: 别人的【拉特兰】干员不在护盾名单里', () => {
   const h = field([
     seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() }),
     seat('p2', 1, { effects: [], units: [at(2, 10, 6, 'test_laterano')], bonds: bondsOf() }),
@@ -444,12 +497,135 @@ test('圣佑: 别人的【拉特兰】干员不在治疗名单里', () => {
   const mine = ops(h).find((u) => u.ownerId === 'p1');
   const theirs = ops(h).find((u) => u.ownerId === 'p2');
   const foe = foes(h)[0];
-  mine.hp = 500;
-  theirs.hp = 500;
   mine.skill.activate('test', { free: true });
   h.battle.forceAttack(mine, [foe]);
-  assert.equal(mine.hp, 550, '自己的干员被治疗');
-  assert.equal(theirs.hp, 500, '别人的干员没有');
+  assert.equal(mine.s.shield, 50, '自己的干员拿到护盾');
+  assert.equal(theirs.s.shield, 0, '别人的干员没有');
+  h.invariants();
+});
+
+// =====================================================================================================================
+// 圣佑 · 累计子弹狙击（2026-10-31 新增）
+
+test('圣佑: 本场累计 3 发子弹，每 3 秒狙击一次 — 3 × 325 = 975 物理伤害', () => {
+  const h = field(
+    [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    { defs: { chess: { test_laterano: laAmmo(6) }, enemies: { enemy_dummy: dummy() } } },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  assert.equal(u.skill.ammoLeft, 6, 'premise: 6 发弹药');
+  for (let i = 0; i < 3; i++) assert.equal(h.battle.forceAttack(u, [foe]), true, `premise: 第 ${i + 1} 发`);
+  assert.equal(inst.ammoCounted, 3, '3 发计入狙击（额外消耗的那 1 发不算）');
+  assert.equal(inst.pending, 3, '还没打出去');
+  assert.equal(u.skill.active, false, 'premise: 弹药打空（之后不会再有 ammoUsed 干扰累计）');
+  assert.equal(snipeHits(h).length, 0, '还没到 3 秒脉冲');
+
+  h.run(2.1);                                        // t = 3.1：跨过第一个 snipeEvery 脉冲
+  assert.equal(inst.snipes, 1, '打了一发狙击');
+  assert.equal(inst.snipeAmount, 975, '3 × 325 = 975');
+  assert.equal(inst.pending, 0, '打出去之后清零');
+  const [hit] = snipeHits(h);
+  assert.ok(hit, '狙击是一次普通伤害实例');
+  assert.equal(hit.target, foe, '场上的唯一活敌人');
+  assert.equal(hit.dmg.amount, 975, '伤害量 = 累计子弹量 × 325');
+  assert.equal(hit.dmg.type, 'phys', '物理伤害');
+  assert.equal(hit.dmg.canDodge, true, '可闪避（普通结算）');
+  assert.equal(hit.dmg.isAttack, false, '不是「攻击」：攻击类加成不认它');
+  assert.equal(hit.source, u, '来源是第一名在场【拉特兰】干员');
+  h.invariants();
+});
+
+test('圣佑: 狙击只挑活着的敌人 — 场上没有活敌人时不发射、也不清零', () => {
+  const h = field(
+    [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    { defs: { chess: { test_laterano: laAmmo(4) }, enemies: { enemy_dummy: dummy() } } },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const first = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  for (let i = 0; i < 2; i++) assert.equal(h.battle.forceAttack(u, [first]), true, `premise: 第 ${i + 1} 发`);
+  assert.equal(inst.pending, 2, 'premise: 累计 2 发');
+
+  h.battle.kill(first);                              // 场上没有活敌人了
+  h.run(2.1);                                        // t = 3.1：脉冲到了，但没有目标
+  assert.equal(inst.snipes, 0, '没有活敌人 ⇒ 不发射');
+  assert.equal(inst.pending, 2, '累计留着（不清零）');
+
+  const second = h.spawn('enemy_dummy', { pos: [10, 2], routeIndex: 0 });   // 新敌人进场
+  assert.ok(second && second.alive, 'premise: 新敌人进场了');
+  h.run(3.1);                                        // t = 6.2：下一脉冲
+  assert.equal(inst.snipes, 1, '有敌人了就整笔打出去');
+  assert.equal(inst.snipeAmount, 650, '2 × 325 = 650');
+  assert.equal(inst.pending, 0);
+  const [hit] = snipeHits(h);
+  assert.equal(hit.target, second, '只挑活着的敌人（刚进场的那一个）');
+  h.invariants();
+});
+
+test('圣佑: 每个脉冲只挑一个活敌人；累计是本场的，打出去就清零', () => {
+  const h = field(
+    [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    {
+      defs: { chess: { test_laterano: laAmmo(4) }, enemies: { enemy_dummy: dummy() } },
+      enemies: [{ key: 'enemy_dummy', time: 0, route: 0, count: 2 }],
+    },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  assert.equal(foes(h).length, 2, 'premise: 场上两个活敌人');
+  u.skill.activate('test', { free: true });
+  for (let i = 0; i < 2; i++) assert.equal(h.battle.forceAttack(u, [foes(h)[0]]), true, `premise: 第 ${i + 1} 发`);
+  assert.equal(inst.pending, 2, 'premise: 累计 2 发');
+
+  h.run(2.1);                                        // t = 3.1
+  assert.equal(inst.snipes, 1, '一个脉冲只打一发');
+  assert.equal(inst.snipeAmount, 650);
+  assert.equal(snipeHits(h).length, 1, '只有一发狙击实例');
+  assert.ok(foes(h).includes(snipeHits(h)[0].target), '目标从活敌人里随机挑');
+
+  h.run(3.1);                                        // t = 6.2：没有新子弹
+  assert.equal(inst.snipes, 1, '没有新子弹 ⇒ 下一脉冲不打');
+  assert.equal(inst.snipeAmount, 650);
+
+  // 再累计 2 发（第二次开技能，正好 2 发）：下一脉冲按新的一笔结算
+  assert.equal(u.skill.activate('test', { free: true }), true, 'premise: 再开一次技能');
+  for (let i = 0; i < 2; i++) assert.equal(h.battle.forceAttack(u, [foes(h)[0]]), true, `premise: 第 ${i + 1} 发`);
+  assert.equal(inst.pending, 2);
+  h.run(3.1);                                        // t = 9.3
+  assert.equal(inst.snipes, 2, '第二发狙击');
+  assert.equal(inst.snipeAmount, 1300, '650 + 650');
+  assert.equal(inst.pending, 0);
+  h.invariants();
+});
+
+test('圣佑: 非【拉特兰】干员 / 别人的【拉特兰】干员消耗的弹药都不计入狙击', () => {
+  const h = field([
+    seat('p1', 0, {
+      effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)],
+      units: [at(1, 9, 4, 'test_plain')],
+      bonds: bondsOf(),
+    }),
+    seat('p2', 1, { effects: [], units: [at(2, 10, 6, 'test_laterano')], bonds: bondsOf() }),
+  ], { kind: 'unite', defs: { chess: { test_plain: plainOp({ skill: { ...AMMO_SKILL, spCost: 999 } }), test_laterano: laAmmo(4) }, enemies: { enemy_dummy: dummy() } } });
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const mine = ops(h).find((u) => u.ownerId === 'p1');
+  const theirs = ops(h).find((u) => u.ownerId === 'p2');
+  const foe = foes(h)[0];
+  mine.skill.activate('test', { free: true });
+  h.battle.forceAttack(mine, [foe]);
+  theirs.skill.activate('test', { free: true });
+  h.battle.forceAttack(theirs, [foe]);
+  assert.equal(inst.ammoCounted, 0, '两边都不算：一个是非成员，一个不是拥有者的干员');
+  h.run(3.1);
+  assert.equal(inst.snipes, 0, '没有狙击');
   h.invariants();
 });
 
@@ -593,24 +769,42 @@ test('圣佑: 生命流失不是「受到伤害」，不免死', () => {
   h.invariants();
 });
 
-test('圣佑: 数字读卡面 — healPct 10 时一次弹药消耗回复 10% 最大生命', () => {
-  const custom = refOf(CARD_LA, 'lateranoSanctuary', { ...LA, healPct: 10 });
+test('圣佑: 数字读卡面 — shieldPct 10 时一次弹药消耗给 10% 最大生命的护盾', () => {
+  const custom = refOf(CARD_LA, 'lateranoSanctuary', { ...LA, shieldPct: 10 });
   const h = field([seat('p1', 0, { effects: [custom], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
   installLateranoSanctuary(hexHooks(h.battle));
   h.run(1);
   const [u] = ops(h);
   const foe = foes(h)[0];
-  u.hp = 500;
   u.skill.activate('test', { free: true });
   h.battle.forceAttack(u, [foe]);
-  assert.equal(u.hp, 600, '1000 的 10% = 100');
+  assert.equal(u.s.shield, 100, '1000 的 10% = 100');
+  h.invariants();
+});
+
+test('圣佑: 数字读卡面 — snipePerAmmo 100 / snipeEvery 2 时按卡面算', () => {
+  const custom = refOf(CARD_LA, 'lateranoSanctuary', { ...LA, snipePerAmmo: 100, snipeEvery: 2 });
+  const h = field(
+    [seat('p1', 0, { effects: [custom], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    { defs: { chess: { test_laterano: laAmmo(4) }, enemies: { enemy_dummy: dummy() } } },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  for (let i = 0; i < 2; i++) h.battle.forceAttack(u, [foe]);
+  assert.equal(inst.pending, 2);
+  h.run(1.1);                                        // t = 2.1：snipeEvery 2 ⇒ 脉冲在 t = 2
+  assert.equal(inst.snipes, 1, '2 秒一个脉冲');
+  assert.equal(inst.snipeAmount, 200, '2 × 100 = 200');
   h.invariants();
 });
 
 // =====================================================================================================================
 // 卡面数据（Lead 接线用）：data/hextech.json 与设计稿口径一致
 
-test('数据: data/hextech.json 的两张卡记录与设计稿 §3.3 / §3.4 的参数一致', () => {
+test('数据: data/hextech.json 的两张卡记录与设计稿的参数一致（冰雪消融 §3.3 / 圣佑 2026-10-31 §3.2）', () => {
   const kj = HEXTECH.playerHexes[CARD_KJ];
   assert.ok(kj, `data/hextech.json 里没有 ${CARD_KJ}`);
   assert.equal(kj.requiresBond, 'kjeragShip', '只在【谢拉格】激活时出现');
@@ -621,5 +815,6 @@ test('数据: data/hextech.json 的两张卡记录与设计稿 §3.3 / §3.4 的
   assert.ok(la, `data/hextech.json 里没有 ${CARD_LA}`);
   assert.equal(la.requiresBond, 'lateranoShip', '只在【拉特兰】激活时出现');
   assert.equal(la.rarity, 'prismatic', '3 阶（棱彩）');
+  assert.equal(la.effect.lateranoSanctuary.healPct, undefined, '旧的治疗参数已移除');
   assert.deepEqual(la.effect.lateranoSanctuary, LA, 'lateranoSanctuary 参数与设计稿一致（调数时同步改这里与设计稿）');
 });

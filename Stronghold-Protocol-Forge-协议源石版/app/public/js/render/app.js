@@ -1684,8 +1684,10 @@ export async function createFieldView(host, options = {}) {
         if (e[3] === 'none' || !e[3]) { if (tgt && src) meleePending.set(tgt.id, { src, t: now }); }
         // the unit's official attack (casts, projectile, melee hits — render/vfx/wiring.js) or a chain's bounce (the line of
         // the official shot that opened the chain: wiring.chain), else the procedural one
-        const drew = !!src && (CHAIN_KINDS.has(e[3]) ? wiring.chain(src, tgt, e[3], now) : wiring.attack(src, tgt, e[3], now, woundUp.has(e)));
-        if (!drew) fx.attack(src, tgt, e[3]);
+        // an attack-slot skill holds this turn (: a `cast` with a turnClip): its own clip plays instead of the attack's
+        const held = !!src && src.castHold > 0;
+        const drew = !held && !!src && (CHAIN_KINDS.has(e[3]) ? wiring.chain(src, tgt, e[3], now) : wiring.attack(src, tgt, e[3], now, woundUp.has(e)));
+        if (!held && !drew) fx.attack(src, tgt, e[3]);
         break;
       }
       case 'dmg': {
@@ -1710,7 +1712,13 @@ export async function createFieldView(host, options = {}) {
       }
       // the skill slot an enemy ability casts (PR #275): the view swaps to that slot's clip (a multi-skill boss's Skill_01..04)
       // (and its official skill effects: render/vfx/skillfx.js cast — index v2 has the enemies' skills)
-      case 'cast': { const v = views.get(e[1]); if (v) { v.setSkillSlot?.(e[2] | 0); wiring.enemyCast(v, e[2] | 0, Number(e[3]) || 0); } break; }
+      // an optional fifth field (`turnClip`, s) says this cast took the normal attack's turn and how long its official clip
+      // is: the view then plays that slot's clip for that long instead of the attack animation (render/units.js holdCast)
+      case 'cast': {
+        const v = views.get(e[1]);
+        if (v) { v.setSkillSlot?.(e[2] | 0); v.holdCast?.(Number(e[4])); wiring.enemyCast(v, e[2] | 0, Number(e[3]) || 0); }
+        break;
+      }
       case 'die': {
         const v = views.get(e[1]);
         const used = consumedIds.delete(e[1]);

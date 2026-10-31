@@ -2,11 +2,14 @@
 // on screen has done, biggest first, with its share of the total (the official 干员 / 伤害占比 · 实际伤害 layout).
 // Read-only: it never touches the sim, and the numbers are the sim's own (`unit.stats`, damage.js applyHpLoss / heal).
 //
-// THREE METRICS, one row shape. The panel's own 伤害 / 承伤 / 治疗 buttons switch which column the list is ranked and
-// totalled by (REPORT_METRICS):
+// FOUR METRICS, one row shape. The panel's own 伤害 / 秒伤 / 承伤 / 治疗 buttons switch which column the list is ranked
+// and totalled by (REPORT_METRICS):
 //   dmg   造成的伤害 — `unit.stats.dmg`: the HP actually removed from the OTHER side, so shields, overkill, dodges, a
 //         cancelled 限伤 hit and the unit's own 流失 count nothing; 无来源 element bursts credit the unit that filled
 //         the gauge (PRTS 元素). The player's `damageDealt` is the sum of these rows.
+//   dps   秒伤 — the SAME damage divided by the battle seconds already played (`elapsed`, below). A row carries no `dps`
+//         field of its own: the number is derived at draw time, so the rows stay the sim's raw counts and one report can
+//         be re-read at any battle length. 秒伤 is what the 木桩 drill round exists to read.
 //   taken 承受的伤害 — `unit.stats.taken`: every HP the unit lost to a damage instance, whoever dealt it.
 //   heal  治疗量 — `unit.stats.heal`: HP actually restored (治疗加成 / 禁疗 applied; a `regen` tick is not a 治疗).
 //
@@ -43,6 +46,12 @@ export const REPORT_MAX_ROWS = 12;
  */
 export const REPORT_METRICS = Object.freeze([
   { id: 'dmg', field: 'dmg', label: N_('伤害'), total: N_('累计伤害'), column: N_('干员 / 伤害占比'), value: N_('实际伤害') },
+  // 秒伤：`field` 仍然是 dmg —— 行上并没有 `dps` 字段，这个数在画的时候才用 elapsed 除出来（metricValue）。这样
+  // 排行 / 合计 / 占比都还能复用同一套 dmg 口径，只是换了个显示单位（每秒）。
+  {
+    id: 'dps', field: 'dmg', perSecond: true, label: N_('秒伤'),
+    total: N_('全队秒伤'), column: N_('干员 / 秒伤占比'), value: N_('秒伤'),
+  },
   { id: 'taken', field: 'taken', label: N_('承伤'), total: N_('累计承伤'), column: N_('干员 / 承伤占比'), value: N_('承受伤害') },
   { id: 'heal', field: 'heal', label: N_('治疗'), total: N_('累计治疗'), column: N_('干员 / 治疗占比'), value: N_('治疗量') },
 ]);
@@ -55,6 +64,42 @@ export function metricOf(id) {
 /** Thousands-separated number — the panel's own digits (the HUD's fmtNum compacts to 万 and would hide them). */
 export function fmtDamage(v) {
   return Math.round(Number(v) || 0).toLocaleString('en-US');
+}
+
+/**
+ * 战斗时长（秒）的规范读法：只认有限的正数，其余（undefined / null / 0 / NaN / 负数）一律当「没有时长」。
+ *
+ * 为什么单独一个函数：面板是纯视图、不读时钟，时长由调用方传进来；调用方可能传 undefined、可能战斗刚开局传 0、
+ * 也可能拿到一个坏数。这些情况必须走同一条路——显示占位「—」、排行回退按伤害——而不是算出 Infinity / NaN 或者
+ * 把所有行都除成 0 排一遍。
+ * @param {number|null|undefined} elapsed
+ * @returns {number|null}
+ */
+export function elapsedSec(elapsed) {
+  const s = Number(elapsed);
+  return Number.isFinite(s) && s > 0 ? s : null;
+}
+
+/**
+ * 秒伤＝一份伤害 ÷ 战斗时长；没有可用时长时返回 null（那一格显示「—」，而不是 0）。
+ * 区分 null 与 0：0 是「真的一秒也没打」，null 是「不知道打了多久」，两者不能混成一个数。
+ * @param {number} value @param {number|null|undefined} elapsed
+ */
+export function dpsOf(value, elapsed) {
+  const s = elapsedSec(elapsed);
+  if (s == null) return null;
+  return (Number(value) || 0) / s;
+}
+
+/**
+ * 一行在某个指标下要显示的数：普通指标就是行上的字段；秒伤是把同一行的 dmg 除以战斗时长。
+ * 秒伤没有时长时返回 null（占位），调用方（rankRows 的排序、行组件）各自决定怎么退。
+ * @param {any} row @param {string} metric a REPORT_METRICS id @param {number|null} [elapsed]
+ */
+export function metricValue(row, metric = 'dmg', elapsed = null) {
+  const m = metricOf(metric);
+  const v = Number(row && row[m.field]) || 0;
+  return m.perSecond ? dpsOf(v, elapsed) : v;
 }
 
 /**
@@ -152,12 +197,22 @@ export function normalizeRows(raw) {
  * cut to `max`. The rows with nothing in that metric are dropped — an operator that only healed has no row under 伤害.
  * This is where the list is capped, so the cap follows the SELECTED metric: the 治疗 view lists the top healers even
  * when they are nowhere near the top of 伤害.
- * @param {any[]} rows @param {string} metric a REPORT_METRICS id @param {{ max?: number }} [o]
+ *
+ * `elapsed` only matters for 秒伤: the rows keep the sim's raw dmg, so the order is dmg ÷ elapsed. Without a usable
+ * elapsed the order falls back to dmg itself — NOT to 0, which would rank every row equal and then reshuffle the whole
+ * list on a battle that has not been timed yet (the panel still shows 「—」 in that column; only the ORDER is settled by
+ * dmg, and dmg's order is the same order anyway because elapsed is one constant).
+ * @param {any[]} rows @param {string} metric a REPORT_METRICS id @param {{ max?: number, elapsed?: number|null }} [o]
  */
-export function rankRows(rows, metric = 'dmg', { max = REPORT_MAX_ROWS } = {}) {
-  const field = metricOf(metric).field;
-  const out = (Array.isArray(rows) ? rows : []).filter((r) => r && (Number(r[field]) || 0) > 0);
-  out.sort((a, b) => (Number(b[field]) || 0) - (Number(a[field]) || 0) || b.kills - a.kills
+export function rankRows(rows, metric = 'dmg', { max = REPORT_MAX_ROWS, elapsed = null } = {}) {
+  const m = metricOf(metric);
+  // 秒伤没有时长时用伤害本身排序（见上），有则用 dmg/elapsed；对同一场战斗 elapsed 是常数，两种排法结果相同
+  const sortKey = (r) => {
+    const v = metricValue(r, m.id, elapsed);
+    return v == null ? (Number(r && r[m.field]) || 0) : v;
+  };
+  const out = (Array.isArray(rows) ? rows : []).filter((r) => r && (Number(r[m.field]) || 0) > 0);
+  out.sort((a, b) => sortKey(b) - sortKey(a) || b.kills - a.kills
     || (a.uid ?? 0) - (b.uid ?? 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return out.slice(0, Math.max(1, max));
 }
@@ -178,13 +233,20 @@ export function filterByPlayers(rows, players = null) {
 /**
  * The report's total for one metric: the sum of the rows shown. `players` filters first, so the total always matches the
  * list (随当前视角同步); rows with nothing in that metric contribute 0.
+ *
+ * For 秒伤 the total is 全队秒伤 = Σ(rows' dmg) ÷ the same elapsed — NOT the sum of the per-row dps (that is only equal
+ * by coincidence when every row was timed). Without a usable `elapsed` the total is 0; the panel renders 「—」 for it
+ * instead of that 0 (a 0 would claim the team dealt nothing per second).
  * @param {any[]} rows @param {string} metric a REPORT_METRICS id @param {string[]|null} [players]
+ * @param {number|null} [elapsed] 本场战斗已经过去的秒数（只有秒伤用得到）
  */
-export function reportTotal(rows, metric = 'dmg', players = null) {
-  const field = metricOf(metric).field;
+export function reportTotal(rows, metric = 'dmg', players = null, elapsed = null) {
+  const m = metricOf(metric);
   let n = 0;
-  for (const r of filterByPlayers(rows, players)) n += Number(r && r[field]) || 0;
-  return Math.round(n);
+  for (const r of filterByPlayers(rows, players)) n += Number(r && r[m.field]) || 0;
+  if (!m.perSecond) return Math.round(n);
+  const dps = dpsOf(n, elapsed);
+  return dps == null ? 0 : Math.round(dps);
 }
 
 /**
@@ -238,6 +300,12 @@ export const METHOD_LINES = Object.freeze({
     N_('召唤物的伤害并入部署它的干员；没有归属的召唤物与场地装置单独一行'),
     N_('自身流失与友方伤害不算造成伤害'),
   ]),
+  dps: Object.freeze([
+    N_('秒伤＝造成伤害 ÷ 本场战斗已经进行的秒数：与「伤害」完全同一口径，只是换成每秒'),
+    N_('合计那一行是全队伤害之和 ÷ 同一段战斗时长，不是各行秒伤相加'),
+    N_('战斗时长取本场战斗的时钟：暂停时时钟一起停住，所以秒伤不会被暂停摊薄'),
+    N_('拿不到战斗时长（战斗还没开始计时、或不在战斗阶段）时秒伤显示「—」，排行仍按造成伤害'),
+  ]),
   taken: Object.freeze([
     N_('承受伤害＝该单位在伤害结算中损失的生命值，来自任何一方的伤害都计入'),
     N_('友方伤害与该单位自身的流失（如源石溶剂、技能代价）同样计入'),
@@ -260,7 +328,11 @@ export function methodLines(metric = 'dmg') {
 /**
  * One row: rank, avatar, name (with the 含召唤 tag when the operator's row absorbed summons), the share bar, and the
  * value + share on the right (the official 干员 / 占比 · 数值 columns; the metric picks the number).
- * @param {{ row: any, rank: number, total: number, metric?: string, rec?: any }} props
+ *
+ * 秒伤那一格：`elapsed` 是调用方给的战斗时长，`shareTotal` 是这一版的 Σdmg（占比的分母，elapsed 约掉）。
+ * 时长不可用时 value 是 null，这一格写「—」且不给占比——「不知道」不能画成 0。
+ * @param {{ row: any, rank: number, total: number, metric?: string, rec?: any,
+ *   elapsed?: number|null, shareTotal?: number|null }} props
  */
 /** The label of every figure the detail block shows (msgids, translated where drawn). */
 const TYPE_LABELS = Object.freeze({
@@ -303,11 +375,19 @@ export function DamageTypeDetail({ row }) {
   </span>`;
 }
 
-export function DamageReportRow({ row, rank, total, metric = 'dmg', rec = null, detailOpen = false, onDetail = null }) {
+export function DamageReportRow({
+  row, rank, total, metric = 'dmg', rec = null, detailOpen = false, onDetail = null,
+  elapsed = null, shareTotal = null,
+}) {
   const m = metricOf(metric);
-  const value = Number(row[m.field]) || 0;
-  const frac = shareFrac(value, total);
-  const pct = sharePct(frac);
+  // 行上只有原始计数（dmg / taken / heal）；秒伤这一列是在画的时候才除出来的。null = 没有可用的战斗时长 → 显示占位。
+  const value = metricValue(row, m.id, elapsed);
+  // 占比：秒伤行**显式**按「该行伤害 ÷ 伤害总和」算。分母同样是 Σdmg —— elapsed 在分子分母里约掉，所以秒伤占比与
+  // 伤害占比是同一个比例（写成 dps ÷ Σdps 会让它看起来依赖战斗时长，其实不是）。`shareTotal` 就是这个 Σdmg。
+  const shareBase = m.perSecond ? shareTotal : total;
+  const shareNum = m.perSecond ? (Number(row[m.field]) || 0) : value;
+  const frac = shareFrac(shareNum, shareBase);
+  const pct = value == null ? null : sharePct(frac);
   const name = row.name || row.defId || t('未知单位');
   // 业主 2026-10-20「伤害面板不够准确详细」: a damage row is split into 物理 / 法术 / 真实 as three coloured segments of
   // the same share bar, and 元素损伤 / 护盾吸收 / 击杀 are listed as sub-figures. The first two are NOT HP damage, so
@@ -354,7 +434,7 @@ export function DamageReportRow({ row, rank, total, metric = 'dmg', rec = null, 
         title=${x.label}>${t(x.label)} <b class="num">${x.raw ? x.v : fmtDamage(x.v)}</b></span>`)}</span>` : null}
     </span>
     <span class="dmgrow__num">
-      <b class="num">${fmtDamage(value)}</b>
+      <b class=${cx('num', value == null && 'dmgrow__dash')}>${value == null ? '—' : fmtDamage(value)}</b>
       ${pct ? html`<span class="dmgrow__pct num">${pct}</span>` : null}
     </span>
     ${detailOpen ? html`<${DamageTypeDetail} row=${row} />` : null}
@@ -368,20 +448,25 @@ export function reportCaption(round, live) {
 }
 
 /**
- * The floating panel (the HUD's 📊): header (DAMAGE REPORT · 实时 chip · ✕), the metric switch (伤害 / 承伤 / 治疗), the
- * total with the round captions, the column header, the rows, and the 统计口径 footer.
+ * The floating panel (the HUD's 📊): header (DAMAGE REPORT · 实时 chip · ✕), the metric switch (伤害 / 秒伤 / 承伤 / 治疗),
+ * the total with the round captions, the column header, the rows, and the 统计口径 footer.
  *
  * Pure view: `rows` / `total` come from the caller (the game screen recomputes them at the HUD's cadence), so the panel
  * never reads a battle itself and a frozen report keeps the numbers it was last handed. `metric` / `onMetric` drive the
  * switch; `cumulative` swaps the captions for the 本局累计 wording (修整期, where there is no running battle).
  *
+ * `elapsed`（本场战斗已经过去的秒数，number|null）同样由调用方给：秒伤＝伤害 ÷ 时长，面板不读时钟、不存时长，
+ * 只把调用方那一刻的时长画出来。调用方冻结报告时也必须把 elapsed 一起冻住，否则「伤害停在那一刻、时长却在涨」
+ * 会让冻结后的秒伤自己往下掉。null / ≤0 一律当没有时长：秒伤列显示「—」，排行退回按伤害。
+ *
  * @param {{ rows: any[], total?: number|null, metric?: string, onMetric?: ((id: string) => void)|null,
- *   round?: number|null, live?: boolean, cumulative?: boolean, players?: string[]|null, onClose?: () => void,
- *   onToggleLive?: ((live: boolean) => void)|null, getChess?: (id: string) => any, backups?: any, diyData?: any,
- *   rowRec?: ((row: any) => any)|null, method?: string[] }} props
+ *   round?: number|null, live?: boolean, cumulative?: boolean, players?: string[]|null, elapsed?: number|null,
+ *   onClose?: () => void, onToggleLive?: ((live: boolean) => void)|null, getChess?: (id: string) => any, backups?: any,
+ *   diyData?: any, rowRec?: ((row: any) => any)|null, method?: string[] }} props
  */
 export function DamageReportPanel({
   rows, total = null, metric = 'dmg', onMetric = null, round = null, live = true, cumulative = false, players = null,
+  elapsed = null,
   detailRow = null, onDetail = null,
   onClose = null, onToggleLive = null, getChess = () => null, backups = null, diyData = null, rowRec = null, method = null,
 }) {
@@ -389,8 +474,16 @@ export function DamageReportPanel({
   // 面板是不持有状态的纯视图（和 metric / live 同一条规矩），这样测试可以直接把它当函数调。
   const openKey = detailRow == null ? null : detailRow;
   const m = metricOf(metric);
-  const list = rankRows(filterByPlayers(rows, players), m.id);
-  const sum = Number.isFinite(total) ? total : reportTotal(list, m.id);  const lines = Array.isArray(method) && method.length ? method : methodLines(m.id);
+  // 战斗时长只认正值；其余（没传 / 0 / 坏数）都是「不知道」，秒伤照不知道画
+  const sec = elapsedSec(elapsed);
+  const list = rankRows(filterByPlayers(rows, players), m.id, { elapsed: sec });
+  // 秒伤没有时长时合计同样「不知道」：显示「—」，而不是把 0 当答案（0 会读成「全队一秒都没输出」）
+  const sum = m.perSecond && sec == null
+    ? null
+    : (Number.isFinite(total) ? total : reportTotal(list, m.id, null, sec));
+  // 秒伤行的占比分母：Σdmg（elapsed 在分子分母约掉，秒伤占比 ≡ 伤害占比），单独算好交给行
+  const shareTotal = m.perSecond ? reportTotal(list, 'dmg') : null;
+  const lines = Array.isArray(method) && method.length ? method : methodLines(m.id);
   return html`<section class="dmgrep brackets" role="dialog" aria-label=${t('伤害统计')} data-testid="damage-report" data-metric=${m.id}>
     <header class="dmgrep__head">
       <${MicroLabel} tone="mint">DAMAGE REPORT</${MicroLabel}>
@@ -411,10 +504,14 @@ export function DamageReportPanel({
     <div class="dmgrep__sum">
       <div class="dmgrep__sumL">
         <span class="dmgrep__cap">${t(cumulative ? '本局累计' : m.total)}</span>
-        <b class="dmgrep__total num" data-testid="damage-report-total">${fmtDamage(sum)}</b>
+        <b class=${cx('dmgrep__total num', sum == null && 'dmgrep__dash')} data-testid="damage-report-total">${sum == null ? '—' : fmtDamage(sum)}</b>
       </div>
       <div class="dmgrep__sumR">
         <span class="dmgrep__meta">${cumulative ? t('本局至今') : reportCaption(round, live)}</span>
+        ${/* 秒伤的除数：把「这一场打了多久」写在面板上，玩家才看得懂秒伤是怎么来的（停在哪一刻就看哪一刻） */ ''}
+        ${!cumulative && sec != null
+          ? html`<span class="dmgrep__meta dmgrep__dur" data-testid="damage-report-duration">${t('战斗时长 {s} 秒', { s: sec.toFixed(1) })}</span>`
+          : null}
         <span class="dmgrep__meta t-lo">${t('随当前视角同步')}</span>
       </div>
     </div>
@@ -426,7 +523,8 @@ export function DamageReportPanel({
 
     ${list.length
       ? html`<ul class="dmgrep__list">${list.map((r, i) => html`<${DamageReportRow} key=${r.key} row=${r} rank=${i + 1} total=${sum}
-          metric=${m.id} rec=${rowRec ? rowRec(r) : rowRecord(r, getChess, backups, diyData)}
+          metric=${m.id} elapsed=${sec} shareTotal=${shareTotal}
+          rec=${rowRec ? rowRec(r) : rowRecord(r, getChess, backups, diyData)}
           detailOpen=${openKey === r.key} onDetail=${m.id === 'dmg' ? onDetail : null} />`)}</ul>`
       : html`<p class="dmgrep__empty t-lo">${t(cumulative ? '本局还没有统计数据' : '本次战斗还没有统计数据')}</p>`}
 

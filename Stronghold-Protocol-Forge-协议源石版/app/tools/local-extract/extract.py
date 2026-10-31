@@ -160,6 +160,21 @@ ENEMY_SPINES += [
     # batch 4 (2026-10-25, owner「…加入悬赏。凶豕兽作战里少放点，冰晶射手作战里少放点」)
     'enemy_1413_mmstck_2', 'enemy_10229_agactr', 'enemy_2011_csppt', 'enemy_10196_ubba',
     'enemy_1309_mhboar', 'enemy_9005_aicemn',
+    # batch 5 (2026-10-29, owner「黑流树海的大狗、大象、吐水羊、瞬移老鼠；孤星的大炮动力甲和打拳动力甲、交通厅」):
+    # 黑流树海 / 孤星 the owner asked for. 猎犬proto is the two-form 大狗 (犬之主's 猎犬), 撼地遗众 the 大象,
+    # 聆风猎手 the 瞬移老鼠 (Blink onto its attacker), 恶笼草 the 食肉草;
+    # the three 孤星 ones are the R-11 ranged / R-31 punching power armours and the “交通亭” mech.
+    # 颂水贤者 (enemy_2134_shrshep) was the 吐水羊 of that ask (Blink on being hit = the "瞬移") and is OUT again after
+    # being extracted and written (owner 2026-10-31「删除颂水贤者这个怪」)
+    'enemy_2133_shdopl', 'enemy_2135_shkrbt', 'enemy_2136_shcolo', 'enemy_2137_shsdgo',
+    'enemy_2152_shezlc',
+    'enemy_1256_lyacpa', 'enemy_1256_lyacpa_2', 'enemy_1255_lybgpa', 'enemy_1255_lybgpa_2',
+    'enemy_1332_cbterm', 'enemy_1332_cbterm_2', 'enemy_1333_cbbgen',
+    # leaders the owner wants as bounties / bosses (docs/research/15-extra-bosses.json boss_13..boss_15 and the
+    # 16-extra-enemies.json bounty rows): 爱国者, 狂躁异质裂兽 (main-story 16-12), 伤心的大锁, 曼弗雷德
+    'enemy_1506_patrt', 'enemy_1571_mirbst', 'enemy_2018_csdoll', 'enemy_1528_manfri',
+    # 迷路的巨像 (无马巨像): already a data row (the 鸭爵 set's WDG leader) but its model was never extracted
+    'enemy_2003_rockman',
 ]
 ENEMY_ART = 'refs/arts/enm_art_*.ab'
 ENEMY_SPINE_SUB = 'spine/enemy'

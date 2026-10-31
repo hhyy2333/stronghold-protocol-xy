@@ -70,7 +70,10 @@ export const KIT_FILES = Object.freeze([
     'chess_char_6_08-reed2.js', 'chess_char_6_09-cello.js', 'chess_char_6_10-nymph.js', 'chess_char_6_11-mlyss.js',
     'chess_char_6_12-rosmon.js', 'chess_char_6_13-angel2.js', 'chess_char_6_14-lumen.js', 'chess_char_6_15-qiubai.js',
     'chess_char_6_16-halo2.js', 'chess_char_6_17-nearl2.js', 'chess_char_6_18-whitw2.js', 'chess_char_6_19-blkkgt.js',
-    'chess_char_6_20-agoat2.js'],
+    'chess_char_6_20-agoat2.js',
+    // 业主 2026-10-25：「把结城理和丰川祥子的完整技能补全」—— 官方表里有这两名联动干员，商店行由
+    // tools/custom-ops.mjs 补进活动表（chess_char_6_21 / 6_22），kit 与所有官方干员同一套写法。
+    'chess_char_6_21-makoto.js', 'chess_char_6_22-oblvns.js'],
 ].map((group) => Object.freeze(group)));
 
 /**

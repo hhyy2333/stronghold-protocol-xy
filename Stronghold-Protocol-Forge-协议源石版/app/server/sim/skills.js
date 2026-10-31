@@ -527,17 +527,30 @@ export class SkillRuntime {
     }
   }
 
-  /** Activate now (consumes one charge). Returns true on success. */
+  /**
+   * Activate now (consumes one charge). Returns true on success.
+   *
+   * `spec.recast` on a **toggle** = the 切换 skills (丰川祥子 S2 满月的舞会's 钢琴 / 风琴): tapping it again while it
+   * runs switches the mode instead of being refused — the skill stays active, costs no SP, and its `onEnd` then
+   * `onStart` run with `reason: 'recast'` so the kit can swap what it grants. Every other running timed skill
+   * (duration / ammo / a plain toggle) still cannot be re-activated.
+   */
   activate(reason = 'manual', { free = false } = {}) {
     if (this.noSkill || this.kind === 'passive') return false;
-    if (!free && !this.ready) return false;
-    if (this.active && this.isTimed) return false;
+    const recast = this.active && this.isTimed && this.kind === 'toggle' && !!this.spec.recast;
+    if (!recast && !free && !this.ready) return false;
+    if (this.active && this.isTimed && !recast) return false;
     const u = this.unit;
     if (!u.alive || !u.deployed) return false;
-    if (!free) {
+    if (!free && !recast) {
       const wasFull = this.charges >= this.maxCharges;
       this.charges--;
       if (this.maxCharges === 1 || wasFull) this.sp = 0;
+    }
+    if (recast) {
+      // 换模式：先撤掉旧模式给的东西（kit 在 onEnd 里收自己的状态），再由下面重新应用
+      this._call('onEnd', { reason: 'recast' });
+      this._removeMods();
     }
     this.activations++;
     this.lastStart = this.battle.time;
@@ -556,10 +569,13 @@ export class SkillRuntime {
       // (a targeting-only instant skill must still switch to its skill range for the pending attack)
       if (this.spec.mods || this.spec.flags || this.spec.targeting) this._applyMods();
     }
-    b._ev(['skill', u.id, 1]);
-    u.skillAnimUntil = b.time + SKILL_ANIM_WINDOW;
-    this._call('onStart', { reason });
-    if (b._hooks.skillStart) b.emit('skillStart', { unit: u, skill: this, reason });
+    // a recast (mode switch) is not a new cast for the client: no second skill-on event, no fresh clip window
+    if (!recast) {
+      b._ev(['skill', u.id, 1]);
+      u.skillAnimUntil = b.time + SKILL_ANIM_WINDOW;
+    }
+    this._call('onStart', { reason: recast ? 'recast' : reason });
+    if (b._hooks.skillStart) b.emit('skillStart', { unit: u, skill: this, reason, recast });
     // bullets added in skillStart (拉特兰's ×(1.05 + 0.015 × layers), 逃犯引渡手续, talents): the bar's full mark
     // (community report #35: the extra bullets sat above a full bar until fewer than the base count were left)
     if (this.active && this.ammoLeft > this.ammoMax) this.ammoMax = this.ammoLeft;

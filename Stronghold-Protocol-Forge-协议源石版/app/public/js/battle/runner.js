@@ -44,6 +44,8 @@
 // Battle.addLayers — normal battles only) as absolute counts per player, published as state().bondLayers
 // { [playerId]: { [bondId]: n } } (every battle of the round: the own one, the teammates' replicas) whenever one grows;
 // the bond strip of the player on screen — the own one, or a watched teammate's — shows them live (ui/watchBonds.js).
+// 【突破极限】(设计稿 §3): the strip clamps those counts with the OWNER's cap, so every battle also publishes
+// state().bondCaps { [playerId]: n } — the spec's `bondLayerCap` (9999 for the card's owner, BOND_LAYER_CAP otherwise).
 //
 // The vanilla sim (≈ 0.2–1 ms per tick) runs on the main thread: one battle at a time is stepped for display (plus an
 // authoritative one if it is not the one on screen). Gameplay sets use WorkerSimHost (DESIGN §34.11).
@@ -52,7 +54,7 @@
 //   import { battleRunner } from './battle/runner.js'     (browser singleton wired to net.js + store.js; null in Node)
 //   battleRunner.on('snap' | 'ev' | 'field' | 'state', fn) → off
 //   battleRunner.state()  → { battleId, fieldId, kind, authoritative, watch, done, own, members, loading, paused, leaks,
-//                              uniteLeft, bondLayers } | null
+//                              uniteLeft, bondLayers, bondCaps } | null
 //   battleRunner.stats()  → { ticks, stepMs, avgTickMs, maxFrameMs, catchups, errors, battles }
 //   battleRunner.unitStats(unitId, fieldId?) → the live stats of a unit of the battle on screen (shared/protocol.js
 //                           unitStatsEntry: current HP, effective max HP / ATK / DEF / RES / interval / block / move
@@ -75,6 +77,7 @@
 // (test/match/runner.test.js and test/match/runner-pending.test.js drive it under Node).
 
 import { net as appNet } from '../net.js';
+import { BOND_LAYER_CAP } from '../../../shared/constants.js';
 import { store as appStore } from '../store.js';
 import { fxForm } from '../../../shared/protocol.js';
 import { spectateEffects } from './observe.js';
@@ -452,13 +455,29 @@ export function createBattleRunner(deps) {
     return !loading && e && e.kind === 'unite' && e.left ? { ...e.left } : null;
   }
 
+  /**
+   * 盟约叠层上限 of every player of the battle on screen (【突破极限】, 设计稿 §3): the spec's own `bondLayerCap`
+   * (server/match/player/round.js battleInput — 9999 for the card's owner), else the official BOND_LAYER_CAP (999).
+   * Published as state().bondCaps so the bond strip clamps the live layers with the OWNER's cap (ui/watchBonds.js).
+   */
+  function capMap() {
+    const e = cur;
+    const out = {};
+    for (const sp of e && Array.isArray(e.spec && e.spec.players) ? e.spec.players : []) {
+      if (!sp || sp.playerId == null) continue;
+      const v = Number(sp.bondLayerCap);
+      out[sp.playerId] = Number.isFinite(v) && v > 0 ? v : BOND_LAYER_CAP;
+    }
+    return out;
+  }
+
   function state() {
     const e = cur;
-    if (!e) return loading ? { loading: true, battleId: loading.battleId, fieldId: loading.fieldId, kind: loading.kind, leaks: leakMap(), uniteLeft: uniteLeftMap(), bondLayers: layerMap() } : null;
+    if (!e) return loading ? { loading: true, battleId: loading.battleId, fieldId: loading.fieldId, kind: loading.kind, leaks: leakMap(), uniteLeft: uniteLeftMap(), bondLayers: layerMap(), bondCaps: {} } : null;
     return {
       battleId: e.battleId, fieldId: e.fieldId, kind: e.kind, authoritative: e.authoritative, watch: e.watch,
       done: e.done, own: e.own, members: e.members.slice(), loading: !!loading, speed: e.speed, paused: pausedAt != null,
-      leaks: leakMap(), uniteLeft: uniteLeftMap(), bondLayers: layerMap(),
+      leaks: leakMap(), uniteLeft: uniteLeftMap(), bondLayers: layerMap(), bondCaps: capMap(),
     };
   }
 
@@ -512,8 +531,13 @@ export function createBattleRunner(deps) {
       const ps = sp && sp.playerId != null ? b.getPlayer(sp.playerId) : null;
       if (!ps || !ps.bonds || typeof ps.bonds !== 'object') continue;
       const start = sp.bonds && typeof sp.bonds === 'object' ? sp.bonds : {};
+      // 【突破极限】(设计稿 §3): this player's own cap from the battle spec (9999 for the card's owner), else
+      // BOND_LAYER_CAP — the same number the sim clamped the live copy with (sim/battle/economy.js _layerCapOf)
+      const capRaw = Number(sp.bondLayerCap);
+      const cap = Number.isFinite(capRaw) && capRaw > 0 ? capRaw : BOND_LAYER_CAP;
       for (const id of Object.keys(ps.bonds)) {
-        const n = Number(ps.bonds[id] && ps.bonds[id].layers) || 0;
+        const raw = Number(ps.bonds[id] && ps.bonds[id].layers) || 0;
+        const n = cap > 0 ? Math.min(cap, raw) : raw;
         const from = Number(start[id] && start[id].layers) || 0;
         if (!(n > from)) continue;
         sum += n - from;

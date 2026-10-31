@@ -38,8 +38,10 @@ test('every batch enemy has a data row: stats, rank, an attack clip and a model'
     assert.equal(r.rank, e.rank, `${e.key}: rank`);
     assert.ok(!r.tokenOnly, `${e.key}: not tokenOnly (it is spawned by waves, not routed as a summon)`);
     assert.ok(r.stats.maxHp > 0 && r.stats.atk >= 0, `${e.key}: stats`);
-    // the model comes from the local client extraction, so the clip must be known or the sim stands ATTACK_PAUSE
-    assert.ok(r.attackAnim && r.attackAnim.dur > 0, `${e.key}: attackAnim (extract the model, then rebuild)`);
+    // the model comes from the local client extraction, so the clip must be known or the sim stands ATTACK_PAUSE.
+    // A `noWave` row (a leader kept only for a bounty card, a `_2` strength variant) is never fielded by a wave, so a
+    // missing clip costs nothing there — the row and its model are all it needs.
+    if (!e.noWave) assert.ok(r.attackAnim && r.attackAnim.dur > 0, `${e.key}: attackAnim (extract the model, then rebuild)`);
     const a = assets[e.key];
     assert.ok(a, `${e.key} is in data/assets.json`);
     assert.ok(a.spineLocal && a.spineLocal.skel, `${e.key}: spineLocal (the official model from the local client)`);
@@ -51,6 +53,9 @@ test('attached to a special-entry pool without moving the official keys', () => 
   if (OFFICIAL) for (const [k, v] of Object.entries(OFFICIAL)) anchors.set(k, { N: v.attachedNormalEnemyKeys || [], E: v.attachedEliteEnemyKeys || [] });
   let attached = 0;
   const wide = [];
+  /** The most a research `band: 'wide'` key may overshoot a pool anchor through the over-cap slot
+   *  (tools/build-data.mjs OVERCAP_RATIO_MAX); a key past it never enters a pool and stays bounty-only. */
+  const OVERCAP_RATIO_MAX = 1.6;
   for (const [k, entry] of Object.entries(F)) {
     const off = anchors.get(k);
     for (const cls of ['N', 'E']) {
@@ -67,8 +72,10 @@ test('attached to a special-entry pool without moving the official keys', () => 
           const ratio = E[x.key].attrPower / anchor.attrPower;
           if (ratio < 0.85 - 1e-9 || ratio > 1.25 + 1e-9) wide.push(`${k}.${cls}:${x.key}@${ratio.toFixed(2)}`);
           // the tight band keeps a wave's enemy count intact; the wide band (0.7–1.5) is only the documented rescue for
-          // a batch key no tight pool fits — a couple of attachments, never the whole batch
-          assert.ok(ratio >= 0.7 - 1e-9 && ratio <= 1.5 + 1e-9, `${k}.${cls}: ${x.key} within the power band (${ratio.toFixed(2)})`);
+          // a batch key no tight pool fits — a couple of attachments, never the whole batch. The over-cap slot is the
+          // last resort past the wide band's top and is itself capped (a P 136210 key must never reach a pool).
+          const top = x.overCap ? OVERCAP_RATIO_MAX : 1.5;
+          assert.ok(ratio >= 0.7 - 1e-9 && ratio <= top + 1e-9, `${k}.${cls}: ${x.key} within the power band (${ratio.toFixed(2)})`);
         }
       }
     }
@@ -80,9 +87,13 @@ test('attached to a special-entry pool without moving the official keys', () => 
   assert.ok(wide.length <= Math.ceil(attached * 0.25), `${wide.length}/${attached} wide-band attachments: ${wide.slice(0, 6).join(' ')}`);
   const wired = new Set();
   for (const entry of Object.values(F)) for (const cls of ['N', 'E']) for (const x of entry[cls] || []) if (x.fork) wired.add(x.key);
-  const missing = ALL.filter((e) => !wired.has(e.key)).map((e) => e.key);
-  // one documented exception: 高阶术师 is weaker than every ELITE pool anchor, so the band keeps it out of the waves
-  assert.deepEqual(missing, ['enemy_1018_aoemag'], 'only the documented outlier stays unwired');
+  const missing = ALL.filter((e) => !wired.has(e.key) && !e.noWave).map((e) => e.key);
+  // Documented exceptions: 高阶术师 is weaker than every ELITE pool anchor, so the band keeps it out of the waves; and
+  // 爆破攻坚手组长 (P 39000, past the widest band) is the one key the over-cap slot cannot take any more.
+  assert.deepEqual(missing.sort(), ['enemy_1018_aoemag', 'enemy_1058_traink_2'], 'only the documented outliers stay unwired');
+  // `noWave` rows are declared bounty-only / registration-only and must NOT reach a pool: the `_2` strength variants would
+  // push their base key out, and a leader (爱国者, 狂躁异质裂兽) is not a wave enemy at all.
+  for (const e of ALL.filter((x) => x.noWave)) assert.ok(!wired.has(e.key), `${e.key}: noWave yet attached to a pool`);
 });
 
 test('they really come out of the wave generator', () => {
@@ -435,4 +446,17 @@ test('畸变体傀儡: out of the batch — no kit and no pool slot', async () =
   const wired = Object.entries(F).flatMap(([k, entry]) => ['N', 'E'].flatMap((cls) => (entry[cls] || []).filter((x) => x.key === 'enemy_1130_infstr').map(() => `${k}.${cls}`)));
   assert.deepEqual(wired, [], '畸变体傀儡 is attached to no pool');
   assert.ok(!RESEARCH.batches.some((b) => (b.enemies || []).some((e) => e.key === 'enemy_1130_infstr')), 'and no research row claims it');
+});
+
+// 颂水贤者（enemy_2134_shrshep）已撤下（业主 2026-10-31「删除颂水贤者这个怪」）。它唯一的一条机制是「受到攻击时向后传送一段距离」
+// （kit waterSageBlink；blinkBack 只有它一个调用方，所以辅助函数随它一起删）。这条守的是「撤干净了」：没有 kit、不在任何一个池子里、
+// 数据行与素材清单里也没有它，而不是「撤了但留个尾巴」。
+test('颂水贤者: out of the batch — no kit, no pool slot, no data row', async () => {
+  const mod = await import('../../server/sim/content/enemies.js');
+  assert.ok(!mod.KITS.enemy_2134_shrshep, '颂水贤者 has no kit');
+  const wired = Object.entries(F).flatMap(([k, entry]) => ['N', 'E'].flatMap((cls) => (entry[cls] || []).filter((x) => x.key === 'enemy_2134_shrshep').map(() => `${k}.${cls}`)));
+  assert.deepEqual(wired, [], '颂水贤者 is attached to no pool');
+  assert.ok(!RESEARCH.batches.some((b) => (b.enemies || []).some((e) => e.key === 'enemy_2134_shrshep')), 'and no research row claims it');
+  assert.ok(!E.enemy_2134_shrshep, 'and data/enemies.json has no row for it');
+  assert.ok(!J('../../data/assets.json').enemies.enemy_2134_shrshep, 'and the asset manifest lists no model for it');
 });

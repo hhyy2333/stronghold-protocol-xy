@@ -64,6 +64,10 @@
 // the next operator's tier chip and bars (drawn under them) and read as that operator's gauge, a shrinking ring reads
 // like a filling progress ring, and its refill was the same white as the 元素值 left. The disc comes from the hudRings
 // atlas, the bars are tinted Texture.WHITE sprites; built on first use and hidden when idle.
+// Skill charges (b.snap `charges` → `this.charges`, a charge skill's [stored, maximum]; 卡涅利安 and 97 others): the
+// official charge ring at the right end of the SP bar — the local client's `ui/battle` picture `<maximum>_<lit>`
+// (`chargeRingName`: an empty ring is always `1_0`, the pictures have no `<n>_0`), its segments lit by the charges stored.
+// A skill that stores a single charge (792 operators, data/chess.json `maxChargeTime`) shows no ring at all.
 //
 // ItemView renders hand items as a floating icon plate; DeviceView renders battle devices (crates) as 3D boxes
 // with an HP bar once damaged.
@@ -87,6 +91,7 @@ import { UF, ANIM } from '../../../shared/constants.js';
 // 本文件里的三处查找（`_formSpec` / `setForm` 的准入与 `next`）全部走它 —— 不再直接索引 `FORMS`。
 import { formsFor } from '../../../shared/packForms.js';
 import { SpineActor } from './spine.js';
+import { skillAttackMode } from './skillAttack.js';
 import { diamondTexture, shadowTexture, fxAtlas, tierChip, statusTexture, itemTexture, hudRings, ringArc, downLabel, HUD_DISC, ELEMENT_RING } from './textures.js';
 import { COLORS, TIER_COLORS, ENEMY_FRAME, UNIT, PROJ, statusIconKey, statusIconSuppressed } from './style.js';
 import { drawCrate, rowDepthKey, ROW_KEY, deviceBoxOf, DEVICE_BOX } from './tiles.js';
@@ -136,9 +141,96 @@ export function dieClipDur(entry) {
  * again (redeployed without an event) stands up first.
  */
 export function syncView(v, s, t) {
+  // 逐 tick 朝向 (snapshot `face`, an EDGE — render/interp.js hands it out only on the frames that change it): the model
+  // turns with the sim, so 心虚设计师's front follows its blocker instead of keeping the sign it was born with until the
+  // next reconnect. Applied before sync(), so a walking view keeps the velocity's flip (update) and a standing one keeps
+  // the snapshot's; display only, no sim state reads it.
+  if (s.face != null) v.setFacing?.(s.face);
   if (v.alive || v.info?.kind === 'device') v.sync(s, t);
   else if (v.dying > 0) { if (typeof v.followSample === 'function') v.followSample(s, t); else { v.x = s.x; v.y = s.y; } }
   else if (s.anim !== ANIM.DIE && s.hp > 0) { v.revive?.(); v.sync(s, t); }
+}
+/** The local-client art group of the official battle HUD pictures (data/local-assets.json `groups['ui/battle']`). */
+const CHARGE_RING_GROUP = 'ui/battle';
+/** Charge-ring textures by picture name — one `P.Texture.from` per name and page (CHARGE_RING_TEXTURES caches the
+ *  result, so the per-frame path never asks PIXI for a texture again; a name the manifest does not list yet is not cached,
+ *  so a manifest that arrives late still lights the ring up). */
+const CHARGE_RING_TEXTURES = new Map();
+/** Charge-ring sizing beside the SP bar (_updateChargeRing): the picture's diameter is the SP bar's height × `size`
+ *  (never under `minPx` across — a zoomed-out board would otherwise leave a few unreadable pixels of segment), centred
+ *  `gap` px right of the bar's end, so it covers neither the HP bar nor the SP bar. */
+const CHARGE_RING = Object.freeze({ size: 2.2, minPx: 10, gap: 2 });
+
+/** A finite integer from `v`, else `fallback` (a snapshot field can be missing, a string or NaN). */
+const toInt = (v, fallback) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+};
+
+/**
+ * Picture name of the official charge ring for `stored` charges of a skill whose maximum is `maximum` — the name to hand
+ * to `assets.localUrl('ui/battle', name)` (the manifest keys carry no extension).
+ *
+ * The pictures of the local client are `<segments>_<lit segments>`: `1_0` (an empty ring), `1_1`, `2_1` / `2_2`,
+ * `3_1` … `3_3`, `4_1` … `4_4`. There is no `<n>_0` for n > 1 — an empty ring looks the same whatever the maximum —, so
+ * nothing stored always asks for `1_0`. Both numbers are clamped: a skill's maximum is 2 or 3 in the game data
+ * (data/chess.json `maxChargeTime`; 1 is a plain SP bar, shown by no ring, and 4 is the widest picture there is), and a
+ * stored count can only be stale, rounded or junk — never a name without a picture behind it.
+ *
+ * Pure and exported for the Node test (test/render/charge-ring.test.js): the rest of this module needs PIXI.
+ *
+ * @param {number} stored charges stored now
+ * @param {number} maximum the skill's charge cap
+ * @returns {string} the picture's name in the `ui/battle` group, without its `.png`
+ */
+export function chargeRingName(stored, maximum) {
+  const cap = clamp(toInt(maximum, 1), 1, 4);
+  const lit = clamp(toInt(stored, 0), 0, cap);
+  return lit === 0 ? '1_0' : `${cap}_${lit}`;
+}
+
+/** The longest a turnClip hold may last (s): a bad frame must not freeze a unit's animations for a whole fight. */
+const CAST_HOLD_MAX = 8;
+
+/**
+ * How long a unit view holds an attack-slot skill's own clip, from the sim `cast` event's optional fifth field
+ * (`turnClip`, seconds — upstream 0.3.2 §37.57: the skill takes the normal attack's turn and its official clip is that
+ * long). Pure and exported for the Node test (test/sim/cast-turnclip.test.js): the rest of this module needs PIXI.
+ * 0 / absent / unusable ⇒ 0 (no hold: the plain attack animation plays, [ASSUMED] for an ability with no official clip).
+ *
+ * @param {unknown} clip the event's fifth field
+ * @returns {number} seconds in [0, CAST_HOLD_MAX]
+ */
+export function castHoldSeconds(clip) {
+  const n = typeof clip === 'number' ? clip : NaN;
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(n, CAST_HOLD_MAX);
+}
+
+/**
+ * The charge-ring texture of a picture name, loaded once per page: `null` while the local art manifest does not name it
+ * (a fresh checkout without the game art) and after a load that threw — the caller hides the ring, draws no placeholder.
+ *
+ * @param {any} P the PIXI namespace (`P.Texture.from`)
+ * @param {any} assets the asset store of public/js/assets.js (needs `localUrl(group, name)`)
+ * @param {string} name a `chargeRingName` picture name
+ * @returns {any} a PIXI Texture, or null
+ */
+function chargeRingTexture(P, assets, name) {
+  const hit = CHARGE_RING_TEXTURES.get(name);
+  if (hit && !(hit.baseTexture && hit.baseTexture.destroyed)) return hit;
+  const a = assets;
+  if (!a || typeof a.localUrl !== 'function') return null;
+  // the manifest keys are the bare names ('2_1'); the '.png' fallback keeps a manifest that lists files with their
+  // extension working too
+  let url;
+  try { url = a.localUrl(CHARGE_RING_GROUP, name) || a.localUrl(CHARGE_RING_GROUP, `${name}.png`); } catch { url = null; }
+  if (typeof url !== 'string' || !url) return null;
+  let tex;
+  try { tex = P.Texture.from(url); } catch { tex = null; }
+  if (!tex) return null;
+  CHARGE_RING_TEXTURES.set(name, tex);
+  return tex;
 }
 /** World step (x = col, y = row) of a direction. */
 export const DIR_STEP = Object.freeze({ UP: [0, 1], RIGHT: [1, 0], DOWN: [0, -1], LEFT: [-1, 0] });
@@ -665,6 +757,8 @@ export class UnitView {
     // the skill slot whose Spine clip the unit shows (DESIGN §16): an ally's equipped skill; an enemy's cast slot when the
     // sim reports one (`cast` event, setSkillSlot — a multi-skill boss's Skill_01..04, PR #275)
     this.skillIndex = Number.isInteger(info.skillIndex) ? info.skillIndex : null;
+    // seconds left of an attack-slot skill's own clip (sim `cast` event, turnClip): no attack animation meanwhile
+    this.castHold = 0;
     this.prep = !!opts.prep;
     this.lodIdle = opts.lod === 'idle';
     this.culled = false;          // outside the viewport this frame (not animated, not drawn)
@@ -949,6 +1043,18 @@ export class UnitView {
       try {
         actor = new SpineActor(data, entry);
         actor.setSkillIndex(this.skillIndex ?? undefined);
+        // A verified official skill-mode attack clip (render/skillAttack.js): queried at attack time, so a skill slot
+        // change, a facing change or a late effect index needs no new model. Operators only - an enemy's or a
+        // summon's abilities keep the roles the manifest gives them.
+        actor.skillAttackMode = () => {
+          if (this.info.kind !== 'op') return null;
+          let rec = null;
+          try { rec = this.ctx.lookupDef ? this.ctx.lookupDef(this.info) : null; } catch { rec = null; }
+          // [ASSUMED] the effect index is not wired here: every verified mapping (and 瑕光's S2) settles without it,
+          // and an absent index must never change a role.
+          const mode = skillAttackMode(null, { info: this.info, rec, skillIndex: this.skillIndex });
+          return mode ? { ...mode, down: this.dir === 'DOWN' } : null;
+        };
         actor.setRunMode(this.moveFast);
         // enemies play their attack clip once per attack, then walk on (GitHub #58: the sim stands them for that clip)
         actor.clipPerAttack = this.isEnemy;
@@ -1052,8 +1158,12 @@ export class UnitView {
     this.spGlow.tint = COLORS.spReady;
     this.spGlow.blendMode = P.BLEND_MODES.ADD;
     h.addChild(this.spGlow);
+    // 技能充能层数 (b.snap `charges`): the official charge ring right of the SP bar, hidden until a charge count arrives
+    this.chargeRing = new P.Sprite(P.Texture.EMPTY);
+    this.chargeRing.anchor.set(0.5);
+    h.addChild(this.chargeRing);
     // nothing shows until the first HUD update decides (a culled or prep view never draws bars)
-    for (const b of [this.hpBg, this.hpGhost, this.hpFill, this.negFill, this.shieldBar, this.spBg, this.spFill, this.spGlow]) b.visible = false;
+    for (const b of [this.hpBg, this.hpGhost, this.hpFill, this.negFill, this.shieldBar, this.spBg, this.spFill, this.spGlow, this.chargeRing]) b.visible = false;
     this.chip = null;
     // operators only: summon tokens have no tier (hand and field alike)
     if (!this.isEnemy && !this.isToken && this.info.kind !== 'device') {
@@ -1219,7 +1329,9 @@ export class UnitView {
   }
 
   setFacing(f) {
-    if (this.isEnemy) { this.facing = f === -1 ? -1 : 1; return; }
+    // an enemy is drawn by its `visFacing` (the sprite flip), so a snapshot-driven turn has to set both — a standing
+    // enemy gets no flip from the velocity (update only flips a moving one, |vx| > 0.08)
+    if (this.isEnemy) { this.facing = f === -1 ? -1 : 1; this._visFacing = this.facing; return; }
     // the legacy ±1 only speaks about left / right: an UP / DOWN operator keeps its direction
     if (f === -1) this.setDir('LEFT');
     else if (this.dir === 'LEFT') this.setDir('RIGHT');
@@ -1387,6 +1499,22 @@ export class UnitView {
     if (this.actor) this.actor.setSkillIndex(index);
   }
 
+  /**
+   * An attack-class skill took this turn (`cast` event with a fifth field, the skill's official clip in s — upstream
+   * 0.3.2 §37.57): hold the view in that slot's clip for that long and let no attack animation play meanwhile. The slot's
+   * clip is what `setSkillSlot` already swapped the actor to (`spine.js _attackClip`), so the client plays the official
+   * skill clip here (fix-anim filled the enemies' `anims.skills` slots) instead of the plain attack clip.
+   * A clip of 0 (the official ability names no animation) holds nothing: the plain attack animation plays [ASSUMED].
+   */
+  holdCast(clip) {
+    const s = castHoldSeconds(clip);
+    if (!(s > 0)) return;
+    this.castHold = s;
+    // play that slot's clip once for its own length: the actor's attack clip IS the skill slot's clip (spine.js _attackClip,
+    // setSkillSlot right before this call), and the 'atk' handler skips the plain attack while the hold runs
+    this.actor?.attack?.(s, true);
+  }
+
   onDeploy() {
     this.fadeIn = 0;
     if (!this.alive) this.revive();
@@ -1517,6 +1645,7 @@ export class UnitView {
   /** @param {number} dt real seconds @param {any} cam camera @param {number} t real clock */
   update(dt, cam, t) {
     if (this.destroyed) return;
+    if (this.castHold > 0) this.castHold = Math.max(0, this.castHold - dt * (this.ctx.animRate?.() || 1));
     if (this._pendingDeployElapsed != null) this._pendingDeployElapsed += dt * (this.ctx.animRate?.() || 1);
     // a displacement's slide (slideTo): held where it stood until the snapshot with the destination is shown, then
     // eased into the sampled position (sync keeps `lx, ly` current) under a constant deceleration
@@ -1793,6 +1922,10 @@ export class UnitView {
       this.spGlow.scale.set((spH * 5) / 128);
       this.spGlow.alpha = pulse;
     }
+    // 技能充能层数 (b.snap `charges` → `this.charges`, [stored, maximum]): the official charge ring at the SP bar's right
+    // end, one lit segment per charge stored (chargeRingName); no ring for a skill that stores one charge, none while the
+    // local art manifest does not name the picture
+    this._updateChargeRing(showBars && !this.isEnemy, x0 + bw, showSp ? sy : cy, spH);
     // tier chip (left of the bars in battle; above the head in prep)
     if (this.chip) {
       const cs = clamp(s * (prep ? 0.24 : 0.19), 11, 28) / 44;
@@ -1872,6 +2005,26 @@ export class UnitView {
     text.position.set(x, top + 3);
     text.visible = true;
     return text.height + 6;
+  }
+
+  /**
+   * 技能充能层数 (b.snap `charges` → `this.charges`, a charge skill's [stored, maximum], 卡涅利安 et al.): the official
+   * charge ring (`ui/battle` pictures, `chargeRingName`) centred `CHARGE_RING.gap` right of the SP bar's end `x`, on that
+   * bar's centre line `y`, `CHARGE_RING.size` × its height `spH` across. Hidden for every unit without a charged skill,
+   * for an enemy, and while the picture has no URL (no local art manifest) or is still decoding — the ring appears on the
+   * first frame it can, never as a white square.
+   */
+  _updateChargeRing(show, x, y, spH) {
+    const ring = this.chargeRing;
+    const ch = this.charges;
+    const tex = show && Array.isArray(ch) ? chargeRingTexture(this.P, this.ctx.assets, chargeRingName(ch[0], ch[1])) : null;
+    const ready = !!tex && tex.valid !== false && !!(tex.orig && tex.orig.width > 0);
+    ring.visible = ready;
+    if (!ready) return;
+    if (ring.texture !== tex) ring.texture = tex;
+    const d = Math.max(CHARGE_RING.minPx, spH * CHARGE_RING.size);
+    ring.position.set(x + CHARGE_RING.gap + d / 2, y);
+    ring.width = ring.height = d;
   }
 
   /**
@@ -2414,7 +2567,9 @@ export class ItemView {
     ctx.layers.shadow.addChild(this.shadow);
     this.root = new P.Container();
     ctx.layers.units.addChild(this.root);
-    this.plate = new P.Sprite(itemTexture(String(info.defId || 'item'), null, info.color || 0x9aa5a0));
+    // the plate is cached by the ICON URL (upstream 0.3.3 §38.3), not by the item id: the id names another picture once
+    // the content set is swapped (public/js/data.js setContent) — the pre-load pedestal is the id-less 'none'
+    this.plate = new P.Sprite(itemTexture('none', null, info.color || 0x9aa5a0));
     this.plate.anchor.set(0.5, 1);
     this.root.addChild(this.plate);
     this.info.icon = null;
@@ -2426,7 +2581,7 @@ export class ItemView {
     if (this.destroyed || !url || url === this.info.icon) return;
     this.info.icon = url;
     const a = this.ctx.assets;
-    if (a?.image) a.image(url).then((img) => { if (!this.destroyed && img && this.info.icon === url) this.plate.texture = itemTexture(String(this.info.defId), img, this.info.color || 0x9aa5a0); }, () => {});
+    if (a?.image) a.image(url).then((img) => { if (!this.destroyed && img && this.info.icon === url) this.plate.texture = itemTexture(url, img, this.info.color || 0x9aa5a0); }, () => {});
   }
   setWorld(x, y, z = 0) { this.x = x; this.y = y; this.z = z; }
   /** A battle snapshot sample (syncBattle syncs every unit of the field): a hand item on a scouted prep board rides

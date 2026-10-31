@@ -7,7 +7,28 @@ import { effectiveProfile, performAttack, acquireTargets } from '../ai.js';
 
 export class BattleCombat {
   dealDamage(source, target, dmg) {
+    if (this._overDamageBudget()) return 0;
     try { return pipeDamage(this, source, target, dmg); } catch (e) { this._internalError('dealDamage', e); return 0; }
+  }
+
+  /**
+   * The per-tick work budget (server/sim/constants.js MAX_TICK_DAMAGE_INSTANCES): every damage instance this tick costs
+   * one, and a tick that resolves more than the cap force-ends the battle as a timeout. A mutual-damage loop
+   * (A reflects into B, B into A) does exactly that — unbounded instances inside one `step()` — while raising no error
+   * at all, so the error caps cannot see it (2026-10-30). Counts only: deterministic, so a replay ends on the same tick.
+   * @returns {boolean} true when the tick is over budget (the caller drops the instance)
+   */
+  _overDamageBudget() {
+    const cap = this.maxTickDamageInstances;
+    if (!(cap > 0) || (this.dmgInstances = (this.dmgInstances || 0) + 1) <= cap) return false;
+    if (!this.finished && !this._forcing) {
+      this._forcing = true;
+      try {
+        this.logger.error?.(`[sim] battle force-ended as a timeout: ${this.dmgInstances} damage instances in one tick (cap ${cap})`);
+        this.forceEnd('timeout');
+      } catch { this._hardFinish('timeout'); }
+    }
+    return true;
   }
 
   heal(source, target, amount, opts = {}) {
@@ -26,6 +47,7 @@ export class BattleCombat {
    */
   loseHp(target, amount, { source = null, silent = false, tags = null, from = null, sourceless = false, noHitLimit = false } = {}) {
     if (!target || !target.alive || !(amount > 0)) return 0;
+    if (this._overDamageBudget()) return 0;   // 流失 is a damage instance too (the per-tick cap above)
     // 限伤 (shared/constants.js BOSS_HIT_LIMIT): a loss passed on to a leader (the parts' 传递) is one hit too
     if (!noHitLimit && leaderHitCancelled(this, target, amount)) return 0;
     const t = ['hpLoss'];

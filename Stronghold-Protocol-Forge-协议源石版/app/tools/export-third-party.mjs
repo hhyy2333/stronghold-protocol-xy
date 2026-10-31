@@ -35,7 +35,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const THIRD_PARTY_SOURCES = Object.freeze([
   { path: 'public/assets', kind: 'dir', why: '《明日方舟》美术、Spine 模型与音效（tools/fetch-assets.mjs 下载，或从本机客户端提取）' },
   { path: 'public/fonts', kind: 'dir', why: '字体（各字体归其作者；不适用本项目的 GPL）' },
-  { path: 'data', kind: 'glob', match: /\.json$/, exclude: /^(support|local-assets)\.json$/, why: '由官方数据表生成（tools/build-data.mjs）—— 内容是官方数据，不是本项目代码。support.json 是本项目手写的服务端配置，local-assets.json 是每台机器自己的提取清单，两者都不导出' },
+  { path: 'data', kind: 'glob', match: /\.json$/, exclude: /^(local-assets)\.json$/, why: '由官方数据表生成（tools/build-data.mjs）—— 内容是官方数据，不是本项目代码。local-assets.json 是每台机器自己的提取清单，不导出' },
   { path: 'docs/research', kind: 'dir', why: '规则与数据调研记录（含官方数据摘录）' },
   { path: 'docs/img', kind: 'dir', why: '游戏截图（官方界面，按 NOTICE.md §2 不属于本项目、不适用 GPL）' },
   { path: 'public/dev/recordings', kind: 'dir', why: '开发用的对局录像（含官方数据）' },

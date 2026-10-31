@@ -101,7 +101,12 @@ function kitBlackCloud(ab, e) {
         b.fx('beam', { x: e2.x, y: e2.y, from: e2.id, to: t.id, kind: 'fireWeapon' });
         hurt(b, e2, t, e2.s.atk * num(f.bb.atk_scale, 1), 'phys');
       }
-    }, { sil: true, cond: (b, e2) => (e2.mem.ab.ammo ?? 0) >= Math.max(1, num(f.sp, 1)) && allTargets(b, e2).length > 0 }),
+      // 全弹发射 is an attack-class skill (fx/index.json `fireweapon`: an AbilitySequenceGroup whose MultiRangedAttack plays
+      // animKey `Skill_2` = 2 s in data/assets.json; upstream 0.3.2 §37.19): it takes a normal attack's turn.
+      // `pr: 1` — the data's own priority (data/enemies.json skills[]: FireWeapon priority 1, KillOthers 0), so a ready salvo
+      // beats the grab when both are ready. [已知缺口] our ability slot ({cd, icd, sp, bb, bs, slot}) does not carry the data's
+      // priority, so it is written here in the kit; a later port of upstream's `attackTurnSkill` shape would read it from data.
+    }, { sil: true, cond: (b, e2) => (e2.mem.ab.ammo ?? 0) >= Math.max(1, num(f.sp, 1)) && allTargets(b, e2).length > 0, atk: true, clip: 2, own: true, pr: 1 }),
   ];
 }
 

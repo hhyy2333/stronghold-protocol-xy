@@ -31,7 +31,7 @@ export const MOD_API_VERSION = 1;
 /** Release version shown to players (title screen, server banner, /healthz). Kept equal to package.json "version"
  * (test/version.test.js); PROTOCOL_VERSION above is the separate wire-format number. The release TAG spells both halves
  * out — `v<this>-<upstream>` (README 「版本号」) — because this one has to stay a plain three-part semver. */
-export const APP_VERSION = '0.19.34';
+export const APP_VERSION = '0.19.39';
 /**
  * The UPSTREAM game version this checkout bundles (README 「版本号」). The release TAG spells both halves out —
  * `v<APP_VERSION>-<UPSTREAM_VERSION>` — because `APP_VERSION` itself has to stay a plain three-part semver.
@@ -43,7 +43,7 @@ export const APP_VERSION = '0.19.34';
  * `scripts/make-update-package.mjs` tell "the next release" from "the very release I am building"
  * (a bundle that only names `0.14.0` cannot: 0.14.0-0.2.3 and 0.14.0-0.2.4 look identical to it).
  */
-export const UPSTREAM_VERSION = '0.3.0';
+export const UPSTREAM_VERSION = '0.3.3';
 /**
  * The version a **plugin** manifest's `app` range is judged against — the **upstream half**, NOT `APP_VERSION`.
  *
@@ -321,15 +321,22 @@ export const SKILL_SUMMON_START_DEPLOY = true;
 export const BOND_LAYER_CAP = 999;
 
 /**
- * The layers a gain of `n` actually adds to a bond holding `before` under BOND_LAYER_CAP: min(n, cap − before), never
- * negative (a count already at or over the cap gains 0 and is never lowered); 0 for a non-positive / non-finite `n`
- * except +Infinity (= "the room left").
+ * The layers a gain of `n` actually adds to a bond holding `before` under a cap: min(n, cap − before), never negative
+ * (a count already at or over the cap gains 0 and is never lowered); 0 for a non-positive / non-finite `n` except
+ * +Infinity (= "the room left").
+ *
+ * `cap` defaults to BOND_LAYER_CAP, so every existing caller keeps the official 999. The optional third argument is the
+ * **per-player** cap of 【突破极限】(`hex_break_limit`, 设计稿 §3: 叠层上限 9999, 只对拥有者): the match side reads it with
+ * `server/match/hextech.js bondLayerCapOf(ps)` and hands it in here, and the battle side keeps its own copy on the
+ * battle input (`PlayerBattleInput.bondLayerCap`) — one implementation of the clamp, many caps. 0 / 负数 / 非有限数 =
+ * no cap (Infinity), the BOND_LAYER_CAP = 0 convention.
  */
-export function layerGainRoom(before, n) {
+export function layerGainRoom(before, n, cap = BOND_LAYER_CAP) {
   if (!(n > 0)) return 0;
-  const cap = BOND_LAYER_CAP > 0 ? BOND_LAYER_CAP : Infinity;
+  const c = Number(cap);
+  const limit = Number.isFinite(c) && c > 0 ? c : Infinity;
   const b = Number.isFinite(before) && before > 0 ? before : 0;
-  return Math.max(0, Math.min(n, cap - b));
+  return Math.max(0, Math.min(n, limit - b));
 }
 
 /**

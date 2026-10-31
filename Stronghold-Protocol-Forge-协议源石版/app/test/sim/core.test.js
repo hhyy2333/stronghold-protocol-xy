@@ -61,10 +61,13 @@ test('grid: obstacles re-route and bump version; blocked entirely ⇒ null unles
 test('damage formulas: phys/arts/true, ignore, 5% floor', () => {
   approx(mitigate(1000, 'phys', { def: 300 }), 700);
   approx(mitigate(1000, 'phys', { def: 2000 }), 50);
-  approx(mitigate(1000, 'phys', { def: 300 }, { defIgnorePct: 0.5, defIgnoreFlat: 50 }), 900);
+  // PRTS order (official 0.3.2 §37.30 / PR #798): the FIXED 50 comes off first, then the 50 % — (300 − 50) × 0.5 = 125
+  // effective DEF ⇒ 875. The old order (50 % first, then 50) left 100 ⇒ 900 and over-penetrated.
+  approx(mitigate(1000, 'phys', { def: 300 }, { defIgnorePct: 0.5, defIgnoreFlat: 50 }), 875);
   approx(mitigate(1000, 'arts', { res: 30 }), 700);
   approx(mitigate(1000, 'arts', { res: 100 }), 50);
-  approx(mitigate(1000, 'arts', { res: 40 }, { resIgnorePct: 0.5, resIgnoreFlat: 10 }), 900);
+  // Same order for RES: (40 − 10) × 0.5 = 15 ⇒ 850 (the old order left 10 ⇒ 900).
+  approx(mitigate(1000, 'arts', { res: 40 }, { resIgnorePct: 0.5, resIgnoreFlat: 10 }), 850);
   approx(mitigate(1000, 'true', { def: 9999, res: 100 }), 1000);
 });
 

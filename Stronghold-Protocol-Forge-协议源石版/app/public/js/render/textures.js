@@ -814,6 +814,16 @@ const FX_DRAW = {
     c.beginPath(); c.moveTo(cx + 2, cy - 3); c.lineTo(cx + 18, cy - 19); c.lineTo(cx + 9, cy); c.closePath(); c.fill();
     c.beginPath(); c.moveTo(cx + 2, cy + 3); c.lineTo(cx + 18, cy + 19); c.lineTo(cx + 9, cy); c.closePath(); c.fill();
   }],
+  // 丰川祥子的音符（PROJ.note 的 spec.tex）：一颗八分音符，白色，弹道的 tint 负责上色
+  note: [640, 256, 64, 64, (c, x, y, w) => {
+    const hx = x + w * 0.34, hy = y + w * 0.7;
+    c.fillStyle = '#fff'; c.strokeStyle = '#fff'; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); c.ellipse(hx, hy, w * 0.17, w * 0.125, -0.38, 0, Math.PI * 2); c.fill();
+    c.lineWidth = w * 0.06;
+    c.beginPath(); c.moveTo(hx + w * 0.15, hy - w * 0.03); c.lineTo(hx + w * 0.15, y + w * 0.2); c.stroke();
+    c.beginPath(); c.moveTo(hx + w * 0.15, y + w * 0.2);
+    c.quadraticCurveTo(hx + w * 0.34, y + w * 0.22, hx + w * 0.3, y + w * 0.4); c.stroke();
+  }],
   coin: [448, 128, 48, 48, (c, x, y, w) => {
     const cx = x + w / 2, cy = y + w / 2;
     c.fillStyle = '#ffc600'; c.beginPath(); c.arc(cx, cy, 20, 0, Math.PI * 2); c.fill();
@@ -1256,10 +1266,15 @@ export function shadowTexture() {
   return _shadow;
 }
 
-/** Item pedestal composite (icon in a rounded frame coloured by tier). */
+/**
+ * Item pedestal composite (icon in a rounded frame coloured by tier), cached by the RESOLVED IMAGE URL — never by an item
+ * id (upstream 0.3.3 §38.3): an id names a different picture once the content set is swapped (public/js/data.js
+ * setContent), while the caller's URL is already the picture's identity. `'none'` = the plain pedestal, drawn while the
+ * icon loads or when the record has none.
+ */
 const _items = new Map();
-export function itemTexture(key, img, color) {
-  const k = `${key}|${img ? 1 : 0}|${color}`;
+export function itemTexture(url, img, color) {
+  const k = `${url}|${img ? 1 : 0}|${color}`;
   let tex = _items.get(k);
   if (tex) return tex;
   const P = PIXI();

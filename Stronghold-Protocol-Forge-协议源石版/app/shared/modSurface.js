@@ -93,11 +93,11 @@ export const MOD_SURFACE = Object.freeze([
   {
     id: 'units.operators',
     layer: 'A',
-    decl: 'pack.json.operators / pack.json.support + units.json',
-    anchors: [{ symbol: 'UNIT_REQUIRED_FIELDS' }, { symbol: 'PACK_FIELDS', members: ['operators', 'support'] }],
+    decl: 'pack.json.operators + units.json',
+    anchors: [{ symbol: 'UNIT_REQUIRED_FIELDS' }, { symbol: 'PACK_FIELDS', members: ['operators'] }],
     requires: ['干员记录必须带 UNIT_REQUIRED_FIELDS 那几个键'],
     files: ['shared/workshop.js', 'server/workshop.js', 'tools/build-data.mjs'],
-    tests: ['test/workshopOperators.test.js', 'test/workshopSupport.test.js'],
+    tests: ['test/workshopOperators.test.js'],
     spec: '§28.10',
   },
   {
@@ -502,7 +502,7 @@ export const MOD_SURFACE = Object.freeze([
     requires: [
       '闭枚举：开关名与选项名都只许取 `BEHAVIOUR_SWITCHES` 里有的（`BEHAVIOUR_UNKNOWN_SWITCH` / `BEHAVIOUR_UNKNOWN_OPTION`，整包拒，不是忽略）',
       '**包里没有数值、也没有路径**：动作（`{ kind, value }`）由引擎构造，`value` 只来自那一格或引擎常量 —— 这一格**永远**不是一条数值 / 文件覆盖通道（那是安装器，`docs/WORKSHOP.md` §1.1）',
-      '**不是贡献项**：一个只带 `behaviour` 的包照旧 `EMPTY_PACK`（与 `variants` / `support` / `playtest` 同一条）',
+      '**不是贡献项**：一个只带 `behaviour` 的包照旧 `EMPTY_PACK`（与 `variants` / `playtest` 同一条）',
       '必须 `combat: true`（第五条硬闸门 `BEHAVIOUR_NEEDS_COMBAT`）：一格的入场券本就是「它改一条规则」⇒ 必须进房间摘要闸门与 golden 语料',
       '不声明 ⇒ 归一化清单里**不长出这个键**（无条件写 `behaviour: []` 会让所有已发布包的内容哈希改变，§28.2）；**必须**进包身份哈希（`server/workshop.js` 的 `canonicalJson(pack)`），**不进** `modDigest`（只哈希 `[id, hash]`）',
       '加一格的门槛：**那一格必须已经在引擎里有实现点**（比 `VARIANT_AXES` 的加轴纪律更严）—— 本版那 5 格就是按这条落的，每一格都有一处具名读取点与一个测试文件',

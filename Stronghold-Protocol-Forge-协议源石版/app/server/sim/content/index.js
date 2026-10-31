@@ -266,8 +266,9 @@ function inputEntry(unit) {
  * The loadout `{ skillIndex, moduleId }` a unit's PlayerBattleInput entry gives; an entry without loadout fields means
  * the DEFAULT loadout (`{}`), never "whatever the data view maps this chess id to" (another player's choice in a
  * multi-player field). `standIn: true` rides along (补位: the stand-in def whatever the skill / module fields say), as
- * do `diy` (自选: the pick of a DIY slot's piece) and `potential` (0.2.2: 1–6, never a stand-in's). Null when the unit
- * has no input entry.
+ * do `diy` (自选: the pick of a DIY slot's piece), `potential` (0.2.2: 1–6, never a stand-in's) and `moduleLevel: 3`
+ * (协议源石【特限恢复】 §4.2: the selected module at its equipLevel 3 data — dropping it here would silently swap the
+ * 3 级 def back to the 1 级 one in syncUnitLoadout). Null when the unit has no input entry.
  */
 function inputLoadout(unit) {
   const x = inputEntry(unit);
@@ -276,6 +277,7 @@ function inputLoadout(unit) {
     ...(x.standIn === true ? { standIn: true } : null),
     ...(x.diy && typeof x.diy === 'object' ? { diy: x.diy } : null),
     ...(x.standIn !== true && isPotential(x.potential) ? { potential: x.potential } : null),
+    ...(x.standIn !== true && x.moduleLevel === 3 ? { moduleLevel: 3 } : null),
   };
   if (x.skillIndex == null && x.moduleId == null) return extra;
   return { skillIndex: x.skillIndex ?? null, moduleId: x.moduleId ?? null, ...extra };

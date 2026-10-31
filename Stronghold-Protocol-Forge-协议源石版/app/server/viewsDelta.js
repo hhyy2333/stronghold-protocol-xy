@@ -9,7 +9,7 @@
 // The rules (docs/design/network.md §8.2 carries them for both author and client readers):
 //   * `players` is keyed by `playerId`; a patch carries ONLY the fields that changed. The identity (`playerId`) is in
 //     every patch — it is how the client finds the row to merge into.
-//   * `null` IS THE VALUE `null` at every level of this view (`rerollVote`, `bossId`, `bandId`, `progress.resolved`):
+//   * `null` IS THE VALUE `null` at every level of this view (`bossId`, `bandId`, `progress.resolved`):
 //     it is sent as the value it is and the client stores it. A TOP-LEVEL key that disappeared from the full view is
 //     named in the frame's `gone: ['teamLp', …]` and the client deletes it — `undefined` is not a JSON value, so the
 //     absence needs its own spelling and must never be confused with a null value. Inside a row the same job is done by
@@ -54,7 +54,7 @@
 /** Top-level keys of a public view that a delta sends when they changed (never `players` / `fields`, diffed below). */
 const SCALAR_KEYS = [
   'phase', 'round', 'lastRound', 'deadline', 'modeId', 'difficulty', 'stageId', 'setupRevision',
-  'rerollVote', 'factions', 'disabledBonds', 'drawnDisabledBonds', 'bannedChess',
+  'factions', 'disabledBonds', 'drawnDisabledBonds', 'bannedChess',
   'bossId', 'hiddenBossId', 'bossRound', 'hiddenRound', 'spRound', 'combatMode', 'paused',
   'teamLp', 'overtimeAt', 'bossHp', 'draft', 'sp', 'unite', 'uniteResult',
   // 协议源石 (Hextech, DESIGN §29). These two MUST be listed: a top-level key that is neither here nor in the
@@ -208,7 +208,7 @@ export function publicDelta(prev, cur) {
     const a = hasOld ? base[k] : undefined;
     if (b === undefined) {
       // the key left the view: it is named in `gone` and the client DELETES it — `null` is a real value up here
-      // (`rerollVote`, `botId`, `uniteResult`), so "absent" needs its own spelling
+      // (`botId`, `uniteResult`), so "absent" needs its own spelling
       if (hasOld) { delete next[k]; (frame.gone ??= []).push(k); }
       continue;
     }

@@ -44,7 +44,7 @@
 //   events.js        client events, snapshot, field meta, fx, the sim log
 //   util.js          fin / clone
 
-import { TICK, ROWS, COLS, DP_DEFAULTS, MAX_HOOK_DEPTH, AUTO_OP_COOLDOWN } from './constants.js';
+import { TICK, ROWS, COLS, DP_DEFAULTS, MAX_HOOK_DEPTH, AUTO_OP_COOLDOWN, MAX_BATTLE_ERRORS, MAX_TICK_DAMAGE_INSTANCES } from './constants.js';
 import { GEO } from '../../shared/constants.js';
 import { layoutOf } from '../../shared/layout.js';
 import { createRng } from './rng.js';
@@ -111,6 +111,15 @@ export class Battle {
      * option is byte-for-byte the old battle (server/sim/damage.js leaderHitCancelled reads this field).
      */
     this.bossHitLimit = opts.bossHitLimit;
+    /**
+     * The two "this battle has gone pathological" caps (server/sim/constants.js MAX_BATTLE_ERRORS /
+     * MAX_TICK_DAMAGE_INSTANCES), overridable per battle so a test can run with a tiny cap. `undefined` keeps the
+     * defaults, so a battle built without the option behaves exactly as before.
+     */
+    this.maxBattleErrors = Number.isFinite(opts.maxBattleErrors) && opts.maxBattleErrors > 0 ? opts.maxBattleErrors : MAX_BATTLE_ERRORS;
+    this.maxTickDamageInstances = Number.isFinite(opts.maxTickDamageInstances) && opts.maxTickDamageInstances > 0 ? opts.maxTickDamageInstances : MAX_TICK_DAMAGE_INSTANCES;
+    /** damage instances resolved in the CURRENT tick — reset by `step()` (battle/combat.js `_overDamageBudget`). */
+    this.dmgInstances = 0;
     this.data = toDataSource(opts.data);
     let stage = opts.stage ?? (opts.stageId ? this.data.getStage(opts.stageId) : null);
     if (stage && !stage._norm) stage = normalizeStage(stage.id ?? opts.stageId, stage);

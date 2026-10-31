@@ -166,6 +166,10 @@ export class BattlePlayers {
     if (inp.standIn === true) lo.standIn = true;
     if (inp.diy && typeof inp.diy === 'object') lo.diy = inp.diy;
     if (inp.standIn !== true && isPotential(inp.potential)) lo.potential = inp.potential;
+    // 3 级模组（协议源石【特限恢复】 §4.2）：`PlayerState.battleInput` 只给拥有者自己的干员打这个标记，战斗按它把所选
+    // 模组换成 equipLevel 3 的数据（simdata getChess → shared/loadoutRecord.js withModuleLevel3）。补位干员不带（它的
+    // 模组来自 data/backups.json 的另一个人）。
+    if (inp.moduleLevel === 3) lo.moduleLevel = 3;
     const def = this.data.getChess(inp.chessId, lo);
     if (!def) { this.log(`unknown chess ${inp.chessId}${lo.diy ? ' (illegal 自选 pick)' : ''}`); return null; }
     // a DIY slot has no body of its own (甄选干员): it fights only as a 自选 piece (its `diy` pick)

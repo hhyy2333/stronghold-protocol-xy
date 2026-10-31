@@ -184,6 +184,9 @@ export function TitleScreen() {
   const cssRidges = assetsSettled && (!ridges || ridgesFailed);
 
   const valid = isValidName(name);
+  // 只在玩家真的填了东西、但 sanitize 之后仍然为空时才标红（比如只打了空格）。
+  // 空输入框不先报错 —— 一进页面就红是坏体验；提示文案复用已有的「请输入博士代号」，不新增 i18n 键。
+  const nameInvalid = name.length > 0 && !valid;
   const start = () => {
     if (!valid) { toast(t('请输入博士代号'), 'warn'); return; }
     enterSession(name);
@@ -251,6 +254,7 @@ export function TitleScreen() {
           </div>` : null}
           <${TextField} label=${t('博士代号')} micro="CALLSIGN" size="lg" icon="user" value=${name} maxLength=${NAME_MAX_LEN}
             placeholder=${t('输入你的代号（最多 {NAME_MAX_LEN} 字）', { NAME_MAX_LEN })} autoFocus=${!touchUi}
+            invalid=${nameInvalid} hint=${nameInvalid ? t('请输入博士代号') : null}
             onInput=${setName} onEnter=${start} />
         </div>
         <div class="title-login__act">

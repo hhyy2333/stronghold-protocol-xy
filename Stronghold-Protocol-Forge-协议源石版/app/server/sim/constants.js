@@ -217,6 +217,21 @@ export const FORCED_EXIT = 'forcedExit';
 export const MAX_BATTLE_TIME = 3600;
 /** A battle that raised this many internal errors is force-ended as a timeout. */
 export const MAX_INTERNAL_ERRORS = 200;
+/**
+ * A battle that raised this many errors of ANY kind — engine errors **and** the isolated content / hook ones — is
+ * force-ended as a timeout. `MAX_INTERNAL_ERRORS` alone was not enough: a content interaction that keeps blowing the
+ * hook-depth guard reports every violation as a *content* error (`internal` false), so the nested handlers are skipped,
+ * the battle carries on, and an endless storm spins a CPU core while the battle never ends (2026-10-30: a hosting box
+ * sat at 100 % for two hours from a `dodge`/`damaged` loop between a DIY operator and an enemy). Counting occurrences is
+ * deterministic — no clock, no randomness — so a replay of the same battle stops at the same tick.
+ */
+export const MAX_BATTLE_ERRORS = 20000;
+/**
+ * The most damage instances one tick may resolve before the battle is force-ended as a timeout. A mutual-damage loop
+ * (A reflects into B, B reflects into A) resolves an unbounded number of instances inside ONE `step()` without raising
+ * a single error, so the error caps above never see it. Counted per tick, therefore deterministic.
+ */
+export const MAX_TICK_DAMAGE_INSTANCES = 50000;
 
 /** Time (s) a dead unit stays in snapshots with the DIE animation. */
 export const DIE_ANIM_TIME = 0.8;

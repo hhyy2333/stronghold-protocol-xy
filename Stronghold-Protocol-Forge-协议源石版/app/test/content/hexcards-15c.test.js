@@ -120,6 +120,35 @@ test('通厕大队: without the card no Jesselton appears', () => {
   assert.equal(h.battle.enemies.filter(isJak).length, 0);
 });
 
+// 业主 2026-10-28「前期通厕大队会出现联防2w5血700多攻的杰斯顿，数值异常bug」: the 联防 field rebuilds a leak from
+// `{ enemyKey, mods }` alone (server/match/waves.js buildUniteWave → Battle.spawnEnemy `mods`), so a scale that lives
+// only in the spawn's inline `def` is dropped — the three 6 %-of-base Jesseltons came back at the base 25000 HP /
+// 700 ATK. The scale has to ride `mods` (hpMul / atkMul / defMul / resMul), which the leak record carries (deploy.js
+// `pp.leaked.push({ …, mods: e.mods })`).
+test('通厕大队: a leaked Jesselton re-enters 联防 with the same (1 + 5x)% scale', () => {
+  const isJak = (e) => !!e && ((e.def && e.def.key === 'enemy_1516_jakill') || e.defId === 'enemy_1516_jakill');
+  // round 1, no operators: the three walk to the goal and leak — how an early-round leak actually happens
+  const own = makeBattle({ round: 1, enemies: [], flags: { enemyHexIds: ['ehex_jekyll'] }, autoFinish: false, timeLimit: 60 });
+  own.step();
+  assert.equal(own.b.enemies.filter(isJak).length, 3, 'premise: the card spawned three');
+  own.runToEnd();
+  const leaked = own.result().perPlayer.p1.leaked;
+  assert.equal(leaked.length, 3, 'premise: all three leaked');
+  // the unite spawn builder hands a re-entry only its key and the leak's mods
+  const unite = makeBattle({
+    kind: 'unite', round: 1, timeLimit: 30, autoFinish: false,
+    enemies: leaked.map((l) => ({ key: l.enemyKey, mods: l.mods, sourcePlayerId: l.sourcePlayerId })),
+  });
+  unite.step();
+  const back = unite.b.enemies.filter(isJak);
+  assert.equal(back.length, 3, 'the leaked Jesseltons re-enter');
+  const pct = (1 + 5 * 1) / 100;
+  for (const e of back) {
+    assert.ok(Math.abs(e.s.maxHp - 25000 * pct) < 1e-6, `re-entry maxHp stays at 6 % of 25000, got ${e.s.maxHp}`);
+    assert.ok(Math.abs(e.s.atk - 700 * pct) < 1e-6, `re-entry atk stays at 6 % of 700, got ${e.s.atk}`);
+  }
+});
+
 // =====================================================================================================================
 // 增益无效: 每 20s 属性增益失效 3s
 // =====================================================================================================================

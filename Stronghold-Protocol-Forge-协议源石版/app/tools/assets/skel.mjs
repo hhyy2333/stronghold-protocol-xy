@@ -34,6 +34,22 @@ export function skelParserAvailable() {
   try { loadRuntime(); return true; } catch { return false; }
 }
 
+/**
+ * The parsed Spine JSON a `.skel` file holds when it is JSON rather than binary, else null.
+ *
+ * A handful of the client's skeletons are stored as JSON (Spine's editor format) under the `.skel` name. The binary
+ * header starts with an 8-byte hash, so a first byte of `{` is unambiguous — no binary skeleton can start with it.
+ * @param {Uint8Array} bytes
+ * @returns {object|null}
+ */
+export function asSkeletonJson(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 2 || bytes[0] !== 0x7b /* '{' */) return null;
+  const text = new TextDecoder('utf-8').decode(bytes);
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { return null; }
+  return parsed && typeof parsed === 'object' && parsed.skeleton ? parsed : null;
+}
+
 function makeLoader(r, regions, missing) {
   const check = (path) => { if (regions && !regions.has(path)) missing.add(path); };
   return {
@@ -64,11 +80,19 @@ const round3 = (x) => Math.round(Number(x) * 1000) / 1000;
 export function parseSkel(bytes, atlasRegions) {
   const r = loadRuntime();
   const missing = new Set();
-  const bin = new r.SkeletonBinary(makeLoader(r, atlasRegions, missing));
-  // the runtime reads `bytes.buffer` from its start (BinaryInput: new DataView(data.buffer)), so a view into a larger
-  // buffer — a small file fs.readFileSync took from Node's buffer pool — is copied into one of its own first
-  const own = bytes instanceof Uint8Array && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength;
-  const data = bin.readSkeletonData(own ? bytes : new Uint8Array(bytes));
+  // A skeleton file is normally the binary format, but the client ships a few as Spine JSON instead (a `.skel` whose
+  // bytes start with `{"skeleton"` — 狂躁异质裂兽 enemy_1571_mirbst is one). `SkeletonJson` reads the same shape and
+  // yields the same SkeletonData, so both are parsed here and the rest of this function stays format-agnostic.
+  const json = asSkeletonJson(bytes);
+  const data = json
+    ? new r.SkeletonJson(makeLoader(r, atlasRegions, missing)).readSkeletonData(json)
+    : (() => {
+      const bin = new r.SkeletonBinary(makeLoader(r, atlasRegions, missing));
+      // the runtime reads `bytes.buffer` from its start (BinaryInput: new DataView(data.buffer)), so a view into a larger
+      // buffer — a small file fs.readFileSync took from Node's buffer pool — is copied into one of its own first
+      const own = bytes instanceof Uint8Array && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength;
+      return bin.readSkeletonData(own ? bytes : new Uint8Array(bytes));
+    })();
   const animations = data.animations.map((a) => a.name);
   const durations = {};
   const hits = {};

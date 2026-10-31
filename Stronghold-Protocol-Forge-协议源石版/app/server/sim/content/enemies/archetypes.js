@@ -625,9 +625,22 @@ function dmgZone(b, src, x, y, r, life, iv, amount, type = 'arts', kind = 'zone'
   } });
 }
 
-/** A cooldown skill ability (`id` labels it for tests / other abilities). */
-const skill = (s, fire, { cond = null, sil = false, cd = null, icd = null, id = null } = {}) => (s || cd != null) && fire ? ({
+/**
+ * A cooldown skill ability (`id` labels it for tests / other abilities).
+ *
+ * `atk` makes it an **attack-class skill** (upstream 0.3.2 §37.19 / §37.29, PRTS 「大多数技能自动触发会占用攻击间隔」): it is
+ * cast in place of a normal attack at the swing's damage frame (enemies.js attackSlotSkill → attackTurnSkill) and its
+ * cooldown then counts from the end of its clip — `clip` = the length in s of the clip the official ability plays
+ * (`public/assets/local/fx/index.json` units.<key>.skills.<prefabKey>.abilities[].animKey →
+ * `data/assets.json` enemies.<key>.spine.animations), 0 when the ability names no clip. `own`: the trigger is this
+ * skill's own selector (`cond`) rather than the attack's target, so a *ready* attack with no swing may also give it the
+ * turn (a kit that makes no normal attack at all: enemies.js onTick `ab.ownTurn`). Only meaningful with `atk`.
+ */
+const skill = (s, fire, { cond = null, sil = false, cd = null, icd = null, id = null, atk = false, clip = 0, own = false, pr = null } = {}) => (s || cd != null) && fire ? ({
   id: id ?? null, sil, cd: cd ?? s.cd, icd: icd ?? s.icd, cond, fire, sk: s || null,   // sk: its slot for the 'cast' event
+  // `pr` (only with `atk`): the data's skill priority — attackTurnSkill picks the highest of several ready ones, equal
+  // ones at random (PRTS 「优先级最高的技能优先触发，优先级相同则随机触发其中之一」)
+  ...(atk ? { atk: true, clip, own: own && typeof cond === 'function', ...(pr != null ? { pr } : null) } : null),
 }) : null;
 
 /** Blink past the blocker along the path (弑君者 / 卢西恩). Returns the start position. */

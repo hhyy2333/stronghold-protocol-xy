@@ -280,6 +280,16 @@ export class BattleHooks {
         try { this.forceEnd('timeout'); } catch { this._hardFinish('timeout'); }
       }
     }
+    // …but an *isolated* error is not free either: a content interaction that keeps blowing the hook-depth guard reports
+    // one of these per violation and then carries on, which is an endless storm rather than an isolated mistake. The cap
+    // counts OCCURRENCES (not distinct messages) and is deterministic, so a replay stops on the same tick.
+    if (this.errorCount > this.maxBattleErrors && !this.finished && !this._forcing) {
+      this._forcing = true;
+      try {
+        this.logger.error?.(`[sim] battle force-ended as a timeout: ${this.errorCount} handler errors (cap ${this.maxBattleErrors}); last: ${label}${who ? ' (' + who + ')' : ''}`);
+        this.forceEnd('timeout');
+      } catch { this._hardFinish('timeout'); }
+    }
   }
 
   _internalError(label, e) { this._handlerError('internal:' + label, null, e, true); }

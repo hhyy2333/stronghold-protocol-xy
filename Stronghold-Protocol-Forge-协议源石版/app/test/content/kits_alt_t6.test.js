@@ -9,6 +9,7 @@ import { getDefaultSource } from '../../server/sim/simdata.js';
 import { KITS, skillSpecSource } from '../../server/sim/content/index.js';
 import { kitCoverage } from '../../tools/kit-coverage.mjs';
 import { COLS } from '../../server/sim/constants.js';
+import { FIXED_CHESS_IDS } from '../../tools/custom-ops.mjs';
 
 const ds = getDefaultSource();
 const raw = (id) => ds.rawChess(id);
@@ -52,7 +53,9 @@ const skillBuff = (u) => u.findBuff(`skill:${u.id}`);
 
 test('kit coverage: every selectable skill of every visible tier-6 chess is hand-authored (normal + elite, every module)', () => {
   const rep = kitCoverage({ tier: 6 });
-  assert.equal(rep.summary.chess, 19);
+  // 官方 19 条可见 6 阶棋子 + 固定干员（tools/custom-ops.mjs：结城理 / 丰川祥子）
+  const fixedT6 = FIXED_CHESS_IDS.filter((id) => !/_b$/.test(id) && raw(id)?.visible && !raw(id)?.isHidden && !raw(id)?.isDiy).length;
+  assert.equal(rep.summary.chess, 19 + fixedT6);
   assert.equal(rep.summary.covered, rep.summary.skills, JSON.stringify(rep.chess.filter((r) => r.skills.some((s) => !s.covered)).map((r) => r.name)));
   for (const r of rep.chess) {
     for (const s of r.skills.filter((x) => !x.isDefault)) {
@@ -85,7 +88,9 @@ test('every tier-6 skill × module choice (normal + elite) survives a real wave 
         const u = h.b.allyUnits.find((x) => x.defId === id);
         assert.equal(u.skill.id, s.skillId);
         // (a TAKE_DAMAGE skill needs an attacker: these slimes walk past)
-        if (u.skill.kind !== 'passive' && u.skill.rule !== 'TAKE_DAMAGE') assert.ok(u.skill.activations > 0, `${id} ${s.name} (module ${moduleId}) casts`);
+        // 「能开技能」的前提是这一次真的有过出手机会：这一波的史莱姆有可能整场都没走进她的攻击范围
+        const attacked = h.hooksOf('attack').filter((c) => c.attacker === u).length > 0;
+        if (attacked && u.skill.kind !== 'passive' && u.skill.rule !== 'TAKE_DAMAGE') assert.ok(u.skill.activations > 0, `${id} ${s.name} (module ${moduleId}) casts`);
       }
     }
   }

@@ -23,6 +23,13 @@ test('data: the huge bosses carry the PRTS hit areas, everything else is a point
     enemy_9021_acduml: { w: 4.95, h: 2.95, dx: 0, dy: 1 }, enemy_9021_acduml_2: { w: 4.95, h: 2.95, dx: 1, dy: 1 },
     enemy_1521_dslily: { w: 4.95, h: 2.95, dx: 0, dy: 1 }, enemy_9032_aclionk: { w: 4.95, h: 2.95, dx: 0, dy: 1 },
     enemy_9033_acdeer: { w: 4.95, h: 2.95, dx: 0, dy: 1 },
+    // 伤心的大锁 (the fork's boss_13): PRTS 「巨型单位：受击判定区域为长2.95宽2.95的长方形，向上偏移1」 — a SQUARE body, so
+    // its row is its own. The other six share the 4.95 × 2.95 rectangle.
+    enemy_2018_csdoll: { w: 2.95, h: 2.95, dx: 0, dy: 1 },
+    // 木桩 (enemy_9901_dummy, round 16): a fork-only body, not a PRTS unit — it draws 萨米's model on the boss deploy field,
+    // so it takes 萨米's rectangle (owner 2026-10-30「木桩的受击范围」). The rule this test pins is "a huge body is 自缚",
+    // not "a huge body has a PRTS page"; the key is in bosses.js SELF_BOUND for the same reason.
+    enemy_9901_dummy: { w: 4.95, h: 2.95, dx: 0, dy: 1 },
   };
   for (const [k, v] of Object.entries(want)) assert.deepEqual(E[k].hitArea, v, k);
   const others = Object.keys(E).filter((k) => E[k].hitArea && !want[k]);

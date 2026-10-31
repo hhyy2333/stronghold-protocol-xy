@@ -93,7 +93,13 @@ const guard = (o = {}) => chessRec({ id: 'test_guard', stats: { maxHp: 2000, atk
 
 test('coverage: every 悬赏 / 战术决策 effect and every 道具补给 / 机密商店 item has a content choice: handler', () => {
   const ids = choiceCardIds(DATA);
-  assert.equal(ids.bounty.length, 129, '129 ENEMY_GAIN effects');
+  // 129 official ENEMY_GAIN effects + the fork's own bounty cards (docs/research/16-extra-enemies.json `bounties`, which
+  // have no official effect row — tools/build-data.mjs customBounties declares them). Only the official half is a
+  // baseline of the client data; the fork half grows with the owner's content.
+  const fork = DATA.choices.cards.bounty.filter((c) => c.fork).length;
+  const official = DATA.choices.cards.bounty.filter((c) => !c.fork);
+  assert.equal(ids.bounty.length, 129 + fork, `129 official ENEMY_GAIN effects + ${fork} fork bounty cards`);
+  assert.equal(official.length, 129, 'the official 悬赏 cards are still the data\'s 129');
   assert.equal(ids.tactic.length, 43, '43 BUFF_GAIN effects');
   // 56 normal EQUIP items − the 5 effect-only ones (4 special 维式重锤, 突变细胞: never sold, user playtest #4)
   assert.equal(ids.items.length, 51, '51 shop items');
@@ -134,6 +140,9 @@ test('coverage: every 悬赏 / 战术决策 effect and every 道具补给 / 机�
 test('悬赏 data: the bounty read from each effect blackboard matches its card (count, coin, payout, rounds, enemy)', () => {
   let perfect = 0;
   for (const c of DATA.choices.cards.bounty) {
+    // a fork card is declared by the research file, not by an official ENEMY_GAIN effect: there is no blackboard to
+    // read its numbers back from (its enemy/count/coin come from the same declaration it is checked against elsewhere).
+    if (c.fork) continue;
     const b = bountyOf(EFF(c.effectId), c);
     assert.ok(b, c.effectId);
     assert.ok(DATA.enemies[b.enemyKey], `${c.effectId}: enemy ${b.enemyKey}`);

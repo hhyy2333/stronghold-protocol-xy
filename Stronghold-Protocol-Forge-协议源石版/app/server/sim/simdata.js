@@ -32,6 +32,14 @@
 // summons' variants at their owner's potential (getToken / getDiyToken: talents, a 自选 summon's deploy limit / count).
 // A 补位 stand-in and a prototype 自选 pick have no potential.
 //
+// 3 级模组（协议源石【特限恢复】, 04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md §4.1/§4.2）：`loadout.moduleLevel
+// === 3` 时，所选模组换成 `data/moduleLevels.json` 里该模组 equipLevel 3 的那份数据（shared/loadoutRecord.js
+// withModuleLevel3：stats = statsBase + 3 级 attr、trait = 3 级 traitOverride、talents = talentsBase + 3 级
+// talentChanges、`module.level = 3`）。**普通形态**（`_a`，`module.active === false`）用它 `module.id` 上的默认模组
+// 也套 3 级数据 —— 业主口径「普通形态现在没有模组，也要给」。数据从 `data/moduleLevels.json` 读（rawModuleLevels /
+// moduleLevel3，缺文件时是空表 ⇒ 3 级组合静默不发生）。缓存 key 带上 `|l3`，否则同一个 (id, loadout) 的 1 级 def 会被
+// 命中。**补位干员不套**（它打的是 data/backups.json 里另一个干员的身体与模组，不是「你的干员」）—— [ASSUMED]。
+//
 // This module is pure ESM shared with browsers (served at /sim/): no Node API is imported here. Under Node the default
 // loader (./nodeData.js) is imported dynamically at module evaluation; browsers never load it.
 //   setSimData(data)  inject the full game data object ({ chess, enemies, tokens, stages, waves, bonds, items, … });
@@ -39,7 +47,7 @@
 //                     server/data.js getData() used by sim/content/support serves it).
 //   getSimData()      the injected data (browser) or the generated data (Node), or null.
 
-import { resolveRecordLoadout, composeStats, composeTalents, loadoutRecord } from '../../shared/loadoutRecord.js';
+import { resolveRecordLoadout, composeStats, composeTalents, loadoutRecord, withModuleLevel3 } from '../../shared/loadoutRecord.js';
 import { atPotential, isPotential, POTENTIAL_DEFAULT, cultivateMul } from '../../shared/potential.js';
 import { standInRecord } from '../../shared/standIn.js';
 import { diyRecordOf, diyTokenOwner } from '../../shared/diy.js';
@@ -210,6 +218,10 @@ export function normalizeChess(rec) {
     skill,
     talents,
     tokens: rec.tokens ?? [],
+    // the equipped module as the record states it (`{ id, name, type, level, active }`): kits read `def.raw.module`, the
+    // 特限模组 content (协议源石【特限恢复】 §4.3) reads the module's `type` (ISW- / SO- / RA-) — same object, so a 3 级
+    // record (shared/loadoutRecord.js withModuleLevel3) is visible on both. null for a record without module data.
+    module: rec.module && typeof rec.module === 'object' ? rec.module : null,
     spine: rec.assets?.spine ?? rec.spine ?? rec.charId ?? null,
     avatar: rec.assets?.avatar ?? rec.avatar ?? rec.charId ?? null,
     // a 补位 stand-in (shared/standIn.js): the replaced operator's charId — `charId` is the stand-in's (absent otherwise)
@@ -239,6 +251,15 @@ export { composeStats, composeTalents, loadoutRecord };
 /** Cache key suffix of a resolved non-default loadout ('' for the default). */
 export function loadoutKey(lo) {
   return lo && !lo.isDefault ? `|s${lo.skillIndex}|m${lo.moduleId ?? ''}${lo.potentialIsDefault === false ? `|p${lo.potential}` : ''}` : '';
+}
+
+/**
+ * Cache key suffix of a loadout's 3 级模组（协议源石【特限恢复】）：`|l3`，别的值 / 没给 = ''。单独一段而不是塞进
+ * loadoutKey —— loadoutKey 也用在 token 缓存上，而 3 级模组只改干员的 def（召唤物的模组变体还是 1 级那份，[ASSUMED]）。
+ * @param {unknown} moduleLevel
+ */
+export function moduleLevelKey(moduleLevel) {
+  return moduleLevel === 3 ? '|l3' : '';
 }
 
 /** Build an immunity Set from an object `{stun:true,…}` or an array `['stun', 'feared']`. */
@@ -538,6 +559,9 @@ function unwrap(v, key) {
   return v;
 }
 
+/** 空表（3 级模组数据缺失时 rawModuleLevels 返回它）：冻结，避免每次调用都新建对象。 */
+const EMPTY_MODULE_LEVELS = Object.freeze({});
+
 /**
  * Deep-freeze a normalised def (chess / enemy / token). Defs are cached and shared by every unit of every battle in
  * the process: a kit or content module that mutated one (`bb.x = …`, `def.rangeGrid.push(…)`) would silently change
@@ -584,6 +608,9 @@ export class DataSource {
       waves: asMap(unwrap(raw.waves, 'waves'), 'id') ?? {},
       backups: raw.backups && typeof raw.backups === 'object' && raw.backups.units ? raw.backups : null,
       effects: raw.effects && typeof raw.effects === 'object' ? raw.effects : null,
+      // 3 级模组（协议源石【特限恢复】 §4.1）：`{ [uniEquipId]: level3Record }`，按 uniEquipId 建 map，不需要归一化。
+      // 缺文件 / 老内容集 ⇒ null，rawModuleLevels() 给空表（3 级组合静默不发生）。
+      moduleLevels: raw.moduleLevels && typeof raw.moduleLevels === 'object' && !Array.isArray(raw.moduleLevels) ? raw.moduleLevels : null,
       // 协议源石 (DESIGN §29) is carried through VERBATIM, not normalised: nothing in the id→def lookup needs it,
       // but the enemy-side verb scripts resolve their `verb` + `params` through it (`sim/content/hextech.js`
       // `hexData`). Without this line the BROWSER could not resolve a single enemy verb record — `hexData` falls back
@@ -620,6 +647,30 @@ export class DataSource {
   rawWave(id) { return this.raw.waves[id] ?? this.fallback?.rawWave(id) ?? null; }
   /** data/backups.json (`{ units, diy }`) of this source or its fallback, or null. */
   rawBackups() { return this.raw.backups ?? (typeof this.fallback?.rawBackups === 'function' ? this.fallback.rawBackups() : null); }
+  /**
+   * data/moduleLevels.json 整张表（3 级模组, 协议源石【特限恢复】 §4.1）：本源的、fallback 的、再不行是进程内生成的
+   * data（Node：data/*.json；浏览器：setSimData 注入的那份）。**永远返回对象**（缺数据时 `{}`），所以调用方可以直接
+   * `Object.hasOwn(...)` 判断，不必先查空。
+   */
+  rawModuleLevels() {
+    const own = this.raw.moduleLevels;
+    if (own) return own;
+    if (typeof this.fallback?.rawModuleLevels === 'function') return this.fallback.rawModuleLevels();
+    const g = generatedCache && generatedCache.moduleLevels;
+    return g && typeof g === 'object' && !Array.isArray(g) ? g : EMPTY_MODULE_LEVELS;
+  }
+  /**
+   * 一个模组的 3 级记录 `moduleLevels[uniEquipId]`，或 null（own-property 查询：id 来自客户端 intent 时不可能落到
+   * Object.prototype 上）。
+   * @param {unknown} id uniEquipId
+   * @returns {any | null}
+   */
+  moduleLevel3(id) {
+    const map = this.rawModuleLevels();
+    if (typeof id !== 'string' || !id || !Object.hasOwn(map, id)) return null;
+    const rec = map[id];
+    return rec !== null && typeof rec === 'object' ? rec : null;
+  }
   /** A data/effects.json record of this source, its fallback, or the default game data (Node / the injected data). */
   rawEffect(id) {
     const own = this.raw.effects && Object.prototype.hasOwnProperty.call(this.raw.effects, id) ? this.raw.effects[id] : null;
@@ -643,10 +694,12 @@ export class DataSource {
    * selection whatever `skillIndex` / `moduleId` say; a chess without a stand-in (PRESET, DIY, no backups data) gives
    * its own def for that loadout. `loadout.diy` (`{ charId, skillIndex, uniEquipId }`): the 自选 def of a DIY slot
    * (getDiy; null when the pick is not legal for that slot). `loadout.potential` (1–6): the record at that potential
-   * (loadoutRecord; not for a stand-in).
+   * (loadoutRecord; not for a stand-in). `loadout.moduleLevel === 3` (协议源石【特限恢复】 §4.2): the selected module's
+   * equipLevel 3 data (shared/loadoutRecord.js withModuleLevel3) — the normal form uses its `module.id` default module;
+   * `def.loadout.moduleLevel` states it. A stand-in ignores it (its module is the backup's, not 「你的干员」的).
    */
   getChess(id, loadout = null) {
-    if (loadout && loadout.diy && typeof loadout.diy === 'object') return this.getDiy(id, loadout.diy, loadout.potential);
+    if (loadout && loadout.diy && typeof loadout.diy === 'object') return this.getDiy(id, loadout.diy, loadout.potential, loadout.moduleLevel);
     if (loadout && loadout.standIn === true) {
       const sd = this.getStandIn(id);
       if (sd) return sd;
@@ -654,12 +707,17 @@ export class DataSource {
     if (loadout == null && this._chess.has(id)) return this._chess.get(id);
     const r = this.rawChess(id);
     const lo = r ? resolveLoadout(r, loadout) : null;
-    const key = id + loadoutKey(lo);
+    // 3 级模组（协议源石【特限恢复】）：只有 loadout 明说 moduleLevel === 3 才套，别的值当作没开；补位干员（standIn）
+    // 不套 —— 它打的是 data/backups.json 里另一名干员的身体与模组，不是「你的干员」（[ASSUMED]，见模块头注释）。
+    const lv = loadout && loadout.moduleLevel === 3 && loadout.standIn !== true ? 3 : null;
+    const key = id + loadoutKey(lo) + moduleLevelKey(lv);
     if (this._chess.has(key)) return this._chess.get(key);
     let d = null;
     if (r) {
-      d = normalizeChess({ chessId: id, ...loadoutRecord(r, lo) });
-      d.loadout = lo;
+      const base = loadoutRecord(r, lo);
+      const rec = lv === 3 ? withModuleLevel3(base, this.rawModuleLevels()) : base;
+      d = normalizeChess({ chessId: id, ...rec });
+      d.loadout = lv === 3 ? { ...lo, moduleLevel: 3 } : lo;
       freezeDef(d);
     }
     this._chess.set(key, d);
@@ -694,24 +752,30 @@ export class DataSource {
    * `diy` = the checked pick, `def.tokenOwner` = its summons' variant key (shared/diy.js diyTokenOwner). Null for an
    * illegal pick (not a pick of the slot's tier, a prototype off its locked skill, an unknown skill or module — checkDiyPick)
    * or when the data lacks it. An owned pick is composed at `potential` (1–6, default 6; shared/diy.js diyRecordOf —
-   * `def.loadout.potential`, its summons' variants follow); a prototype has none. Cached per (id, pick, potential).
+   * `def.loadout.potential`, its summons' variants follow); a prototype has none. Cached per (id, pick, potential,
+   * moduleLevel). `moduleLevel === 3` (协议源石【特限恢复】 §4.2): the pick's module with its equipLevel 3 data.
    * @param {string} id
    * @param {{ charId?: string, skillIndex?: number|null, uniEquipId?: string|null }} pick
    * @param {number|null} [potential]
    */
-  getDiy(id, pick, potential = null) {
+  getDiy(id, pick, potential = null, moduleLevel = null) {
     const pot = isPotential(potential) ? potential : POTENTIAL_DEFAULT;
-    const key = `${id}|diy|${pick?.charId ?? ''}|${pick?.skillIndex ?? ''}|${pick?.uniEquipId ?? ''}|p${pot}`;
+    const lv = moduleLevel === 3 ? 3 : null;
+    const key = `${id}|diy|${pick?.charId ?? ''}|${pick?.skillIndex ?? ''}|${pick?.uniEquipId ?? ''}|p${pot}${moduleLevelKey(lv)}`;
     if (this._chess.has(key)) return this._chess.get(key);
     const r = this.rawChess(id);
     const rec = r && r.isDiy ? diyRecordOf(r, pick, this, { potential: pot }) : null;
+    // 3 级模组（协议源石【特限恢复】）：自选编队里「你的干员」也算 —— 模组 id 取 pick 的那一个（pick 没带模组 ⇒
+    // withModuleLevel3 查不到 id，原样返回）。
+    const rec3 = rec && lv === 3 ? withModuleLevel3(rec, this.rawModuleLevels(), pick?.uniEquipId ?? null) : rec;
     let d = null;
-    if (rec) {
-      d = normalizeChess({ ...rec, chessId: id });
+    if (rec3) {
+      d = normalizeChess({ ...rec3, chessId: id });
       const own = rec.diyProto ? POTENTIAL_DEFAULT : pot;
       d.loadout = {
         ...resolveLoadout(rec, null), potential: own, potentialIsDefault: own === POTENTIAL_DEFAULT,
         diy: { charId: rec.charId, skillIndex: rec.skill.index, uniEquipId: rec.module?.id ?? null },
+        ...(lv === 3 ? { moduleLevel: 3 } : null),
       };
       d.tokenOwner = diyTokenOwner(rec.charId, rec.status);
       freezeDef(d);
@@ -898,7 +962,8 @@ export function toDataSource(data) {
  * loadout, and an existing view unchanged (`isLoadoutView`). Used by spec.js createBattleFromSpec and by
  * content/index.js installContent (every Battle, however constructed). An entry with `standIn: true` (补位) maps its
  * chess id to the stand-in def (`getChess(id, { standIn: true })`) the same way, and one with `diy` (自选: `{ charId,
- * skillIndex, uniEquipId }`) to its 自选 def (`getChess(id, { diy })`); a `potential` (1–6) rides along (0.2.2).
+ * skillIndex, uniEquipId }`) to its 自选 def (`getChess(id, { diy })`); a `potential` (1–6) rides along (0.2.2), and a
+ * `moduleLevel: 3` (协议源石【特限恢复】 §4.2) does too.
  * @param {object} ds DataSource
  * @param {object[]} players PlayerBattleInput[] (spec players)
  */
@@ -912,15 +977,19 @@ export function withUnitLoadouts(ds, players) {
       if (!u || u.kind === 'token' || typeof u.chessId !== 'string') continue;
       const diy = u.diy && typeof u.diy === 'object' ? u.diy : null;
       const pot = u.standIn !== true && isPotential(u.potential) ? u.potential : null;
-      if (u.skillIndex != null || u.moduleId != null || u.standIn === true || diy || pot != null) any = true;
+      // 3 级模组（协议源石【特限恢复】）：随 unit 的 loadout 一起进 id-only 查询的映射表 —— 少了这一句，内容脚本里
+      // 那些 `data.getChess(id)`（不带 loadout）会拿到 1 级 def，与战斗里真正用的那份分叉。
+      const lv = u.moduleLevel === 3 ? 3 : null;
+      if (u.skillIndex != null || u.moduleId != null || u.standIn === true || diy || pot != null || lv != null) any = true;
       const lo = { skillIndex: u.skillIndex ?? null, moduleId: u.moduleId ?? null };
       if (u.standIn === true) lo.standIn = true;
       if (diy) lo.diy = diy;
       if (pot != null) lo.potential = pot;
+      if (lv != null) lo.moduleLevel = lv;
       const prev = map.get(u.chessId);
       if (!prev) map.set(u.chessId, lo);
       else if (prev.skillIndex !== lo.skillIndex || prev.moduleId !== lo.moduleId || !!prev.standIn !== !!lo.standIn
-        || (prev.potential ?? null) !== (lo.potential ?? null)
+        || (prev.potential ?? null) !== (lo.potential ?? null) || (prev.moduleLevel ?? null) !== (lo.moduleLevel ?? null)
         || JSON.stringify(prev.diy ?? null) !== JSON.stringify(lo.diy ?? null)) conflicts.add(u.chessId);
     }
   }

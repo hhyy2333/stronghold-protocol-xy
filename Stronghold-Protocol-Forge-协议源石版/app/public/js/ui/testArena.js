@@ -2,27 +2,38 @@
 // `room.create.test: true` offers.
 //
 // A 测试场 is a normal match whose 协议源石 draft never runs (server/match/match/phases.js) and whose extra intents are
-// accepted (server/match/match/testField.js): add funds, grant one 协议源石 to the PLAYER, grant one to the ENEMY, and
-// clear either side. This module is that panel's UI — deliberately small and self-contained:
+// accepted (server/match/match/testField.js): add funds, grant one 协议源石 to the PLAYER, grant one to the ENEMY, clear
+// either side, jump to a leader fight — and buy any operator (业主 2026-10-26). This module is that panel's UI —
+// deliberately small and self-contained:
 //
 //   * 资金: three buttons (+10 / +100 / +1000) and a read-out of the current funds. The tester asked for manual grants
 //     only (never an automatic purse), so nothing here fires on its own.
-//   * 协议源石: two tabs — 我方 (the player's own cards, `data/hextech.json` `playerHexes`) and 敌方 (`enemyHexes`). Each
-//     card is a compact, tier-coloured button; a tap grants it at once (`actions.testHex` / `actions.testEnemyHex`), the
-//     ones already held / owned are marked, and each side has its own 清空.
+//   * 最终攻势: the leader picker and the jump to that leader's prep (`actions.testBoss`).
+//   * the list: three tabs — 我方 / 敌方 (the two 协议源石 sides, `data/hextech.json` `playerHexes` / `enemyHexes`) and
+//     干员 (the operator picker). Each 协议源石 card is a compact, tier-coloured button; a tap grants it at once
+//     (`actions.testHex` / `actions.testEnemyHex`), the ones already held / owned are marked, and each side has its own
+//     清空. The 干员 tab lists every shop operator of the room's data with its tier price and a search box; a tap BUYS it
+//     (`actions.testChess`, the ordinary purchase path on the server: tier price, hand limit, merge, onBuy hooks) —
+//     the shop's draw, its level cap, the match's bans and the pool's remaining copies do not apply, which is the whole
+//     point of the tab.
 //
-// The two sides differ in a way the UI must show rather than hide: a PLAYER card is per-seat and a repeat is allowed (the
-// immediate part runs again, the production `applyHex` dedupes the persistent effect), while an ENEMY card is
-// match-global and its multipliers MULTIPLY, so the server refuses a card the enemy already owns (`ALREADY`) — the panel
-// marks owned cards and disables them, so the rule is visible before the tap instead of surfacing as an error after it.
+// The two 协议源石 sides differ in a way the UI must show rather than hide: a PLAYER card is per-seat and a repeat is
+// allowed (the immediate part runs again, the production `applyHex` dedupes the persistent effect), while an ENEMY card
+// is match-global and its multipliers MULTIPLY, so the server refuses a card the enemy already owns (`ALREADY`) — the
+// panel marks owned cards and disables them, so the rule is visible before the tap instead of surfacing as an error.
 //
-// Every string goes through t() (docs/I18N.md); the card names / effects are data texts (data/hextech.json), shown as
-// the game sends them. The panel is a plain section in the game HUD (like ui/damageReport.js's panel), not a modal, so a
-// tester can keep playing while it is open.
+// The 干员 tab is a purchase, so it is only live in PREP before that player is Ready (the server answers WRONG_PHASE
+// otherwise): the rows are disabled and one line says why. `canBuy` is the screen's answer — this module never reads the
+// match state itself.
+//
+// Every string goes through t() (docs/I18N.md); the card names / effects are data texts (data/hextech.json), the operator
+// names are data texts too (data/chess.json), shown as the game sends them. The panel is a plain section in the game HUD
+// (like ui/damageReport.js's panel), not a modal, so a tester can keep playing while it is open.
 
 import { html, Icon, Button, MicroLabel, Tabs } from './components.js';
 import { data } from '../data.js';
 import { rarityName, rarityTierArt } from './hexOverlay.js';
+import { chessPriceOf } from '../../../shared/chessPrice.js';
 import { t } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -30,16 +41,68 @@ const cx = (...p) => p.flat().filter(Boolean).join(' ');
 /** The three funds buttons, weakest first (the label is the amount, so it is never translated). */
 export const TEST_FUND_AMOUNTS = Object.freeze([10, 100, 1000]);
 
-/** The panel's two card sides, in tab order: the player's own roster and the enemy's. */
+/** The panel's two 协议源石 sides, in tab order: the player's own roster and the enemy's. */
 export const TEST_HEX_SIDES = Object.freeze(['player', 'enemy']);
 
+/** The 干员 tab's id (业主 2026-10-26「在测试场增加功能可以购买任何干员」). */
+export const TEST_CHESS_TAB = 'chess';
+
+/** Every tab of the list section, in order: the player's cards, the enemy's, then the operator picker. */
+export const TEST_LIST_TABS = Object.freeze([...TEST_HEX_SIDES, TEST_CHESS_TAB]);
+
 /**
- * The roster of one side from the room's own data, in data order (`[]` without data/hextech.json).
+ * The roster of one 协议源石 side from the room's own data, in data order (`[]` without data/hextech.json).
  * @param {'player'|'enemy'} side
  */
 export function hexesOf(side) {
   const roster = data.get('hextech')?.[side === 'enemy' ? 'enemyHexes' : 'playerHexes'];
   return roster && typeof roster === 'object' ? Object.values(roster).filter((h) => h && typeof h.id === 'string') : [];
+}
+
+/**
+ * The operator picker's roster: every SHOP operator of the room's data — the same predicate `GameData.visibleChess`
+ * applies on the server (visible, not golden, not 自选, not hidden, a real tier), so the panel offers exactly the ids
+ * `g.testChess` accepts. No ban / pool / shop-level filter: "任何干员" is the feature.
+ *
+ * Sorted by tier, then the shop's own order (`shopSortId`), then the id — a stable order the search box can narrow.
+ * The price comes from shared/chessPrice.js, the SAME rule the server charges (业主 2026-10-26: the label and the
+ * charge may never disagree).
+ *
+ * @param {any[]|null} records `data.list('chess')`
+ * @param {any} [config] `data/config.json` (the mode's price overrides live in `modes[modeId].economy`)
+ * @param {string|null} [modeId] the room's mode (`m.public.modeId`)
+ * @returns {{ id: string, name: string, tier: number, price: number }[]}
+ */
+export function operatorsOf(records, config = null, modeId = null) {
+  const list = Array.isArray(records) ? records : [];
+  const mode = config && config.modes && typeof modeId === 'string' ? config.modes[modeId] : null;
+  const modeEconomy = mode && mode.economy ? mode.economy : null;
+  const economy = config && config.economy ? config.economy : null;
+  return list
+    .filter((c) => c && typeof c.chessId === 'string' && c.visible === true
+      && !c.isGolden && !c.isDiy && !c.isHidden && Number.isInteger(c.tier))
+    .map((c) => ({
+      id: c.chessId,
+      name: c.name || c.chessId,
+      tier: c.tier,
+      price: chessPriceOf(c, c.tier, modeEconomy, economy),
+      sort: Number.isFinite(c.shopSortId) ? c.shopSortId : Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((a, b) => (a.tier - b.tier) || (a.sort - b.sort) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map(({ sort, ...op }) => op);
+}
+
+/**
+ * Narrow the picker's roster by a search box: case-insensitive substring of the operator's name or id (the id keeps
+ * English / pinyin-ish queries working, the name is what a player types). An empty query keeps the whole list.
+ * @param {{ id: string, name: string }[]} operators
+ * @param {string} search
+ */
+export function filterOperators(operators = [], search = '') {
+  const q = String(search || '').trim().toLowerCase();
+  if (!q) return Array.isArray(operators) ? operators : [];
+  return (Array.isArray(operators) ? operators : [])
+    .filter((op) => op && (String(op.name).toLowerCase().includes(q) || String(op.id).toLowerCase().includes(q)));
 }
 
 /**
@@ -67,30 +130,56 @@ export function TestHexButton({ hex, owned, busy, locked = false, onGrant }) {
 }
 
 /**
- * The 测试场 panel: funds, then the two 协议源石 sides.
+ * One operator of the 干员 picker: a row whose tap BUYS that operator (`g.testChess`). The tier chip and the price are the
+ * two things a tester needs before the tap — the price is the one the server charges (shared/chessPrice.js), so the row
+ * can be trusted as a label.
+ * @param {{ op: { id: string, name: string, tier: number, price: number }, busy?: boolean, canBuy?: boolean,
+ *   onBuy: (id: string) => void }} props
+ */
+export function TestOperatorRow({ op, busy = false, canBuy = true, onBuy }) {
+  // the tooltip is built outside the template: tools/i18n.mjs reads the t('…') literals from the source, and a call
+  // nested inside a template expression is easy for that scanner to miss
+  const tip = `${t('购买')} ${op.name} · ${op.price}`;
+  return html`<button type="button" class="op" data-op=${op.id}
+      disabled=${busy || !canBuy} title=${tip}
+      onClick=${() => onBuy(op.id)}>
+    <span class="op__name">${op.name}</span>
+    <span class="op__tier num" data-tier=${op.tier}>${op.tier}</span>
+    <span class="op__price num">${op.price}</span>
+  </button>`;
+}
+
+/**
+ * The 测试场 panel: funds, the leader jump, then the list (both 协议源石 sides and the 干员 picker).
  *
- * The side tab is CONTROLLED (`side` + `onSide`), like the damage report's metric switch: the caller owns which tab is
- * open, so the panel itself needs no hook and stays renderable by the UI suites' plain expansion.
+ * The open tab is CONTROLLED (`side` + `onSide`), like the damage report's metric switch, and so is the 干员 search box
+ * (`search` + `onSearch`): the caller owns them, so the panel itself needs no hook and stays renderable by the UI
+ * suites' plain expansion.
  * @param {{ funds: number, ownedPlayer: string[], ownedEnemy: string[], busy: string|null, side?: string,
  *   onSide?: (id: string) => void, onGrantPlayer: (id: string) => void, onGrantEnemy: (id: string) => void,
  *   onClearPlayer: () => void, onClearEnemy: () => void, onFunds: (amount: number) => void, onClose?: () => void,
  *   bosses?: { bossId: string, name: string, hidden?: boolean }[], boss?: string|null, onBossPick?: (id: string) => void,
- *   onBoss?: (id: string) => void }} props
+ *   onBoss?: (id: string) => void,
+ *   operators?: { id: string, name: string, tier: number, price: number }[], search?: string,
+ *   onSearch?: (text: string) => void, onBuyOperator?: (id: string) => void, canBuy?: boolean }} props
  */
 export function TestArenaPanel({
   funds = 0, ownedPlayer = [], ownedEnemy = [], busy = null, side = 'player', onSide = null,
   onGrantPlayer, onGrantEnemy, onClearPlayer, onClearEnemy, onFunds, onClose = null,
   bosses = [], boss = null, onBossPick = null, onBoss = null,
+  operators = [], search = '', onSearch = null, onBuyOperator = null, canBuy = true,
 }) {
-  const active = TEST_HEX_SIDES.includes(side) ? side : 'player';
+  const active = TEST_LIST_TABS.includes(side) ? side : 'player';
+  const chessTab = active === TEST_CHESS_TAB;
   const enemySide = active === 'enemy';
-  const leaders = Array.isArray(bosses) ? bosses.filter((b) => b && typeof b.bossId === 'string') : [];
-  const hexes = hexesOf(active);
+  const leaders = Array.isArray(bosses) ? bosses.filter((b) => typeof b.bossId === 'string') : [];
+  const hexes = chessTab ? [] : hexesOf(active);
   const owned = enemySide ? (Array.isArray(ownedEnemy) ? ownedEnemy : []) : (Array.isArray(ownedPlayer) ? ownedPlayer : []);
   const held = new Set(owned);
   // an enemy card already owned can never be granted again (it would double a multiplier): show it and disable it
   const locked = (id) => enemySide && held.has(id);
   const grant = enemySide ? onGrantEnemy : onGrantPlayer;
+  const shown = filterOperators(operators, search);
   return html`<section class="tarena" role="region" aria-label=${t('测试场')}>
     <header class="tarena__head">
       <div class="tarena__titles">
@@ -129,23 +218,39 @@ export function TestArenaPanel({
     <div class="tarena__sec tarena__sec--hex">
       <span class="tarena__label">
         <${Tabs} size="sm" value=${active} onChange=${(id) => onSide && onSide(id)}
-          items=${TEST_HEX_SIDES.map((id) => ({
+          items=${TEST_LIST_TABS.map((id) => ({
             id,
-            label: id === 'enemy' ? t('敌方') : t('我方'),
-            badge: (id === 'enemy' ? ownedEnemy : ownedPlayer).length || null,
+            label: id === TEST_CHESS_TAB ? t('干员') : id === 'enemy' ? t('敌方') : t('我方'),
+            badge: id === TEST_CHESS_TAB ? null : (id === 'enemy' ? ownedEnemy : ownedPlayer).length || null,
           }))} />
-        <${Button} variant="secondary" size="sm" icon="close" disabled=${!held.size || busy != null}
-          onClick=${enemySide ? onClearEnemy : onClearPlayer}>${t('清空')}<//>
+        ${/* 清空 belongs to the two 协议源石 sides only: the 干员 tab buys, it does not grant a list. */ ''}
+        ${chessTab ? null : html`<${Button} variant="secondary" size="sm" icon="close" disabled=${!held.size || busy != null}
+          onClick=${enemySide ? onClearEnemy : onClearPlayer}>${t('清空')}<//>`}
       </span>
-      ${/* The enemy side is match-global and its multipliers multiply, so a held card is shown but not tappable — the
-            rule is visible here instead of as an ALREADY error after a tap. */ ''}
-      ${enemySide ? html`<p class="tarena__note t-lo">${t('敌方协议源石全局生效，已拥有的不能重复添加。')}</p>` : null}
-      ${hexes.length
-        ? html`<div class="tarena__grid">
-            ${hexes.map((h) => html`<${TestHexButton} key=${h.id} hex=${h} owned=${held.has(h.id)} locked=${locked(h.id)}
-              busy=${busy === h.id} onGrant=${grant} />`)}
-          </div>`
-        : html`<p class="tarena__empty t-lo">${t('本机数据里没有协议源石。')}</p>`}
+      ${chessTab
+        ? html`${/* 业主 2026-10-26「在测试场增加功能可以购买任何干员」: any shop operator at its tier price; the shop's
+                 draw / level / bans / stock do not apply. The rows are live only in PREP before Ready (the server's own
+                 gate), so the panel says that instead of letting a tap answer WRONG_PHASE. */ ''}
+            ${canBuy
+              ? html`<p class="tarena__note t-lo">${t('按阶级价购买：无视商店等级、卡池与禁用。')}</p>`
+              : html`<p class="tarena__note t-lo">${t('只能在休整期（准备前）购买干员。')}</p>`}
+            <input type="search" class="tarena__search" value=${search} placeholder=${t('搜索干员')}
+              aria-label=${t('搜索干员')} onInput=${(e) => onSearch && onSearch(e.currentTarget.value)} />
+            ${shown.length
+              ? html`<div class="tarena__grid tarena__grid--ops">
+                  ${shown.map((op) => html`<${TestOperatorRow} key=${op.id} op=${op} busy=${busy === op.id}
+                    canBuy=${canBuy} onBuy=${onBuyOperator} />`)}
+                </div>`
+              : html`<p class="tarena__empty t-lo">${t('没有匹配的干员。')}</p>`}`
+        : html`${/* The enemy side is match-global and its multipliers multiply, so a held card is shown but not tappable —
+                   the rule is visible here instead of as an ALREADY error after a tap. */ ''}
+            ${enemySide ? html`<p class="tarena__note t-lo">${t('敌方协议源石全局生效，已拥有的不能重复添加。')}</p>` : null}
+            ${hexes.length
+              ? html`<div class="tarena__grid">
+                  ${hexes.map((h) => html`<${TestHexButton} key=${h.id} hex=${h} owned=${held.has(h.id)} locked=${locked(h.id)}
+                    busy=${busy === h.id} onGrant=${grant} />`)}
+                </div>`
+              : html`<p class="tarena__empty t-lo">${t('本机数据里没有协议源石。')}</p>`}`}
     </div>
   </section>`;
 }

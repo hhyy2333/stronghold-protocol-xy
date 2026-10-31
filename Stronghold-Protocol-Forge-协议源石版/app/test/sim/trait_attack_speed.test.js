@@ -31,6 +31,7 @@ import { TICK } from '../../server/sim/constants.js';
 import { traitAttackSpeedRule, installTraitAttackSpeed, conditionClause, plainText, TRAIT_ASPD_BUFF } from '../../server/sim/content/traitMods.js';
 import { diySlotIds, diySlot, diyPool, isDiyModule } from '../../shared/diy.js';
 import { unitForm } from '../../shared/standIn.js';
+import { FIXED_CHESS_IDS } from '../../tools/custom-ops.mjs';
 
 const ds = getDefaultSource();
 const HOOKS = ['attack', 'damaged', 'deploy', 'skillStart', 'skillEnd', 'tick'];
@@ -356,6 +357,10 @@ test('覆盖锁定: 全数据 266 个棋子 × 全部模组选择里，被引擎
   assert.deepEqual(installed.sort(), [
     'chess_char_5_01_b|uniequip_003_excu2|12|ok',   // 圣约送葬人 REA-Y（数值在隐藏天赋上）
     'chess_char_5_06_b|uniequip_003_etlchi|12|ok',  // 隐德来希 REA-Y（数值在 trait.bb 上）
+    // 丰川祥子 LOR-Y「无言的约定」：攻击范围内存在 2 名及以上敌人时攻击速度 +12（trait.moduleDesc + trait.bb），
+    // 由引擎 traitMods.js 接管 —— 精英两条（默认模组 / 明确选它）都是这一条
+    'chess_char_6_22_b|default|12|ok',
+    'chess_char_6_22_b|uniequip_002_oblvns|12|ok',
   ]);
   assert.deepEqual(Object.keys(reasons).sort(), ['kit', 'mode'], 'no silent gap — every refusal carries a known reason');
   assert.equal(reasons.unknown ?? 0, 0, 'nothing falls through as unknown');
@@ -385,7 +390,10 @@ test('覆盖锁定（补位 / 自选）: 每个补位干员和每个自选组合
     if (r.condition) applied.push(`${kind} ${tag}`);
     reasons[r.reason] = (reasons[r.reason] ?? 0) + 1;
   };
+  // 固定干员（tools/custom-ops.mjs）的「补位」就是它自己：它们的模组线本来就走引擎接管，不属于这条不变量
+  const fixedIds = new Set(FIXED_CHESS_IDS);
   for (const id of ds.chessIds()) {
+    if (fixedIds.has(id)) continue;
     let d;
     try { d = ds.getChess(id, { standIn: true }); } catch { d = null; }
     if (d) see('standIn', `${id}|${d.charId}`, d);

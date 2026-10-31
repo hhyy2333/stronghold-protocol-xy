@@ -39,8 +39,11 @@ function setup({ band, mode = 'solo', humans = 1, seed = 41, bands: perPlayer = 
   if (band) ps.bandId = band;
   const at = (r) => { m.round = r; };
   const roundStart = (r, who = ps) => { at(r); m.dispatch(who, 'onRoundStart', { round: r }); };
+  // the PREP start, i.e. after the round's 机变 draft: 「进入休整期时」 / 「休整期开始时」 grants and traits fire here, not at the
+  // round start (server/sim/content/bands/meta.js header, server/match/effectsMeta.js GARRISON_HOOK; GitHub #851)
+  const prepStart = (r, who = ps) => { at(r); m.dispatch(who, 'onPrepStart', { round: r }); };
   const prepEnd = (who = ps) => m.dispatch(who, 'onPrepEnd', { round: m.round });
-  return { h, m, ps, at, roundStart, prepEnd };
+  return { h, m, ps, at, roundStart, prepStart, prepEnd };
 }
 const handIds = (ps, kind) => [...ps.hand, ...ps.temp].filter((p) => p && (!kind || p.kind === kind)).map((p) => p.id);
 const plain = (pred = () => true) => Object.values(DATA.chess)
@@ -134,7 +137,7 @@ test('杜遥夜 广交豪杰: the first 2 manual refreshes of a round show ≥ 1
 });
 
 test('梓兰 猎头顾问: every manual refresh copies the highest-tier shop operator into another slot and freezes the copy; R10 寻呼模块', () => {
-  const { m, ps, roundStart } = setup({ band: 'band_orchid', seed: 12 });
+  const { m, ps, roundStart, prepStart } = setup({ band: 'band_orchid', seed: 12 });
   ps.shop.level = 4;
   for (let i = 0; i < 4; i++) {
     assert.deepEqual(m.handle('p_0', { t: 'g.refresh' }), OK);
@@ -150,6 +153,8 @@ test('梓兰 猎头顾问: every manual refresh copies the highest-tier shop ope
   roundStart(9);
   assert.deepEqual(handIds(ps, 'item'), []);
   roundStart(10);
+  assert.deepEqual(handIds(ps, 'item'), [], 'R10 寻呼模块 is a PREP-start grant, not a round-start one (GitHub #851)');
+  prepStart(10);
   assert.deepEqual(handIds(ps, 'item'), [A('4_01')]);
   cover('band_orchid');
 });
@@ -167,10 +172,12 @@ test('fixed-round grants: 小贾斯汀 / 昆图斯 / 马克维茨 / 变形者集
     ['band_dusk', 'chess_item_6_02_m', [1]],
   ];
   for (const [band, id, rounds] of CASES) {
-    const { ps, roundStart } = setup({ band, seed: 5 });
+    const { ps, roundStart, prepStart } = setup({ band, seed: 5 });
     for (let r = 1; r <= 15; r++) {
       const before = handIds(ps).filter((x) => x === id).length;
       roundStart(r);
+      assert.equal(handIds(ps).filter((x) => x === id).length - before, 0, `${band} R${r}: nothing at the round start`);
+      prepStart(r);
       const got = handIds(ps).filter((x) => x === id).length - before;
       assert.equal(got, rounds.includes(r) ? 1 : 0, `${band} R${r}`);
       ps.hand.fill(null); ps.temp.fill(null);
@@ -180,10 +187,12 @@ test('fixed-round grants: 小贾斯汀 / 昆图斯 / 马克维茨 / 变形者集
 });
 
 test('杜宾 加练！: a 教鞭 every 2 rounds (even rounds)', () => {
-  const { ps, roundStart } = setup({ band: 'band_doberm' });
+  const { ps, roundStart, prepStart } = setup({ band: 'band_doberm' });
   const got = [];
   for (let r = 1; r <= 8; r++) {
     roundStart(r);
+    assert.ok(!handIds(ps, 'item').includes('chess_item_6_03_m'), `R${r}: not at the round start`);
+    prepStart(r);
     if (handIds(ps, 'item').includes('chess_item_6_03_m')) got.push(r);
     ps.hand.fill(null);
   }
@@ -192,7 +201,7 @@ test('杜宾 加练！: a 教鞭 every 2 rounds (even rounds)', () => {
 });
 
 test('老鲤 得闲饮茶: income R1 0, R2 0, R3 15; R3 round start: 1 random tier-II and 1 tier-IV operator', () => {
-  const { m, ps, at, roundStart } = setup({ band: 'band_lmlee', seed: 14 });
+  const { m, ps, at, roundStart, prepStart } = setup({ band: 'band_lmlee', seed: 14 });
   const got = [];
   for (const r of [1, 2, 3, 4]) {
     at(r);
@@ -203,7 +212,10 @@ test('老鲤 得闲饮茶: income R1 0, R2 0, R3 15; R3 round start: 1 random ti
   assert.deepEqual(got, [0, 0, 15, m.gd.income(4)]);
   const grants = spyGrants(ps);
   roundStart(3);
+  assert.equal(grants.length, 0, 'R3 grants nothing at the round start — the R3 draft comes first (GitHub #851)');
+  prepStart(3);
   assert.deepEqual(grants.map((id) => DATA.chess[id].tier).sort(), [2, 4]);
+  prepStart(4);
   roundStart(4);
   assert.equal(grants.length, 2);
   cover('band_lmlee');
@@ -363,33 +375,48 @@ test('鸭爵 “神秘顾客”: from R5, 0–2 ground enemies in the last 40 % 
   const normalKey = Object.values(DATA.enemies).find((e) => e.rank === 'NORMAL' && e.stats.motion === 'WALK').key;
   const flyKey = Object.values(DATA.enemies).find((e) => e.rank === 'NORMAL' && e.stats.motion === 'FLY').key;
   const wave = () => Array.from({ length: 10 }, (_, i) => ({ time: i * 2, enemyKey: i === 8 ? flyKey : normalKey, routeIndex: 0, count: 1 }));
-  const { h, m } = setup({ mode: 'coop', humans: 2, seed: 4, bands: { p_1: 'band_ducklord' } });
-  const p0 = h.ps('p_0');
-  const counts = {};
-  for (let k = 0; k < 30; k++) {
+  // ONE draw per round for the WHOLE team (GitHub #839: 「每回合…被替换」 on the key whose name says `all_player`): the same
+  // count, the same units (by spawn time) and the same 鸭爵 enemies for every player — the draw runs on a stream of its
+  // own (ctx.seedFor('duck:<round>')), so it does NOT vary between players of one round, only between matches.
+  const seen = new Set();
+  for (let seed = 1; seed <= 40; seed++) {
+    const { h, m } = setup({ mode: 'coop', humans: 2, seed, bands: { p_1: 'band_ducklord' } });
     m.round = 5;
-    const ev = { input: p0.battleInput({ side: 'L', colOffset: 0 }), kind: 'normal', round: 5, spawns: wave() };
-    m.dispatch(p0, 'onBattleStart', ev);
-    const dk = ev.spawns.filter((sp) => ducks.includes(sp.enemyKey));
-    counts[dk.length] = (counts[dk.length] || 0) + 1;
-    assert.equal(ev.spawns.length, 10, 'same enemy count');
-    for (const d of dk) {
-      assert.deepEqual(d.bounty, { coins: 1, ownerPlayerId: 'p_0' });
-      assert.ok(d.time >= 0.6 * 18 - 1e-9, `late part of the wave (${d.time})`);
+    const lists = ['p_0', 'p_1'].map((pid) => {
+      const ps = h.ps(pid);
+      const ev = { input: ps.battleInput({ side: 'L', colOffset: 0 }), kind: 'normal', round: 5, spawns: wave() };
+      m.dispatch(ps, 'onBattleStart', ev);
+      return { pid, spec: ev.spawns };
+    });
+    const sig = (list) => list.filter((sp) => ducks.includes(sp.enemyKey)).map((sp) => `${sp.time}:${sp.enemyKey}`);
+    for (const { pid, spec } of lists) {
+      assert.equal(spec.length, 10, 'same enemy count');
+      for (const d of spec.filter((sp) => ducks.includes(sp.enemyKey))) {
+        assert.equal(d.tag, 'duck');
+        assert.deepEqual(d.bounty, { coins: 1, ownerPlayerId: pid }, 'the swap pays the killer of THAT battle');
+        assert.ok(d.time >= 0.6 * 18 - 1e-9, `late part of the wave (${d.time})`);
+      }
+      assert.ok(spec.some((sp) => sp.enemyKey === flyKey), 'flyers are never replaced');
     }
-    assert.ok(ev.spawns.some((sp) => sp.enemyKey === flyKey), 'flyers are never replaced');
+    assert.deepEqual(sig(lists[1].spec), sig(lists[0].spec), `seed ${seed}: both players get the same swaps`);
+    assert.ok(sig(lists[0].spec).length <= p.bb.max, 'at most `max` swaps');
+    seen.add(sig(lists[0].spec).length);
   }
-  assert.deepEqual(Object.keys(counts).map(Number).sort(), [0, 1, 2]);
+  // 0–2, uniform [ASSUMED]: all three outcomes occur over the seeds (each match draws once per round)
+  assert.deepEqual([...seen].sort(), [0, 1, 2]);
   // before R5, in the 联防 phase (its enemies are leaks), or when nobody holds the band: nothing (the Final Assault and
   // the Hidden Core swap too: test/match/feedback1-ducklord.test.js)
+  const gate = setup({ mode: 'coop', humans: 2, seed: 4, bands: { p_1: 'band_ducklord' } });
+  const [g0, g1] = [gate.h.ps('p_0'), gate.h.ps('p_1')];
   for (const [r, kind, band] of [[4, 'normal', 'band_ducklord'], [5, 'unite', 'band_ducklord'], [5, 'normal', null]]) {
-    h.ps('p_1').bandId = band;
-    m.round = r;
-    const ev = { input: p0.battleInput({ side: 'L', colOffset: 0 }), kind, round: r, spawns: wave() };
-    m.dispatch(p0, 'onBattleStart', ev);
+    g1.bandId = band;
+    gate.m.round = r;
+    const ev = { input: g0.battleInput({ side: 'L', colOffset: 0 }), kind, round: r, spawns: wave() };
+    gate.m.dispatch(g0, 'onBattleStart', ev);
     assert.ok(!ev.spawns.some((sp) => ducks.includes(sp.enemyKey)), `R${r} ${kind} ${band}`);
   }
   // duckReplace keeps unreplaced copies of a multi-count spec
+  const m = gate.m;
   const ctx = { gd: m.gd, rng: Object.assign(() => 0, m.rngMeta) };
   ctx.rng.int = () => 2; ctx.rng.shuffle = (a) => a; ctx.rng.pick = (a) => a[0];
   const spawns = [{ time: 0, enemyKey: normalKey, routeIndex: 0, count: 10, interval: 1 }];
@@ -446,13 +473,16 @@ test('巫恋 替身娃娃: the first sale of a normal operator each round swaps 
 });
 
 test('松桐 九流之缘: at even rounds\' prep start 1 random shop operator is taken for free (its slot empties)', () => {
-  const { ps, roundStart } = setup({ band: 'band_makiri', seed: 8 });
+  const { ps, roundStart, prepStart } = setup({ band: 'band_makiri', seed: 8 });
   const ids = plain((c) => c.tier === 1).slice(0, 3);
   for (const r of [1, 2, 3, 4]) {
     ps.shop.slots = ids.map(slotOf);
     ps.hand.fill(null);
     const f0 = ps.funds;
     roundStart(r);
+    assert.equal(handIds(ps, 'chess').length, 0, `R${r}: not at the round start`);
+    assert.equal(ps.shop.slots.filter(Boolean).length, 3);
+    prepStart(r);
     const got = handIds(ps, 'chess');
     assert.equal(got.length, r % 2 === 0 ? 1 : 0, `R${r}`);
     assert.equal(ps.shop.slots.filter(Boolean).length, r % 2 === 0 ? 2 : 3);
@@ -498,18 +528,23 @@ test('贾维 团伙行动: every 6 manual refreshes ⇒ a <叙拉古> operator (
   cover('band_chiave');
 });
 
-test('娜仁图亚 见者有份: even rounds\' prep start — pick 1 of 2 different items (tier ≤ shop level) for free', () => {
-  const { ps, roundStart } = setup({ band: 'band_narant', seed: 13 });
+test('娜仁图亚 见者有份: even rounds\' prep start — pick 1 of 2 different items of the pool for free', () => {
+  const { ps, roundStart, prepStart } = setup({ band: 'band_narant', seed: 13 });
   ps.shop.level = 3;
   for (const r of [1, 2, 3, 4]) {
     ps.offers.length = 0;
     roundStart(r);
+    assert.equal(ps.offers.length, 0, `R${r}: not at the round start`);
+    prepStart(r);
     if (r % 2) { assert.equal(ps.offers.length, 0, `R${r}`); continue; }
     assert.equal(ps.offers.length, 1, `R${r}`);
     const ids = ps.offers[0].slots.map((sl) => sl.id);
     assert.equal(ids.length, 2);
     assert.equal(new Set(ids).size, 2);
-    for (const id of ids) assert.ok(DATA.items[id].itemType === 'EQUIP' && DATA.items[id].tier <= 3);
+    // 「调度中心特殊刷新两件装备」 has no tier bound in the data: pool_equip_narant declares only `{ kind: 'equip', rule:
+    // 'shopEligible' }` — no maxTier, exactly like pool_equip_kathe, whose shop-level cap the owner removed
+    // (test/match/feedback5-cathy-pool.test.js). So the draw is any shop-eligible EQUIP of the pool, at any tier.
+    for (const id of ids) assert.ok(DATA.items[id] && DATA.items[id].itemType === 'EQUIP', `equip ${id}`);
   }
   cover('band_narant');
 });
@@ -740,8 +775,9 @@ test('管理员: the strategy grants a round-1 EXTRA hex pick instead of copying
 test('管理员2 / 管理员3: the round-grant strategies', () => {
   const { m } = setup();
   assert.deepEqual(DATA.bands.band_admin2.buffs, [{ key: 'band_hex_grant_rounds', bb: { roundA: 1, roundB: 3 }, bbStr: {} }]);
-  assert.deepEqual(DATA.bands.band_admin3.buffs, [{ key: 'band_hex_grant_rounds', bb: { roundA: 4, roundB: 10 }, bbStr: { hexId: 'hex_pandora' } }]);
+  assert.deepEqual(DATA.bands.band_admin3.buffs, [{ key: 'band_hex_grant_rounds', bb: { roundA: 5 }, bbStr: { hexId: 'hex_pandora' } }]);
   assert.match(DATA.bands.band_admin2.desc, /1、3 回合/, 'the card text names its rounds');
+  assert.match(DATA.bands.band_admin3.desc, /第 5 回合/, 'and 管理员3 names its single round (2026-10-31)');
   assert.match(DATA.bands.band_admin3.desc, /潘多拉/, 'and 管理员3 names its card');
   assert.equal(typeof m.applyBandRoundHexes, 'function', 'the match owns the mechanic');
   assert.equal(bandMetaHandler('band_admin2'), null, 'no prep handler');

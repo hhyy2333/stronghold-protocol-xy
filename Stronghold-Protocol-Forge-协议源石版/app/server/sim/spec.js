@@ -30,6 +30,8 @@
 // `cultivate` (练度 0–3: the effects.json CHAR_MAP aceffect_char_1…4 — a ×ATK / ×DEF / ×max HP of the unit, its own
 // multiplier); each kept only when well-formed and never on a stand-in. Absent: full potential and no 练度 (a raw
 // unit — the match always states both for an owned operator: PlayerState.battleInput).
+// 3 级模组 (协议源石【特限恢复】 §4.2): an operator entry may carry `moduleLevel: 3` (kept only when exactly 3) — its
+// selected module fights with the equipLevel 3 data (simdata getChess → shared/loadoutRecord.js withModuleLevel3).
 // Content identity (DESIGN §34): `cs`, the content hash of the room's content set (shared/plugins/identity.js; 64 hex
 // digits), is kept when well-formed and left out otherwise — a spec built without one is what it always was. The sim
 // never reads it: it names what the battle runs on — a browser that has not loaded that content is no authority of the
@@ -167,7 +169,8 @@ function cleanDiyPick(d) {
 /**
  * Keep a unit's `skillIndex` / `moduleId` only when well-formed (the data layer checks legality), `standIn` only when
  * exactly `true` (补位), `diy` only as a well-formed pick (自选), `potential` (1–6) / `cultivate` (0–3) only when
- * well-formed and not on a stand-in. Mutates `u`.
+ * well-formed and not on a stand-in, `moduleLevel` only when exactly 3 (3 级模组, 协议源石【特限恢复】 — the only level
+ * the data carries). Mutates `u`.
  */
 export function sanitizeUnitLoadout(u) {
   if ('skillIndex' in u && !(Number.isInteger(u.skillIndex) && u.skillIndex >= 0 && u.skillIndex <= 9)) delete u.skillIndex;
@@ -176,8 +179,9 @@ export function sanitizeUnitLoadout(u) {
   if ('diy' in u) { const d = cleanDiyPick(u.diy); if (d) u.diy = d; else delete u.diy; }
   if ('potential' in u && !isPotential(u.potential)) delete u.potential;
   if ('cultivate' in u && !isCultivate(u.cultivate)) delete u.cultivate;
-  if (u.standIn === true) { delete u.potential; delete u.cultivate; }
-  if (u.kind === 'token') { delete u.skillIndex; delete u.moduleId; delete u.standIn; delete u.diy; delete u.potential; delete u.cultivate; }
+  if ('moduleLevel' in u && u.moduleLevel !== 3) delete u.moduleLevel;
+  if (u.standIn === true) { delete u.potential; delete u.cultivate; delete u.moduleLevel; }
+  if (u.kind === 'token') { delete u.skillIndex; delete u.moduleId; delete u.standIn; delete u.diy; delete u.potential; delete u.cultivate; delete u.moduleLevel; }
   return u;
 }
 
@@ -337,8 +341,10 @@ export function attachLpMeter(battle) {
  * 联防 (user playtest #6 item 7): each source player's enemies still standing on a unite field — not spawned yet,
  * alive, or already through the objective again — i.e. what settlement would charge them if the battle ended now
  * (server/match/unite.js uniteSurvivors: the unite result's counted leaks + unspawned entries by `sourcePlayerId`;
- * alive enemies become leaks on a timeout, keyed like Battle._recordLeak). It falls as the helpers strike them down and
- * rises when one splits or summons (content-spawned children inherit the parent's sourcePlayerId).
+ * alive enemies become leaks on a timeout, keyed like Battle._recordLeak). It falls as the helpers strike them down;
+ * nothing that appears while the field runs ever raises it — a 联防 field tags its runtime spawns `uniteRuntime` at
+ * birth (battle/spawns.js, GitHub #675: a split child or a summon never crossed the leaker's own goal), and every read
+ * here filters that flag out.
  * `{ [playerId]: n }` (a player with none left is absent), or null for a battle without the sim's state (a stand-in).
  * @returns {Record<string, number> | null}
  */
@@ -349,14 +355,14 @@ export function uniteLeft(battle) {
   if (battle.finished && typeof battle.result === 'function') {
     const r = battle.result();
     if (!r || !r.perPlayer) return null;
-    for (const pp of Object.values(r.perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false) add(l.sourcePlayerId);
+    for (const pp of Object.values(r.perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false && !l.uniteRuntime) add(l.sourcePlayerId);
     for (const u of r.unspawned || []) if (u) add(u.sourcePlayerId);
     return out;
   }
   if (!battle._perPlayer || !Array.isArray(battle._pending) || !Array.isArray(battle.enemies)) return null;
   for (const p of battle._pending) if (p) add(p.sourcePlayerId);
-  for (const e of battle.enemies) if (e && e.alive && e.counted) add(e.sourcePlayerId ?? e.ownerId);
-  for (const pp of Object.values(battle._perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false) add(l.sourcePlayerId);
+  for (const e of battle.enemies) if (e && e.alive && e.counted && !e.uniteRuntime) add(e.sourcePlayerId ?? e.ownerId);
+  for (const pp of Object.values(battle._perPlayer)) for (const l of (pp && pp.leaked) || []) if (l && l.counted !== false && !l.uniteRuntime) add(l.sourcePlayerId);
   return out;
 }
 

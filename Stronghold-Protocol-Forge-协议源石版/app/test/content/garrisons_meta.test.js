@@ -59,7 +59,9 @@ function setup(seed = 70) {
   const active = (b) => !!(ps.bonds[b] && ps.bonds[b].active);
   const L = (b) => ps.layers[b] || 0;
   const prepEnd = () => m.dispatch(ps, 'onPrepEnd', { round: m.round });
-  const roundStart = () => m.dispatch(ps, 'onRoundStart', { round: m.round });
+  // A round's dispatch as the match runs it: onRoundStart (回合开始时), then — for the 「进入休整期时」 traits — onPrepStart,
+  // which fires at the PREP start, i.e. after the 机变 draft (server/match/effectsMeta.js GARRISON_HOOK; GitHub #851).
+  const roundStart = () => { m.dispatch(ps, 'onRoundStart', { round: m.round }); m.dispatch(ps, 'onPrepStart', { round: m.round }); };
   const acquire = (id) => ps.acquireChess(id, { source: 'test' });
   const sell = (p) => assert.deepEqual(m.handle('p_0', { t: 'g.sell', uid: p.uid }), { ok: true });
   const gainsNow = () => Object.fromEntries(Object.entries(gains).filter(([, v]) => v > 0));

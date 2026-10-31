@@ -41,6 +41,8 @@ function makeData(src) {
     return null;
   };
   // 0.2.0 补位: the composed stand-in record of a chess (shared/standIn.js over data/backups.json), cached per chess
+  // AND per data/backups.json OBJECT (upstream 0.3.3 §38.3): a content-set swap (public/js/data.js setContent) replaces
+  // that object, so reusing a record composed against the old tables would keep the retired operator's body, skill, stats.
   const standIns = new Map();
   const backups = () => {
     try { return (src && typeof src.get === 'function' ? src.get('backups') : src && src.backups) || null; } catch { return null; }
@@ -49,13 +51,16 @@ function makeData(src) {
     const c = look('chess', id);
     const b = backups();
     if (!c || !b) return null;
-    if (standIns.has(c)) return standIns.get(c);
+    const cached = standIns.get(c);
+    if (cached?.backups === b) return cached.rec;
     let rec;
     try { rec = standInRecord(c, b); } catch { rec = null; }
-    standIns.set(c, rec);
+    standIns.set(c, { backups: b, rec });
     return rec;
   };
   // 0.2.0 自选编队: the composed 自选 record of a DIY slot filled with a pick (shared/diy.js over chess.json + backups.json)
+  // cached per slot + pick AND per chess / backups OBJECT (upstream 0.3.3 §38.3): the same reason as standIn above — a
+  // content-set swap must not reuse a record composed over the retired tables.
   const diys = new Map();
   const chessMap = () => {
     try { return (src && typeof src.get === 'function' ? src.get('chess') : src && src.chess) || null; } catch { return null; }
@@ -65,10 +70,12 @@ function makeData(src) {
     const b = backups();
     if (!c || !c.isDiy || !b || !pick || typeof pick.charId !== 'string') return null;
     const key = `${id}|${pick.charId}|${pick.skillIndex ?? ''}|${pick.uniEquipId ?? ''}`;
-    if (diys.has(key)) return diys.get(key);
+    const chess = chessMap();
+    const cached = diys.get(key);
+    if (cached?.chess === chess && cached?.backups === b) return cached.rec;
     let rec;
-    try { rec = diyRecordOf(c, pick, { chess: chessMap(), backups: b }); } catch { rec = null; }
-    diys.set(key, rec);
+    try { rec = diyRecordOf(c, pick, { chess, backups: b }); } catch { rec = null; }
+    diys.set(key, { chess, backups: b, rec });
     return rec;
   };
   return {

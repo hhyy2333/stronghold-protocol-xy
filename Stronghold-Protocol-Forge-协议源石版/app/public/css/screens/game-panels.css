@@ -775,6 +775,54 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .hxov__enemynum { font-size: calc(.22 * var(--t)); color: var(--text-dim); }
 .hxov__hint { margin-left: auto; font-size: calc(.16 * var(--t)); color: var(--text-dim); }
 
+/* ---- 协议源石 · 刷新 (recycle, 业主 2026-10-31「把有的协议源石放上去点击刷新」「算力无限，搞美观些」) --------------
+   The panel IS the draft's shell (`.spov` veil / inner / head / grid + `.hxcard`), so the two read as one screen — which
+   matters because in HEX_DRAFT the 三选一 overlay is still up behind it (the player picked, the others may not have).
+   Both are `.spov` at z-index 20; `.hxrec` lifts the stack to 26 so the order never depends on DOM order. Below is only
+   the interaction feedback the owner asked for: hover glow, a press ripple, the remaining-count diamonds, and the flash
+   a freshly returned card plays (RECYCLE_FLASH_MS in ui/hexOverlay.js — keep the two durations in step). */
+.hxrec { z-index: 26; }
+
+/* 剩 n 次：几颗菱形，用掉一颗就熄灭；在飞的时候亮着的那几颗一起呼吸 */
+.hxrec__pips { display: inline-flex; align-items: center; gap: .1rem; }
+.hxrec__pip {
+  width: .17rem; height: .17rem; transform: rotate(45deg);
+  border: 1px solid var(--line-2); background: rgba(255, 255, 255, .04);
+  transition: background var(--t-fast) var(--ease-out), border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.hxrec__pip.is-on {
+  border-color: var(--gold); background: linear-gradient(135deg, var(--gold), #b07ce8);
+  box-shadow: 0 0 .14rem rgba(255, 198, 0, .55);
+}
+.hxrec__pips.is-busy .hxrec__pip.is-on { animation: hxrec-breathe .9s var(--ease-in-out) infinite; }
+@keyframes hxrec-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.hxrec__left { font-size: calc(.16 * var(--t)); color: var(--text-dim); letter-spacing: .04em; white-space: nowrap; }
+.hxrec__left.is-live { color: var(--gold-2); }
+
+/* 一张卡一个槽（ui/hexOverlay.js HexRecyclePanel）：抬升是 .hxcard-slot 本来就有的，这里补悬停发光与按下波纹 */
+.hxrec__slot { cursor: pointer; }
+.hxrec__slot > .hxcard { transition: box-shadow var(--t-fast), border-color var(--t-fast), transform var(--t-fast); }
+.hxrec__slot:hover > .hxcard { box-shadow: 0 0 .3rem rgba(23, 249, 183, .4), inset 0 0 0 1px rgba(23, 249, 183, .5); }
+.hxrec__slot:active > .hxcard { transform: scale(.97); }
+.hxrec__slot::after {
+  content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(23, 249, 183, .5), transparent 62%);
+}
+.hxrec__slot:active::after { animation: hxrec-ripple .5s var(--ease-out); }
+@keyframes hxrec-ripple { 0% { opacity: .85; transform: scale(.55); } 100% { opacity: 0; transform: scale(1.35); } }
+.hxrec__slot.is-refreshing { cursor: progress; }
+
+/* 换回来的那张：入场闪一下（金圈 + 轻微放大），玩家一眼看出「这张是新的」 */
+.hxrec__slot.is-fresh > .hxcard { animation: hxrec-fresh 1.1s var(--ease-out) both; }
+@keyframes hxrec-fresh {
+  0% { box-shadow: 0 0 0 0 rgba(255, 198, 0, .9), 0 0 .5rem rgba(255, 198, 0, .8); transform: scale(.94); }
+  35% { box-shadow: 0 0 0 2px rgba(255, 198, 0, .9), 0 0 .5rem rgba(255, 198, 0, .8); transform: scale(1.02); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 198, 0, 0); transform: none; }
+}
+
+/* 底部：提示靠左、「完成」靠右（.hxov__hint 默认把提示推到右边，这里反过来） */
+.hxrec__hint { margin-left: 0; margin-right: auto; }
+
 /* A card IS the rarity's 阶位 art (hextech/tier/<tier>.png, the owner's own images): the card takes the art's own aspect
    ratio (--hx-tier-ar) and draws it `cover`, so the numeral lands edge-to-edge with nothing cropped. Without the local
    manifest the card falls back to a rarity-tinted panel with a drawn plate carrying the name's first character (the
@@ -1006,7 +1054,8 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .tarena__grid::-webkit-scrollbar-thumb { background: var(--line-3); border-radius: max(.03rem, 3px); }
 .tarena__grid::-webkit-scrollbar-thumb:hover { background: var(--mint-700); }
 .tarena__empty { padding: .16rem 0; font-size: max(calc(.13 * var(--t)), 10px); }
-/* the label row of the card section: the 我方 / 敌方 tabs (the shared Tabs component, compact) plus 清空 */
+/* the label row of the list section: the 我方 / 敌方 / 干员 tabs (the shared Tabs component, compact) plus 清空 — which
+   only the two 协议源石 sides carry (the 干员 tab buys, it has no list to clear) */
 .tarena__sec--hex .tarena__label { flex-wrap: wrap; row-gap: .04rem; }
 .tarena__sec--hex .tabs { margin-right: auto; }
 .tarena__sec--hex .tabs__tab { min-height: .2rem; padding: 0 .06rem; font-size: max(calc(.12 * var(--t)), 9px); }
@@ -1047,6 +1096,40 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
   background: var(--mint-500); color: var(--text-on-mint);
 }
 .tarena .thx__owned .icon { width: .13rem; height: .13rem; }
+/* 测试场「买任何干员」(业主 2026-10-26): the 干员 tab's search box and its rows. The rows reuse the card grid's scrolling
+   container (`.tarena__grid--ops` only widens the tracks: a row carries a name, a tier chip and a price, not a 阶位
+   plate), so the panel keeps its size on every viewport. */
+.tarena__search {
+  flex: none; width: 100%; height: .28rem; padding: 0 .08rem; font: inherit;
+  font-size: max(calc(.13 * var(--t)), 10px); color: var(--text-hi);
+  background: rgba(8, 11, 10, .85); border: 1px solid var(--line-2); border-radius: .03rem;
+}
+.tarena__search::placeholder { color: var(--text-dim); }
+.tarena__search:focus { outline: none; border-color: var(--gold-a20); }
+.tarena__grid--ops { grid-template-columns: repeat(auto-fill, minmax(2.1rem, 1fr)); }
+.tarena .op {
+  display: flex; align-items: center; gap: .06rem; min-width: 0; height: .32rem; padding: 0 .08rem;
+  font-family: inherit; text-align: left; cursor: pointer; color: var(--text-hi);
+  background: #0b0f11; border: 1px solid var(--line-2);
+  transition: border-color var(--t-fast), transform var(--t-fast);
+}
+.tarena .op:hover:not(:disabled) { transform: translateY(-.02rem); border-color: var(--gold-a20); }
+.tarena .op:disabled { opacity: .5; cursor: default; }
+.tarena .op__name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: max(calc(.13 * var(--t)), 10px); font-weight: 700;
+}
+/* the tier chip: the shop's own tier colours, so a 6 阶 card reads as one at a glance */
+.tarena .op__tier {
+  flex: none; min-width: .18rem; padding: 0 .04rem; text-align: center;
+  font-size: max(calc(.1 * var(--t)), 8px); font-weight: 700; color: #12161c; background: var(--line-3);
+}
+.tarena .op__tier[data-tier="5"], .tarena .op__tier[data-tier="6"] { background: var(--gold); }
+.tarena .op__tier[data-tier="4"] { background: #b07ce8; }
+.tarena .op__price {
+  flex: none; min-width: .24rem; text-align: right;
+  font-size: max(calc(.13 * var(--t)), 10px); font-weight: 700; color: var(--gold);
+}
 /* the HUD toggle beside the damage report (ui/testArena.js TestArenaButton): the same gear-sized chip */
 .gm__test.is-on { color: var(--gold); border-color: var(--gold-a20); }
 
@@ -1054,6 +1137,8 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 @media (max-width: 767px) {
   .tarena { width: max(3.2rem, 300px); max-height: min(5.8rem, calc(100% - 2.6rem)); }
   .tarena__grid { grid-template-columns: repeat(auto-fill, minmax(.54rem, 1fr)); }
+  /* the 干员 rows carry text, not a plate: keep them wide enough for a name + the price (3 across at 300 px) */
+  .tarena__grid--ops { grid-template-columns: repeat(auto-fill, minmax(2rem, 1fr)); }
 }
 /* Short landscape phones: the panel is capped and the grid scrolls the rest */
 @media (max-height: 431.98px) {
@@ -1084,9 +1169,10 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 }
 .dmgrep__x .icon { width: .17rem; height: .17rem; }
 .dmgrep__x:hover { color: var(--red-premium); border-color: rgba(255, 84, 84, .5); }
-/* the metric switch (伤害 / 承伤 / 治疗): one row of tabs under the header, the selected one tinted like the live chip.
-   Each metric keeps its own accent — 伤害 mint, 承伤 orange (what the unit lost), 治疗 green — on the tab, the total,
-   the share bar and the value, so a glance says which column is on show. */
+/* the metric switch (伤害 / 秒伤 / 承伤 / 治疗): one row of tabs under the header, the selected one tinted like the live chip.
+   Each metric keeps its own accent — 伤害 mint, 秒伤 gold (an output *rate*: the drill round's own reading), 承伤 orange
+   (what the unit lost), 治疗 green — on the tab, the total, the share bar and the value, so a glance says which column is
+   on show. */
 .dmgrep__tabs { display: flex; align-items: stretch; gap: .04rem; padding: .02rem 0; }
 .dmgrep__tab {
   flex: 1; height: .32rem; padding: 0 .04rem; background: rgba(8, 11, 10, .85); border: 1px solid var(--line-2);
@@ -1095,6 +1181,7 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 }
 .dmgrep__tab:hover { color: var(--text-hi); }
 .dmgrep__tab--dmg.is-on { color: var(--mint-400); border-color: var(--mint-700); background: var(--mint-a10); }
+.dmgrep__tab--dps.is-on { color: var(--gold); border-color: rgba(232, 190, 92, .55); background: rgba(232, 190, 92, .12); }
 .dmgrep__tab--taken.is-on { color: var(--orange-hi); border-color: rgba(255, 122, 51, .55); background: var(--orange-a20); }
 .dmgrep__tab--heal.is-on { color: #7ce0a8; border-color: rgba(124, 224, 168, .55); background: rgba(124, 224, 168, .12); }
 /* the total block: 累计伤害 over the big number, the round / 随当前视角同步 captions on the right (the official header) */
@@ -1102,8 +1189,12 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .dmgrep__sumL { display: flex; flex-direction: column; gap: .02rem; min-width: 0; }
 .dmgrep__cap { font-size: max(calc(.13 * var(--t)), 10px); color: var(--text-lo); letter-spacing: .04em; }
 .dmgrep__total { font-size: max(calc(.4 * var(--t)), 22px); line-height: 1; color: #fff; font-weight: 700; }
+.dmgrep[data-metric="dps"] .dmgrep__total { color: var(--gold); }
 .dmgrep[data-metric="taken"] .dmgrep__total { color: var(--orange-hi); }
 .dmgrep[data-metric="heal"] .dmgrep__total { color: #7ce0a8; }
+/* 「—」: 秒伤拿不到战斗时长时的占位（不是 0，所以也不能按 0 的样式画得像个数字） */
+.dmgrep__dash { color: var(--text-dim); }
+.dmgrep__dur { color: var(--text-hi); }
 .dmgrep__sumR { display: flex; flex-direction: column; align-items: flex-end; gap: .02rem; margin-left: auto; text-align: right; }
 .dmgrep__meta { font-size: max(calc(.12 * var(--t)), 9px); color: var(--text-md); }
 .dmgrep__cols {
@@ -1134,7 +1225,9 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .dmgrow__bar { position: relative; display: block; height: .05rem; background: rgba(255, 255, 255, .1); overflow: hidden; }
 .dmgrow__fill { display: block; height: 100%; background: linear-gradient(90deg, var(--mint-700), var(--mint-400)); transition: width var(--t-med) var(--ease-out); }
 .dmgrow.is-top .dmgrow__fill { background: linear-gradient(90deg, #b8842a, var(--gold)); }
-/* the metric accents on a row: 承伤 orange (the rank and bar), 治疗 green (the value) */
+/* the metric accents on a row: 秒伤 gold (the same reading as the total), 承伤 orange (the rank and bar), 治疗 green (the value) */
+.dmgrow--dps .dmgrow__fill { background: linear-gradient(90deg, #b8842a, var(--gold)); }
+.dmgrow--dps .dmgrow__num b { color: var(--gold); }
 .dmgrow--taken .dmgrow__fill { background: linear-gradient(90deg, #a83f13, var(--orange-hi)); }
 .dmgrow--taken.is-top .dmgrow__rank { color: var(--orange-hi); }
 .dmgrow--taken .dmgrow__num b { color: var(--orange-hi); }
@@ -1183,6 +1276,8 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .dmgdet__chip--kills b { color: var(--gold); }
 .dmgrow__num { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: .01rem; min-width: .8rem; }
 .dmgrow__num b { font-size: max(calc(.18 * var(--t)), 12px); color: #fff; }
+/* the placeholder a 秒伤 cell shows without a battle length: dimmed, never the metric's accent */
+.dmgrow__num b.dmgrow__dash { color: var(--text-dim); }
 .dmgrow__pct { font-size: max(calc(.12 * var(--t)), 9px); color: var(--text-lo); }
 /* the 统计口径 footer: collapsed by default, the panel's own explanation of what the numbers are */
 .dmgrep__method { border-top: 1px solid var(--line); padding-top: .04rem; font-size: max(calc(.12 * var(--t)), 9px); color: var(--text-lo); }

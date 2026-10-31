@@ -20,6 +20,12 @@
 //   * 转移：100% ⇒ 被转移者**一点血都不掉**，那一份走**真实伤害**落在骑士身上（与被转移者自己的护盾结算顺序：
 //     先由被转移者吃护盾，护盾之后的 HP 伤害才转移 [ASSUMED]）。转移伤害带 `transfer` 标记，因此不被 ×2 再放大、
 //     也不会被别的转移内容（坚守 / 浊心斯卡蒂 S1）二次转移；
+//   * 与别的转移叠加（业主 2026-10-29 裁定）：**任何转移的产出都不再被二次转移**。这一击在 `hit` 阶段先**认领**
+//     （`dmg.redirectClaim`），坚守 / 浊心斯卡蒂 S1 / 燎原的炎烬据此不削减、不分成 —— 它们的分成是从「落到被转移者
+//     身上的 HP」反推的（`redirectShare`），而徽章让那里恒为 0，先削后转只会把那份伤害**删掉**（实测：1000 打在
+//     「卡西米尔 + 坚守 t2」的干员身上，全队只吃 600）。反过来，别的转移产出的那一份（`damage.js isRedirectShare`：
+//     `transfer` / `bond:stead:share` / `hex:yanember:share` 标记与 `steadShare` / `steadThorn` / `yanEmberShare` /
+//     `knightTransfer`）也不会被徽章接走（「任何转移产出都不再被二次转移」）。
 //   * 真实伤害 ×2 只放大**对敌**的真伤实例（对友军的真伤不放大 [ASSUMED]），且**不**放大转移过来的那一份；
 //   * 致命伤害：**锁血窗口内**再次致命只免死、不重复加层（否则骑士在 1 点血上会被每一击续成几十层）；
 //     锁血期间 HP 由引擎留在 1 点（damage.js applyHpLoss：`c.prevented` ⇒ hp = min(1, maxHp)）；
@@ -33,6 +39,7 @@
 // 确定性：没有 Math.random / Date / Node API；伤害走 battle.dealDamage，定时窗口用 battle.time 比较。
 
 import { num, itemRecord, itemKeyOf, itemsOf, isOp, isMember, battleStore } from '../support/index.js';
+import { isRedirectShare } from '../../damage.js';
 
 /** Registry key of the equipment (id without the `_a` / `_b` suffix) — the key items/battle.js files it under. */
 export const KNIGHTBADGE_ITEM_KEY = 'chess_item_9_98_e';
@@ -88,6 +95,21 @@ function installOn(battle, u, rec) {
   const on = (name, fn, priority = 0) => { const h = battle.on(name, fn, { owner: u, priority }); if (h) hooks.push(h); return h; };
   rt.units.push(u);
 
+  // 0) 认领: at 'hit', before the redirect cuts at priority -20 (坚守 / 浊心斯卡蒂 S1 / 燎原's 炎烬). A claimed instance
+  //    belongs to the knight whole, so those effects leave it alone; their share is derived from the HP that reaches the
+  //    victim and this badge leaves 0 there (see 1). Measured without the claim: 1000 into 坚守 tier 2 → knight 360 +
+  //    member 240, the other 400 deleted; and a 坚守 member that is also 卡西米尔 (灰毫) ping-pongs with the transfer
+  //    until the 32-frame hook-depth guard drops the chain.
+  on('hit', (c) => {
+    const d = c && c.dmg;
+    if (!(ratio > 0) || !d || d.cancel || d.redirectClaim || isRedirectShare(d)) return;   // a share is final
+    const t = c.target;
+    if (!t || t === u || t.side !== 'ally' || !isOp(t) || t.ownerId !== u.ownerId) return;
+    if (!ownKazimierz(battle, t, u.ownerId)) return;
+    if (fieldKnight(rt) !== u || !u.alive || !u.deployed || u.hidden) return;
+    d.redirectClaim = true;
+  });
+
   // 1) 伤害转移: every HP-damage instance that would land on one of this player's 卡西米尔 operators is taken by the knight
   //    instead, as true damage. The hook sits at 'hpDamage' (after the victim's shields, before applyHpLoss) because a 100 %
   //    transfer has to move the HP loss itself: applyRedirectCut + redirectShare (坚守 / 浊心斯卡蒂) derive the share from
@@ -97,7 +119,7 @@ function installOn(battle, u, rec) {
     const t = c.target;
     if (!t || t === u || t.side !== 'ally' || !isOp(t) || t.ownerId !== u.ownerId) return;
     if (!ownKazimierz(battle, t, u.ownerId)) return;
-    if (c.dmg && (c.dmg.knightShare || c.dmg.knightTransfer)) return;   // already transferred once
+    if (c.dmg && (c.dmg.knightShare || isRedirectShare(c.dmg))) return;   // already transferred once, or a share
     if (fieldKnight(rt) !== u || !u.alive || !u.deployed || u.hidden) return;
     const share = c.amount * ratio;
     if (!(share > 0)) return;

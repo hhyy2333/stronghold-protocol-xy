@@ -293,8 +293,8 @@ describe('client: the pure helpers', () => {
     assert.equal(fmtDamage(NaN), '0');
   });
 
-  test('REPORT_METRICS: three metrics, each with its own labels, and metricOf falls back to 伤害', () => {
-    assert.deepEqual(REPORT_METRICS.map((m) => m.id), ['dmg', 'taken', 'heal']);
+  test('REPORT_METRICS: four metrics, each with its own labels, and metricOf falls back to 伤害', () => {
+    assert.deepEqual(REPORT_METRICS.map((m) => m.id), ['dmg', 'dps', 'taken', 'heal']);
     assert.equal(metricOf('taken').field, 'taken');
     assert.equal(metricOf('nope').id, 'dmg');
     for (const m of REPORT_METRICS) assert.ok(m.label && m.total && m.column && m.value, m.id);
@@ -341,11 +341,14 @@ describe('the panel and its HUD button', () => {
     const tabs = (tree) => [...walk(tree)].filter((v) => v.type === 'button' && String(v.props.class).includes('dmgrep__tab'));
     let picked = null;
     const dmg = DamageReportPanel({ rows: mixed, metric: 'dmg', onMetric: (id) => { picked = id; } });
-    assert.deepEqual(tabs(dmg).map((t) => t.props['data-metric']), ['dmg', 'taken', 'heal']);
-    assert.deepEqual(tabs(dmg).map((t) => t.props['aria-selected']), ['true', 'false', 'false']);
+    assert.deepEqual(tabs(dmg).map((t) => t.props['data-metric']), ['dmg', 'dps', 'taken', 'heal']);
+    assert.deepEqual(tabs(dmg).map((t) => t.props['aria-selected']), ['true', 'false', 'false', 'false']);
     assert.ok(textOf(dmg).includes('干员 / 伤害占比') && textOf(dmg).includes('实际伤害'));
     assert.deepEqual(rowVnodes(dmg).map((n) => n.props.row.key), ['a'], '波登可 only healed: no 伤害 row');
-    tabs(dmg)[1].props.onClick();
+    // 按 data-metric 找那一栏，不按位置：指标增删（秒伤就是这么插进来的）不该让这条断言红
+    const takenTab = tabs(dmg).find((tab) => tab.props['data-metric'] === 'taken');
+    assert.ok(takenTab, 'the 承伤 tab exists');
+    takenTab.props.onClick();
     assert.equal(picked, 'taken', 'the tab asks for its metric');
 
     const taken = DamageReportPanel({ rows: mixed, metric: 'taken', total: null, onMetric: () => {} });
@@ -381,7 +384,7 @@ describe('the panel and its HUD button', () => {
     assert.ok(txt.includes('本局累计') && txt.includes('本局至今'), txt);
     assert.ok(txt.includes('1,400'), txt);
     assert.ok(!txt.includes('实时'), `no live toggle in the cumulative view: ${txt}`);
-    assert.ok(tabs(tree).length === 3, 'the switch still works there');
+    assert.ok(tabs(tree).length === 4, 'the switch still works there');
     // the same rows, switched to 治疗
     const heal = DamageReportPanel({ rows: cum, metric: 'heal', total: null, cumulative: true, onMetric: () => {} });
     assert.deepEqual(rowVnodes(heal).map((n) => n.props.row.key), ['chess_b', 'chess_a'], 'ranked by healing');
@@ -417,7 +420,7 @@ describe('the panel and its HUD button', () => {
     assert.deepEqual(lines, [...methodLines('taken')], 'the 承伤 method notes');
     assert.ok(lines.length >= 3);
     // each metric has its own explanation
-    for (const id of ['dmg', 'taken', 'heal']) {
+    for (const id of ['dmg', 'dps', 'taken', 'heal']) {
       const t2 = DamageReportPanel({ rows, total: 1320, metric: id });
       const ls = [...walk(t2)].filter((v) => v.type === 'li').map((v) => v.props.children);
       assert.deepEqual(ls, [...methodLines(id)], id);
@@ -526,7 +529,7 @@ describe('wiring and CSS', () => {
     assert.match(css, /\.gm__dmgrep \{/);
     // the metric switch and its three accents
     assert.match(css, /\.dmgrep__tabs \{/);
-    for (const cls of ['dmg', 'taken', 'heal']) assert.match(css, new RegExp(`\\.dmgrep__tab--${cls}\\.is-on`), cls);
+    for (const cls of ['dmg', 'dps', 'taken', 'heal']) assert.match(css, new RegExp(`\\.dmgrep__tab--${cls}\\.is-on`), cls);
     for (const cls of ['taken', 'heal']) assert.match(css, new RegExp(`\\.dmgrow--${cls} \\.dmgrow__fill`), cls);
     // the corner button keeps the gear size the corner row lays out
     assert.match(read('public/css/screens/game.css'), /\.gm__gear \{\n {2}width: \.56rem; height: \.56rem;/);

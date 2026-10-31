@@ -2,7 +2,7 @@
 // coins.
 // Installed on Battle.prototype by server/sim/Battle.js (a method container: never instantiated; `this` is the battle).
 
-import { layerGainRoom } from '../../../shared/constants.js';
+import { BOND_LAYER_CAP, layerGainRoom } from '../../../shared/constants.js';
 
 export class BattleEconomy {
   addDp(playerId, n) {
@@ -13,23 +13,44 @@ export class BattleEconomy {
   }
 
   /**
+   * The 盟约叠层上限 of ONE player of this battle (【突破极限】, 设计稿 §3): the `bondLayerCap` the match wrote on that
+   * player's PlayerBattleInput (player/round.js battleInput → `bondLayerCapOf(ps)`: 9999 for the card's owner, 999
+   * otherwise), else a battle-level `this.bondLayerCap` when a caller set one (a spec-driven battle, the workshop API),
+   * else the official `BOND_LAYER_CAP`. 0 / a non-finite value = "no cap" (Infinity), the constants.js convention.
+   *
+   * Per PLAYER, not per battle: a 联防 field carries a helper's own input next to the leaker's, and a helper without the
+   * card must keep stopping at 999.
+   * @param {number|string|null} playerId
+   * @returns {number}
+   */
+  _layerCapOf(playerId) {
+    const p = playerId != null && typeof this.getPlayer === 'function' ? this.getPlayer(playerId) : null;
+    const own = Number(p && p.input && p.input.bondLayerCap);
+    if (Number.isFinite(own) && own > 0) return own;
+    const b = Number(this.bondLayerCap);
+    if (Number.isFinite(b) && b > 0) return b;
+    return BOND_LAYER_CAP > 0 ? BOND_LAYER_CAP : Infinity;
+  }
+
+  /**
    * Record an IN_BATTLE layer gain (no-op when gains are disabled). Returns the layers added: at most the room left
-   * under BOND_LAYER_CAP (999, shared/constants.js) on the live copy — the client's AddBondCount `min(L + n, 999)`; the
-   * `layerGain` hook (魔王's +1 …) runs first, then the clamp; a bond already at the cap gains 0 (no hook, no event).
-   * Without a live copy of the bond (a partial PlayerBattleInput) the battle's own gains count; the match's settle
-   * clamps the persistent count the same way.
+   * under this player's cap (BOND_LAYER_CAP 999 — 9999 with 【突破极限】, `_layerCapOf`) on the live copy — the client's
+   * AddBondCount `min(L + n, 999)`; the `layerGain` hook (魔王's +1 …) runs first, then the clamp; a bond already at the
+   * cap gains 0 (no hook, no event). Without a live copy of the bond (a partial PlayerBattleInput) the battle's own
+   * gains count; the match's settle clamps the persistent count the same way (hextech.js bondLayerCapOf).
    */
   addLayers(playerId, bondId, n, reason = '', opts = {}) {
     if (!this.flags.layerGainsEnabled || !(n > 0) || !Number.isFinite(n) || playerId == null) return 0;
     const pp = this._pp(playerId);
     if (!pp) return 0;
+    const cap = this._layerCapOf(playerId);
     const ps = this.getPlayer(playerId);
     const live = ps && ps.bonds[bondId] ? (ps.bonds[bondId].layers ?? 0) : (pp.layerGains[bondId] ?? 0);
-    if (!(layerGainRoom(live, Infinity) > 0)) return 0;
+    if (!(layerGainRoom(live, Infinity, cap) > 0)) return 0;
     const source = opts.source ?? null;
     const ctx = { playerId, bondId, n, reason, source, tile: Array.isArray(opts.tile) ? opts.tile : this._sourceTile(source) };
     if (this._hooks.layerGain) { this.emit('layerGain', ctx); if (!(ctx.n > 0) || !Number.isFinite(ctx.n)) return 0; }
-    const add = layerGainRoom(live, ctx.n);
+    const add = layerGainRoom(live, ctx.n, cap);
     if (!(add > 0)) return 0;
     pp.layerGains[bondId] = (pp.layerGains[bondId] ?? 0) + add;
     if (ps && ps.bonds[bondId]) ps.bonds[bondId].layers = (ps.bonds[bondId].layers ?? 0) + add;

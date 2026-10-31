@@ -97,4 +97,30 @@ describe('placeholders', () => {
     assert.equal(formatBondEffect(null, 3), '');
     assert.equal(formatBondEffect({ effectDesc: 'x{0:0}', effectDescParams: [{ index: 0, format: '0', base: 'a', perStack: 'b' }], bb: { a: 1, b: 2 } }, 'bad'), 'x1');
   });
+  // The layer count at which a chance is still BELOW 1 must not read 100 % (owner report 2026-10-30
+  // 「不屈盟约100%时有概率不生效」): 不屈 p = 0.18 + 0.004·L (0.992 / 0.996 / 1 at 203 / 204 / 205 layers),
+  // 迅捷 p = 0.20 + 0.0035·L (0.9945 / 0.998 / 1 at 227 / 228 / 229). An integer-percent format floors the sub-1
+  // value instead of rounding 99.6 up to 100, like the sim's own min(1, …).
+  test('a sub-1 chance never rounds up to 100 % (204 不屈 layers read 99 %, not 100 %)', () => {
+    const bonds = load('bonds.json');
+    const pctAt = (bond, L) => {
+      const txt = richTextPlain(formatBondEffect(bond, L));
+      const m = txt.match(/有(\d+(?:\.\d+)?)%/);
+      assert.ok(m, `${bond.bondId} at ${L} layers states no chance: ${txt}`);
+      return Number(m[1]);
+    };
+    assert.deepEqual([203, 204, 205].map((L) => pctAt(bonds.indomShip, L)), [99, 99, 100], '不屈: 99.2 % / 99.6 % / 100 %');
+    assert.deepEqual([227, 228, 229].map((L) => pctAt(bonds.swiftShip, L)), [99, 99, 100], '迅捷: 99.45 % / 99.8 % / 100 %');
+    // only the integer-percent chance floors: a percent format with decimals keeps them, a plain count keeps rounding
+    const rec = (format) => ({
+      effectDesc: `有{0:${format}}概率，{1:0}`,
+      effectDescParams: [
+        { index: 0, format, base: 'base_prob', perStack: 'prob_per_stack' },
+        { index: 1, format: '0', base: 'n', perStack: 'zero' },
+      ],
+      bb: { base_prob: 0.996, prob_per_stack: 0, n: 3.6, zero: 0 },
+    });
+    assert.equal(richTextPlain(formatBondEffect(rec('0%'), 0)), '有99%概率，4');
+    assert.equal(richTextPlain(formatBondEffect(rec('0.0%'), 0)), '有99.6%概率，4');
+  });
 });

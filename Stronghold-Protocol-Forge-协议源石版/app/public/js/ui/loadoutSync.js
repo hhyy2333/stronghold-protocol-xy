@@ -12,7 +12,7 @@
 // (sanitised against the loaded data/chess.json: ui/loadoutModel.js sanitizeEntries — a stale entry is dropped, never
 // the whole loadout; `ops` = the per-operator 潜能 / 练度 of 0.2.2, sanitizeOps against chess.json + backups.json), `room.ownership { notOwned }` (sent as stored: the server keeps the droppable chess and drops
 // the rest, so no data is needed), `room.diy { picks }` (sent as stored, structurally clean: the server keeps the
-// legal picks) and `room.hexBans { ids }` (≤ 3 ids, sent as stored; the server drops the ones this room's data does not
+// legal picks) and `room.hexBans { ids }` (≤ 6 ids, sent as stored; the server drops the ones this room's data does not
 // have). Replies: RATE → retried later; WRONG_PHASE / ROOM_STARTED → the running match keeps what it took (the
 // loadout locks when INFO_CHECK ends; the ownership, the 自选 picks and the bans never change during a match) — stored
 // for the next match, not an error for the player; anything else is logged. `sync` / `ownSync` / `diySync` /
@@ -104,7 +104,7 @@ export const loadoutStore = createStore({
   ops: readStoredOps(), // 0.2.2 潜能 / 练度: { [charId]: { potential?, cultivate? } } ({} = every operator 潜能 6, 精英2 Lv.60)
   notOwned: readStoredOwnership(), // 干员持有: base chess ids marked 未持有 (sorted; [] = every operator owned)
   diy: readStoredDiy(), // 自选编队: { [slotBaseId]: { charId, skillIndex?, uniEquipId? } } ({} = every slot empty)
-  hexBans: readStoredHexBans(), // 协议源石禁用: ≤ 3 card ids this player's own draws skip ([] = none)
+  hexBans: readStoredHexBans(), // 协议源石禁用: ≤ 6 card ids this player's own draws skip ([] = none)
   diyKitted: null,     // the operators a DIY slot may field (welcome.diyKitted; null before the first welcome)
   open: false,
   from: null,          // 'lobby' | 'room' | 'briefing'

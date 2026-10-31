@@ -66,10 +66,14 @@ export class BattleStatus {
 
   removeBuff(unit, keyOrBuff) {
     if (!unit) return 0;
+    // Official 0.3.2 §37.5 (round49): snapshot the matches first and re-locate each one by identity. Walking the live
+    // array backwards by index broke as soon as an onRemove callback removed another buff: the index no longer pointed
+    // at the entry it did a moment ago, so the loop read undefined (crash) or skipped a survivor.
+    const matches = unit.buffs.filter((b) => b === keyOrBuff || b.key === keyOrBuff).reverse();
     let n = 0;
-    for (let i = unit.buffs.length - 1; i >= 0; i--) {
-      const b = unit.buffs[i];
-      if (b === keyOrBuff || b.key === keyOrBuff) { this._removeBuffAt(unit, i, true); n++; }
+    for (const b of matches) {
+      const i = unit.buffs.indexOf(b);
+      if (i >= 0) { this._removeBuffAt(unit, i, true); n++; }
     }
     return n;
   }

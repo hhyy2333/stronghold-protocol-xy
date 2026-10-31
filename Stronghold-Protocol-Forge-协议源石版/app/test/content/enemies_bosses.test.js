@@ -11,6 +11,7 @@ import { makeBattle, chessRec, checkInvariants } from '../helpers/battleHarness.
 import * as enemiesMod from '../../server/sim/content/enemies.js';
 import * as bossesMod from '../../server/sim/content/bosses.js';
 import { spawnYanyou } from '../../server/sim/content/tokens.js';
+import { HIT_COUNT_MAX_HP } from '../../server/sim/content/enemies/helpers.js';
 import { attackWindup } from '../../server/sim/ai.js';
 
 const E = JSON.parse(fs.readFileSync(new URL('../../data/enemies.json', import.meta.url), 'utf8'));
@@ -366,6 +367,22 @@ test('茶器 (hitCountArts): physical instances remove nothing, true / elemental
   checkInvariants(h.b);
 });
 
+test('次数怪: the hit count (maxHp) is capped at 150, however the HP multipliers scale it', () => {
+  // 业主 2026-10-28「先限制次数怪的最大生命值为150」: a 器物's maxHp IS the number of hits it takes, so the round /
+  // 联防 HP multipliers (`mods.hpMul`) used to turn a 30-hit mirror into a 30000-hit wall.
+  const h = arena();
+  h.step();
+  const small = put(h, 'enemy_1196_msfyin', [10, 6]);                       // 木制瑞印: 2 hits by data
+  assert.equal(small.s.maxHp, 2, 'premise: no multiplier ⇒ the data hit count');
+  const scaled = put(h, 'enemy_1200_msfjin', [10, 7], { mods: { hpMul: 1000 } });   // 青铜镜: 30 × 1000
+  assert.equal(scaled.s.maxHp, HIT_COUNT_MAX_HP, 'capped at 150 hits');
+  assert.equal(scaled.hp, HIT_COUNT_MAX_HP, 'full at the capped count');
+  assert.ok(scaled.findBuff('ab:hitCount'), 'still a 频次 unit (the engine removes 1 per instance)');
+  const other = put(h, 'enemy_1204_msfhu', [10, 8], { mods: { hpMul: 1000 } });     // 茶器: hitCountArts, 30 × 1000
+  assert.equal(other.s.maxHp, HIT_COUNT_MAX_HP, 'the arts-only variant is capped too');
+  checkInvariants(h.b);
+});
+
 const DEATH_SPAWN = { enemy_1195_sfyin: 2, enemy_1195_sfyin_2: 2, enemy_1197_sfshu: 3, enemy_1197_sfshu_2: 3, enemy_1199_sfjin: 1, enemy_1209_sfden: 1, enemy_1209_sfden_2: 1 };
 for (const [key, n] of Object.entries(DEATH_SPAWN)) {
   test(`${nm(key)}: when knocked out spawns ${n}× ${E[E[key].talents.bbStr['DeadSpawn.enemy_key']].name} that continue its route`, () => {
@@ -635,10 +652,15 @@ test(`${nm('enemy_1275_dwlock_2')}: apoptosis on hit; DeathEye channels arts dam
   h.step();
   const e = put(h, 'enemy_1275_dwlock_2', [9, 7]);
   const s = skb('enemy_1275_dwlock_2', 'DeathEye');
-  h.run(s.initCooldown + s.bb.hit_duration + 1);
-  assert.ok(h.eventsOf('fx').some((f) => f[1] === 'beam' && f[4].kind === 'deathEye'));
+  // 死亡之眼 is an attack-class skill (upstream 0.3.2 §37.19): its cooldown running out is not enough, it takes the next normal
+  // attack's turn (test/sim/attack-turn-dwlock.test.js) — so the channel starts up to one attack interval + a wind-up late
+  const beam = () => h.eventsOf('fx').some((f) => f[1] === 'beam' && f[4].kind === 'deathEye');
+  h.run(s.initCooldown + 0.5);
+  assert.ok(!beam(), 'ready, but nothing before an attack turn');
+  assert.ok(h.runUntil(beam, 30), 'the attack turn brings the channel');
   const w2 = h.unit('t_wall2');
-  assert.ok(w2.elem.apoptosis >= e.s.atk * s.bb.ep_damage_ratio - 1e-6 || w2.findBuff('apoptosisBurst'));
+  assert.ok(h.runUntil(() => w2.elem.apoptosis >= e.s.atk * s.bb.ep_damage_ratio - 1e-6 || w2.findBuff('apoptosisBurst'), 30),
+    'the channel bursts apoptosis ×2 on the group');
 });
 
 for (const key of ['enemy_1439_dslntf', 'enemy_1439_dslntf_2']) {
@@ -1622,7 +1644,7 @@ test(`${nm('enemy_2010_csdcr')}: neural on hit; after ${tb('enemy_2010_csdcr', '
   assert.equal(o.s.aspd, 100 + tb('enemy_2010_csdcr', 'AttackSpeedUp.attack_speed'));
 });
 
-test(`${nm('enemy_1364_spnaxe_2')}: heals and stacks ATK when a unit within ${tb('enemy_1364_spnaxe_2', 'Attack.range_radius')} tile is knocked out; leaves 2 inert 血珀 in place`, () => {
+test(`${nm('enemy_1364_spnaxe_2')}: heals and stacks ATK when a unit within ${tb('enemy_1364_spnaxe_2', 'Attack.range_radius')} tile is knocked out; leaves 2 uncounted 血珀 in place, which bleed out (no altar)`, () => {
   const h = arena();
   h.step();
   const e = put(h, 'enemy_1364_spnaxe_2', [10, 7]);
@@ -1641,8 +1663,15 @@ test(`${nm('enemy_1364_spnaxe_2')}: heals and stacks ATK when a unit within ${tb
   const seeds = alive(h, 'enemy_1367_dseed');
   assert.equal(seeds.length, tb('enemy_1364_spnaxe_2', 'Summon.cnt'));
   assert.equal(h.b.total, total, '血珀 are not counted (no altar in this mode)');
-  h.run(20);
+  const killed0 = h.b.killed;
+  h.run(5);
   for (const d of seeds) { assert.ok(d.alive); assert.ok(Math.hypot(d.x - x, d.y - y) < 0.5, 'stays where it fell'); }
+  // no 唤血祭坛 / 沥血王座 on this mode's field ⇒ they lose Passive.hp_ratio of their max HP every second and bleed out
+  // (upstream 0.3.2 §37.107 / #720; test/sim/enemies-special.test.js holds the numbers)
+  h.run(6);
+  assert.deepEqual(alive(h, 'enemy_1367_dseed'), [], 'bled out');
+  assert.equal(h.b.total, total, 'still not counted');
+  assert.equal(h.b.killed, killed0, 'a 血珀 bled dry is no knock-out');
   checkInvariants(h.b);
 });
 
@@ -1958,8 +1987,10 @@ test(`${nm('enemy_1513_dekght')}: 蓄力攻击 — ${skb('enemy_1513_dekght', 'C
   h.step();
   const e = put(h, 'enemy_1513_dekght', [10, 5]);
   const s = skb('enemy_1513_dekght', 'ChargeAttack');
+  const charged = () => h.eventsOf('fx').some((f) => f[1] === 'telegraph' && f[4].kind === 'chargeAttack');
   h.run(s.initCooldown + 0.1);
-  assert.ok(h.eventsOf('fx').some((f) => f[1] === 'telegraph' && f[4].kind === 'chargeAttack'));
+  assert.ok(!charged(), 'ready, but the 蓄力攻击 waits for an attack turn (upstream 0.3.2 §37.19)');
+  assert.ok(h.runUntil(charged, s.cooldown + s.bb.duration), 'the next attack turn casts it');
   const n0 = e.stats.attacks;
   h.run(s.bb.duration - 0.2);
   assert.equal(e.stats.attacks, n0, 'disarmed while charging');
@@ -2187,13 +2218,14 @@ test(`${nm('enemy_1517_xi')}: 纬地经天 cross on the nearest unit; 破桎而�
   const h = arena({ units: [{ chessId: 't_wall', row: 10, col: 6 }, { chessId: 't_wall2', row: 12, col: 6 }, { chessId: 't_wall3', row: 9, col: 3 }], captureNoisy: true, hooks: ['damaged'] });
   h.step();
   const e = put(h, 'enemy_1517_xi', [10, 8]);
-  e.profile.noAttack = true;
+  e.profile.atkScale = 0;   // it still swings (attack-class skills need that turn) but its strike deals no damage, so the
+                            // assertions below see the skills' damage only (was `noAttack = true`: no turn at all)
   const cr = skb('enemy_1517_xi', 'CrossAttack'), sb = skb('enemy_1517_xi', 'ShieldBurst');
-  h.run(cr.initCooldown + 0.1);
+  h.run(cr.initCooldown + 2 * e.s.interval + 0.2);   // + two attack turns: 纬地经天 is attack-class (it shares turns with 破桎而出)
   approx(h.unit('t_wall').stats.taken, e.s.atk * cr.bb.atk_scale, 1e-6, 'nearest');
   approx(h.unit('t_wall2').stats.taken, e.s.atk * cr.bb.atk_scale, 1e-6, 'same column, 2 rows away: inside the cross');
   assert.equal(h.unit('t_wall3').stats.taken, 0, 'outside the cross');
-  h.run(sb.initCooldown - h.b.time + 0.1);
+  h.run(sb.initCooldown - h.b.time + e.s.interval + 0.2);   // + one attack turn: 破桎而出 is attack-class
   approx(e.s.shield, sb.bb.dynamic);
   const w0 = h.unit('t_wall').stats.taken;
   h.run(sb.bb.duration);
@@ -2203,8 +2235,8 @@ test(`${nm('enemy_1517_xi')}: 纬地经天 cross on the nearest unit; 破桎而�
   const h3 = arena({ units: [{ chessId: 't_wall', row: 10, col: 6 }] });
   h3.step();
   const x3 = put(h3, 'enemy_1517_xi', [10, 8]);
-  x3.profile.noAttack = true;
-  h3.run(sb.initCooldown + 0.1);
+  x3.profile.atkScale = 0;   // same: a swing with no damage (the barrier needs an attack's turn)
+  h3.run(sb.initCooldown + x3.s.interval + 0.2);
   h3.b.dealDamage(null, x3, { amount: 1e5, type: 'true' });
   h3.run(sb.bb.duration);
   assert.ok(!h3.eventsOf('fx').some((f) => f[1] === 'explode' && f[4].kind === 'breakFree'));
@@ -2406,7 +2438,7 @@ test('leader summons take the round\'s enemy effects (flags.enemyScale): HP — 
     const h = bossArena({ flags: { enemyScale }, units: [{ chessId: 't_wall', row: 10, col: 6 }], setup: setTpl(tpl) });
     h.step();
     const boss = put(h, key, [3, 10], { tag: 'boss', mods: { atkMul: 1.5, speedMul: 1.15 } });
-    boss.profile.noAttack = true;
+    boss.profile.atkScale = 0;   // it still swings (灭顶之灾 takes the attack's turn) but its strike deals no damage
     assert.equal(boss.s.maxHp, h.b.sharedBoss.maxHp, `${key}: the leader's HP is the pool`);
     assert.ok(h.runUntil(() => alive(h, 'enemy_1005_yokai').length > 0, 90), `${key}: 死亡集群`);
     const drone = alive(h, 'enemy_1005_yokai')[0];
@@ -2427,7 +2459,7 @@ test('leader summons take the round\'s enemy effects (flags.enemyScale): HP — 
   // without the flag (tools, tests): the data's numbers
   const q = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 6 }], setup: setTpl('act1autochess_h07_01') });
   q.step();
-  put(q, 'enemy_9013_acstmk', [3, 10], { tag: 'boss' }).profile.noAttack = true;
+  put(q, 'enemy_9013_acstmk', [3, 10], { tag: 'boss' }).profile.atkScale = 0;   // a swing with no damage (the shell needs the turn)
   assert.ok(q.runUntil(() => alive(q, 'enemy_9016_acstmr').length > 0, 90));
   assert.equal(alive(q, 'enemy_9016_acstmr')[0].s.maxHp, E.enemy_9016_acstmr.stats.maxHp);
 });
@@ -2444,7 +2476,7 @@ test('假想敌：胄: arts ray on a random target in range; <20 % pool: damage 
   approx(e.s.physTakenMul, tb('enemy_9013_acstmk', '1.damage_scale'));
   approx(e.s.artsTakenMul, tb('enemy_9013_acstmk', '1.damage_scale'));
   assert.equal(e.s.trueTakenMul, 1);
-  h.run(skb('enemy_9013_acstmk', '1').initCooldown - 9);
+  h.run(skb('enemy_9013_acstmk', '1').initCooldown - 9 + e.s.interval);   // + one attack turn: 灭顶之灾 is attack-class
   assert.equal(h.eventsOf('fx').filter((f) => f[1] === 'shell').length, 1);
   assert.equal(alive(h, 'enemy_9016_acstmr').length, 1);
 });
@@ -2454,8 +2486,8 @@ test('假想敌：胄 + 刺胄之弹: the shell flies to the highest-ATK operato
   const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 6 }, { chessId: 't_wall2', row: 10, col: 7 }, { chessId: 't_wall3', row: 12, col: 3 }], chess: { t_wall: hi }, hooks: ['statusApplied'] });
   h.step();
   const e = put(h, 'enemy_9013_acstmk', [3, 10], { tag: 'boss' });
-  e.profile.noAttack = true;
-  h.run(skb('enemy_9013_acstmk', '1').initCooldown + 0.1);
+  e.profile.atkScale = 0;   // a swing with no damage (the shell takes the attack's turn)
+  h.run(skb('enemy_9013_acstmk', '1').initCooldown + e.s.interval + 0.1);
   const shell = alive(h, 'enemy_9016_acstmr')[0];
   assert.ok(shell, 'shell launched');
   assert.equal(shell.s.maxHp, E.enemy_9016_acstmr.stats.maxHp);
@@ -2468,7 +2500,7 @@ test('假想敌：胄 + 刺胄之弹: the shell flies to the highest-ATK operato
   assert.equal(statuses(h, h.unit('t_wall3').id, 'stun').length, 0);
   assert.ok(target.findBuff('boss:helmShellDot'));
   // a second shell is shot down: 8 hits, no explosion
-  h.run(skb('enemy_9013_acstmk', '1').cooldown - (h.b.time - skb('enemy_9013_acstmk', '1').initCooldown) + 0.2);
+  h.run(skb('enemy_9013_acstmk', '1').cooldown - (h.b.time - skb('enemy_9013_acstmk', '1').initCooldown) + e.s.interval + 0.2);   // + one attack turn
   const s2 = alive(h, 'enemy_9016_acstmr')[0];
   assert.ok(s2);
   for (let i = 0; i < E.enemy_9016_acstmr.stats.maxHp; i++) h.b.dealDamage(h.unit('t_wall3'), s2, { amount: 1, type: 'phys' });
@@ -2583,8 +2615,8 @@ for (const key of ['enemy_9013_acstmk', 'enemy_9013_acstmk_2']) {
     const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 2 }, { chessId: 't_wall2', row: 12, col: 6 }], chess: { t_wall: hi } });
     h.step();
     const e = put(h, key, [3, 12], { tag: 'boss' });
-    e.profile.noAttack = true;
-    h.run(skb(key, '1').initCooldown + 0.1);
+    e.profile.atkScale = 0;   // a swing with no damage (the shell takes the attack's turn)
+    h.run(skb(key, '1').initCooldown + e.s.interval + 0.1);
     const f = h.eventsOf('fx').find((x) => x[1] === 'shell');
     assert.ok(f);
     assert.equal(f[4].tx, h.unit('t_wall2').tileC, 'the high-ATK operator is out of range (col 2 vs 12, range 8)');
@@ -2844,7 +2876,7 @@ test('假想敌：管: strikes dark 余音 (their pulse hurts operators); 裂管
   h.run(e.s.interval + 0.2);
   assert.ok(h.eventsOf('fx').some((f) => f[1] === 'beam' && f[4].kind === 'acdumlStrike'));
   assert.ok(h.unit('t_wall').stats.taken > 0 && h.unit('t_wall').elem.apoptosis > 0);
-  h.run(skb('enemy_9021_acduml', '1').initCooldown - h.b.time + 1.2);
+  h.run(skb('enemy_9021_acduml', '1').initCooldown - h.b.time + e.s.interval + 0.5);   // + one attack turn: 裂管之奏 is attack-class
   const strikes = h.eventsOf('fx').filter((f) => f[1] === 'explode' && f[4].kind === 'pipeStrike').length;
   assert.ok(strikes >= 3 && strikes % 3 === 0, `three strikes per dark echo (${strikes})`);
   assert.ok(alive(h, 'enemy_9023_acdums').length >= 2, 'summoned');
@@ -2858,7 +2890,7 @@ test('假想敌：管 (隐秘核心) + 假想敌：弦: 弦 is invulnerable, 断
   assert.ok(str.s.flags.invulnerable);
   const echo = put(h, 'enemy_9023_acdums', [3, 6], { tag: 'part' });
   bossesMod.setEchoForm(h.b, echo, 'gold');
-  h.run(skb('enemy_9022_acdumm', '1').initCooldown + 0.1);
+  h.run(skb('enemy_9022_acdumm', '1').initCooldown + str.s.interval + 0.5);   // + one attack turn: 断弦之奏 is attack-class
   assert.equal(echo.mem.ab.form, 'dark');
   assert.ok(h.unit('t_wall').stats.taken > 0);
   h.b.kill(pipe, null);
@@ -2933,11 +2965,11 @@ test('盐风主教昆图斯: 2 highest-DEF targets + neural; 崩坍 / 大潮 / �
   assert.ok(h.unit('t_wall').stats.taken > 0 && h.unit('t_wall2').stats.taken > 0);
   assert.equal(h.unit('t_wall3').stats.taken, 0);
   assert.ok(h.unit('t_wall').elem.neural > 0);
-  h.run(skb('enemy_1521_dslily', 'Rockfall').initCooldown - h.b.time + ROCK);
+  h.run(skb('enemy_1521_dslily', 'Rockfall').initCooldown - h.b.time + e.s.interval + ROCK);   // + one attack turn: 崩坍 is attack-class
   assert.ok(h.eventsOf('fx').some((f) => f[1] === 'rockfall'));
-  h.run(skb('enemy_1521_dslily', 'Tidewater').initCooldown - h.b.time + 0.2);
+  h.run(skb('enemy_1521_dslily', 'Tidewater').initCooldown - h.b.time + e.s.interval + 0.2);   // + one attack turn
   assert.ok(h.eventsOf('fx').some((f) => f[1] === 'tide') && h.unit('t_wall3').stats.taken > 0, 'global tide');
-  h.run(skb('enemy_1521_dslily', 'SummonTentac').initCooldown - h.b.time + 0.2);
+  h.run(skb('enemy_1521_dslily', 'SummonTentac').initCooldown - h.b.time + 3 * e.s.interval + 1);   // + attack turns (both skills share the turn)
   assert.ok(h.eventsOf('fx').some((f) => f[1] === 'tentacle'));
   const atk0 = e.s.atk;
   h.b.sharedBoss.hp = h.b.sharedBoss.maxHp * 0.6;
@@ -2946,7 +2978,9 @@ test('盐风主教昆图斯: 2 highest-DEF targets + neural; 崩坍 / 大潮 / �
   h.b.sharedBoss.hp = h.b.sharedBoss.maxHp * 0.3;
   h.run(0.5);
   approx(e.s.atk, atk0 * (1 + tb('enemy_1521_dslily', 'atkup2.atk')));
-  h.run(6);
+  h.run(20);   // 物种爆发 is attack-class and ties with the third form's 大潮 on priority: it needs a turn where it
+               // wins the official random tie-break (「优先级相同则随机触发其中之一」), so wait for several turns
+  assert.equal(h.hooksOf('lpLoss').length, 1, 'exactly one 物种爆发 LP loss');
   assert.equal(h.hooksOf('lpLoss')[0].amount, 100);
   assert.equal(h.result().lpLoss ?? h.b.result().lpLoss ?? 100, 100);
 });
@@ -2990,9 +3024,9 @@ test('阿利斯泰尔: 王权号令 strikes a plus shape (ATK×2) and drops equi
   const h = bossArena({ units: [{ chessId: 't_wall', row: 10, col: 9 }, { chessId: 't_wall2', row: 11, col: 9 }], hooks: ['lpLoss'], setup(b) { b.enemyOverrides = ov; } });
   h.step();
   const e = put(h, 'enemy_9032_aclionk', [3, 11], { tag: 'boss' });
-  e.profile.noAttack = true;
+  e.profile.atkScale = 0;   // it still swings (王权号令 / 斥退 take the attack's turn) but its strike deals no damage
   const cost = ov.enemy_9032_aclionk.skills.find((s) => s.prefabKey === 'equip').spCost;
-  h.run(cost + 0.1);
+  h.run(cost + e.s.interval + 0.3);   // + one attack turn: 王权号令 is attack-class (it waits for a ready attack)
   assert.ok(h.eventsOf('fx').some((f) => f[1] === 'telegraph' && f[4].kind === 'royalDecree'));
   approx(h.unit('t_wall').stats.taken + h.unit('t_wall2').stats.taken, 2 * e.s.atk * 2);
   const eq = h.b.units.filter((u) => /enemy_100(28|29|30)/.test(u.defId));
@@ -3003,7 +3037,7 @@ test('阿利斯泰尔: 王权号令 strikes a plus shape (ATK×2) and drops equi
   h.b.sharedBoss.hp = h.b.sharedBoss.maxHp * 0.4;
   h.step(2);
   assert.equal(e.s.def, Math.round(E.enemy_9032_aclionk.stats.def * (1 + tb('enemy_9032_aclionk', 'advance.def'))));
-  h.run(30 - h.b.time + 0.2);
+  h.run(30 - h.b.time + e.s.interval + 0.2);   // + one attack turn: 斥退 is attack-class
   assert.equal(h.hooksOf('lpLoss')[0].amount, 100);
 });
 
@@ -3059,7 +3093,7 @@ test('“萨米的意志”: 冰凌 hits a whole column; 自然涌动 stun + art
   const col = [h.unit('t_wall'), h.unit('t_wall2'), h.unit('t_wall3')].filter((u) => u.stats.taken > 0);
   assert.ok(col.length >= 1 && col.every((u) => u.tileC === col[0].tileC));
   if (col[0].tileC === 6) assert.equal(col.length, 2, 'both units of column 6');
-  h.run(skb('enemy_9033_acdeer', 'Lasso').initCooldown - h.b.time + 0.1);
+  h.run(skb('enemy_9033_acdeer', 'Lasso').initCooldown - h.b.time + e.s.interval + 0.5);   // + one attack turn: 自然涌动 is attack-class
   const st = h.hooksOf('statusApplied').filter((c) => c.status === 'stun');
   assert.equal(st.length, 1);
   approx(st[0].duration, skb('enemy_9033_acdeer', 'Lasso').bb.projectile_life_time);
@@ -3067,7 +3101,7 @@ test('“萨米的意志”: 冰凌 hits a whole column; 自然涌动 stun + art
   h.run(0.5);
   approx(e.s.physTakenMul, 1 - tb('enemy_9033_acdeer', 'Madness.damage_resistance'));
   approx(e.s.artsTakenMul, 1 - tb('enemy_9033_acdeer', 'Madness.damage_resistance'));
-  h.run(50 - h.b.time + 0.2);
+  h.run(50 - h.b.time + e.s.interval + 0.5);   // + one attack turn: 物种爆发 is attack-class
   assert.equal(h.hooksOf('lpLoss')[0].amount, Math.abs(skb('enemy_9033_acdeer', 'Doom').bb.value));
 });
 
@@ -3513,4 +3547,239 @@ test('梅菲斯特：天赋令宿主的自然回复速度翻倍（宿主士兵 8
   assert.ok(rHeavy > 300 && rHeavy < 500, `宿主重装士兵回血约 400/s，实际 ${rHeavy.toFixed(0)}`);
 });
 
+// ---------------------------------------------------------------------------------------------------------------
+// boss_13 伤心的大锁 (enemy_2018_csdoll) / boss_14 曼弗雷德 (enemy_1528_manfri) — the hand-added leaders
+// (docs/research/15-extra-bosses.json). data/ carries neither row until tools/build-data.mjs runs, so every battle below
+// declares the row build-data emits; the data assertions skip while the row is missing.
 
+const DOLL = 'enemy_2018_csdoll';
+const MANFRI = 'enemy_1528_manfri';
+/** The enemy row docs/research/15-extra-bosses.json makes tools/build-data.mjs emit (values from enemy_database). */
+const DOLL_REC = {
+  key: DOLL, name: '伤心的大锁', rank: 'BOSS', applyWay: 'RANGED',
+  stats: {
+    maxHp: 300000, atk: 800, def: 700, res: 60, moveSpeed: 0.1, bat: 4, aspd: 100, rangeRadius: 99, rawRangeRadius: 99,
+    blockCnt: 1, massLevel: 10, lpr: 1, hpRecoveryPerSec: 0, dmgType: 'phys', motion: 'WALK',
+    immunities: { stun: true, silence: true, sleep: true, frozen: true, levitate: true },
+    otherImmunities: ['disarmedCombat', 'feared', 'attract'],
+  },
+  abilities: [], talents: { bb: {
+    'summon.csdoll_summon[1].duration': 90, 'summon.csdoll_summon[1].interval': 24,
+    'summon.csdoll_summon[2].duration': 180, 'summon.csdoll_summon[2].interval': 20,
+    'summon.csdoll_summon[3].interval': 16,
+    'hprecovery.hp_recovery_per_sec_by_max_hp_ratio': 0.0025, 'aoetrigger.stack_cnt': 20,
+    'aoe.atk_scale': 1.5, 'aoetrigger.warning_stack_cnt': 10, 'movespeedup.move_speed': 2,
+  } },
+  skills: [
+    { prefabKey: 'shield', cooldown: 45, initCooldown: 60, spCost: 0, bb: { hp_ratio: 0.05, interval: 20 }, bbStr: { branch_id: 'csdoll_rush' } },
+    { prefabKey: 'Doom', cooldown: 480, initCooldown: 480, spCost: 0, bb: { value: -30, atk_scale: 2 }, bbStr: {} },
+  ],
+};
+const MANFRI_REC = {
+  key: MANFRI, name: '曼弗雷德', rank: 'BOSS', applyWay: 'RANGED',
+  stats: {
+    maxHp: 40000, atk: 1000, def: 600, res: 40, moveSpeed: 0.5, bat: 5, aspd: 100, rangeRadius: 2, rawRangeRadius: 2,
+    blockCnt: 1, massLevel: 8, lpr: 2, hpRecoveryPerSec: 0, dmgType: 'arts', motion: 'WALK',
+    immunities: { stun: false, silence: true, sleep: true, frozen: false, levitate: false }, otherImmunities: [],
+  },
+  abilities: [], talents: { bb: {
+    'Funnel_s1_charge.sp': 3, 'Funnel_common.attack@attack_speed': 60, 'Funnel_common.attack@max_stack_cnt': 5,
+    'Funnel_common.attack@duration': 6, 'Funnel_s1.attack@atk_scale': 0.5, 'Funnel_s2.atk_scale': 0.5,
+    'Shield.disable_duration': 30, 'Shield.prob': 0.8, 'Shield[disable].stun': 8,
+    'Reborn.duration': 20, 'Reborn.invincible': 5, 'Reborn.interval': 0.8, 'Funnel_rage_charge.sp': 6,
+  } },
+  skills: [
+    { prefabKey: 'Pose', cooldown: 9999, initCooldown: 0, spCost: 0, bb: {}, bbStr: {} },
+    { prefabKey: 'Funnel_rage', cooldown: 9999, initCooldown: 9999, spCost: 0, bb: { atk_scale: 0.3 }, bbStr: {} },
+  ],
+};
+/** A boss arena whose data source carries the two hand-added rows (the generated data has them only after build-data).
+ * The chess defs are arena()'s own (`defs.chess`), so both halves are passed explicitly. */
+const newBossArena = (o = {}) => bossArena({
+  ...o,
+  defs: {
+    chess: { ...CHESS, ...((o.defs && o.defs.chess) || {}) },
+    enemies: { [DOLL]: DOLL_REC, [MANFRI]: MANFRI_REC, ...((o.defs && o.defs.enemies) || {}) },
+  },
+});
+
+test('boss_13 / boss_14 数据：两位手加领袖在 bosses[] 里，kit 已注册且不重复占用 KITS / STATS_ONLY', () => {
+  const R = JSON.parse(fs.readFileSync(new URL('../../docs/research/15-extra-bosses.json', import.meta.url), 'utf8'));
+  const byId = new Map(R.bosses.map((b) => [b.bossId, b]));
+  for (const [bossId, enemyId, hp] of [['boss_13', DOLL, 300000], ['boss_14', MANFRI, 40000]]) {
+    const decl = byId.get(bossId);
+    assert.ok(decl, `${bossId} declared in research 15`);
+    assert.equal(decl.enemyId, enemyId);
+    assert.equal(decl.weight, 4);
+    assert.deepEqual(decl.bloodPoint, { FUNNY: 277500, NORMAL: 787500, HARD: 2000000, ABYSS: 4000000 });
+    assert.equal(decl.stats.maxHp, hp, `${bossId}: 数据行原值`);
+    assert.ok(decl.waveBase.multi && decl.waveBase.solo, `${bossId}: 多人与单人波次都声明了`);
+    assert.ok(W[decl.waveBase.multi] && W[decl.waveBase.solo], `${bossId}: waveBase 是真实波次`);
+    assert.ok(BOSS_KITS[enemyId], `${bossId}: kit registered`);
+    assert.ok(!KITS[enemyId], `${bossId}: not in KITS as well`);
+    assert.ok(!STATS_ONLY[enemyId], `${bossId}: not stats-only`);
+  }
+  // 大锁 on “萨米的意志”'s field (the 巨型自缚领袖 wave), 曼弗雷德 on 卢西恩's (with the 2-player mirror branch)
+  assert.equal(byId.get('boss_13').waveBase.multi, 'act1autochess_h07_07');
+  assert.equal(byId.get('boss_14').waveBase.multi, 'act2autochess_h07_05');
+  assert.ok(W.act2autochess_h07_05.branches.boss_battle_multi_player, 'boss_14 的底座带双人镜像分支');
+  if (!E[DOLL]) return;   // build-data has not emitted the rows yet: the code assertions above stand alone
+  assert.equal(E[DOLL].rank, 'BOSS');
+  assert.deepEqual([E[DOLL].stats.maxHp, E[DOLL].stats.atk, E[DOLL].stats.def, E[DOLL].stats.res], [300000, 800, 700, 60]);
+  assert.equal(E[MANFRI].rank, 'BOSS');
+  assert.deepEqual([E[MANFRI].stats.maxHp, E[MANFRI].stats.atk, E[MANFRI].stats.def, E[MANFRI].stats.res], [40000, 1000, 600, 40]);
+});
+
+test('大锁：自缚 + 无法被阻挡，全场普攻同时打 2 个目标，屏障期间停手，【终结】扣 30 目标生命并自身死亡', () => {
+  const h = newBossArena({ units: [{ chessId: 't_wall', row: 10, col: 8 }, { chessId: 't_wall2', row: 10, col: 11 }] });
+  h.step();
+  const boss = put(h, DOLL, [3, 10], { tag: 'boss' });
+  // 巨型单位 + 自缚 + 无法被阻挡 (PRTS 天赋): the same flags SELF_BOUND installs for the other 巨型领袖
+  assert.ok(boss.s.flags.noMove && boss.s.flags.selfBound && boss.s.flags.unblockable, '自缚 + 无法被阻挡');
+  assert.ok(!boss.s.flags.bind, '自缚 is not recognised as 束缚');
+  // 「攻击范围为全场」 + 「同时攻击2个目标」: two atk events per swing, on two different targets
+  assert.ok(h.runUntil(() => boss.stats.attacks >= 2, 25), '普通攻击真的发生了');
+  const atk = h.eventsOf('atk').filter((e) => e[1] === boss.id);
+  assert.ok(atk.length >= 4, `两次挥击 4 个 atk 事件（实际 ${atk.length}）`);
+  assert.equal(new Set(atk.slice(0, 2).map((e) => e[2])).size, 2, '同一次挥击打两个不同的目标');
+  // 【保护屏障】 cd 45 / icd 60: the shield is 300000 × 15 %, and no normal attack while it holds
+  assert.ok(h.runUntil(() => boss.findBuff('boss:dollBarrier'), 70), '【保护屏障】升起来了');
+  approx(boss.findBuff('boss:dollBarrier').shield, 45000, 1e-9, '屏障 = 最大生命 15 %');
+  const n0 = boss.stats.attacks;
+  h.run(4);
+  assert.equal(boss.stats.attacks, n0, '屏障期间不进行普通攻击');
+  // 「全场的其他敌方单位（无视其可选性）移动速度最终提升至200%」: the summons on the field at that moment
+  const escorts = h.enemies().filter((e) => e !== boss);
+  assert.ok(escorts.length >= 2, `此时场上已有召唤物（${escorts.length}）`);
+  for (const e of escorts) {
+    const rush = e.findBuff('boss:dollRush');
+    assert.ok(rush, `${e.defId}: 屏障期间获得移速加成`);
+    // "移动速度最终提升至200%": a ×2 multiplier on whatever speed the unit has (the summons here are pinned for the test,
+    // so the mod itself is asserted rather than the resulting number)
+    assert.equal(rush.mods.moveMul, 2, `${e.defId}: 移速 ×2`);
+  }
+  // 「每20s（包括第0s时）召唤一次额外敌人」: the barrier's own summon lands at once and again 20 s later
+  const at = h.enemies().length;
+  assert.ok(h.runUntil(() => h.enemies().length > at, 21), '屏障期间还有额外召唤');
+  // 【终结】 480 s: 1600 arts on every operator + LP −30, then the leader dies ('lpLoss' is emitted as a battle hook and
+  // as an fx; the harness only records the hooks in ALL_HOOKS, so the fx is read here)
+  h.b.sharedBoss.hp = h.b.sharedBoss.maxHp;
+  const walls = h.allies();
+  const hp0 = walls.map((u) => u.hp);
+  // an fx event row is ['fx', kind, x, y, extra]; eventsOf() drains the buffer, so the collection runs while stepping
+  const lp = [];
+  const stepUntil = (pred, secs) => {
+    const limit = h.b.time + secs;
+    while (h.b.time < limit && !h.b.finished) {
+      h.run(0.25);
+      for (const e of h.eventsOf('fx')) if (e[1] === 'lpLoss') lp.push(e);
+      if (pred()) return true;
+    }
+    return pred();
+  };
+  assert.ok(stepUntil(() => lp.length > 0, 520), '【终结】触发了');
+  assert.equal(lp[0][4].value, 30, '扣除 30 点关卡生命');
+  assert.ok(!boss.alive, '技能结束后自身立刻死亡');
+  assert.ok(walls.some((u, i) => u.hp < hp0[i]), '全场 200 % 法术打到了干员');
+});
+
+test('大锁：【自愈】每秒 0.25 % 最大生命回到共享血池，受击每 20 次反击一次 100 % 法术（第 10 次预警）', () => {
+  const h = newBossArena({ units: [{ chessId: 't_wall', row: 10, col: 8 }] });
+  h.step();
+  const boss = put(h, DOLL, [3, 10], { tag: 'boss' });
+  h.run(1);
+  // 【自愈】: a pooled leader cannot be healed by the engine, so the kit writes the pool (300000 × 0.25 % = 750/s)
+  h.b.sharedBoss.hp = 500000;
+  const p0 = h.b.sharedBoss.hp;
+  h.run(10);
+  const regen = (h.b.sharedBoss.hp - p0) / 10;
+  assert.ok(regen > 600 && regen < 900, `每秒约 750 点（实际 ${regen.toFixed(0)}/s）`);
+  assert.ok(h.b.sharedBoss.hp <= h.b.sharedBoss.maxHp, '不超过血池上限');
+  // 受击反击: the 10th hit is the warning, the 20th the 100 % arts splash (PRTS 天赋 + aoetrigger.*)
+  h.b.sharedBoss.hp = Math.round(h.b.sharedBoss.maxHp * 0.9);
+  const wall = h.allies()[0];
+  const hp0 = wall.hp;
+  for (let i = 0; i < 10; i++) h.b.dealDamage(null, boss, { amount: 1, type: 'true', canDodge: false });
+  h.run(0.4);
+  assert.equal(hp0 - wall.hp, 0, '第 10 次只有预警，没有伤害');
+  assert.ok(h.eventsOf('fx').some((e) => e[4] && e[4].kind === 'dollCharge'), '预警特效');
+  for (let i = 0; i < 10; i++) h.b.dealDamage(null, boss, { amount: 1, type: 'true', canDodge: false });
+  h.run(0.4);
+  assert.equal(hp0 - wall.hp, 800, '第 20 次：攻击力 100 % 的法术溅射（800）');
+});
+
+test('大锁：召唤三段（24/48/72 s，110/130/150/170 s，180 s 后每 16 s）', () => {
+  // purely the 【召唤】 ladder: the 保护屏障 has its own extra summon every 20 s (its own test below), so this battle
+  // fields the same row without that skill
+  const { skills, ...noShield } = DOLL_REC;
+  const h = newBossArena({
+    units: [{ chessId: 't_wall', row: 10, col: 8 }],
+    defs: { enemies: { [DOLL]: { ...noShield, skills: skills.filter((s) => s.prefabKey !== 'shield') } } },
+  });
+  h.step();
+  put(h, DOLL, [3, 10], { tag: 'boss' });
+  const t0 = h.b.time;
+  const spawned = [];
+  const orig = h.b.spawnEnemy.bind(h.b);
+  h.b.spawnEnemy = (key, opts) => {
+    const u = orig(key, opts);
+    if (u && u.defId !== DOLL) spawned.push([Math.round(h.b.time - t0), key]);
+    return u;
+  };
+  h.run(230);
+  assert.deepEqual(spawned.map((x) => x[0]), [24, 48, 72, 110, 130, 150, 170, 196, 212, 228], '召唤时刻表');
+  assert.deepEqual([...new Set(spawned.map((x) => x[1]))].sort(), ['enemy_2009_csaudc', 'enemy_2010_csdcr', 'enemy_2011_csppt'], '三类召唤物');
+});
+
+test('曼弗雷德：【军事训练】80 % 闪避、第一形态 50 % 法术、【专注】同目标叠攻速（5 层 / 6 s 无攻击清空）', () => {
+  const h = newBossArena({ units: [{ chessId: 't_wall', row: 10, col: 8 }] });
+  h.step();
+  const boss = put(h, MANFRI, [3, 10], { tag: 'boss' });
+  h.run(1);
+  assert.equal(boss.s.dodgePhys, 0.8, '【军事训练】物理闪避');
+  assert.equal(boss.s.dodgeArts, 0.8, '【军事训练】法术闪避');
+  assert.equal(boss.profile.atkScale, 0.5, '第一形态攻击力 50 %');
+  assert.equal(boss.profile.dmgType, 'arts', '第一形态法术伤害');
+  // 【专注】: +60 ASPD per hit on the same target, 5 stacks at most (the stack lands when the shot does, not when the
+  // swing starts, so the assertion waits for it)
+  assert.ok(h.runUntil(() => (boss.findBuff('boss:manfriFocus')?.data.stacks ?? 0) >= 2, 40), '【专注】叠到 2 层');
+  const focus = boss.findBuff('boss:manfriFocus');
+  assert.equal(boss.s.aspd, 100 + 60 * focus.data.stacks, '每层 +60 攻速');
+  assert.ok(h.runUntil(() => (boss.findBuff('boss:manfriFocus')?.data.stacks ?? 0) >= 5, 90), '叠到 5 层');
+  assert.equal(boss.findBuff('boss:manfriFocus').data.stacks, 5, '最多 5 层');
+  assert.equal(boss.s.aspd, 400, '5 层 = +300 攻速');
+  // 6 s without an attack clears them (the operator leaves the field, so nothing can be hit)
+  const wall = h.allies()[0];
+  wall.deployed = false; wall.alive = false;
+  h.run(7);
+  assert.equal(boss.findBuff('boss:manfriFocus'), null, '6 s 未攻击清空');
+  assert.equal(boss.s.aspd, 100, '攻速复原');
+});
+
+test('曼弗雷德：血池 50 % 进入 20 s 重生（【枯木新枝】每 0.8 s 一个随机目标），结束后第二形态 + 5 s 无敌 + 浮游炮', () => {
+  const h = newBossArena({ units: [{ chessId: 't_wall', row: 10, col: 8 }] });
+  h.step();
+  const boss = put(h, MANFRI, [3, 10], { tag: 'boss' });
+  h.run(1);
+  const wall = h.allies()[0];
+  h.b.sharedBoss.hp = Math.round(h.b.sharedBoss.maxHp * 0.4);
+  h.run(0.6);
+  assert.ok(boss.findBuff('boss:manfriReborn'), '20 s 重生（无敌 / 不可选中）');
+  assert.ok(boss.profile.noAttack, '重生期间不进行普通攻击');
+  // 【枯木新枝】: 1000 × 30 % = 300 arts every 0.8 s on a random operator
+  const hp0 = wall.hp;
+  h.run(8);
+  const dealt = hp0 - wall.hp;
+  assert.ok(dealt > 2400 && dealt < 3600, `重生期 8 s 约 10 × 300（实际 ${dealt.toFixed(0)}）`);
+  assert.ok(h.runUntil(() => boss.findBuff('boss:manfriInvuln'), 30), '重生结束：第二形态 + 5 s 无敌');
+  assert.equal(boss.form, 'form2', '第二形态的模型形态');
+  assert.equal(boss.profile.atkScale, 1, '第二形态攻击力 100 %');
+  assert.equal(boss.profile.dmgType, 'phys', '第二形态物理伤害');
+  h.runUntil(() => !boss.findBuff('boss:manfriInvuln'), 12);
+  // 第二形态: 100 % phys + the 浮游炮's 50 % arts on the same target with every normal attack
+  const hp1 = wall.hp;
+  h.run(25);
+  assert.ok(hp1 - wall.hp > 5000, `第二形态的普攻 + 浮游炮（${(hp1 - wall.hp).toFixed(0)}）`);
+  assert.ok(h.eventsOf('fx').some((e) => e[4] && e[4].kind === 'manfriFunnel'), '浮游炮有画面');
+  assert.ok(boss.findBuff('boss:manfriFocus'), '第二形态也吃【专注】');
+});

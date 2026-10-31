@@ -86,6 +86,19 @@
 .st-ranks__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-empty { margin: .6rem auto; text-align: center; font-size: max(.2rem, 13px); color: var(--text-lo); letter-spacing: .06em; }
 
+/* 空态（业主 2026-10-26 界面完善）：官方统计装饰图 + 一句说明 + 一个导入入口。
+   装饰图来自 data/assets.json 的 statistics/decoration（dash.png）；素材缺失时 <Img> 不渲染，
+   整块自动退化成「文字 + 按钮」居中，不会留空框。 */
+.st-emptybox {
+  display: flex; flex-direction: column; align-items: center; gap: .18rem;
+  margin: .5rem auto .7rem; max-width: 7.2rem; text-align: center;
+}
+.st-emptybox__art {
+  width: min(3.2rem, 62%); height: auto; opacity: .34; pointer-events: none; user-select: none;
+}
+.st-emptybox .st-empty { margin: 0; }
+@media (max-height: 560px) { .st-emptybox { margin: .24rem auto .3rem; gap: .12rem; } .st-emptybox__art { width: min(2.2rem, 46%); } }
+
 .st-sec__h { display: flex; align-items: baseline; gap: .12rem; margin: 0 0 .1rem; font-size: max(.22rem, 14px); font-weight: 800; letter-spacing: .1em; color: var(--text-hi); }
 .st-sub { margin: .22rem 0 .08rem; font-size: max(.17rem, 12px); font-weight: 700; letter-spacing: .08em; color: var(--text-md); }
 

@@ -51,7 +51,16 @@
 //                            RES +45, animates 2; 斥退 at 999 s.
 //   boss_7 “萨米的意志”      冰凌 (its normal attack) hits a whole column; 自然涌动 stun + arts DoT; <50 %: damage taken
 //                            ×(1−0.6), 2 targets; Doom at 600 s (LP −30). Targets via fairOrder (two players alternate).
-// The huge leaders (SELF_BOUND: 胄 ×2, 管 ×2, 昆图斯, 阿利斯泰尔, 萨米的意志 — the 巨型单位 with a data `hitArea`) are
+//   boss_13 伤心的大锁       自缚 + 无法被阻挡 + 静态刚体; 全场 2 targets; 自愈 0.25 %/s (the shared pool regains HP); the
+//                            召唤 ladder (24/48/72 s, 110–170 s, then every 16 s from 196 s); every 20th hit taken ⇒ a
+//                            whole-field 100 % arts splash (warning at the 10th); 【保护屏障】 15 % max-HP all-type barrier
+//                            (no normal attacks meanwhile, +1 summon every 20 s, other enemies at 200 % move speed);
+//                            【终结】 at 480 s: whole-field 200 % arts + LP −30.
+//   boss_14 曼弗雷德         【专注】 attack speed +60 per hit on the same target (5 stacks, reset on a target switch or
+//                            6 s without an attack); 【军事训练】 80 % phys/arts dodge; first form: arts at 50 % ATK;
+//                            knocked out (pool 50 %) ⇒ 20 s 重生 with 【枯木新枝】 (one random operator every 0.8 s, 30 % ATK
+//                            arts); second form: 100 % phys + a 50 % arts 浮游炮 on the same target, 5 s 无敌 on the switch.
+// The huge leaders (SELF_BOUND: 胄 ×2, 管 ×2, 昆图斯, 阿利斯泰尔, 萨米的意志, 伤心的大锁 — the 巨型单位 with a data `hitArea`) are
 // 自缚 + 无法被阻挡 (PRTS 天赋): a persistent noMove + unblockable buff from spawn, so they never walk their route.
 // Every leader (tag boss) ignores 侵蚀 gauge damage ("最终攻势中，敌方领袖不会受到侵蚀损伤").
 // An airborne (起飞) operator is no selection of a ground leader or part (对地规避: canTargetAlly, the damage pipeline,
@@ -76,7 +85,7 @@ import { normalizeRoute } from '../simdata.js';
 import {
   ensureInstalled, abOf, attach, T, elem, hurt, targetsNear, allTargets, byPriority, areaAllies, areaAlliesInTiles, fieldAllies,
   remainingRoute, stayRoute, stepToward, setHits, hitCount, lpLoss, blinkForward, canCast, unbalancedNow, absorbArts, nthOf,
-  castSlot, setForm,
+  castSlot, setForm, spawnChildren, attackTurnSkill,
 } from './enemies.js';
 import { hypot, powi } from '../detmath.js';
 
@@ -144,7 +153,7 @@ const LINK_WIDTH = 0.5;
 const SPRING_BOUNCE_FALLOFF = 0.85, SPRING_BOUNCE_RANGE = 2, SPRING_COMBO_HITS = 10, SPRING_SHARE_TAG = 'springShare';
 /**
  * Leaders that are 自缚 and cannot be blocked — the 天赋 line of every 巨型单位 page (PRTS 假想敌：胄 (both copies) "自缚、
- * 不可阻挡", 假想敌：管 (+ 隐秘核心) / 盐风主教昆图斯 / 阿利斯泰尔，帝国余晖 / “萨米的意志” "自缚 … 无法被阻挡"). 自缚 (PRTS
+ * 不可阻挡", 假想敌：管 (+ 隐秘核心) / 盐风主教昆图斯 / 阿利斯泰尔，帝国余晖 / “萨米的意志” / 伤心的大锁 "自缚 … 无法被阻挡"). 自缚 (PRTS
  * 异常效果 UNMOVABLE_PRIVATE) = 无法移动, like 束缚 but never recognised as 束缚: flag noMove, not bind. They stand where
  * they spawn whatever their route says (the official routes walk to a goal; only the talent holds them), so their
  * hit area (body.js) stays on the pipe block. These are exactly the enemies with a data `hitArea`.
@@ -152,9 +161,66 @@ const SPRING_BOUNCE_FALLOFF = 0.85, SPRING_BOUNCE_RANGE = 2, SPRING_COMBO_HITS =
 export const SELF_BOUND = Object.freeze([
   'enemy_9013_acstmk', 'enemy_9013_acstmk_2', 'enemy_9021_acduml', 'enemy_9021_acduml_2', 'enemy_1521_dslily',
   'enemy_9032_aclionk', 'enemy_9033_acdeer',
+  // 伤心的大锁 (boss_13): the 8th 巨型单位 — PRTS lists the same 天赋 set (巨型单位 · 静态刚体 · 自缚 · 无法被阻挡) and gives it a
+  // 2.95 × 2.95 hit area (tools/build-data.mjs HIT_AREAS), so it belongs on this list by the same rule as the rest.
+  'enemy_2018_csdoll',
+  // 木桩 (enemy_9901_dummy, round 16): not a PRTS unit — this fork's own training post. It draws 「萨米的意志」's model on the
+  // boss deploy field and takes that leader's 4.95 × 2.95 body (owner 2026-10-30「木桩的受击范围」), and the list's rule is
+  // "a huge body is 自缚 + 无法被阻挡", not "a huge body has a PRTS page". Its kit lives in content/enemies/dummy.js (it is
+  // no leader), which is why `onSpawn` below applies the buff BEFORE the BOSS_KITS early return.
+  'enemy_9901_dummy',
 ]);
 /** 阿利斯泰尔: enemy SP per second [ASSUMED] and 莫非王土 delay after each 王权号令 [ASSUMED]. */
 const ENEMY_SP_PER_SEC = 1, ANIMATE_DELAY = 2;
+/** 【王权号令】's official clip (RangedAttack Skill_1 of the equip / equipA abilities), s — its cooldown counts from it. */
+const DECREE_CLIP = 3.667;
+/**
+ * 伤心的大锁 (boss_13) — every number below names its source; the enemy's own blackboards
+ * (`hprecovery.hp_recovery_per_sec_by_max_hp_ratio` 0.0025, `aoetrigger.stack_cnt` 20,
+ * `aoetrigger.warning_stack_cnt` 10, `aoe.atk_scale` 1.5, `shield.hp_ratio` 0.05, `shield.interval` 20,
+ * `movespeedup.move_speed` 2, `summon.csdoll_summon[N].{interval,duration}`) are read through T()/ab where they exist.
+ *   · 自愈 0.25 %/s: blackboard `hprecovery.hp_recovery_per_sec_by_max_hp_ratio` 0.0025 = PRTS 「每秒回复最大生命值0.25%」.
+ *   · 保护屏障 45000 (300000 × 15 %): PRTS 技能 保护屏障 「获得可吸收相当于自身最大生命值15%的全类型伤害的屏障」 +
+ *     数值换算. The data's `shield.hp_ratio` is 0.05 and no source says what the gap is — the PRTS 15 % is used
+ *     [ASSUMED, the value the page's own 数值换算 section derives].
+ *   · 受击反击 800 (800 × 100 %): PRTS 天赋 「每受到20次可触发受击回复的伤害后…造成自身攻击力100%的法术溅射伤害」 —
+ *     the page notes the data's `aoe.atk_scale` 1.5 「因为不明原因并未生效，故页面取 100%」. Warning at the 10th
+ *     (`aoetrigger.warning_stack_cnt`).
+ *   · 屏障期间全场其他敌人 move speed 200 %: PRTS 「移动速度最终提升至200%」 (`movespeedup.move_speed` 2).
+ *   · 终结 480 s: PRTS 技能 终结 + the data's `Doom` (cd/icd 480, `value` −30, `atk_scale` 2).
+ */
+const DOLL_SELF_HEAL = 0.0025;
+const DOLL_BARRIER_RATIO = 0.15, DOLL_BARRIER_SUMMON_IV = 20;
+const DOLL_AOE_HITS = 20, DOLL_AOE_WARN = 10, DOLL_AOE_SCALE = 1;
+const DOLL_RUSH_MUL = 2, DOLL_RUSH_KEY = 'boss:dollRush', DOLL_RUSH_FRESH = 0.6;
+const DOLL_BARRIER_KEY = 'boss:dollBarrier';
+/**
+ * The 召唤 ladder. PRTS lists the spawn times (24/48/72 s 第一类, 110/130/150/170 s 第二类, then every 16 s after 180 s,
+ * 「不含第180s时」) but not the entries; the data carries the schedule — `summon.csdoll_summon[1]` interval 24
+ * duration 90, `[2]` interval 20 duration 180, `[3]` interval 16 — i.e. three chained windows, each starting where the
+ * previous one ends: 0→90 every 24 s (= 24/48/72), 90→180 every 20 s (= 110/130/150/170), 180→∞ every 16 s (= 196, 212 …).
+ * That reproduces the PRTS times exactly, so the chain is read from the blackboard and the `start`/`until` windows are
+ * the ones its `duration` keys imply [ASSUMED: the level's branches csdoll_1/2/3 that name the actual enemies are not in
+ * the cached tables, so each type stands in with a 剧团 enemy of this mode].
+ */
+const DOLL_SUMMONS = Object.freeze([
+  Object.freeze({ key: 'enemy_2009_csaudc', iv: 24, start: 0, until: 90 }),      // 第一类: 骇笑看客 (the audience)
+  Object.freeze({ key: 'enemy_2010_csdcr', iv: 20, start: 90, until: 180 }),    // 第二类: 绯红歌伶 (the singer)
+  Object.freeze({ key: 'enemy_2011_csppt', iv: 16, start: 180, until: Infinity }), // 第三类: 剧场组装体 (the assembly)
+]);
+/**
+ * 曼弗雷德 (boss_14) — the enemy's own talent blackboards carry every number: `Funnel_common.attack@attack_speed` 60,
+ * `…@max_stack_cnt` 5, `…@duration` 6 (【专注】), `Shield.prob` 0.8 / `Shield.disable_duration` 30 /
+ * `Shield[disable].stun` 8 (【军事训练】), `Funnel_s1.attack@atk_scale` 0.5 (first form), `Funnel_s2.atk_scale` 0.5
+ * (浮游炮), `Reborn.duration` 20, `Reborn.interval` 0.8, `Reborn.invincible` 5, and the `Funnel_rage` skill's
+ * `atk_scale` 0.3 (【枯木新枝】). The `<伦蒂尼姆城防副炮>` half of 【军事训练】 (闪避失效 30 s + 晕眩 8 s) has no
+ * counterpart in this mode: nothing here is that device [ASSUMED, not modelled].
+ * The first 血条 ends at a POOL ratio, not at a knock-out: the shared pool is the leader's HP and the field ends when it
+ * empties, so a pooled leader cannot really die and come back (kitBlackSnake's [ASSUMED], DESIGN §20.10). The two 40000
+ * bars are split 50 : 50, so the 重生 starts at 50 % of the pool.
+ */
+const MANFRI_REBORN_AT = 0.5, MANFRI_REBORN = 20, MANFRI_INVINCIBLE = 5;
+const MANFRI_FOCUS_KEY = 'boss:manfriFocus';
 const EQUIP_KEYS = Object.freeze(['enemy_10028_vtswd', 'enemy_10029_vtshld', 'enemy_10030_vtwand']);
 const SHELL_KEY = 'enemy_9016_acstmr', ECHO_KEY = 'enemy_9023_acdums', PHANTOM_KEY = 'enemy_2017_csphts';
 
@@ -278,9 +344,11 @@ export function install(battle) {
 export function registerMeta() {}
 
 function onSpawn(b, e) {
+  // 自缚 + 无法被阻挡 is a property of the BODY (`hitArea`), not of "having a leader kit": the 木桩 is on SELF_BOUND with a
+  // 4.95 × 2.95 body but its kit lives in content/enemies/dummy.js, so this has to run before the BOSS_KITS early return.
+  if (SELF_BOUND.includes(e.defId)) b.addBuff(e, { key: 'boss:selfBound', persist: true, flags: { noMove: true, selfBound: true, unblockable: true } });
   const kit = BOSS_KITS[e.defId];
   if (typeof kit !== 'function') return;
-  if (SELF_BOUND.includes(e.defId)) b.addBuff(e, { key: 'boss:selfBound', persist: true, flags: { noMove: true, selfBound: true, unblockable: true } });
   const tpl = templateOf(b);
   const ab = abOf(b, e);
   let list = [];
@@ -406,7 +474,9 @@ function kitHelm(ab, e, b, tpl) {
       },
     },
     s1 && {
-      cd: s1.cd, icd: s1.icd, sk: s1, cond: (b2) => shellTargets(b2).length > 0,
+      // 【灭顶之灾】's official ability is a RangedAttack (Skill_1, 2.333 s): it takes the normal attack's turn (PRTS
+      // 「触发索敌和普通攻击相同」; enemies.js attackSlotSkill) and its cooldown counts from the clip's end.
+      cd: s1.cd, icd: s1.icd, sk: s1, atk: true, clip: 2.333, cond: (b2) => shellTargets(b2).length > 0,
       // 【灭顶之灾】 one shell, also below 20 %: the handbook's "额外发射<刺胄之弹>" is wrong in game (PRTS 能力修正 原因 6
       // "描述与游戏实际表现不符合": "【灭顶之灾】不会额外发射") and no blackboard holds a second shell (skill 1 has none)
       fire(b2, e2) {
@@ -843,7 +913,7 @@ function kitEcho(ab, e) {
 function pipeCore(ab, e, b, tpl, { form, prefix }) {
   const hi = T(ab, `1.${prefix}_t_1[high_hp].interval`) ?? 40, lo = T(ab, `1.${prefix}_t_1[low_hp].interval`) ?? hi, thr = T(ab, '1.hp_ratio') ?? 0;
   const key = ab.tS['1.enemy_key'] ?? ECHO_KEY;
-  const P = { acc: 0, atk: Infinity };   // first strike as soon as an echo of its form exists (engine attack rule)
+  const P = { acc: 0, atk: Infinity, heldUntil: 0 };   // first strike as soon as an echo of its form exists (engine attack rule)
   const summon = (b2, e2) => {
     const got = branchSpawn(b2, tpl, 'summon_enemy', 0, { mods: summonMods(b2), at: { x: e2.x, y: e2.y }, fallback: () => [b2.spawnEnemy(key, { pos: [e2.y, e2.x], route: toGoal(b2, e2.x, e2.y), mods: summonMods(b2) })].filter(Boolean) });
     for (const u of got) if (u.defId === ECHO_KEY && form === 'gold') setEchoForm(b2, u, 'gold');
@@ -856,10 +926,16 @@ function pipeCore(ab, e, b, tpl, { form, prefix }) {
       if (P.acc >= (e2.hpRatio < thr ? lo : hi)) { P.acc = 0; summon(b2, e2); }
       if (!canCast(e2, false, b2)) return;
       P.atk += dt;
-      if (P.atk < e2.s.interval) return;
+      if (P.atk < e2.s.interval || b2.time < P.heldUntil) return;
       const t = b2.rng.pick(echoesOf(b2, form));                 // 优先攻击…形态余音
       if (!t) return;
       P.atk = 0;
+      const cast = attackTurnSkill(b2, e2);                       // 裂管之奏 / 断弦之奏 take this attack's turn
+      if (cast) {
+        // [ASSUMED] a longer clip holds this custom attack loop too (管: 4.167 s clip over a 3 s interval).
+        P.heldUntil = b2.time + (cast.clip || 0);
+        return;
+      }
       e2.lastAttackAt = b2.time;
       e2.stats.attacks++;
       b2.fx('beam', { x: e2.x, y: e2.y, from: e2.id, to: t.id, kind: `${prefix}Strike` });
@@ -876,7 +952,7 @@ function kitPipe(ab, e, b, tpl) {
       death(c, b2) { for (const o of b2.aliveEnemies()) if (o.defId === 'enemy_9022_acdumm') b2.kill(o, null); }, // 弦 leaves with 管
     },
     s && {
-      cd: s.cd, icd: s.icd, sk: s, cond: (b2) => echoesOf(b2, 'dark').length > 0,
+      cd: s.cd, icd: s.icd, sk: s, atk: true, clip: 4.167, cond: (b2) => echoesOf(b2, 'dark').length > 0,
       fire(b2, e2) { // 【裂管之奏】 three strikes on every dark echo
         const r = s.bb.range_radius ?? 0, ep = s.bb.ep_damage_ratio ?? 0;
         for (const echo of echoesOf(b2, 'dark')) for (let k = 0; k < 3; k++) b2.after(k * PIPE_STRIKE_GAP, () => {
@@ -896,7 +972,7 @@ function kitString(ab, e, b, tpl) {
     pipeCore(ab, e, b, tpl, { form: 'gold', prefix: 'acdumm' }),
     { spawn(b2, e2) { b2.addBuff(e2, { key: 'boss:eternal', persist: true, flags: { invulnerable: true, untargetable: true } }); } }, // 永久无敌
     s && {
-      cd: s.cd, icd: s.icd, sk: s, cond: (b2) => echoesOf(b2, 'gold').length > 0,
+      cd: s.cd, icd: s.icd, sk: s, atk: true, clip: 3.333, cond: (b2) => echoesOf(b2, 'gold').length > 0,
       fire(b2, e2) { // 【断弦之奏】 AoE on every gold echo, which then turns dark
         const r = s.bb.range_radius ?? 0, ep = s.bb.ep_damage_ratio ?? 0;
         for (const echo of echoesOf(b2, 'gold')) {
@@ -917,11 +993,25 @@ function kitQuintus(ab, e, b, tpl) {
   const stageSkills = [['Tidewater', 'Rockfall', 'SummonTentac'], ['TidewaterG1', 'RockfallG1', 'SummonTentacG1'], ['TidewaterG2', 'RockfallG2', 'SummonTentacG2', 'Doom']];
   const skills = [];
   const atkRatio = T(ab, 'epdamage.attack@ep_damage_ratio') ?? 0;
+  // 【大潮】 / 【崩坍】 are attack-class (prefab ability MeleeAttack like the Attack; PRTS 「触发索敌和普通攻击相同」): they take
+  // the attack's turn (enemies.js attackSlotSkill), equal priorities at random. Every skill's cooldown counts from the end
+  // of its clip (QUINTUS_CLIP; PRTS 「同一技能的冷却时间于该技能结束时开始计时」): the third-form tide (3.5 + 1.667 s)
+  // alternates with the attack instead of coming on top of it every 3.5 s. 断裂生殖 / 物种爆发 (AnimatedActionToOwnerAbility)
+  // take the attack's turn too, with a trigger of their own (`own`: the abilities' `_allowNoTarget` 1), so they also come
+  // with the attack ready and nothing in range (enemies.js onTick). 断裂生殖 「仅仍有未执行的小队动作指令时可触发」: its level branch
+  // (blackboard branch_id; prefab MoveNextLevelBranch, not looping) is used up after its last phase; a template without the
+  // branch keeps the random-target fallback with no limit.
+  const tentLeft = (s) => {
+    const br = tpl && tpl.branches && tpl.branches[s.bs.branch_id ?? 'dslily_dstnta'];
+    return Array.isArray(br) && br.length ? br.length : Infinity;
+  };
   const mk = (name, stage) => {
     const s = ab.sk[name];
     if (!s) return null;
     const kind = name.replace(/G\d$/, '');
-    const a = { cd: s.cd, icd: s.icd, sk: s, stage, cond: () => P.stage === stage, fire: (b2, e2) => QUINTUS[kind](b2, e2, s, P, tpl) };
+    const phases = kind === 'SummonTentac' ? tentLeft(s) : Infinity;
+    const a = { cd: s.cd, icd: s.icd, sk: s, stage, atk: true, own: !QUINTUS_ATTACK_SKILLS.has(kind), clip: QUINTUS_CLIP[kind] ?? 0,
+      cond: () => P.stage === stage && P.tent < phases, fire: (b2, e2) => QUINTUS[kind](b2, e2, s, P, tpl) };
     skills.push(a);
     return a;
   };
@@ -948,6 +1038,19 @@ function kitQuintus(ab, e, b, tpl) {
   stageSkills.forEach((names, i) => names.forEach((n) => list.push(mk(n, i))));
   return list;
 }
+
+/** 昆图斯's skills whose trigger is the attack's (「触发索敌和普通攻击相同」: MeleeAttack); 断裂生殖 / 物种爆发 trigger on their own. */
+const QUINTUS_ATTACK_SKILLS = new Set(['Tidewater', 'Rockfall']);
+/**
+ * The clip of each 昆图斯 skill, in s: its official ability's animKey (prefab battle/enm_pfb_18.ab — fx/index.json units.
+ * enemy_1521_dslily.skills: tidewater* Skill_02, rockfall* Skill_01, summontentac* Skill_03, doom Skill_04; not looping,
+ * `_maxAnimScale` 1.0: never faster) → that clip's length in the model (data/assets.json
+ * enemies.enemy_1521_dslily.spine.animations). The skill's cooldown counts from the clip's end (enemies.js castNow).
+ * [ASSUMED] the length holds under an attack-speed cut too, as the engine's normal attack clip does (ai.js clipSpeed);
+ * the abilities' `_affectedBySlowDown` 1 allows a slower clip. So the third-form tide is ready 3.5 + 1.667 = 5.167 s after
+ * its cast whatever the slow: an attack interval past that makes every turn a tide, with no normal attack.
+ */
+const QUINTUS_CLIP = Object.freeze({ Tidewater: 1.667, Rockfall: 3, SummonTentac: 2, Doom: 4.467 });
 
 const QUINTUS = {
   Tidewater(b, e, s) { // 【大潮】 "对场上所有我方单位…": every operator it can select (fieldAllies): arts + neural
@@ -1005,7 +1108,7 @@ function lucienCore(ab, e) {
       // cast with a target in the radius (PRTS 技能 "需要目标"; 不祥幻影 "仅在半径2范围内存在我方单位时触发"): the trigger
       // selection (targetsNear — PRTS 选择器 "所有触发选择器通常不无视迷彩"): an airborne (起飞) operator evades a ground
       // leader (对地规避 — counting her spent the skill on nobody, §21.22), nor does an unblocking 隐匿 or 迷彩 one count
-      cd: s.cd, icd: s.icd, sk: s, cond: (b) => targetsNear(b, e, LUCIEN_AOE_RADIUS).length > 0,
+      cd: s.cd, icd: s.icd, sk: s, atk: true, clip: 1.8, own: true, cond: (b) => targetsNear(b, e, LUCIEN_AOE_RADIUS).length > 0,
       fire(b, e2) {
         // "该技能伤害无视迷彩": an area selection (areaAllies) — a 迷彩 operator is hit, an unblocking 隐匿 one not
         b.fx('explode', { x: e2.x, y: e2.y, r: LUCIEN_AOE_RADIUS, kind: 'crimsonAoe' });
@@ -1045,7 +1148,7 @@ function kitLion(ab, e, b) {
     const sk = P.adv && eqA ? eqA : eq;
     const t = b2.rng.pick(targetsNear(b2, e2, range()));
     if (!t) return false;
-    castSlot(b2, e2, sk);   // 【王权号令】: equip / equipA (display only)
+    castSlot(b2, e2, sk, DECREE_CLIP);   // 【王权号令】: equip / equipA (display only; the fifth field = its clip, it took the attack's turn)
     const r0 = t.tileR, c0 = t.tileC;
     const tiles = [[r0, c0], [r0 + 1, c0], [r0 - 1, c0], [r0, c0 + 1], [r0, c0 - 1]];
     b2.fx('telegraph', { x: c0, y: r0, r: 1, kind: 'royalDecree', tiles: 'plus', id: e2.id });
@@ -1082,6 +1185,16 @@ function kitLion(ab, e, b) {
   };
   return [
     {
+      // 【王权号令】's official ability is a RangedAttack (Skill_1, 3.667 s): it is attack-class and takes the normal
+      // attack's turn — cast at the swing's damage frame in place of the strike, the attack cooldown restarting at the
+      // clip's end (PRTS 「大多数技能自动触发会占用攻击间隔」 / 「同一技能的冷却时间于该技能结束时开始计时」). SP still
+      // accrues on its own (1/s [ASSUMED]); a 王权号令 with nothing in range does nothing and the strike goes ahead.
+      before(c, b2, e2) {
+        if (P.sp < cost || !decree(b2, e2)) return;
+        P.sp = 0;
+        c.targets = [];
+        e2.atkCd = Math.max(e2.s.interval, DECREE_CLIP);
+      },
       tick(b2, e2, a, dt) {
         if (!P.adv && e2.hpRatio <= (T(ab, 'advance.hp_ratio') ?? 0)) { // ≤50 %: DEF +100 %, RES +45, animate two
           P.adv = true;
@@ -1090,7 +1203,6 @@ function kitLion(ab, e, b) {
         }
         if (!canCast(e2, false, b2)) return;
         P.sp += dt * ENEMY_SP_PER_SEC;
-        if (P.sp >= cost && decree(b2, e2)) P.sp = 0;
         // 【莫非王土】: ANIMATE_DELAY s after equipment first lies on the field, then once per 王权号令 cycle
         const has = equipment(b2).length > 0;
         if (!has) { P.nextAnim = null; return; }
@@ -1105,7 +1217,8 @@ function kitLion(ab, e, b) {
       dealt(c, b2, e2) { if (!P.wand) return; P.wand = false; if (disarm > 0) b2.applyStatus(c.target, 'disarm', { duration: disarm, source: e2 }); },
     },
     su && {
-      cd: su.cd, icd: su.icd, sk: su,
+      // 【斥退】's official ability is a MeleeAttack (Skill_3, 5.667 s): attack-class, takes the attack's turn
+      cd: su.cd, icd: su.icd, sk: su, atk: true, clip: 5.667,
       fire(b2, e2) { // 【斥退】 "对场上所有我方单位…": every operator it can select (fieldAllies)
         b2.fx('telegraph', { x: e2.x, y: e2.y, r: 99, kind: 'repel', id: e2.id });
         for (const u of fieldAllies(b2, e2)) hurt(b2, e2, u, e2.s.atk * (su.bb.atk_scale ?? 0), 'arts');
@@ -1401,7 +1514,7 @@ function kitDeer(ab, e) {
   const dr = T(ab, 'Madness.damage_resistance') ?? 0;
   const atkN = T(ab, 'Madness.enemy_smdeer_mad[attack].max_cnt') ?? 1, skN = T(ab, 'Madness.enemy_smdeer_mad[skill].max_target') ?? 1;
   const lasso = ab.sk.Lasso, doom = ab.sk.Doom;
-  const P = { low: false, acc: Infinity };   // like engine attacks, the first 冰凌 comes as soon as it has a target
+  const P = { low: false, acc: Infinity, held: 0 };   // like engine attacks, the first 冰凌 comes as soon as it has a target
   return [
     {
       spawn(b, e2) { e2.profile.noAttack = true; },
@@ -1413,10 +1526,16 @@ function kitDeer(ab, e) {
         }
         if (!canCast(e2, false, b)) return;
         P.acc += dt;
-        if (P.acc < e2.s.interval) return;
+        if (P.acc < e2.s.interval || b.time < P.held) return;
         const cands = fairOrder(b, e2, allTargets(b, e2), P);
         if (!cands.length) return;
         P.acc = 0;
+        const cast = attackTurnSkill(b, e2);                       // 自然涌动 / 物种爆发 take this attack's turn
+        if (cast) {
+          // [ASSUMED] a longer clip holds this custom attack loop too (物种爆发's 4.467 s over a 4 s interval).
+          P.held = b.time + (cast.clip || 0);
+          return;
+        }
         const cols = [];
         for (const t of cands) { if (!cols.includes(t.tileC)) cols.push(t.tileC); if (cols.length >= (P.low ? atkN : 1)) break; }
         for (const c of cols) { // 【冰凌】 its normal attack: the whole column (an area selection: no unblocking 隐匿 operator)
@@ -1429,7 +1548,7 @@ function kitDeer(ab, e) {
       },
     },
     lasso && {
-      cd: lasso.cd, icd: lasso.icd, sk: lasso, cond: (b) => allTargets(b, e).length > 0,
+      cd: lasso.cd, icd: lasso.icd, sk: lasso, atk: true, clip: 0, cond: (b) => allTargets(b, e).length > 0,
       fire(b, e2) { // 【自然涌动】 stun + arts per second
         const n = P.low ? skN : (lasso.bb.max_target ?? 1);
         const dur = lasso.bb.projectile_life_time ?? 0;
@@ -1442,7 +1561,7 @@ function kitDeer(ab, e) {
       },
     },
     doom && {
-      cd: doom.cd, icd: doom.icd, sk: doom,
+      cd: doom.cd, icd: doom.icd, sk: doom, atk: true, clip: 2.667,
       fire(b, e2) {
         b.fx('telegraph', { x: e2.x, y: e2.y, r: 99, kind: 'samiDoom', id: e2.id });
         for (const u of fieldAllies(b, e2)) hurt(b, e2, u, e2.s.atk * (doom.bb.atk_scale ?? 0), 'arts');
@@ -1453,8 +1572,329 @@ function kitDeer(ab, e) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// 伤心的大锁 (boss_13, enemy_2018_csdoll) — hand-added leader (docs/research/15-extra-bosses.json).
+//
+// Sources: enemy_database enemy_2018_csdoll level 0 (only level: 生命 300000 / 攻击 800 / 防御 700 / 法抗 60 / 移动 0.1 /
+// 攻击间隔 4.0 / 重量 10 / 目标价值 1 / 攻击半径 99 (全场) / 远程物理; 抗性 沉默·晕眩·沉睡·冻结·浮空·战栗·恐惧·诱导;
+// skills 保护屏障 (cd 45 / icd 60) and 终结 (cd 480 / icd 480); the summon/recovery/aoe ladder in talentBlackboard) and
+// PRTS 伤心的大锁 (等级0): 天赋 巨型单位 + 静态刚体 + 自缚 + 无法被阻挡, 同时攻击2个目标, 【自愈】0.25 %/s, the summon times,
+// 「每受到20次可触发受击回复的伤害后…100 % 法术溅射」, 技能 保护屏障 / 终结, plus the page's 数值换算 section.
+//
+//   · 自缚 + 无法被阻挡: PRTS 「静态刚体，自缚，沉睡免疫，无法被阻挡」. The flags are the same persistent buff SELF_BOUND
+//     installs for the other 巨型单位 (noMove + selfBound + unblockable), applied here from the kit because the key is
+//     not in SELF_BOUND: that list is pinned to the keys with a data `hitArea` (test/sim/playtest5_bossbody.test.js,
+//     test/docs-consistency.test.js), and this fork's HIT_AREAS table (tools/build-data.mjs) does not carry the doll yet
+//     — see the note handed to the module owner. 静态刚体 needs no code here: a leader is never displaceable
+//     (battle/displacement.js `_displaceable` excludes `isBoss`), so no push or pull moves it either way.
+//   · 全场普通攻击, 2 targets: PRTS 「普通攻击可同时攻击2个目标，攻击范围为全场」 — the data's 攻击半径 99 is the whole
+//     field, and the engine's own attack cannot serve an enemy with a scripted kit here (noAttack, like 黑蛇), so the
+//     attack picks through fairOrder and hits both at once.
+//   · 【自愈】: PRTS 「每秒回复最大生命值0.25%的生命值」 (blackboard `hprecovery.hp_recovery_per_sec_by_max_hp_ratio`
+//     0.0025). A pooled leader cannot be healed by the engine (damage.js heal and the natural regeneration both refuse
+//     `bossPool`), so the kit heals the SHARED POOL — the bar the battle shows — directly [ASSUMED: no engine primitive;
+//     a pool with no writable `hp` (the match's CreditPool on a re-simulated field) silently keeps its HP].
+//   · 召唤: the blackboard's three chained windows (see DOLL_SUMMONS). The level's branch entries (csdoll_1/2/3) are not
+//     in the cached tables, so each type stands in with a 剧团 enemy of this mode [ASSUMED].
+//   · 受击反击: every 20th damage instance it takes (PRTS 「可触发受击回复的伤害」 — the engine's 'damaged' hook, which
+//     already skips element gauge damage) ⇒ 100 % ATK arts splash on every operator it can select; the 10th shows the
+//     warning (PRTS 「每受到10次…头部周围出现蓄力预警特效」, `aoetrigger.warning_stack_cnt`).
+//   · 【保护屏障】 (cd 45 / icd 60 — PRTS 冷却 60 / 45): a 15 %-of-max-HP all-type barrier (PRTS 数值换算 45000; the
+//     data's `shield.hp_ratio` 0.05 is not what the page documents [ASSUMED]). While it holds: no normal attacks, one
+//     extra summon every 20 s (PRTS 「每20s（包括第0s时）召唤一次额外敌人」, `shield.interval` 20), and every other enemy
+//     on the field at 200 % move speed (PRTS 「移动速度最终提升至200%」, `movespeedup.move_speed` 2). It ends when the
+//     barrier is spent — PRTS gives no duration, only 「生效期间无法重复释放」.
+//   · 【终结】 (cd 480): 200 % ATK arts on every operator (PRTS 数值换算 800 × 200 % = 1600) + LP −30 (the skill's
+//     `value`), then the leader dies (PRTS 「技能结束后，自身立刻死亡」). Killing the unit does not empty the shared pool;
+//     the field then runs on the pool / its time limit [ASSUMED, DESIGN §20.10 — a pooled leader has no real death].
+// 自缚 + 无法被阻挡 + 静态刚体 come from SELF_BOUND (the key is on that list; the flags are the same persistent
+// noMove + selfBound + unblockable buff the other 巨型单位 get, installed once per leader by the spawn hook above).
+
+/**
+ * The leader's own maximum HP — its data row × the spawn's HP multiplier — NOT `e.s.maxHp`, which a pooled leader syncs to
+ * the shared pool. Both percentage effects of this leader are stated against 「最大生命值」 with the PRTS page's own
+ * 数值换算 spelling the absolute out (45000 = 300000 × 15 %), so they read the data row and not the pool
+ * [ASSUMED: the same reading 死亡集群's DRONE_LINK_BASE weighed and dropped — here the worked example decides it].
+ */
+function unitMaxHp(e) {
+  const m = e.mods && Number(e.mods.hpMul);
+  const base = e.def && e.def.maxHp > 0 ? e.def.maxHp : e.base.maxHp;
+  return base * (Number.isFinite(m) && m > 0 ? m : 1);
+}
+
+/** Heal the shared pool (see the 自愈 note above). Never above its max, never on a pool without a writable `hp`. */
+function healPool(b, e, amount) {
+  const pool = b.sharedBoss;
+  if (!pool || !(amount > 0)) return 0;
+  const hp = Number(pool.hp);
+  if (!Number.isFinite(hp)) return 0;
+  const max = Number.isFinite(pool.maxHp) && pool.maxHp > 0 ? pool.maxHp : e.s.maxHp;
+  const next = Math.min(max, hp + amount);
+  if (!(next > hp)) return 0;
+  pool.hp = next;
+  return next - hp;
+}
+
+function kitDoll(ab, e, b) {
+  const healRatio = T(ab, 'hprecovery.hp_recovery_per_sec_by_max_hp_ratio') ?? DOLL_SELF_HEAL;
+  const aoeHits = T(ab, 'aoetrigger.stack_cnt') ?? DOLL_AOE_HITS;
+  const warnAt = T(ab, 'aoetrigger.warning_stack_cnt') ?? DOLL_AOE_WARN;
+  const aoeScale = DOLL_AOE_SCALE;                                  // PRTS 100 % (see the constants block)
+  const rushMul = T(ab, 'movespeedup.move_speed') ?? DOLL_RUSH_MUL;
+  const barrierRatio = DOLL_BARRIER_RATIO;                          // PRTS 15 %
+  const barrierSummonIv = ab.sk.shield && ab.sk.shield.bb.interval > 0 ? ab.sk.shield.bb.interval : DOLL_BARRIER_SUMMON_IV;
+  const shield = ab.sk.shield, doom = ab.sk.Doom;
+  const P = { t0: b.time, acc: Infinity, hits: 0, barrier: false, summonAt: 0, rushAt: 0, step: 0, due: Infinity, done: false };
+  /**
+   * The 召唤 ladder as absolute times after the spawn: the three chained windows of the blackboard, each counting from its
+   * own `start` (the previous window's `duration`) — 24/48/72 s, 110/130/150/170 s, then 196 + 16k. `nextSummon` walks the
+   * windows forwards one entry at a time, so the open-ended third window never has to be materialised as a list.
+   */
+  const advance = () => {
+    const s = DOLL_SUMMONS[P.step];
+    if (!s) { P.due = Infinity; return; }                        // past the third window: never again
+    P.due = P.due < Infinity ? P.due + s.iv : s.start + s.iv;    // the window's first entry, then every `iv` s
+    if (P.due <= s.until) return;
+    P.step++;                                                    // this window is used up: open the next one
+    P.due = Infinity;
+    advance();
+  };
+  advance();                                                     // the first due time, before the first tick
+
+  /** One summon (PRTS 召唤; the three types stand in with DOLL_SUMMONS' keys). */
+  const summon = (b2, e2, key) => {
+    const units = spawnChildren(b2, e2, key, 1, { mods: summonMods(b2), route: toGoal(b2, e2.x, e2.y) });
+    b2.fx('summon', { x: e2.x, y: e2.y, id: e2.id, key, n: units.length });
+  };
+
+  /** Drop the barrier: back to normal attacks (the rush aura and the extra summons stop with it). */
+  const dropBarrier = (b2, e2) => {
+    P.barrier = false;
+    b2.removeBuff(e2, DOLL_BARRIER_KEY);
+    b2.fx('shieldBreak', { x: e2.x, y: e2.y, id: e2.id });
+  };
+
+  const raiseBarrier = (b2, e2) => {
+    P.barrier = true;
+    const amount = unitMaxHp(e2) * barrierRatio;
+    b2.addBuff(e2, { key: DOLL_BARRIER_KEY, shield: amount, persist: true, visible: true, data: { amount } });
+    b2.fx('phase', { x: e2.x, y: e2.y, id: e2.id, kind: 'dollBarrier', value: amount });
+    summon(b2, e2, DOLL_SUMMONS[0].key);               // 「包括第0s时」
+    P.summonAt = b2.time;
+  };
+
+  const attack = (b2, e2, dt) => {
+    P.acc += dt;
+    if (P.acc < e2.s.interval) return;
+    const cands = fairOrder(b2, e2, allTargets(b2, e2), P);
+    if (!cands.length) return;                         // no target: hold the charge and strike at once next time
+    P.acc = 0;
+    const n = 2;                                       // 「同时攻击2个目标」
+    for (const t of cands.slice(0, n)) {
+      b2._ev(['atk', e2.id, t.id, 'none']);
+      b2.fx('beam', { x: e2.x, y: e2.y, from: e2.id, to: t.id, kind: 'dollRay' });
+      b2.dealDamage(e2, t, { amount: e2.s.atk, type: 'phys', isAttack: true });
+    }
+    e2.lastAttackAt = b2.time;
+    e2.stats.attacks++;
+  };
+
+  return [
+    { spawn(b2, e2) { e2.profile.noAttack = true; } },
+    {
+      iv: 0.25,
+      tick(b2, e2, a, dt) {
+        if (!e2.alive || P.done) return;
+        // 【自愈】 (0.25 %/s of the bar the battle shows; accumulated so the pool is written once a second)
+        a.healAcc = (a.healAcc ?? 0) + unitMaxHp(e2) * healRatio * dt;
+        if (a.healAcc >= 1) { healPool(b2, e2, Math.floor(a.healAcc)); a.healAcc = 0; }
+        // the barrier: spent ⇒ gone (PRTS gives no duration, only 「生效期间无法重复释放」)
+        if (P.barrier) {
+          const bf = e2.findBuff(DOLL_BARRIER_KEY);
+          if (!bf || !(bf.shield > 0)) dropBarrier(b2, e2);
+          else {
+            // 「每20s（包括第0s时）召唤一次额外敌人」
+            if (b2.time - P.summonAt >= barrierSummonIv - 1e-9) { P.summonAt += barrierSummonIv; summon(b2, e2, DOLL_SUMMONS[0].key); }
+            // 「全场的其他敌方单位…移动速度最终提升至200%」 — a short aura, refreshed while the barrier holds
+            if (b2.time - P.rushAt >= DOLL_RUSH_FRESH) {
+              P.rushAt = b2.time;
+              for (const o of b2.aliveEnemies()) {
+                if (o === e2) continue;
+                b2.addBuff(o, { key: DOLL_RUSH_KEY, duration: DOLL_RUSH_FRESH + 0.1, refresh: 'replace', mods: { moveMul: rushMul } });
+              }
+            }
+          }
+        }
+        // 召唤 ladder (the three chained windows of the blackboard)
+        while (b2.time - P.t0 + 1e-9 >= P.due) {
+          summon(b2, e2, DOLL_SUMMONS[P.step].key);
+          advance();
+        }
+        if (!canCast(e2, false, b2)) return;
+        if (!P.barrier) attack(b2, e2, dt);                        // 「屏障存在期间，自身不进行普通攻击」
+      },
+    },
+    {
+      // 受击反击: every `aoeHits`-th instance of damage it takes ⇒ 100 % ATK arts on every operator it can select.
+      taken(c, b2, e2) {
+        if (!(c.amount > 0) || P.done || e2.hp <= 0) return;
+        P.hits++;
+        if (P.hits % aoeHits === warnAt) {                          // 「每受到10次…出现蓄力预警特效」
+          b2.fx('telegraph', { x: e2.x, y: e2.y, r: 99, dur: 0.5, kind: 'dollCharge', id: e2.id });
+          return;
+        }
+        if (P.hits % aoeHits !== 0) return;
+        b2.fx('explode', { x: e2.x, y: e2.y, r: 99, kind: 'dollBurst', id: e2.id });
+        for (const u of fieldAllies(b2, e2)) hurt(b2, e2, u, e2.s.atk * aoeScale, 'arts', { tags: ['dollBurst'] });
+      },
+    },
+    shield && {
+      cd: shield.cd, icd: shield.icd, sk: shield,
+      cond: () => !P.barrier,
+      fire(b2, e2) { raiseBarrier(b2, e2); },
+    },
+    doom && {
+      cd: doom.cd, icd: doom.icd, sk: doom,
+      fire(b2, e2) {
+        b2.fx('telegraph', { x: e2.x, y: e2.y, r: 99, kind: 'dollDoom', id: e2.id });
+        for (const u of fieldAllies(b2, e2)) hurt(b2, e2, u, e2.s.atk * (doom.bb.atk_scale ?? 2), 'arts', { tags: ['dollDoom'] });
+        lpLoss(b2, Math.abs(doom.bb.value ?? 30), 'dollDoom', e2);
+        P.done = true;
+        b2.kill(e2, null);                                          // 「技能结束后，自身立刻死亡」
+      },
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 曼弗雷德 (boss_14, enemy_1528_manfri) — hand-added leader (docs/research/15-extra-bosses.json).
+//
+// Sources: enemy_database enemy_1528_manfri level 0 (生命 40000 / 攻击 1000 / 防御 600 / 法抗 40 / 移动 0.5 / 攻击间隔 5.0 /
+// 攻击半径 2.0 / 重量 8 / 目标价值 2 / 远程法术; 抗性 沉默·沉睡 only; skills Pose and Funnel_rage (cd 9999 — scripted, never
+// automatic); the talent blackboard in the constants block) and PRTS 曼弗雷德 (级别0): 【专注】, 【军事训练】, 第一形态
+// (50 % arts normal attack), 重生 20 s with 【枯木新枝】, 第二形态 (100 % phys + a 50 % arts 浮游炮 on the same target,
+// 5 s 无敌 on the switch).
+//
+//   · 【专注】: 「普通攻击持续攻击相同目标时，每次攻击使自身攻击速度增加60，最多叠加5层。切换目标/6s未进行攻击，则清除
+//     全部增益」. Stacks on every hit of the SAME target; a switch clears them and the new target's first hit counts as
+//     stack 1 [ASSUMED: PRTS clears 「切换目标后」 without saying whether that same attack counts]; 6 s without an attack
+//     clears them in the tick.
+//   · 【军事训练】: 80 % physical/arts dodge (blackboard `Shield.prob`). The `<伦蒂尼姆城防副炮>` half — 「对自身造成伤害后，
+//     闪避效果失效30s，且自身获得8s晕眩」 — has no counterpart in this mode: nothing here is that device, so it is not
+//     modelled [ASSUMED, `Shield.disable_duration` / `Shield[disable].stun` are unused].
+//   · First form: normal attacks are ATK × 50 % ARTS (blackboard `Funnel_s1.attack@atk_scale` 0.5; the data's own
+//     damage type is already MAGIC). Knocked out ⇒ 20 s 重生 (`Reborn.duration`) with 【枯木新枝】: one random operator
+//     on the field every 0.8 s (`Reborn.interval`) for ATK × 30 % arts (`Funnel_rage.atk_scale` 0.3). Then the second
+//     form, with 5 s 无敌 (`Reborn.invincible`).
+//   · Second form: ATK × 100 % PHYS normal attack plus a 浮游炮 on the SAME target for ATK × 50 % arts
+//     (`Funnel_s2.atk_scale` 0.5).
+//   · 「首次被击倒时，结束当前波次」 has no waves in this mode: the 重生 is entered at a POOL ratio instead (see
+//     MANFRI_REBORN_AT) — the shared pool is the leader's HP, so it cannot really die (kitBlackSnake's [ASSUMED],
+//     DESIGN §20.10). The two 40000 bars split the pool 50 : 50.
+function kitManfri(ab) {
+  const aspdPer = T(ab, 'Funnel_common.attack@attack_speed') ?? 60;
+  const aspdMax = T(ab, 'Funnel_common.attack@max_stack_cnt') ?? 5;
+  const focusDur = T(ab, 'Funnel_common.attack@duration') ?? 6;
+  const dodge = T(ab, 'Shield.prob') ?? 0.8;
+  const form1Scale = T(ab, 'Funnel_s1.attack@atk_scale') ?? 0.5;
+  const form2Scale = T(ab, 'Funnel_s2.atk_scale') ?? 0.5;
+  const rebornDur = T(ab, 'Reborn.duration') ?? MANFRI_REBORN;
+  const rebornIv = T(ab, 'Reborn.interval') ?? 0.8;
+  const invincible = T(ab, 'Reborn.invincible') ?? MANFRI_INVINCIBLE;
+  const rageScale = ab.sk.Funnel_rage && Number.isFinite(ab.sk.Funnel_rage.bb.atk_scale) ? ab.sk.Funnel_rage.bb.atk_scale : 0.3;
+  const P = { phase: 'base', stacks: 0, last: null, lastAt: -Infinity, until: 0, waveAt: 0, turn: 0 };
+
+  const setFocus = (b2, e2, n) => {
+    P.stacks = Math.max(0, Math.min(aspdMax, n));
+    if (P.stacks > 0) b2.addBuff(e2, { key: MANFRI_FOCUS_KEY, refresh: 'replace', persist: true, visible: true, mods: { aspd: aspdPer * P.stacks }, data: { stacks: P.stacks } });
+    else b2.removeBuff(e2, MANFRI_FOCUS_KEY);
+  };
+
+  /** First / second form: the attack profile (and `e.form`, the model's clip set when the skeleton has one). */
+  const useForm = (b2, e2, form2) => {
+    e2.profile.atkScale = form2 ? 1 : form1Scale;
+    e2.profile.dmgType = form2 ? 'phys' : 'arts';    // 第一形态 50 % 法术 / 第二形态 100 % 物理
+    e2.form = form2 ? 'form2' : null;
+  };
+
+  const beginReborn = (b2, e2) => {
+    P.phase = 'reborn';
+    P.until = b2.time + rebornDur;
+    P.waveAt = b2.time;
+    setFocus(b2, e2, 0);
+    e2.profile.noAttack = true;
+    b2.addBuff(e2, { key: 'boss:manfriReborn', duration: rebornDur + 0.05, visible: true,
+      flags: { invulnerable: true, untargetable: true, unblockable: true, noMove: true, stun: true } });
+    b2.fx('telegraph', { x: e2.x, y: e2.y, r: 1, dur: rebornDur, kind: 'manfriReborn', id: e2.id, form: 'reborn' });
+  };
+
+  const endReborn = (b2, e2) => {
+    P.phase = 'form2';
+    b2.removeBuff(e2, 'boss:manfriReborn');
+    e2.profile.noAttack = false;
+    // 「恢复100%生命值」 is the pool's business here: a pooled leader's HP IS the shared pool (no way to refill it from
+    // content) [ASSUMED, DESIGN §20.10 — same as 黑蛇]
+    e2.atkCd = 0;
+    useForm(b2, e2, true);
+    if (invincible > 0) b2.addBuff(e2, { key: 'boss:manfriInvuln', duration: invincible, visible: true, flags: { invulnerable: true } });
+    b2.fx('revive', { x: e2.x, y: e2.y, id: e2.id, kind: 'manfriReborn', form: 'form2' });
+  };
+
+  return [
+    {
+      spawn(b2, e2) {
+        useForm(b2, e2, false);
+        b2.addBuff(e2, { key: 'boss:manfriDodge', persist: true, visible: true, mods: { dodgePhys: dodge, dodgeArts: dodge } }); // 【军事训练】
+      },
+    },
+    {
+      iv: 0.1,
+      tick(b2, e2) {
+        if (!e2.alive) return;
+        if (P.phase === 'reborn') {
+          if (!e2.alive) return;
+          // 【枯木新枝】: one random operator on the field every `rebornIv` s
+          while (b2.time - P.waveAt + 1e-9 >= rebornIv) {
+            P.waveAt += rebornIv;
+            const targets = allTargets(b2, e2);
+            if (!targets.length) break;
+            const t = b2.rng.pick(targets);
+            if (!t) break;
+            b2.fx('beam', { x: e2.x, y: e2.y, from: e2.id, to: t.id, kind: 'manfriFunnel' });
+            hurt(b2, e2, t, e2.s.atk * rageScale, 'arts', { tags: ['manfriRage'] });
+          }
+          if (b2.time + 1e-9 >= P.until) endReborn(b2, e2);
+          return;
+        }
+        // 【专注】: 6 s without an attack clears the stacks
+        if (P.stacks > 0 && b2.time - P.lastAt > focusDur + 1e-9) setFocus(b2, e2, 0);
+        // the first 血条 ends at the pool ratio (see MANFRI_REBORN_AT): 20 s 重生, then the second form
+        if (P.phase === 'base' && e2.hpRatio <= MANFRI_REBORN_AT) { beginReborn(b2, e2); return; }
+      },
+    },
+    {
+      // 【专注】 stacks on every hit of the same target; the second form's 浮游炮 fires with the normal attack.
+      dealt(c, b2, e2) {
+        if (!c.target || c.dmg.type === 'element') return;
+        const t = c.target;
+        if (P.phase !== 'base' && P.phase !== 'form2') return;
+        setFocus(b2, e2, t === P.last ? P.stacks + 1 : 1);
+        P.last = t;
+        P.lastAt = b2.time;
+        if (P.phase === 'form2' && t.alive) {
+          // 「普通攻击时，浮游炮对相同目标进行攻击，造成攻击力50%的法术普通伤害」
+          b2.fx('beam', { x: e2.x, y: e2.y, from: e2.id, to: t.id, kind: 'manfriFunnel' });
+          hurt(b2, e2, t, e2.s.atk * form2Scale, 'arts', { tags: ['manfriFunnel'] });
+        }
+      },
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 
 export const BOSS_KITS = Object.freeze({
+  enemy_2018_csdoll: kitDoll,          // boss_13 伤心的大锁 (hand-added leader)
+  enemy_1528_manfri: kitManfri,        // boss_14 曼弗雷德 (hand-added leader)
   enemy_1515_bsnake: kitBlackSnake,    // boss_11 “不死的黑蛇” (hand-added leader)
   enemy_1507_mephi: kitMephisto,       // boss_12 梅菲斯特 (hand-added leader)
   enemy_9013_acstmk: kitHelm,          // boss_1 假想敌：胄

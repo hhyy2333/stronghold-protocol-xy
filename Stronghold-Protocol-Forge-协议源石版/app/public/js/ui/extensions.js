@@ -1309,7 +1309,7 @@ export function createPanelRegistry(deps) {
         if (!activeScreen || activeScreen.rec.key !== rec.key || activeScreen.closed || selectRoute(store.get()) !== rec.screenRoute) {
           return reject('CLIENT_SCREEN_ACTION_INACTIVE', 'tried a request while inactive');
         }
-        const allowedPrefix = ['room.', 'g.', 'support.', 'loadout.', 'records.'];
+        const allowedPrefix = ['room.', 'g.', 'loadout.', 'records.'];
         if (typeof type !== 'string' || !allowedPrefix.some((prefix) => type.startsWith(prefix))
           || !Object.prototype.hasOwnProperty.call(C2S, type)) {
           return reject('CLIENT_SCREEN_ACTION_NOT_ALLOWED', `message type ${JSON.stringify(type)} is not in the screen action allowlist`);
