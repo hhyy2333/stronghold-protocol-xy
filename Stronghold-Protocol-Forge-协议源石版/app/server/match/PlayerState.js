@@ -126,6 +126,8 @@
 //                 MAX_SEATS`) both accessors hand back the very same `m.pool` object the code used before.
 
 import { FIELD } from './board.js';
+import { HEX_BANS_LIMIT } from '../../shared/protocol.js';
+import { HEX_RECYCLE_BUDGET } from '../../shared/hextech.js';
 import { computeBonds } from './bondsMeta.js';
 import { HAND_SIZE, TEMP_SIZE } from './player/common.js';
 import { PlayerBasics } from './player/basics.js';
@@ -138,7 +140,6 @@ import { PlayerPrep } from './player/prep.js';
 import { PlayerRound } from './player/round.js';
 import { PlayerViews } from './player/views.js';
 import { PlayerDiy, DiyStock } from './player/diy.js';
-import { PlayerSupport } from './player/support.js';
 import { PlayerRules } from './player/rules.js';
 
 export class PlayerState {
@@ -161,6 +162,12 @@ export class PlayerState {
     this.bandId = null;
     this.funds = 0;
     this.pendingFunds = 0;
+    /**
+     * 破财消灾 的欠账（业主 2026-10-30「扣1块钱是在下回合开始时扣」/「没钱也能选，下回合从收入里扣」）：悬赏决策里花 1 资金跳过本
+     * 回合悬赏，选的那一刻**不查钱也不动钱**，只在这里 +1；下一回合开始时由 `MatchSpDraft.settleSpPayoffs` 从刚到的收入里扣（走
+     * `spend()`，所以算一次花费）。每次悬赏决策最多 +1；付不起的部分作废，绝不把钱包扣成负数。
+     */
+    this.payoffDue = 0;
     this.ready = false;
     this.infoReady = this.isBot;
     this.lastEmoteAt = -Infinity;
@@ -169,11 +176,6 @@ export class PlayerState {
     // 0.2.2: the per-operator 潜能 / 练度 ({} = every operator 潜能 6, 精英2 Lv.60 — bots always)
     this.ops = Object.freeze({});
     if (!this.isBot && (seat.loadout || seat.ops)) this.setLoadout(seat.loadout ?? null, seat.ops ?? null);
-    /** 助战 (shared/support.js): frozen base chess ids the SERVER pool allowed; [] = none. Granted at the first round. */
-    this.support = Object.freeze([]);
-    /** what prepareSupports() really granted this match (privateView echoes both) */
-    this.supportGranted = Object.freeze([]);
-    if (!this.isBot && seat.support) this.setSupport(seat.support);
     /**
      * 补位 (0.2.0): the base chess ids this player fields as their stand-ins — the seat's not-owned list when the match
      * started, re-checked against this match's data; frozen, sorted; [] = every operator owned (bots always)
@@ -190,12 +192,21 @@ export class PlayerState {
     /** @type {Map<string, object>} slot id (normal / elite) → composed 自选 record (setDiy) */
     this._diyRecords = new Map();
     /**
-     * 协议源石禁用 (业主 2026-10-21): the seat's ≤ 3 card ids — this player's OWN draft offers / rerolls / random extra
-     * draws skip them. Frozen; [] = nothing banned (bots always). A match keeps the list its seat had at its start.
+     * 协议源石禁用 (业主 2026-10-21): the seat's ≤ HEX_BANS_LIMIT card ids — this player's OWN draft offers / rerolls /
+     * random extra draws skip them. Frozen; [] = nothing banned (bots always). A match keeps the list its seat had at its
+     * start. The cap reads shared/protocol.js HEX_BANS_LIMIT (the one number the wire check, the client and this slice
+     * share; 3 → 6 on 业主 2026-10-30), never a literal — a local 3 here silently undid a wider ban list.
      */
     this.hexBans = Object.freeze(!this.isBot && Array.isArray(seat.hexBans)
-      ? [...new Set(seat.hexBans.filter((id) => typeof id === 'string' && id))].slice(0, 3)
+      ? [...new Set(seat.hexBans.filter((id) => typeof id === 'string' && id))].slice(0, HEX_BANS_LIMIT)
       : []);
+    /**
+     * 第 6 回合的「点卡刷新」(业主 2026-10-30「在第6回合玩家可以舍弃1-2个协议源石随机获得相同数量的协议源石」，
+     * 2026-10-31 改成「点哪张刷哪张」的界面): 这一局还能换几张 —— 初始 `HEX_RECYCLE_BUDGET`（2），每点一次减 1。
+     * 余数由 `server/match/match/views.js publicPlayerView` 在第 6 回合的帧里写成 `hexRecycleLeft`（其它回合不写，
+     * 所以没走到第 6 回合的对局与从前逐字节相同）。规则本身在 `server/match/match/hexDraft.js recycleHex`。
+     */
+    this.hexRecycleLeft = HEX_RECYCLE_BUDGET;
     /** the copies of the slotted pieces (initDiyStock, once the match's bans are drawn) */
     this.diyStock = new DiyStock();
     /**
@@ -268,8 +279,8 @@ export class PlayerState {
     this.personalChoice = null;
     /** free-form counters for content (ctx.counter / setCounter) */
     this.counters = {};
-    /** per-round counters (reset at round start) */
-    this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0 };
+    /** per-round counters (reset at round start); `fundsGained` = 本回合已经**获得**的资金，见 addFunds 的一回合上限 */
+    this.round = { refreshes: 0, buys: 0, sells: 0, spent: 0, gainedChess: 0, arts: 0, fundsGained: 0 };
     this.deployCapBonus = 0;
     this.deployCapMin = 0;
     this.deviceOverrides = {};
@@ -297,7 +308,7 @@ export class PlayerState {
 }
 
 // the method modules, in this order (a name defined twice is an error, never a silent override)
-for (const part of [PlayerBasics, PlayerPieces, PlayerAcquire, PlayerEconomy, PlayerPlacement, PlayerItems, PlayerPrep, PlayerRound, PlayerViews, PlayerDiy, PlayerSupport, PlayerRules]) {
+for (const part of [PlayerBasics, PlayerPieces, PlayerAcquire, PlayerEconomy, PlayerPlacement, PlayerItems, PlayerPrep, PlayerRound, PlayerViews, PlayerDiy, PlayerRules]) {
   for (const key of Reflect.ownKeys(part.prototype)) {
     if (key === 'constructor') continue;
     if (Object.prototype.hasOwnProperty.call(PlayerState.prototype, key)) throw new Error(`PlayerState.${String(key)} is defined twice`);

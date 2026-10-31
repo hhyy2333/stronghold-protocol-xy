@@ -8,8 +8,6 @@ export const EN_PACK = Object.freeze({
   '内容 {0}': 'content {0}',
   '内容（无）': 'content (none)',
   '语音 {0}': 'voice {0}',
-  '助战 {0}': 'support {0}',
-  '{0} 个': '{0}',
   '加载器接受': 'loader accepts',
 
   // ---- 中栏：包详情 ----
@@ -17,7 +15,7 @@ export const EN_PACK = Object.freeze({
   '「{0}」': '“{0}”',
   '包 id': 'Pack id',
   '内容文件': 'Content files',
-  '（无 —— 只带语音/助战也是合法的包）': '(none — a pack may ship only voice/support)',
+  '（无 —— 只带语音也是合法的包）': '(none — a pack may ship only voice)',
   '语音': 'Voice',
   '自带素材': 'Bundled assets',
   '有 assets/（必须有 license）': 'has assets/ (license is then required)',
@@ -52,41 +50,14 @@ export const EN_PACK = Object.freeze({
   '✔ 加载器接受这个包（格式与 content 声明都对得上）。改完要重启游戏服务器才会生效。': '✔ The loader accepts this pack (its format and content declaration agree). Restart the game server for changes to take effect.',
   '本引擎不装载它：{0}': 'This engine does not load it: {0}',
   '⚠ 本引擎不装载这个包：{0}。它不是错误 —— pack.json 是合法的，只是这一份清单是给另一个宿主的。': '⚠ This engine does not load this pack: {0}. It is not an error — pack.json is valid; this manifest is simply meant for another host.',
-  '商店售价': 'Shop price',
-  '阶级价': 'tier price',
-  '先勾上「助战」再定价：不在卡池里的价目没人会用到': 'Tick the support box first: a price for an operator outside the pool is never read',
-  '商店售价必须是 0–99 的整数（留空表示用它的阶级价）': 'A shop price must be an integer 0–99 (leave it empty to use the tier price)',
-  '{0} 的商店售价已改为 {1}': 'The shop price of {0} is now {1}',
-  '商店售价写的是 **data/support.json 的 prices**（不是这个包的清单）：助战干员进商店后按这个价买，留空就用它的阶级价。0 表示不花钱。': 'The shop price is written to **data/support.json\'s prices** (not to this pack\'s manifest): once a support operator is in the shop it costs this much, and an empty field means its tier price. 0 means it is free.',
   '{0}.json': '{0}.json',
   '⚠ 这个包里有 {0}，但 pack.json 的 content 没声明它们 —— 加载器**不会读**这些文件：里面的干员不会进商店、也不会出现在试玩里。修法：去对应页面重新保存一次（会自动补声明），或手工在 content 里加上。': '⚠ This pack contains {0}, but pack.json\'s content does not declare them — the loader will **not read** those files: their operators never reach the shop and never show up in a playtest. Fix it by saving that content once on its own page (the declaration is added for you), or by adding it to content by hand.',
   '（未知原因）': '(unknown reason)',
   '；pack.json 本身：{0} — {1}': '; pack.json itself: {0} — {1}',
 
-  // ---- 中栏：助战声明 ----
-  '助战声明（pack.json 的 support）': 'Support declaration (pack.json support)',
-  '只勾选**这个包自己新增**的干员：卡池是安装方的规则，包不能把官方干员塞进或移出卡池（违反会被加载器记 SUPPORT_FOREIGN_OPERATOR 并整条丢掉）。阶由记录推导，这里不接受手输的阶 —— 手写的阶一旦与记录不一致，该干员会静默不可选（isSupportChess 要求 id 出现在它自己那一阶的池子里）。': 'Tick only operators **this pack itself adds**: the pool belongs to the install, and a pack cannot push official operators in or out (the loader records SUPPORT_FOREIGN_OPERATOR and drops the whole entry). The tier is derived from the record — there is no field to type one: a hand-written tier that disagrees with the record makes the operator silently unselectable (isSupportChess requires the id to appear in the pool of its own tier).',
-  '这个包还没有自己的 chess.json —— 先在干员编辑器里保存一个干员，助战声明才有对象。': 'This pack has no chess.json of its own yet — save an operator in the operator editor first, then there is something to declare.',
-  '阶（推导）': 'Tier (derived)',
-  '会不会进卡池': 'Enters the pool?',
-  '这条记录没有 1–6 的整数 tier，进不了卡池': 'This record has no integer tier 1–6, so it can never enter the pool',
-  '（无整数 tier）': '(no integer tier)',
-  '会进 {0} 阶卡池': 'enters the tier-{0} pool',
-  '阶梯未知，进不了池': 'tier unknown, cannot enter the pool',
   '未声明': 'not declared',
-  '保存助战声明': 'Save support declaration',
   '还原': 'Reset',
-  '保存只改 pack.json 的 support 字段：其余字段、键序与两空格缩进原样保留，也不会给包补一条它没声明过的 content。': 'Saving touches only the support field of pack.json: every other field, the key order and the two-space indent stay as they are, and no content entry the pack never declared gets added.',
-  '{0} 条声明会被拒绝': '{0} declaration(s) will be rejected',
-  '[{0}] {1}：{2}': '[{0}] {1}: {2}',
 
-  // ---- 中栏：卡池在哪里 ----
-  '卡池在哪里': 'Where the pool really lives',
-  '{0} 阶：{1}': 'tier {0}: {1}',
-  '当前 data/support.json 的卡池：{0}': 'Current pool in data/support.json: {0}',
-  'data/support.json 里没有可用的卡池（没有这个文件，或没有「名额 + 卡池」的组合）。': 'data/support.json has no usable pool (the file is missing, or it has no "slots + pool" combination).',
-  '助战卡池本身由服务端的 data/support.json 决定：这个页面只写包的「建议」。安装方在那里写 "workshop": false 就会忽略所有包的助战声明（启动日志会写出来）。': 'The support pool itself is decided by data/support.json on the server: this page only writes the pack’s suggestion. An install that writes "workshop": false there ignores every pack’s support declaration (its startup log says so).',
-  '⚠ 这个安装现在没有开启助战，保存后这些声明不会进卡池。': '⚠ Support is currently off for this install, so saving these declarations will not put anything into the pool.',
 
   // ---- 右栏：导出 ----
   '导出一个包': 'Export a pack',
@@ -118,7 +89,7 @@ export const EN_PACK = Object.freeze({
   // ---- 右栏：说明 ----
   '说明': 'Notes',
   '导入的包必须自带 pack.json（在 zip 根，或包在一个唯一的顶层目录里 —— 两种归档都很常见）。校验用 shared/workshop.js 的 normalizePackManifest，与游戏加载器同一个函数，所以「装得上」就是「加载器会接受」。': 'An imported pack must carry its own pack.json (at the zip root, or wrapped in a single top-level directory — both layouts are common). Validation uses normalizePackManifest from shared/workshop.js, the same function the game loader uses, so “it installs” means “the loader accepts it”.',
-  '装好的包要重启游戏服务器才会出现在游戏里。这里写 workshop/<包id>/，以及 pack.json 的 support、包元数据与 overrides 字段。': 'An installed pack shows up in the game only after the game server restarts. All this page writes is workshop/<pack id>/, plus the support, pack-metadata and overrides fields of pack.json.',
+  '装好的包要重启游戏服务器才会出现在游戏里。这里写 workshop/<包id>/，以及 pack.json 的元数据与 overrides 字段。': 'An installed pack shows up in the game only after the game server restarts. All this page writes is workshop/<pack id>/, plus the pack-metadata and overrides fields of pack.json.',
 
   // ---- 消息与错误回显 ----
   '{0} 个文件': '{0} file(s)',
@@ -127,11 +98,7 @@ export const EN_PACK = Object.freeze({
   '导入被拒绝：{0}': 'Import refused: {0}',
   '先选一个 .zip 文件。': 'Pick a .zip file first.',
   '已导出 {0}.zip（{1} 字节）': 'Exported {0}.zip ({1} bytes)',
-  '{0}→{1} 阶': '{0} → tier {1}',
   '；': ';',
-  '（{0}）': '({0})',
-  '已写入 {0} 的 support：{1} 个{2}{3}': 'Wrote the support of {0}: {1} entr(ies){2}{3}',
-  '{0} 的 support 没有变化，文件未被改写{1}': 'The support of {0} is unchanged; the file was not rewritten{1}',
   '已保存 {0} 的包元数据。': 'Saved the pack metadata of {0}.',
   '{0} 的包元数据没有变化，文件没有被改写。': 'The pack metadata of {0} is unchanged; the file was not rewritten.',
   '已声明覆盖 {0}。': 'Declared the override {0}.',
@@ -184,8 +151,8 @@ export const EN_PACK = Object.freeze({
   '保存自选池声明': 'Save draft-pool declaration',
   '保存只改 pack.json 的 operators 字段：其余字段、键序与两空格缩进原样保留，也不会给包补一条它没声明过的 content。':
     'Saving touches only the operators field of pack.json: every other field, the key order and the two-space indent stay as they are, and no content entry the pack never declared gets added.',
-  '进池的是**自选编队**那一栏（房间里选四名干员），不是助战卡池 —— 两者互不影响。改完要重启游戏服务器才会生效。':
-    'What enters is the **draft roster** tab (four operators picked in the room), not the support pool — the two do not affect each other. Restart the game server for the change to take effect.',
+  '进池的是**自选编队**那一栏（房间里选四名干员）。改完要重启游戏服务器才会生效。':
+    'What enters is the **draft roster** tab (four operators picked in the room). Restart the game server for the change to take effect.',
   '已写入 {0} 的 operators：{1} 个{2}': 'Wrote the operators of {0}: {1} entr(ies){2}',
   '{0} 的 operators 没有变化，文件未被改写{1}': 'The operators of {0} are unchanged; the file was not rewritten{1}',
 
@@ -247,6 +214,5 @@ export const EN_PACK = Object.freeze({
   '出怪': 'Spawns',
   '装备': 'Equipment',
   '静态路由': 'Static routes',
-  '助战声明': 'Support declarations',
   '口径表': 'Variant data tables',
 });

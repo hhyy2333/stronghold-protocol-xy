@@ -135,7 +135,6 @@ const SKIP_TOP = {
   variants: ['这是引擎里的口径开关，不是模式数据，不能导入。', 'This is an engine variant switch, not mode data, so it cannot be imported.'],
   behaviour: ['这是引擎里已经写死的行为开关，不能导入。', 'This selects an engine behaviour switch and cannot be imported.'],
   playtest: ['这是试玩名单，不是可以带进对局的数据，不能导入。', 'This is a playtest list, not data a match can load, so it cannot be imported.'],
-  support: ['这是助战卡池规则，不是干员数据，不能导入。', 'This is the assist-pool rule, not operator data, so it cannot be imported.'],
   combat: ['这是战斗引擎的开关，不是数据，不能导入。', 'This is a combat-engine flag, not data, so it cannot be imported.'],
   layer: ['这是 Forge 的加载层声明，我们的清单没有这一格，不能导入。', 'This is Forge\'s loader-layer flag. Our manifest has no such field, so it cannot be imported.'],
 };

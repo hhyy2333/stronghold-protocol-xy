@@ -9,6 +9,10 @@
 admin-secret.local.txt
 
 # --- 临时 / 本机产物 ---
+# 07-素材包/：给标题画面「导入素材包」用的素材 zip（约 990 MB / 3 万文件）与打包日志。
+#   每次重打都会变的二进制，进历史就很难清掉（本仓库有过 git add . 扫进 83 MB node.exe 的前科）。
+#   交付物本身要留，只是不进 git；需要提交时删掉这两行。
+07-素材包/
 _gh-dl/
 _probe/
 _fix-backup-*/
@@ -72,3 +76,24 @@ desktop.ini
 *.tar.gz
 *.tgz
 Stronghold-Protocol-Forge-协议源石版/服务器/
+
+# --- 缓存 / 临时 / 个人草稿（2026-10-31 整理提交时补）-----------------------------------------------
+# 这几处是**探针、构建缓存与草稿**，不是源码：.scratch 下光 android-build 与 work 两处就 7.4 GB / 11 万文件，
+# app/.scratch 下还有 604 MB 的 live2d 中间产物。它们每天在变，进 git 只会让历史膨胀、让 git add 变慢。
+.scratch/
+.akpy/
+.workbuddy/
+.edge-cf/
+ludo/
+undefined
+tmp-yan.mjs
+pack-01925.mjs
+Stronghold-Protocol-Forge-协议源石版/app/.scratch/
+Stronghold-Protocol-Forge-协议源石版/app/.pyenv/
+Stronghold-Protocol-Forge-协议源石版/app/pip-*/
+Stronghold-Protocol-Forge-协议源石版/app/_tmp_*
+Stronghold-Protocol-Forge-协议源石版/app/workshop/.mod-backups/
+# 工坊包的发布 zip（二进制交付物，与 协议源石-Forge*.zip 同一条口径）
+Stronghold-Protocol-Forge-协议源石版/源石证券交易所-*.zip
+# 06-视频 的成片（每个 ~60 MB）；分镜 / QC / 参考帧这些小文件照常进仓库
+06-视频/*.mp4

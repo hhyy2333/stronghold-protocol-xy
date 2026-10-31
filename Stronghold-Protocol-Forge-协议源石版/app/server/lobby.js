@@ -90,9 +90,9 @@
 //     and a change while it runs is stored for the next match (ROOM_STARTED 'stored for the next match'). Every
 //     `welcome` carries `diyKitted` (welcomeInfo): the operators a DIY slot may field, so the client's picker offers
 //     exactly what the server accepts.
-//   * 协议源石禁用 (业主 2026-10-21): room.hexBans { ids } — up to 3 protocol-originium card ids this player's OWN draws
+//   * 协议源石禁用 (业主 2026-10-21): room.hexBans { ids } — up to 6 protocol-originium card ids this player's OWN draws
 //     skip — is checked leniently (shared/protocol.js checkHexBans: an id this room's data does not have is dropped, never
-//     the whole list; only a malformed / over-3 / duplicate list is BAD_MSG) and stored on the session and the seat like
+//     the whole list; only a malformed / over-6 / duplicate list is BAD_MSG) and stored on the session and the seat like
 //     the two settings above: the match receives seats[].hexBans when it starts (bots: none) and keeps it for its whole
 //     length (out of match: ROOM_STARTED 'stored for the next match').
 //   * Content identity (DESIGN §34, the plugin system's first step): the lobby is given the server's vanilla content
@@ -183,8 +183,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { DIFFICULTIES, ERR, MAX_SEATS, MIN_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor, maxSeatsFrom, clampSeats } from '../shared/constants.js';
 import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks, checkHexBans, charPotentialChanges, PACK_MSG_LIMITS, CHAT_LIMITS } from '../shared/protocol.js';
 import { modSetOf, isModId, modSetDrift } from '../shared/modIdentity.js';
-import { normalizeSupportConfig, checkSupport, supportPicker, supportCapacity, supportTiers } from '../shared/support.js';
-import { isProtocolLevel, protocolLevelActive } from '../shared/protocolLevels.js';
+import { isProtocolLevel, protocolLevelActive, PROTOCOL_LEVEL_MAX } from '../shared/protocolLevels.js';
 import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
 import { normalizeAnnouncement } from '../shared/announce.js';
 // The admin log ring, so a published announcement also shows in the /admin/ console it came from (server/admin.js
@@ -313,7 +312,7 @@ function opsCharIds(data) {
 /**
  * The game data ONE ROOM runs, for the lobby's own room-message checks (DESIGN §28.16).
  *
- * The loadout / 助战 / 干员持有 / 自选编队 messages are checked HERE and then handed to the seat, which the match reads —
+ * The loadout / 干员持有 / 自选编队 messages are checked HERE and then handed to the seat, which the match reads —
  * and the match checks them AGAIN against ITS data (`PlayerState.setLoadout` → `GameData(this.data)`, which is
  * `roomAssets.forRoom(room.modSet)` from `startMatch`). The two faces must therefore be the SAME object, or a message the
  * lobby accepts is silently dropped one step later: the seat keeps it, the match refuses the whole entry and leaves
@@ -324,11 +323,6 @@ function opsCharIds(data) {
  * @param {{ modSet: { digest: string, packs: Array<{ id: string }> }|null }|null} room
  * @returns {Readonly<Record<string, any>>}
  */
-/** Deep-frozen copy of a checked 助战 selection (shared by the session, the seat and the match's PlayerState). */
-function freezeSupport(entries) {
-  return Object.freeze([...(entries || [])]);
-}
-
 /** Deep-frozen copy of checked 自选 picks (shared by the session, the seat and the match's PlayerState). */
 function freezeDiy(picks) {  const out = {};
   for (const [id, p] of Object.entries(picks || {})) out[id] = Object.freeze({ charId: p.charId, skillIndex: p.skillIndex, uniEquipId: p.uniEquipId ?? null });
@@ -402,7 +396,7 @@ export class Room {
     this.mode = mode;
     this.difficulty = difficulty;
     /**
-     * 协议等级 (owner's call 2026-10-18): 1–18 on top of the HIGHEST difficulty (ABYSS) only; 0 = off. Fixed at creation,
+     * 协议等级 (owner's call 2026-10-18): 1–19 on top of the HIGHEST difficulty (ABYSS) only; 0 = off. Fixed at creation,
      * changed by the host through room.setLevel, and reset to 0 whenever the difficulty moves off ABYSS.
      * @type {number}
      */
@@ -546,10 +540,8 @@ export class Room {
    * DESIGN §28.9). `mods` has the SAME shape as `welcome.mods` (`{ digest, packs }`, packs sorted by id) and is
    * ABSENT — not null, not `{}` — for a room that declared nothing, so a vanilla install's frame is byte-identical to
    * what it was before this feature.
-   * @param {object|null} [support] the SERVER's 助战 catalog (Lobby.supportView): the client cannot derive the pool, so
-   *   the picker is only ever able to offer what the server declares.
    */
-  toState(support = null) {
+  toState() {
     return {
       t: 'room.state',
       code: this.code,
@@ -585,22 +577,19 @@ export class Room {
       spectators: this.spectators.map((s) => ({ playerId: s.playerId, name: s.name, connected: s.connected, ...(this.modded ? { content: s.content || 'loading' } : {}) })),
       ...(this.modSet ? { mods: this.modSet } : {}),
       ...(this.content ? { content: this.content.trusted ? {...this.content, trusted:{...this.content.trusted, consent:Object.fromEntries(this.seats.filter(x => x && !x.isBot).map(x => [x.seat,x.consentCs === this.content.cs]))}} : this.content } : {}),
-      ...(support ? { support } : {}),
     };
   }
 
   /**
-   * 包里**房间钩子**在事件那一刻看到的房间快照（DESIGN §28.20）：`toState()` 去掉 `t` 与 `support`（一个是
-   * 线格式的帧类型，一个是服务端按需查的助战目录 —— 钩子不需要它，而信封里少一个键就少一份要维护的形状），
-   * 并且**不带 `mods`**：房间自己的集合是**安装那一刻**就定死的（钩子的 `room.modIds` 就是它），事件里再带这一大坨
-   * 只是把不变的静态数据复制 N 遍。
+   * 包里**房间钩子**在事件那一刻看到的房间快照（DESIGN §28.20）：`toState()` 去掉 `t`（线格式的帧类型，钩子不需要它，
+   * 而信封里少一个键就少一份要维护的形状），并且**不带 `mods`**：房间自己的集合是**安装那一刻**就定死的
+   * （钩子的 `room.modIds` 就是它），事件里再带这一大坨只是把不变的静态数据复制 N 遍。
    *
    * 这份快照是给**钩子**的，不是给玩家的：它不经过 `encode`，所以它照 `room.state` 的字段形状走、不带 `t`。
    */
   hookSnapshot() {
     const state = this.toState();
     delete state.t;
-    delete state.support;
     delete state.mods;
     return state;
   }
@@ -1251,9 +1240,7 @@ export class Lobby {  /**
       case 'room.kick': return this.kick(session, msg);
       case 'room.start': return this.start(session);
       case 'room.rerollSetup': return this.rerollSetup(session, msg);
-      case 'room.cancelReroll': return this.rerollSetup(session, msg, true);
       case 'room.loadout': return this.loadout(session, msg);
-      case 'room.support': return this.support(session, msg);
       case 'room.ownership': return this.ownership(session, msg);
       case 'room.diy': return this.diy(session, msg);
       // 协议源石禁用 (业主 2026-10-21): ≤ 3 cards this player's own draws skip; out-of-match, stored for the next match
@@ -1735,7 +1722,7 @@ export class Lobby {  /**
   }
 
   /**
-   * room.setLevel (owner's call 2026-10-18): the host moves the room's 协议等级 0–18 before the match starts. Levels exist
+   * room.setLevel (owner's call 2026-10-18): the host moves the room's 协议等级 0–19 before the match starts. Levels exist
    * only on the HIGHEST difficulty — refused elsewhere by name, never silently clamped.
    */
   setLevel(session, { level }) {
@@ -1743,7 +1730,7 @@ export class Lobby {  /**
     if (!room) return fail(ERR.NOT_IN_ROOM);
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     if (room.match) return fail(ERR.ROOM_STARTED);
-    if (!isProtocolLevel(level)) return fail(ERR.BAD_TARGET, 'level must be an integer 0–18');
+    if (!isProtocolLevel(level)) return fail(ERR.BAD_TARGET, `level must be an integer 0–${PROTOCOL_LEVEL_MAX}`);
     if (level > 0 && room.difficulty !== 'ABYSS') return fail(ERR.BAD_TARGET, '协议等级只在终极模拟可用');
     if (room.level === level) return OK;
     room.level = level;
@@ -2344,15 +2331,14 @@ export class Lobby {  /**
     return this.startMatch(room, key);
   }
 
-  /** Host authorization stays in the lobby; the match owns the vote and setup. */
-  rerollSetup(session, msg, cancel = false) {
+  /** Host authorization stays in the lobby; the match owns the redraw and its revision. */
+  rerollSetup(session, msg) {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
     if (room.spectatorOf(session.playerId)) return fail(ERR.SPECTATOR);
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
-    const method = cancel ? 'cancelSetupReroll' : 'requestSetupReroll';
-    if (!room.match || typeof room.match[method] !== 'function') return fail(ERR.WRONG_PHASE);
-    return this.callMatch(room, method, session.playerId, cancel ? msg.voteId : msg.setupRevision) || fail(ERR.INTERNAL);
+    if (!room.match || typeof room.match.requestSetupReroll !== 'function') return fail(ERR.WRONG_PHASE);
+    return this.callMatch(room, 'requestSetupReroll', session.playerId, msg.setupRevision) || fail(ERR.INTERNAL);
   }
 
   /**
@@ -2391,39 +2377,6 @@ export class Lobby {  /**
     // a match in a match host answers later (header "Gameplay plugins")
     if (r && typeof r.then === 'function') return Promise.resolve(r).then(matchAnswer, () => fail(ERR.INTERNAL));
     return matchAnswer(r);
-  }
-
-  /**
-   * room.support (助战, shared/support.js): check the selection against the SERVER's pool (data/support.json), store it
-   * on the session and the seat, and — while a match runs — hand it to the match (accepted until the match leaves
-   * INFO_CHECK, exactly like the loadout). An operator the pool does not list rejects the whole message: unlike the
-   * loadout there is deliberately no fallback, because falling back would silently grant a disabled operator.
-   */
-  support(session, { entries }) {
-    const room = this.roomOf(session);
-    // the room's own pool AND the room's own chess table: `checkSupport` reads one and looks the other up
-    const data = this.roomData(room);
-    const cfg = normalizeSupportConfig(data && data.support);
-    const res = checkSupport(entries, cfg, (id) => lookup('chess', id, data));
-    if (!res || res.error) return fail(res && isErrCode(res.error) ? res.error : ERR.BAD_MSG, res && res.detail);
-    const support = freezeSupport(res.entries);
-    session.support = support;
-    if (!room) return OK;
-    const seat = room.seatOf(session.playerId);
-    if (seat) seat.support = support;
-    if (!room.match || !seat) return OK; // a spectator's selection stays on its session, never reaching the match
-    if (typeof room.match.setSupport !== 'function') return fail(ERR.ROOM_STARTED, 'stored for the next match');
-    let r;
-    try {
-      r = room.match.setSupport(session.playerId, support);
-    } catch (e) {
-      this.log.error(`[lobby] ${room.code} match.setSupport threw`, e);
-      return fail(ERR.INTERNAL);
-    }
-    if (r && typeof r === 'object' && r.error) {
-      return fail(isErrCode(r.error) ? r.error : ERR.INTERNAL, typeof r.detail === 'string' ? r.detail : undefined);
-    }
-    return OK;
   }
 
   /**
@@ -2467,7 +2420,7 @@ export class Lobby {  /**
   }
 
   /**
-   * room.hexBans (业主 2026-10-21): keep the legal protocol-originium bans (≤ 3 cards of this room's own player pool),
+   * room.hexBans (业主 2026-10-21): keep the legal protocol-originium bans (≤ 6 cards of this room's own player pool),
    * store them on the session and the seat (see the header). A running match never takes them: it keeps the list its
    * seat had at its start, and the edit is stored for the NEXT match (ROOM_STARTED).
    */
@@ -2708,11 +2661,8 @@ export class Lobby {  /**
         notOwned: own ? own.notOwned : null,
         // 0.2.0 自选编队: the human's checked DIY picks (bots field no 自选 piece [ASSUMED])
         diy: own ? own.diy : null,
-        // 协议源石禁用 (业主 2026-10-21): ≤ 3 cards this seat's own draws skip (bots ban none)
+        // 协议源石禁用 (业主 2026-10-21): ≤ 6 cards this seat's own draws skip (bots ban none)
         hexBans: own ? own.hexBans : null,
-        // 助战 (shared/support.js): the human's checked support selection — only ids the server pool allows (bots: none).
-        // Passed through as the frozen array the seat holds (the loadout's stance), never re-copied into a mutable one.
-        support: s.isBot ? null : (Array.isArray(s.support) ? s.support : null),
       };
     });
     // lastPublic / results: the latest m.public broadcast and the m.result frames (encoded), kept for the replay.
@@ -3126,7 +3076,6 @@ export class Lobby {  /**
     return {
       seat: idx, playerId: session.playerId, name: session.name, isBot: false, ready: false, connected: session.connected, left: false,
       loadout: session.loadout || null,
-      support: session.support || null,
       ops: session.ops || null,
       notOwned: session.notOwned || null,
       diy: session.diy || null,
@@ -3331,38 +3280,14 @@ export class Lobby {  /**
       if (state.inMatch && !prev?.inMatch) event('matchStarted');
       room.trustedPrevious = state;
     }
-    const data = encode(room.toState(this.supportView(room)));
+    const data = encode(room.toState());
     for (const session of this.memberSessions(room)) sendRaw(session.ws, data);
     // 房间集合变了 ⇒ 大厅那份「房间一览 / 在线人数」也该更新（限频在 broadcastStats 里）
     this.broadcastStats();
   }
 
-  /**
-   * The 助战 catalog a client may show (`supportPicker` names this as its purpose), plus the player's own current picks.
-   * An operator the pool does not list is DISABLED — the picker must not be able to offer it, and the server refuses a
-   * request that names it (shared/support.js checkSupport) — so this is the only way the client learns the pool.
-   *
-   * **The same data the check runs on** (`roomData`, see its header): this is the VISIBLE face of the pool and
-   * `support()` is the CHECKING face, so reading `safeData()` here while `support()` reads the room would list a
-   * pickable-looking operator the very same server then refuses — "the client can see it but cannot pick it". A room
-   * that declared nothing (or everything), and a session with no room, still resolve to the process singleton itself,
-   * so 4 座 output is byte-for-byte unchanged.
-   * @param {{ modSet: { digest: string, packs: Array<{ id: string }> }|null }|null} [room]
-   */
-  supportView(room = null) {
-    const data = this.roomData(room);
-    const cfg = normalizeSupportConfig(data && data.support);
-    return {
-      enabled: cfg.enabled,
-      label: cfg.label,
-      tiers: supportPicker(cfg),
-      capacity: supportCapacity(cfg),
-      slots: supportTiers(cfg).reduce((o, t) => ({ ...o, [t]: cfg.slots[t] }), {}),
-    };
-  }
-
   sendState(room, session) {
-    sendSession(session, room.toState(this.supportView(room)));
+    sendSession(session, room.toState());
   }
 
   /** Match broadcast: encode once, send to every connected member. @returns {string | null} the encoded frame */

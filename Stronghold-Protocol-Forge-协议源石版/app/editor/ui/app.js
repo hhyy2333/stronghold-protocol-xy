@@ -1240,12 +1240,8 @@ function renderEditor() {
       : null,
   ], { open: false, note: t('这个干员算在哪些盟约里（模板带过来的默认已勾上）') }));
 
-  // support switch (the 是否助战 toggle)
+  // 试玩直接发牌（playtest.directToHand 那条行为开关）
   if (state.slug) {
-    const baseId = `chess_ws_${state.slug}_a`;
-    const tier = s.tier;
-    const pool = state.data.support.pool[tier] || [];
-    const isSupport = pool.includes(baseId);
     // 「试玩时直接发到手上」的勾选状态：**行为层**的开关，只有编辑器起的试玩服务器会发牌 —— 这样作者不用为了
     // 看一眼自己的干员先把调度中心升到它那一阶（六阶要升到 6 级）。正式对局一切照旧（仍然只在商店里摇）。
     //
@@ -1259,26 +1255,12 @@ function renderEditor() {
     const directOn = isOverride
       ? declaredIds.includes(s.id) || declaredIds.includes(state.slug)
       : s.directToHand === true;
-    box.append(section('support', t('助战'), [
-      h('p', { class: 'hint' }, t('勾上＝把这份记录写进 data/support.json 的服务端卡池（重启游戏服务器后生效）。')),
-      h('p', { class: 'hint' }, t('助战干员**进商店**：它只比普通棋子多一份池中拷贝，仍然要在自己的商店里**摇到**、按阶级价买到、按普通规则卖掉 —— 不会被直接发到手上。')),
-      h('label', { style: 'display:flex;gap:8px;align-items:center;color:var(--fg)' },
-        checkInput(isSupport, async (on) => {
-          try {
-            await api('/api/support/toggle', { method: 'POST', body: { chessId: baseId, tier, enabled: on } });
-            state.message = { kind: 'ok', text: on
-              ? t('{0} 已加入 {1} 阶助战卡池（重启游戏服务器后生效）', s.name || baseId, tier)
-              : t('{0} 已移出 {1} 阶助战卡池（重启游戏服务器后生效）', s.name || baseId, tier) };
-            await load();
-          } catch (err) { state.message = { kind: 'error', text: errText(err) }; renderEditor(); }
-        }),
-        t('把 {0} 加入 {1} 阶助战卡池', baseId, tier)),
-      h('p', { class: 'hint' }, t('当前 {0} 阶卡池：{1}', tier, pool.length ? pool.join(', ') : t('（空）'))),
+    box.append(section('playtest', t('试玩'), [
       h('label', { style: 'display:flex;gap:8px;align-items:center;color:var(--fg)' },
         checkInput(directOn, (on) => { state.spec.directToHand = on === true; renderEditor(); }),
         t('试玩时直接发到手上（正式对局不受影响）')),
       h('p', { class: 'hint' }, t('勾上＝只有编辑器「一键试玩」起的那个服务器会在开局把它塞进手牌。正式服务器即使装了这个包也不会发牌，干员照样只在商店里摇到。覆盖官方干员时，这个开关写在包的行为层（`pack.json` 的 `playtest.directToHand`）—— 记录保持与官方同形；新增的工坊干员写在记录里（`directToHand: true`）。两种写法都会在保存时落盘。')),
-    ], { note: t('可选：让这张卡出现在助战卡池里') }));
+    ], { note: t('可选：试玩时直接发到手上') }));
   }
 
   // actions + validation

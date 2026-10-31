@@ -7,7 +7,7 @@
 // 所以判据搬到这里（`shared/` 是编辑器与游戏共用的一层，随包发出），CLI 只负责把报告打成文本。
 //
 // 层数（与 CLI 的文件头一致）：包格式 → 逐记录语义 → **真引擎装载** → 按内容种类各一层
-// （kits / stages / enemies / waves / items / 语音 / 装备图标 / 外观素材 / 助战声明 / 静态路由）。
+// （kits / stages / enemies / waves / items / 语音 / 装备图标 / 外观素材 / 静态路由）。
 // 第 3 层是它存在的理由：一条记录可以语法完全合法、却**静默**不可玩。
 //
 // 纯只读：不写任何文件（`loadWorkshop` 与 `loadData` 都只读；`loadWorkshopKits` 只 import）。
@@ -21,7 +21,7 @@ import { validateWave } from './waveAuthoring.js';
 import { validateItem } from './itemAuthoring.js';
 import { validateKit } from './kitAuthoring.js';
 import { t } from './i18n.js';
-import { workshopSupportEntries, ART_TABLES } from './workshop.js';
+import { ART_TABLES } from './workshop.js';
 import { loadWorkshop, loadWorkshopKits, WORKSHOP_DIR } from '../server/workshop.js';
 import { validateStageRecord } from '../server/stageAuthoring.js';
 import { loadData } from '../server/data.js';
@@ -50,7 +50,7 @@ const quiet = { info() {}, warn() {}, error() {}, debug() {} };
  * 注：`checks[]` 的条目自带 `kind`；`packs[].issues` 那批里，逐记录的那几条由装载时按 `LAYER_KIND` 标好，
  * 路由 / 外观素材 / 装备图标那几条由 `kindOfCode()` 从错误码现推（同一条问题只存一份，见收尾自检的注释）。
  */
-export const CHECK_KINDS = Object.freeze(['pack', 'operator', 'engine', 'art', 'voice', 'itemIcon', 'kit', 'stage', 'enemy', 'wave', 'item', 'route', 'support', 'variants']);
+export const CHECK_KINDS = Object.freeze(['pack', 'operator', 'engine', 'art', 'voice', 'itemIcon', 'kit', 'stage', 'enemy', 'wave', 'item', 'route', 'variants']);
 
 /**
  * 一张内容文件 → 它属于哪一层（`packs[].issues` 里逐记录那批的 `kind`）。
@@ -198,7 +198,7 @@ const push = (list, kind, issue, views, pack = null) => list.push({
  * 报告里这个包的那一行（`packs[]` 里按 `pack` 找）。
  *
  * 为什么各层要回头找它：`--json` 的既有形状是「一个包的**所有**问题都在它自己那一行里」，而各层的
- * 计数器（`entry.voices` / `entry.itemIcons` / `entry.art` / `entry.support`）也挂在那一行上 ——
+ * 计数器（`entry.voices` / `entry.itemIcons` / `entry.art`）也挂在那一行上 ——
  * test/workshopValidateArtTables.test.js 直接读 `pack.art`，test/workshopItemIcons.test.js 读
  * `report.itemIcons`。分层计数与 `checks[]` 是**两种视图**，但一条问题只数一次（见收尾那段）。
  */
@@ -538,21 +538,6 @@ export async function validateWorkshop({ root = WORKSHOP_DIR, only = null, log =
     }
   }
 
-  // ---- 助战声明层：判据与叠加层共用 `workshopSupportEntries`，所以作者看到的就是加载器做的。
-  for (const pack of packs) {
-    if (!Array.isArray(pack.support) || !pack.support.length) continue;
-    const { entries, errors } = workshopSupportEntries({ chess: pack.files.chess || {} }, [pack]);
-    for (const e of errors) {
-      push(report.checks, 'support', { field: 'support', code: e.code, severity: 'error', message: e.reason }, ['checks'], pack.id);
-    }
-    const entry = rowFor(report, pack.id);
-    // `entry.support` 的既有形状（`<id> → 阶 <n>`）保持原样：它是**用 CLI 的人读的**，
-    // 而 `shared/` 是被 i18n 扫描的一层（未包裹的中文字面量会让 test/i18n.test.js 红）。
-    // 所以这里用 `t()` 包一层 —— CLI 进程里没人 `setLang`，`t()` 恒等返回中文，输出逐字节不变。
-    if (entry && entries.length) entry.support = entries.map((e) => t('{0} → 阶 {1}', e.id, e.tier));
-    report.supportEntries = (report.supportEntries || 0) + entries.length;
-  }
-
   // ---- 行为层（kits/<chessId>.js）：import 只证明它能解析、默认导出是个函数；静默的那些失败
   // （没人发的钩子名、Math.random/Date.now、只在服务器解析得开的相对 import）由静态扫描抓（shared/kitAuthoring.js）。
   if (loaded.packs.length) {
@@ -688,7 +673,7 @@ export async function validateWorkshop({ root = WORKSHOP_DIR, only = null, log =
   //   * `packs[].issues` —— 逐记录（模型层）、**静态路由**、**外观素材**（这两层的文本形状印在包那一行里：
   //     `--json` 的既有形状 + test/workshopValidateRoutes.test.js 与 workshopValidateArtTables.test.js 读的就是它）；
   //   * `report.engine` —— 第 3 层真引擎；
-  //   * `checks[]` —— 其余各层（语音 / 图标 / 助战 / kit / 地图 / 怪物 / 出怪 / 装备）。
+  //   * `checks[]` —— 其余各层（语音 / 图标 / kit / 地图 / 怪物 / 出怪 / 装备）。
   // 两个数组各存一份会让总数翻倍，而报告看上去毫无异常 —— 下面那条自检就是钉这件事的。
   for (const p of report.packs) for (const i of p.issues) (i.severity === 'error' ? report.errors++ : report.warnings++);
   for (const i of report.engine) (i.severity === 'error' ? report.errors++ : report.warnings++);

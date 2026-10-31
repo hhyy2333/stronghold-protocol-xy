@@ -115,16 +115,10 @@ export const EN_INDEX = Object.freeze({
   '还有 {0} 格在画板之外（模板带来或手写的超大范围）：它们照原样保留，画板只画得出 x∈[-3,3]、y∈[-2,6]。': '{0} more tiles sit outside the grid (a template’s or hand-written oversized range): they are kept as they are — the grid only draws x∈[-3,3], y∈[-2,6].',
   '平时这四项由职业与分支推导（就是上面那一行）。同分支的干员因为天赋或官方特例而不同时，在这里钉住它；留空＝用推导值。下面每个下拉列的是**引擎认识的全部取值**。': 'These four normally come from the profession and branch (the line above). When an operator of the same branch differs because of a talent or an official exception, pin it here; empty means “use the derived value”. Each dropdown lists **every value the engine knows**.',
 
-  // ---- 表单：助战、动作与校验 ----
-  '助战': 'Support',
-  '可选：让这张卡出现在助战卡池里': 'optional: make this card available in the support pool',
-  '勾上＝把这份记录写进 data/support.json 的服务端卡池（重启游戏服务器后生效）。': 'Ticking writes this record into the server pool in data/support.json (restart the game server to take effect).',
-  '助战干员**进商店**：它只比普通棋子多一份池中拷贝，仍然要在自己的商店里**摇到**、按阶级价买到、按普通规则卖掉 —— 不会被直接发到手上。': 'A support operator **enters the shop**: it only gets one extra copy in the pool, and still has to be **rolled** in your own shop, bought at its tier price and sold by the normal rules — it is never handed to your hand.',
+  // ---- 表单：试玩、动作与校验 ----
+  '试玩': 'Playtest',
+  '可选：试玩时直接发到手上': 'optional: hand it straight to the hand in playtest',
   '试玩起的是**原版服务器**的一局：你保存的干员按阶级进共享池，和官方干员一样**在商店里摇到、买到** —— 编辑器不往你手里塞任何东西（手里一开始是空的，棋盘上每个单位都是花了资金的）。一阶干员在一级商店就摇得到，越高阶越要先把调度中心升上去。': 'Playtest starts a match on the **stock server**: your saved operator joins the shared pool at its tier and is **rolled and bought in the shop** like an official one — the editor puts nothing into your hand (your hand starts empty; every unit on the board was paid for). A tier-1 operator can be rolled in a level-1 shop; higher tiers need the Dispatch Center upgraded first.',
-  '把 {0} 加入 {1} 阶助战卡池': 'Add {0} to the tier-{1} support pool',
-  '{0} 已加入 {1} 阶助战卡池（重启游戏服务器后生效）': '{0} joined the tier-{1} support pool (restart the game server to take effect)',
-  '{0} 已移出 {1} 阶助战卡池（重启游戏服务器后生效）': '{0} left the tier-{1} support pool (restart the game server to take effect)',
-  '当前 {0} 阶卡池：{1}': 'Current tier-{0} pool: {1}',
   '试玩时直接发到手上（正式对局不受影响）': 'Hand it straight to the hand in playtest (real matches are unaffected)',
   "勾上＝只有编辑器「一键试玩」起的那个服务器会在开局把它塞进手牌。正式服务器即使装了这个包也不会发牌，干员照样只在商店里摇到。覆盖官方干员时，这个开关写在包的行为层（`pack.json` 的 `playtest.directToHand`）—— 记录保持与官方同形；新增的工坊干员写在记录里（`directToHand: true`）。两种写法都会在保存时落盘。": "Ticking means only the server the editor’s one-click playtest starts will put it into your hand at round 1. A stock server never hands it out even with this pack installed — there it is still rolled in the shop. When you override an OFFICIAL operator the switch lives in the pack’s behaviour layer (`playtest.directToHand` in `pack.json`) so the record stays the same shape as the official one; for an operator this pack adds it is written into the record (`directToHand: true`). Both land on disk when you save.",
   '保存并生成': 'Save and generate',

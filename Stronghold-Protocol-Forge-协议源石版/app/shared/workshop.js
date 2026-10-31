@@ -142,7 +142,11 @@ export const PACK_FIELDS = Object.freeze([
   // 内容与覆盖
   'content', 'overrides',
   // 素材与声明（贡献项，见 EMPTY_PACK 那一处）
-  'voices', 'voiceLangs', 'bondIcons', 'itemIcons', 'art', 'skins', 'support', 'operators', 'i18n',
+  'voices', 'voiceLangs', 'bondIcons', 'itemIcons', 'art', 'skins', 'operators', 'i18n',
+  // 已删除的卡池声明（服务端那套扩展玩法，业主 2026-11 整套删除）：**键仍然留在闭集里**，但已经没有解析分支 —— 老包里还写着
+  // `"support": [...]` 时装得上、当没写过。把它从闭集里删掉会让这些包整包被 PACK_UNKNOWN_FIELD 拒掉，
+  // 而这一层最不该出现的失败方向就是「老包因为一个不生效的键装不上」。
+  'support',
   // 形态（clip set）通道与静态相位通道（DESIGN §28.29）：第一方 `FORMS` / `SILENT_PHASES` 冻结不动，包只做增量。
   // 两者都是**行为**声明而不是素材：`forms` 说的是「这个 spine id 还有哪些形态、每个形态用哪几条 clip」，
   // `fx.silentPhases` 说的是「这几个 'phase' 种类模型自己会表示，不要再撒一层通用特效」。
@@ -273,7 +277,6 @@ const RECORD_ID_RE = /^[A-Za-z0-9_\-.:]{1,64}$/;
 
 import { VOICE_SLOTS, VOICE_LANGS, DEFAULT_VOICE_LANG, MOD_API_VERSION } from './constants.js';
 import { SOURCE_LANG, isLangCode } from './i18nPacks.js';
-import { isSupportTier } from './support.js';
 import { isVersionRange, appVersionMatches } from './packs.js';
 import { MOD_LAYERS } from './modIdentity.js';
 import { requiredUnitForms } from './diy.js';
@@ -2043,7 +2046,7 @@ function parseArtEntry(entry, where, shape) {
  *   description: string|null, gameVersion: string|null, content: string[], overrides: string[],
  *   voices: Record<string, Record<string, string[]>>, voiceLangs: Record<string, Record<string, Record<string, string[]>>>,
  *   bondIcons: Record<string, string>, itemIcons: Record<string, string>,
- *   art: Record<string, Record<string, object>>, support: string[],
+ *   art: Record<string, Record<string, object>>,
  *   operators: Record<string, { powers: string[], bonds: string[] }>, i18n?: Record<string, string> } }
  *   | { ok: false, error: string, detail: string }}
  */
@@ -2096,8 +2099,8 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
   const content = Array.isArray(raw.content)
     ? [...new Set(raw.content.filter((f) => typeof f === 'string' && WORKSHOP_CONTENT_FILES.includes(f)))].sort()
     : [];
-  // (EMPTY_PACK is checked after `voices` below: a pack whose whole contribution is a 助战 operator's voice lines has no
-  // data file at all, and refusing it here would make the reserved voice pack impossible to write.)
+  // (EMPTY_PACK is checked after `voices` below: a pack whose whole contribution is voice lines has no data file at
+  // all, and refusing it here would make the reserved voice pack impossible to write.)
   const overrides = Array.isArray(raw.overrides)
     ? [...new Set(raw.overrides.filter((o) => typeof o === 'string' && OVERRIDE_ENTRY_RE.test(o)))].sort()
     : [];
@@ -2110,7 +2113,7 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
     return fail('ASSETS_NEED_LICENSE',
       'this pack has an assets/ folder, so pack.json must declare a license (e.g. "CC0-1.0", "CC-BY-4.0", or "see assets/LICENSE.txt")');
   }
-  // Voice lines of a pack's own (or its 助战) operators — the RESERVED workshop half of the voice interface
+  // Voice lines of a pack's own operators — the RESERVED workshop half of the voice interface
   // (docs/WORKSHOP.md §1.4, docs/ASSETS.md "Voice lines"): `voices: { <charId>: { <slot>: ["<path inside assets/>", …] } }`.
   // The files live under the pack's assets/, so the licence gate above already applies to them, and the client reads
   // them from /workshop-assets/<pack>/<path> — the one route that serves pack media. Only the fixed slot vocabulary is
@@ -2421,21 +2424,6 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
       ...(voices ? { voices } : {}),
     });
   }
-  // 助战卡池贡献 (docs/WORKSHOP.md §2): the operators of THIS pack that should be selectable as 助战. The tier is NOT
-  // written here — it is derived from the pack's own chess record, exactly like every other derived field, so a tier can
-  // never disagree with the record (a mismatch would silently disable the operator: shared/support.js isSupportChess
-  // requires the id to sit under its own tier).
-  const support = raw.support === undefined ? [] : raw.support;
-  if (!Array.isArray(support)) {
-    return fail('SUPPORT_BAD_SHAPE', 'support must be an array of operator ids this pack adds, e.g. ["chess_char_ws_my_op_a"]');
-  }
-  const supportIds = [];
-  for (const id of support) {
-    if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
-      return fail('SUPPORT_BAD_ID', `"${String(id)}" is not a valid operator id`);
-    }
-    if (!supportIds.includes(id)) supportIds.push(id);
-  }
   // 自选池贡献 (`pack.json.operators`, docs/WORKSHOP.md §1.2): the operators of THIS pack that should be **selectable
   // in the 自选 pool** (`data/backups.json` 的 `diy.ownedPool` / `diy.operators`) — the half that made a community
   // "new operator" mod a hand-patch instead of a pack.
@@ -2638,7 +2626,7 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
    * 「声明了等于没声明还不报错」。声明本身仍然留在归一化清单里（作者写了什么就回什么），只是不算贡献。
    */
   const contributesDecl = ([name, v]) => (name === 'fx' ? Array.isArray(v.silentPhases) && v.silentPhases.length > 0 : contributes(v));
-  // A pack may bring data files, voice lines (either table), 盟约图标, 装备图标, 外观素材, 助战声明, 自选池声明
+  // A pack may bring data files, voice lines (either table), 盟约图标, 装备图标, 外观素材, 自选池声明
   // — never none of them (docs/WORKSHOP.md §1.4). 这条检查必须放在**所有**贡献项都解析完之后：放在前面会出现
   // 「一个只带 `operators` 的包被判成空包」，而在它前面引用后面声明的变量则是 TDZ 报错。
   // `playtest` **不是**贡献项：它是行为开关，一个只带它的包仍然什么都没带来，照旧 EMPTY_PACK
@@ -2650,14 +2638,11 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
     && !Object.keys(bondIconFiles).length && !Object.keys(itemIconFiles).length && !Object.keys(artEntries).length
     && !skinEntries.length
     && !Object.keys(orderedOperators).length && !declared.some(contributesDecl)) {
-    // 这份清单里「声明了也不算贡献」的字段**都要点名**：`support` / `playtest`（当初只有这两个），
+    // 这份清单里「声明了也不算贡献」的字段**都要点名**：`playtest`，
     // 以及后加的 `variants` / `behaviour`（它们只是「这一局按哪一套跑」的声明，自己不往对局里带任何东西），
     // 以及管理器合同的 `dependencies` / `conflicts`（DESIGN §28.48：它们说的是「和别的包什么关系」，
-    // 一个只声明依赖的包自己不带来任何内容 —— 与 `support` 同一条）。
-    // 只声明助战的包今天整包被拒（plugin-pack G6：一个 `support: [...]` + `content: []` 的包得到的就是这一条），
-    // 而原来的文案里**没有** `support` 这个词，作者只能对着 `EMPTY_PACK` 猜。`support` 只决定**助战卡池**里放谁，
-    // 干员本体还是由 `content: ["chess"]` 带进来的 —— 所以放宽它不是这一刀的活（那是既有裁决），把话说明白才是。
-    const notContributions = ['support', 'playtest', 'variants', 'behaviour', 'dependencies', 'conflicts', 'callBudget', 'matchKinds']
+    // 一个只声明依赖的包自己不带来任何内容 —— 与 `playtest` 同一条）。
+    const notContributions = ['playtest', 'variants', 'behaviour', 'dependencies', 'conflicts', 'callBudget', 'matchKinds']
       .filter((n) => raw[n] !== undefined);
     const names = [...WORKSHOP_CONTENT_FILES, 'voices', 'voiceLangs', 'bondIcons', 'itemIcons', 'art', 'skins', 'operators',
       'assets', 'client', 'server.preDispatch', 'server.meta', 'server.battle', 'server.room', 'server.modules', 'server.transport', 'routes', 'i18n', 'notices', 'forms', 'fx'];
@@ -2822,7 +2807,6 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
       // 归一化清单的 `canonicalJson`，所以给每个包都加一个 `skins: []` 会让**所有已发布包的哈希全部改变**
       // —— 而哈希是房间身份与 W-D 对齐的依据，动它等于让每个老包在同一条房间里被判成「另一个包」。
       ...(skinEntries.length ? { skins: skinEntries } : {}),
-      support: supportIds,
       operators: orderedOperators,
       playtest: { directToHand },
       // 变体 / 口径声明（DESIGN §28.39）：**只在声明过时才存在**，与 `skins` / `voiceCdn` 同一条纪律、理由逐字
@@ -3472,91 +3456,6 @@ export function unknownOverrideKeys(base, patch) {
 }
 
 /**
- * Resolve every pack's 助战 declaration (`pack.json.support`) into the pool entries it asks for, plus the reasons a
- * declaration is refused (docs/WORKSHOP.md §2).
- *
- * ONE rule, two callers: the overlay (`mergeWorkshopSupport`, which actually publishes them) and
- * `tools/workshop-validate.mjs` (which reports them to the author). Two restrictions, both deliberate:
- *   * only an operator THIS pack adds may enter the pool — a pack must not change which OFFICIAL operators are
- *     available as 助战 (that is a rules decision, and the pool belongs to the install);
- *   * the TIER is derived from the record, never written in the manifest, so it cannot disagree with it — a mismatch
- *     would silently disable the operator, because shared/support.js `isSupportChess` requires an id to sit under the
- *     tier its record declares.
- *
- * @param {Readonly<Record<string, any>>} data merged game data (the tier is read from the MERGED chess record)
- * @param {Array<{ id: string, support?: string[], files?: Record<string, Record<string, object>> }>} packs
- * @returns {{ entries: Array<{ pack: string, id: string, tier: number }>, errors: Array<{ pack: string, id: string, code: string, reason: string }> }}
- */
-export function workshopSupportEntries(data, packs) {
-  const entries = [];
-  const errors = [];
-  const chess = isPlainObj(data) && isPlainObj(data.chess) ? data.chess : {};
-  for (const pack of (Array.isArray(packs) ? packs : []).filter((p) => p && typeof p.id === 'string' && p.id).sort(byPackId)) {
-    const own = isPlainObj(pack.files) && isPlainObj(pack.files.chess) ? pack.files.chess : {};
-    for (const id of Array.isArray(pack.support) ? pack.support : []) {
-      if (!Object.hasOwn(own, id)) {
-        errors.push({
-          pack: pack.id, id, code: 'SUPPORT_FOREIGN_OPERATOR',
-          reason: `"${id}" is not an operator this pack adds — only a pack's OWN operators may enter the 助战 pool`,
-        });
-        continue;
-      }
-      const rec = isPlainObj(chess[id]) ? chess[id] : own[id];
-      const tier = rec ? rec.tier : null;
-      if (!isSupportTier(tier)) {
-        errors.push({
-          pack: pack.id, id, code: 'SUPPORT_TIER_UNKNOWN',
-          reason: `"${id}" has no integer tier 1–6 (got ${JSON.stringify(tier)}), so it can never be a 助战`,
-        });
-        continue;
-      }
-      entries.push({ pack: pack.id, id, tier });
-    }
-  }
-  return { entries, errors };
-}
-
-/**
- * Publish the 助战 pool entries the packs ask for into `data/support.json` (docs/WORKSHOP.md §2) — this is what makes a
- * distributed pack SELF-CONTAINED: without it, a player who installs a pack that adds a 助战 operator would also have to
- * hand-edit `data/support.json` before the operator could be picked.
- *
- * The installer keeps the last word: `"workshop": false` in `data/support.json` turns every pack contribution off.
- */
-function mergeWorkshopSupport(data, packs, report) {
-  const { entries, errors } = workshopSupportEntries(data, packs);
-  for (const e of errors) report.errors.push({ pack: e.pack, file: 'support', id: e.id, code: e.code, reason: e.reason });
-  if (!entries.length) return;
-  const support = isPlainObj(data.support) ? data.support : null;
-  if (!support) {
-    const seen = new Set();
-    for (const e of entries) {
-      if (seen.has(e.pack)) continue;
-      seen.add(e.pack);
-      report.errors.push({
-        pack: e.pack, file: 'support', id: e.id, code: 'MANIFEST_MISSING',
-        reason: 'this pack declares 助战 operators, but data/support.json is missing — 助战 is off for this install',
-      });
-    }
-    return;
-  }
-  if (support.workshop === false) { report.supportOff = true; return; }
-  const pool = { ...(isPlainObj(support.pool) ? support.pool : {}) };
-  /** @type {Record<string, string[]>} */
-  const added = {};
-  for (const { pack, id, tier } of entries) {
-    const key = String(tier);
-    const list = Array.isArray(pool[key]) ? pool[key].slice() : [];
-    if (!list.includes(id)) list.push(id);
-    list.sort();
-    pool[key] = list;
-    (added[pack] ||= []).push(id);
-  }
-  data.support = { ...support, pool };
-  report.support = added;
-}
-
-/**
  * 内容文件的记录**落在哪个容器**里 —— 只对本仓库的**真实数据布局**与文件名不一致的那一个文件开口子。
  *
  * `units.json` 是唯一一个：「新增一个干员的干员记录」在 `data/` 里**没有顶层 `units.json`**，那条记录住在
@@ -3828,7 +3727,6 @@ export function applyWorkshop(base, packs) {
   // 静态相位（`pack.json.fx.silentPhases` → `assets.silentPhases`）：落点是同一张清单，但它不是素材，
   // 而是 `fx/kinds.js` 那个 `SILENT_PHASES` Set 的成员集合 —— 去重 / 排序，声明次序不影响结果。
   mergeWorkshopFx(out, packs, report);
-  mergeWorkshopSupport(out, packs, report);
   // 自选池（`diy.ownedPool` / `diy.operators`）：读 `data.backups.units` 里那条已经合并好的记录，
   // 所以必须排在内容文件那一层之后 —— 它在这个函数里是最末一批，天然满足。
   mergeWorkshopOperators(out, packs, report);
@@ -4626,7 +4524,7 @@ function mergeArtEntry(cur, patch) {
 /**
  * 一个包声明要进**自选池**的干员，逐条判定它能不能进（`pack.json.operators`，docs/WORKSHOP.md §1.2）。
  *
- * 与 `workshopSupportEntries` 同一种结构、同一种理由（**规则只有一份**，加载期与校验器/编辑器读的是同一个函数）：
+ * 同一种结构、同一种理由（**规则只有一份**，加载期与校验器/编辑器读的是同一个函数）：
  * 每一条声明要么给出它落盘时要写的数据，要么给出一条**点名**的拒绝。四条规则：
  *
  *   * `OPERATOR_NO_UNIT` —— 这个包没有同名的 `units[charId]` 记录。没有干员记录的干员进池后是**空槽**：
@@ -4859,8 +4757,6 @@ export function workshopSummary(report) {
         bits.push(`${table} +${keys.length} (${keys.join(', ')})`);
       }
     }
-    const support = report.support && report.support[p.id];
-    if (support) bits.push(`助战 +${support.length}`);
     const operators = report.operators && report.operators[p.id];
     if (operators) bits.push(`自选池 +${operators.length}`);
     // 口径数据通道（DESIGN §28.51）：**写进去的**与**被别的包抢掉的**分开数 —— 一个 `variants.json` 被抢掉时
@@ -4885,7 +4781,6 @@ export function workshopSummary(report) {
     if (lookEnemies) bits.push(`${lookEnemies} 个怪物没有模型（会画成贴图）`);
     return `${p.name}(${p.id}): ${bits.length ? bits.join(', ') : 'nothing'}`;
   });
-  if (report.supportOff) parts.push('助战 pool contributions off (support.json "workshop": false)');
   if (report.errors.length) parts.push(`${report.errors.length} rejected record(s)`);
   return parts.join('; ');
 }

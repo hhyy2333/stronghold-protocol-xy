@@ -11,7 +11,7 @@ import { bondList, offBondCounts } from '../bondsMeta.js';
 import { cardView } from '../choices.js';
 import { hexIdsOf, hexView, enemyHexView, firstLeakFree } from '../hextech.js';
 import { bountySpawns, previewOf } from '../waves.js';
-import { applyEnemyHexes, matchEnemyMods } from '../hextech.js';
+import { applyEnemyHexes, matchEnemyMods, isRangedEnemyKey } from '../hextech.js';
 import { timelineAt } from '../fields.js';
 import { bossFieldPlacement } from '../finalAssault.js';
 import { battleProgress } from '../../sim/spec.js';
@@ -83,12 +83,6 @@ export class MatchViews {
       // are unchanged — the client reads `pub.test === true`.
       ...(this.isTestField() ? { test: true } : {}),
       setupRevision: this.setupRevision,
-      rerollVote: this.setupVote ? {
-        id: this.setupVote.id,
-        proposerId: this.setupVote.proposerId,
-        voters: this.setupVote.voters.slice(),
-        agreed: [...this.setupVote.agreed],
-      } : null,
       factions: this.factions.slice(),
       disabledBonds: [...new Set([...this.disabledBonds, ...this.staticInactiveBonds])].sort(),
       drawnDisabledBonds: this.disabledBonds.slice(),
@@ -97,6 +91,10 @@ export class MatchViews {
       hiddenBossId: this.hiddenBossId,
       bossRound: this.gd.bossRound,
       hiddenRound: this.gd.hiddenRound,
+      // 第16回合「木桩演练」(docs/research/17-dummy-round.json): the round after the Hidden Core, so a client can tell it
+      // apart from the normal rounds it has already played (null when this mode has none). Purely informational: every
+      // rule of the round comes from data/config.json rounds[16].
+      dummyRound: this.gd.dummyRound,
       bossPairs: this.bossWaves ? this.bossWaves.map(w => w.players.slice()) : this.bossPairs ? this.bossPairs.map(ids => ids.slice()) : null,
       spRound: this.gd.spRounds().includes(this.round),
       // DESIGN §14: 'client' = battles are simulated by the browsers (b.start specs), 'server' = legacy streaming
@@ -196,6 +194,9 @@ export class MatchViews {
       lp: Math.max(0, ps.lp),
       bandId: ps.bandId,
       hexes: ps.alive ? hexIdsOf(ps) : [],
+      // 第 6 回合的「点卡刷新」(业主 2026-10-30 / 2026-10-31): 这一局还能换几张（0–2）。**只在第 6 回合的帧里出现** ——
+      // 其它回合不写这个键，于是没走到第 6 回合的对局与从前逐字节相同（`viewsDelta` 把后来出现的行键当整块补丁带上）。
+      ...(ps.alive && Number(this.round) === 6 ? { hexRecycleLeft: ps.hexRecycleLeft } : {}),
       // 协议源石 不灭壁垒 (Hextech): settlement forgives this player's first leak — while a row's loss is derived from a
       // LOCAL count (the 联防 replica) the reader subtracts this. Omitted when false, so a hextech-less row is unchanged.
       ...(ps.alive && firstLeakFree(ps) ? { freeLeak: true } : {}),
@@ -304,7 +305,7 @@ export class MatchViews {
    */
   nextEnemiesFor(ps) {
     if (!ps.alive) return [];
-    const fold = (list) => applyEnemyHexes(list, matchEnemyMods(this));
+    const fold = (list) => applyEnemyHexes(list, matchEnemyMods(this), (key) => isRangedEnemyKey(this.gd, key));
     if (this.bossWaves) {
       const g = this.bossGroupOf(ps);
       if (!g) return [];

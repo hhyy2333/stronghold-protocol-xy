@@ -10,7 +10,7 @@
 // Usage:
 //   node tools/workshop-editor.mjs [--port 3311] [--host 127.0.0.1] [--workshop <root>] [--open]
 //
-// It binds 127.0.0.1 by default ON PURPOSE: the editor can write packs and data/support.json, so exposing it on a LAN
+// It binds 127.0.0.1 by default ON PURPOSE: the editor can write packs, so exposing it on a LAN
 // is an explicit decision. --host 0.0.0.0 prints a warning and is never the default.
 //
 // Exit codes: 0 = stopped, 2 = bad usage / could not start.
@@ -45,7 +45,7 @@ async function main() {
   if (!LOOPBACK.has(args.host)) {
     console.log('');
     console.log('  ⚠ 正在把编辑器绑定到非本机地址：' + args.host);
-    console.log('    编辑器可以写入工坊包和 data/support.json。除非你清楚风险，否则请用 --host 127.0.0.1。');
+    console.log('    编辑器可以写入工坊包。除非你清楚风险，否则请用 --host 127.0.0.1。');
     console.log('');
   }
   const srv = await createEditorServer({ workshopRoot: args.workshop, host: args.host, port: args.port });

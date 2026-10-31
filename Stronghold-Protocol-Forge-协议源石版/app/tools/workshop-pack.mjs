@@ -2,7 +2,7 @@
 // tools/workshop-pack.mjs — 把工坊包导出成一个 .zip、从 .zip 装回来、以及列出所有包。
 //
 // 为什么需要它：在此之前，一个包**只能靠手抄目录**交给别人（docs/WORKSHOP.md §1 的包结构是一堆文件），
-// 而 `pack.json.support`（§2.1 的助战声明）只能手写 JSON。这个工具和编辑器的「包管理」页共用同一批函数
+// 而 `pack.json` 里的若干声明字段只能手写 JSON。这个工具和编辑器的「包管理」页共用同一批函数
 // —— 导入的路径、校验的规则、写入的字节全都只有一份实现，所以 CLI 与图形界面不可能给出不同结论。
 //
 // 用法：
@@ -22,12 +22,11 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createHash } from 'node:crypto';
 
-import { normalizePackManifest, normalizeContentFile, workshopSupportEntries, WORKSHOP_CONTENT_FILES, isOverridableContentFile, OVERRIDE_ENTRY_RE, playtestUnknownIds } from '../shared/workshop.js';
+import { normalizePackManifest, normalizeContentFile, WORKSHOP_CONTENT_FILES, isOverridableContentFile, OVERRIDE_ENTRY_RE, playtestUnknownIds } from '../shared/workshop.js';
 import { loadWorkshop, WORKSHOP_DIR } from '../server/workshop.js';
 // 管理器登记册（DESIGN §28.47）：装过什么、操作者启停过什么 —— CLI、编辑器、服务器读的是**同一份**状态文件。
 import { stateRootFor } from '../server/modModules.js';
 import { readModRegistry, writeModRegistry, enablePack, disablePack, forgetPack, recordInstall, recordBackup } from '../server/modRegistry.js';
-import { normalizeSupportConfig } from '../shared/support.js';
 import { requiredUnitForms } from '../shared/diy.js';
 import { zipWrite, zipRead, ZIP_LIMITS } from '../shared/zip.js';
 
@@ -35,15 +34,11 @@ export { WORKSHOP_DIR, ZIP_LIMITS };
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DATA_DIR = path.join(ROOT, 'data');
-/** 默认的服务端助战配置：卡池的最终归属地（docs/WORKSHOP.md §2.1）。 */
-export const SUPPORT_FILE = path.join(DATA_DIR, 'support.json');
 
 /** 包 id 的字符集与 shared/workshop.js 的 PACK_ID_RE 一致（它必须等于目录名，也是 URL 的一段）。 */
 const PACK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
-/** `pack.json.support` 里 id 的字符集：与 shared/workshop.js 的 RECORD_ID_RE 相同，不另立一份。 */
-const SUPPORT_ID_RE = /^[A-Za-z0-9_\-.:]{1,64}$/;
-/** `pack.json.operators` 的键（干员 id）与 `units.json` 的键用的是同一套字符集。 */
-const OPERATOR_ID_RE = SUPPORT_ID_RE;
+/** `pack.json.operators` 的键（干员 id）与 `units.json` 的键用的是同一套字符集（与 shared/workshop.js 的 RECORD_ID_RE 相同）。 */
+const OPERATOR_ID_RE = /^[A-Za-z0-9_\-.:]{1,64}$/;
 /** 一个包目录里最多读多少个文件（`assets/**` 一起算）。真实包：几百个；失控的目录：不再往下走。 */
 const MAX_PACK_FILES = 20000;
 
@@ -215,7 +210,7 @@ function manifestPrefix(names) {
  * @param {{ root: string, buffer: Buffer, force?: boolean, backup?: boolean }} opts `backup`：force 覆盖时把被替换的
  *   旧版留底到 `<root>/.mod-backups/<id>/…`（回滚的一半，DESIGN §28.47），而不是直接删掉
  * @returns {{ id: string, dir: string, files: number, bytes: number, content: string[], voiceLines: number,
- *   support: string[], skippedDirs: string[], manifest: object, digest: string,
+ *   skippedDirs: string[], manifest: object, digest: string,
  *   displaced: { backup: string, digest: string } | null }}
  */
 export function installZip({ root, buffer, force = false, backup = false }) {
@@ -276,7 +271,6 @@ export function installZip({ root, buffer, force = false, backup = false }) {
       bytes,
       content: checked.pack.content,
       voiceLines: countVoiceLines(checked.pack.voices),
-      support: checked.pack.support,
       skippedDirs: read.skippedDirs,
       manifest: raw,
       digest: newDigest,
@@ -336,113 +330,6 @@ function commitDir(target, source, _force, backupDir = null) {
 
 const countVoiceLines = (voices) => Object.values(voices ?? {}).reduce((n, slots) => n + Object.values(slots ?? {}).reduce((m, files) => m + files.length, 0), 0);
 
-// ---- 助战声明（pack.json.support） ---------------------------------------------------------------------------------
-
-/**
- * 读一个包的助战状态。**阶永远从记录推导**（`workshopSupportEntries`，与加载器/校验器同一份规则），
- * 页面只显示它，不接受手输的阶 —— 手写阶的下场是「写错了但没人报错、该干员静默不可选」。
- *
- * @param {string} root 工坊根
- * @param {string} packId
- * @param {{ supportFile?: string|null }} [opts] 传 supportFile 才会去读 `data/support.json`（卡池归属）
- */
-export function readPackSupport(root, packId, { supportFile = null } = {}) {
-  const dir = findPackDir(root, packId);
-  const pack = readPackDir(dir, packId);
-  // 只有**本包自己新增**的干员能进池：别人的干员（官方或另一个包的）记 SUPPORT_FOREIGN_OPERATOR
-  const owned = Object.keys(pack.files.chess ?? {});
-  const raw = Array.isArray(pack.manifest?.support) ? pack.manifest.support : [];
-  /** @type {string[]} */
-  const declared = [];
-  /** @type {Array<{ id: string, code: string, reason: string }>} */
-  const problems = [];
-  for (const id of raw) {
-    if (typeof id !== 'string' || !SUPPORT_ID_RE.test(id)) {
-      problems.push({ id: String(id), code: 'SUPPORT_BAD_ID', reason: `"${String(id)}" 不是合法的干员 id（字母数字与 _ - . :，≤64）` });
-      continue;
-    }
-    if (!declared.includes(id)) declared.push(id);
-    if (!owned.includes(id)) {
-      // shared/workshop.js 会以 SUPPORT_FOREIGN_OPERATOR 整条拒绝：卡池是安装方的规则，包不能改
-      problems.push({ id, code: 'SUPPORT_FOREIGN_OPERATOR', reason: `"${id}" 不是这个包自己新增的干员，进不了助战卡池` });
-    }
-  }
-  // 与加载器逐字一致：同一个函数、同一个 { chess } 视图，所以编辑器不可能与加载器给出不同结论
-  const { entries, errors } = workshopSupportEntries({ chess: pack.files.chess ?? {} }, [{ id: packId, files: pack.files, support: declared }]);
-  const operators = owned
-    .filter((id) => !pack.files.chess[id]?.isGolden)
-    .map((id) => ({
-      id,
-      name: pack.files.chess[id]?.name ?? id,
-      tier: Number.isInteger(pack.files.chess[id]?.tier) ? pack.files.chess[id].tier : null,
-      selected: declared.includes(id),
-      entry: entries.find((e) => e.id === id) ?? null,
-      // 记录自己带的那个开关（非覆盖模式走这条路：`deriveChessRecord` 写 `directToHand: true`）。
-      // 包页把它和 `pack.json.playtest.directToHand` 分开列 —— 两者在引擎里是并集（见 phases.js）。
-      directToHand: pack.files.chess[id]?.directToHand === true,
-    }))
-    .sort((a, b) => ((a.tier ?? 99) - (b.tier ?? 99)) || a.id.localeCompare(b.id));
-
-  const cfg = supportFile && fs.existsSync(supportFile) ? normalizeSupportConfig(JSON.parse(fs.readFileSync(supportFile, 'utf8'))) : null;
-  return {
-    pack: packId,
-    // 清单里写的顺序（去重）；页面按这个顺序勾选
-    support: declared.sort(),
-    // 加载器真正会放进卡池的（阶由记录推导，这里永远不接受手写的阶）
-    derived: entries.filter((e) => e.pack === packId).map((e) => ({ id: e.id, tier: e.tier })),
-    errors: [...problems, ...errors.map((e) => ({ code: e.code, id: e.id, reason: e.reason }))],
-    operators,
-    // 卡池的最终归属地：data/support.json。`"workshop": false` 会忽略所有包的助战声明
-    workshop: cfg ? cfg.pool : null,
-    enabled: cfg ? cfg.enabled : null,
-  };
-}
-
-/**
- * 写一个包的 `pack.json.support` —— **只动这一个字段**。
- *
- * 与第七页（语音）写 `voices` 的规则完全一样：其余字段、它们的顺序、两空格缩进原样保留，新的 `support`
- * 追加在末尾，而且**绝不**给包补一条它没声明过的 `content`（写 support 不是声明数据文件）。
- * 只允许本包自己新增的干员（否则加载器会以 SUPPORT_FOREIGN_OPERATOR 整条丢掉，写了等于没写）。
- *
- * @param {string} root 工坊根
- * @param {string} packId
- * @param {unknown} ids
- * @returns {{ pack: string, support: string[], changed: boolean, derived: Array<{id: string, tier: number}>, errors: any[] }}
- */
-export async function writePackSupport(root, packId, ids) {
-  // 结构错误与 shared/workshop.js 的码字一一对应：SUPPORT_BAD_SHAPE / SUPPORT_BAD_ID / SUPPORT_FOREIGN_OPERATOR
-  if (!Array.isArray(ids)) throw refuse(`support 必须是数组（这个包自己新增、应当进助战卡池的干员 id）`);
-  const seen = new Set();
-  /** @type {string[]} */
-  const clean = [];
-  for (const id of ids) {
-    if (typeof id !== 'string' || !SUPPORT_ID_RE.test(id)) {
-      throw refuse(`SUPPORT_BAD_ID："${String(id)}" 不是合法的干员 id（字母数字与 _ - . :，≤64）`);
-    }
-    if (!seen.has(id)) { seen.add(id); clean.push(id); }
-  }
-  const dir = findPackDir(root, packId);
-  const pack = readPackDir(dir, packId);
-  const owned = new Set(Object.keys(pack.files.chess ?? {}));
-  const foreign = clean.filter((id) => !owned.has(id));
-  if (foreign.length) {
-    throw refuse(`SUPPORT_FOREIGN_OPERATOR：${foreign.join('、')} 不是这个包自己新增的干员（卡池是安装方的规则，包只能声明自己的干员）`);
-  }
-  const manifest = pack.manifest;
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw refuse(`工坊包 "${packId}" 的 pack.json 不可读`);
-
-  const previous = Array.isArray(manifest.support) ? manifest.support : [];
-  const next = { ...manifest };
-  if (clean.length) next.support = clean; else delete next.support;
-  // 内容没变就不写：写一次会按 2 空格重新排版，而作者可能有自己的排版（`support` 键是否存在也算变化）
-  const sameKey = Object.hasOwn(manifest, 'support');
-  const changed = clean.length !== previous.length || !clean.every((id, i) => previous[i] === id) || (clean.length > 0) !== sameKey;
-  if (changed) await fsp.writeFile(path.join(dir, 'pack.json'), `${JSON.stringify(next, null, 2)}\n`);
-  const state = readPackSupport(root, packId, { supportFile: null });
-  return { pack: packId, support: state.support, changed, derived: state.derived, errors: state.errors };
-}
-
 // ---- 元数据 (pack.json 的标量字段 + overrides) --------------------------------------------------------------------
 //
 // 这一块补的是**唯一一处仍然要求作者手改 pack.json 的地方**。`license` 最要命：一个有 `assets/` 的包（语音、图标、
@@ -453,7 +340,7 @@ export async function writePackSupport(root, packId, ids) {
 
 // ---- 自选池声明（pack.json.operators） -----------------------------------------------------------------------------
 //
-// 与 `support` 同一套做法：**加载器会怎么判，这里就怎么判**（读的是 shared/workshop.js / shared/diy.js 的同一个
+// 与写 `voices` 同一套做法：**加载器会怎么判，这里就怎么判**（读的是 shared/workshop.js / shared/diy.js 的同一个
 // 函数），所以编辑器不可能与加载器给出不同结论。图形入口的硬规矩（docs/WORKSHOP.md §1.1）：写进 pack.json 的
 // 东西必须能在界面上增删改 —— 包括陈旧/没人用的条目（它们只是不生效，不是错误，但要能删掉）。
 //
@@ -589,7 +476,7 @@ export function readPackOperators(root, packId) {
 }
 
 /**
- * 写一个包的 `pack.json.operators` —— **只动这一个字段**。与 `writePackSupport` 同一条规则：其余字段、键序与
+ * 写一个包的 `pack.json.operators` —— **只动这一个字段**。与写其它字段同一条规则：其余字段、键序与
  * 两空格缩进原样保留；内容没变就不写盘。
  *
  * 三条会让加载器**整条拒**的规则在这里就拒绝（写了等于没写比 400 更坏）：干员 id 不在本包的 `units.json` 里
@@ -744,7 +631,7 @@ export function readPackMeta(root, packId, { isOfficial = null } = {}) {
 }
 
 /**
- * 写一个包的元数据（`PACK_META_FIELDS` 那几个）—— **只动传进来的键**。与 `writePackSupport` 同一条规则：其余字段、
+ * 写一个包的元数据（`PACK_META_FIELDS` 那几个）—— **只动传进来的键**。与写其它字段同一条规则：其余字段、
  * 键序与两空格缩进原样保留，新键追加在末尾；`null` 或空串 = **删掉这个键**（加载器对这几个字段各有默认值，
  * 所以删掉是合法的，不是「清空成一个空字符串」）。
  *
@@ -832,7 +719,7 @@ export async function writePackOverrides(root, packId, list, { isOfficial = null
   const previous = Array.isArray(manifest.overrides) ? manifest.overrides : [];
   const next = { ...manifest };
   if (clean.length) next.overrides = clean; else delete next.overrides;
-  // 与 writePackSupport 同一条：内容没变就不写盘（写一次会按 2 空格重新排版，作者可能有自己的排版）
+  // 与上面几处写盘同一条：内容没变就不写盘（写一次会按 2 空格重新排版，作者可能有自己的排版）
   const sameKey = Object.hasOwn(manifest, 'overrides');
   const changed = clean.length !== previous.length || !clean.every((e, i) => previous[i] === e) || (clean.length > 0) !== sameKey;
   if (changed) await fsp.writeFile(path.join(dir, 'pack.json'), `${JSON.stringify(next, null, 2)}\n`);
@@ -856,7 +743,7 @@ export async function writePackPlaytest(root, packId, list) {
   /** @type {string[]} */
   const clean = [];
   for (const raw of list) {
-    if (typeof raw !== 'string' || !SUPPORT_ID_RE.test(raw)) {
+    if (typeof raw !== 'string' || !OPERATOR_ID_RE.test(raw)) {
       throw refuse(`PLAYTEST_BAD_SHAPE：${JSON.stringify(raw)} 不是合法的 chess 记录 id`);
     }
     if (!clean.includes(raw)) clean.push(raw);
@@ -872,7 +759,7 @@ export async function writePackPlaytest(root, packId, list) {
   if (clean.length) next.playtest = { ...current, directToHand: clean };
   else if (Object.keys(current).length > 1) next.playtest = { ...current, directToHand: [] };
   else delete next.playtest;
-  // 与 writePackSupport 同一条：内容没变就不写盘（写一次会按 2 空格重新排版，作者可能有自己的排版）
+  // 与上面几处写盘同一条：内容没变就不写盘（写一次会按 2 空格重新排版，作者可能有自己的排版）
   const malformed = Object.hasOwn(manifest, 'playtest') && !isPlainObject(manifest.playtest);
   const changed = malformed || clean.length !== previous.length || !clean.every((e, i) => previous[i] === e);
   if (changed) await fsp.writeFile(path.join(dir, 'pack.json'), `${JSON.stringify(next, null, 2)}\n`);
@@ -880,8 +767,8 @@ export async function writePackPlaytest(root, packId, list) {
 }
 
 // ---- 列出 ---------------------------------------------------------------------------------------------------------
-/** 一个包的摘要行：id / 名称 / 版本 / 内容文件 / 语音条数 / 助战条数，外加它的校验结论。 */
-export function packSummary(root, packId, loaded = null, { supportFile = null } = {}) {
+/** 一个包的摘要行：id / 名称 / 版本 / 内容文件 / 语音条数，外加它的校验结论。 */
+export function packSummary(root, packId, loaded = null) {
   const pack = readPackDir(path.join(root, packId), packId);
   const manifest = pack.manifest ?? {};
   const entry = loaded ? loaded.packs.find((p) => p.id === packId) ?? null : null;
@@ -894,12 +781,6 @@ export function packSummary(root, packId, loaded = null, { supportFile = null } 
   const where = entry ? 'loaded' : (foreign ? 'foreign' : 'refused');
   const content = Array.isArray(manifest.content) ? manifest.content : [];
   const voiceLines = countVoiceLines(manifest.voices);
-  const support = Array.isArray(manifest.support) ? manifest.support : [];
-  let supportDerived = [];
-  if (support.length && pack.files.chess) {
-    supportDerived = workshopSupportEntries({ chess: pack.files.chess }, [{ id: packId, files: pack.files, support }]).entries.map((e) => ({ id: e.id, tier: e.tier }));
-  }
-  const cfg = supportFile && fs.existsSync(supportFile) ? normalizeSupportConfig(JSON.parse(fs.readFileSync(supportFile, 'utf8'))) : null;
   // 磁盘上有、`content` 却没声明的数据文件：`loadWorkshop()` 严格按 `content` 读，所以这些文件会被**静默忽略**
   // —— 干员进不了商店、地图进不了轮换，而加载器还会说这个包「没问题」。`readPackDir` 故意读全盘（见它的注释），
   // 正是为了让这里能把这份差异报出来，而不是靠作者自己发现。
@@ -932,16 +813,12 @@ export function packSummary(root, packId, loaded = null, { supportFile = null } 
     contentFiles: content.length,
     undeclared,
     voiceLines,
-    support,
-    supportDerived,
     // 校验结论：加载器自己的答案（loaded / foreign / refused + 原因），不是第二套判断
     status: where,
     reason,
     refusal,
     syntaxOk: pack.checked ? pack.checked.ok : false,
     syntaxError,
-    // 安装方的总开关：`data/support.json` 里 `"workshop": false` 时，所有包的助战声明都被忽略
-    supportEnabled: cfg ? cfg.enabled : null,
   };
 }
 
@@ -964,7 +841,7 @@ function cliList(root, { json }) {
   // 登记册的状态随列表一起出来（DESIGN §28.47）：一个被操作者禁用的包在列表里**必须看得见** —— 它文件在盘上、
   // 清单一字不错，却什么都没装载，不说出来就是又一次「在编辑器里在、在磁盘上在、却永远进不了游戏、没有报错」。
   const registry = readModRegistry(stateRootFor(ROOT));
-  const packs = listPackIds(root).map((id) => ({ ...packSummary(root, id, loaded, { supportFile: SUPPORT_FILE }), state: registry.packs[id]?.state || 'enabled' }));
+  const packs = listPackIds(root).map((id) => ({ ...packSummary(root, id, loaded), state: registry.packs[id]?.state || 'enabled' }));
   if (json) { console.log(JSON.stringify({ workshop: root, packs }, null, 2)); return; }
   line(`workshop root: ${root}`);
   if (!loaded.present) line('  （目录不存在 —— 没有包）');
@@ -972,10 +849,6 @@ function cliList(root, { json }) {
   for (const p of packs) {
     const bits = [`内容 ${p.content.length ? p.content.join('/') : '（无）'}`];
     if (p.voiceLines) bits.push(`语音 ${p.voiceLines} 条`);
-    if (p.support.length) {
-      const derived = p.supportDerived.map((e) => `${e.id}→阶${e.tier}`).join(' ');
-      bits.push(`助战 ${p.support.length} 个${derived ? `（${derived}）` : ''}`);
-    }
     const verdict = p.status === 'loaded'
       ? 'VALID'
       : p.status === 'foreign'
@@ -1017,7 +890,7 @@ function cliImport(root, file, { force, json }) {
   if (json) { console.log(JSON.stringify({ ...r, state: 'enabled' }, null, 2)); return; }
   line(`已安装 ${r.id} → ${r.dir}`);
   line(`  ${r.files} 个文件，${r.bytes} 字节；内容 ${r.content.length ? r.content.join('/') : '（无）'}`
-    + `${r.voiceLines ? `，语音 ${r.voiceLines} 条` : ''}${r.support.length ? `，助战 ${r.support.join('、')}` : ''}`);
+    + `${r.voiceLines ? `，语音 ${r.voiceLines} 条` : ''}`);
   if (r.displaced) line(`  （升级留底：${r.displaced.backup} · 旧摘要 ${r.displaced.digest.slice(0, 12)}…，回滚用 rollback ${r.id}）`);
   if (r.skippedDirs.length) line(`  （跳过了 ${r.skippedDirs.length} 个目录条目）`);
 }

@@ -32,7 +32,7 @@ import { currentLang } from './i18n.js';
 const EN_HINTS = Object.freeze({
   EMPTY_PACK: {
     plain: 'This pack brings nothing: installing it changes nothing, so the engine refuses it.',
-    fix: 'What are you trying to do? Swap art (portraits / icons / voices) \u2192 art; add data (operators / items) \u2192 content; add interface \u2192 client; post a notice \u2192 notices. Note: support alone is not content \u2014 it only says who may enter the support pool.',
+    fix: 'What are you trying to do? Swap art (portraits / icons / voices) \u2192 art; add data (operators / items) \u2192 content; add interface \u2192 client; post a notice \u2192 notices.',
   },
   PACK_ID_COLLISION: {
     plain: 'Another pack already contributed a record with this id: two packs want the same slot.',
@@ -108,7 +108,7 @@ function half(hit, code, key) {
 export const ERR_HINTS = Object.freeze({
   EMPTY_PACK: {
     plain: '这个包什么都没带，装上去不会有任何变化，所以引擎不收。',
-    fix: '你想做什么？换素材（立绘 / 图标 / 语音）→ 写 art；加数据（干员 / 装备）→ 写 content；加界面 → 写 client；发公告 → 写 notices。注意：只写 support 不算内容 —— 那只是说「谁能进助战池」。',
+    fix: '你想做什么？换素材（立绘 / 图标 / 语音）→ 写 art；加数据（干员 / 装备）→ 写 content；加界面 → 写 client；发公告 → 写 notices。',
   },
   PACK_ID_COLLISION: {
     plain: '另一个包已经放了一条同 id 的记录，两个包抢同一个位置。',

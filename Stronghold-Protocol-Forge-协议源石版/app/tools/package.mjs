@@ -83,6 +83,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { findSpecifiers } from './check-imports.mjs';
 import { rewriteManifest } from '../server/http/assetViews.js';
 import { mergeLocalManifests, planFromManifests } from '../public/js/assetPack.js';
+import { LOCAL_DIR, LOCAL_MANIFEST, localGroupGaps } from './local-assets-groups.mjs';
 import { writePackIndex } from './packs.mjs';
 import { compareVersions, diffBases, manifestText, readBase, updateText } from './package-update.mjs';
 import {
@@ -618,6 +619,26 @@ function groupOf(rel) {
 }
 
 /**
+ * The problems a group gap in `data/local-assets.json` makes (empty when the machine has no local-client art, or the
+ * manifest covers the disk). The client's `localAsset()` returns null for a group the manifest lacks, and every caller
+ * falls back to drawn text / shapes — silently, no error, no log. So a machine whose `public/assets/local/` holds art
+ * its manifest does not list must not become a package (0.19.24 and 0.19.36 both shipped a 130-group manifest this way;
+ * docs/ASSETS.md). A machine without `public/assets/local/` (a clean checkout, CI, a server-only host) is skipped.
+ * @param {ReturnType<typeof localGroupGaps>} g
+ * @returns {string[]}
+ */
+export function localGroupProblems(g) {
+  if (!g) return [];
+  if (g.error) return [`local-asset groups: ${g.error}`];
+  if (g.skipped || !g.unlisted.length) return [];
+  return [
+    `local-asset groups: ${g.unlisted.length} group(s) under ${LOCAL_DIR}/ are not in ${LOCAL_MANIFEST}`
+      + ` (${g.files} files): the client falls back silently to drawn text / shapes — re-extract (node tools/local-extract/extract.py), then rebuild:`,
+    ...g.unlisted.map((group) => `  local-asset group not listed: ${group}`),
+  ];
+}
+
+/**
  * Everything a package would hold, with every check: no copying, no install. `scan: false` skips the personal-info
  * scan and `measure: false` the node_modules / public/vendor sizes (tests that only want the selection).
  * @param {string} root
@@ -645,6 +666,10 @@ export function plan(root, opts = {}) {
   for (const f of keep) if (!isFile(path.join(root, f))) problems.push(`missing tracked file: ${f}`);
   for (const f of art.missing) problems.push(`missing art: ${f} (data/assets.json lists it; run npm run setup, or build --lite)`);
   if (!lite && !art.files.some((f) => f.startsWith('public/assets/'))) problems.push('no art under public/assets: run npm run setup first, or build --lite');
+  // 本机素材清单必须覆盖 public/assets/local/ 上真实存在的 group：少了客户端不报错，只静默退回画字/画形状
+  // （0.19.24 与 0.19.36 两次事故；docs/ASSETS.md「本机素材清单」一节）。lite 包不带本机素材，不查。
+  const localGroups = lite ? null : localGroupGaps(root);
+  for (const x of localGroupProblems(localGroups)) problems.push(x);
   for (const p of importProblems(root, keep)) problems.push(p);
   for (const p of entryProblems(pkg, keep)) problems.push(p);
   for (const p of playerPackageProblems(pkg, keep)) problems.push(p);
@@ -672,7 +697,7 @@ export function plan(root, opts = {}) {
   const dropBytes = Object.values(dropped).reduce((n, g) => n + g.bytes, 0);
   return {
     version: pkg.version || '0.0.0', lite, tracked: keep, art: art.files, generated, files, dropped, orphans: art.orphans,
-    held: art.held, fxHeld: art.fxHeld, localArt: art.local, problems, names: names.length, scanned,
+    held: art.held, fxHeld: art.fxHeld, localArt: art.local, localGroups, problems, names: names.length, scanned,
     scenes: { files: art.scenes || [], bytes: sumBytes(root, art.scenes || []) },
     bytes: {
       tracked: trackedBytes, art: artBytes, modules: modulesBytes, vendor: vendorBytes,
@@ -692,6 +717,11 @@ export function formatSummary(p) {
   ];
   if (!p.lite) {
     lines.push(`art: ${p.art.length} files, ${MB(p.bytes.art)} (data/assets.json, public/fonts${p.localArt ? ', public/assets/local + data/local-assets.json' : '; no local-client art here'})`);
+    if (p.localGroups && !p.localGroups.skipped && !p.localGroups.error) {
+      const g = p.localGroups;
+      lines.push(`local-asset groups: ${g.groups} on disk, ${g.unlisted.length ? `${g.unlisted.length} NOT listed` : 'all listed'}`
+        + `${g.dangling.length ? ` (${g.dangling.length} listed group(s) have no directory on disk)` : ''}`);
+    }
     const sceneFiles = p.scenes?.files;
     if (sceneFiles?.length) {
       lines.push(`battlefield scenes: ${sceneFiles.length} files, ${MB(p.scenes.bytes || 0)} (0.2.5 asset pack, public/assets/local/scene; the metal board is the fallback when a stage has none)`);

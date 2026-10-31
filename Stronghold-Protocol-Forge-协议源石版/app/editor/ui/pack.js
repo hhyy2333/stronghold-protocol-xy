@@ -3,16 +3,10 @@
 // 这一页补上工坊一直缺的两块：
 //   1. 一个包**没法交给别人** —— 只能手抄目录。这里导出成 `<包id>.zip`（内容就是那个包），
 //      也能把别人给的 .zip 装回 workshop/；
-//   2. `pack.json.support`（助战声明）**没有图形入口** —— 只能手写 JSON。这里勾选本包自己新增的干员。
+//   2. `pack.json` 的元数据与 `overrides` 此前只能手改 —— 这里给它们图形入口。
 //
-// 两条规则来自服务端，页面不复制第二份：
-//   * 归档的读/写与「只动 support 一个字段」的写盘都在 tools/workshop-pack.mjs（CLI 与这页共用同一批函数），
-//     所以图形界面与 `node tools/workshop-pack.mjs …` 不可能给出不同结论；
-//   * **阶由记录推导**（/api/packs/support 给的 derived），页面上没有任何可以手输阶的地方 ——
-//     手写的阶一旦与记录不一致，`isSupportChess` 会让该干员静默不可选。
-//
-// 卡池的最终归属地是服务端的 `data/support.json`：`"workshop": false` 会让所有包的助战声明失效，
-// 页面必须把这件事说清楚，否则作者会以为勾选没生效是编辑器的 bug。
+// 规则来自服务端，页面不复制第二份：归档的读/写与那几个字段的写盘都在 tools/workshop-pack.mjs
+// （CLI 与这页共用同一批函数），所以图形界面与 `node tools/workshop-pack.mjs …` 不可能给出不同结论。
 
 // 界面文案走 i18n：t('中文原文') 查英文词典，查不到就原样返回中文（editor/ui/i18n.js 说明了这个取舍）。
 import { t, mountI18n } from './i18n.js';
@@ -36,9 +30,9 @@ async function api(path, opts) {
 }
 
 const state = {
-  data: null, packs: [], packId: null, message: null, busy: false, picked: new Set(), playtest: null, playtestDifficulty: null,
+  data: null, packs: [], packId: null, message: null, busy: false, playtest: null, playtestDifficulty: null,
   // 「包元数据」那六个输入框的草稿（`{ name: '…', license: '…' }`）与 overrides 添加行里的两个选择：
-  // 输入框在每次重画时从草稿重建，所以勾一个助战、删一条声明都不会把作者正在打的字弄丢。
+  // 输入框在每次重画时从草稿重建，所以改一个字段、删一条声明都不会把作者正在打的字弄丢。
   metaDraft: {}, ovFile: '', ovId: '',
   // 自选池声明（`pack.json.operators`）的两份草稿：勾了哪些干员，以及每个干员的盟约/权能文本
   // （`{ '<charId>': { bonds: 'egirShip', powers: 'egir, iberia' } }`，空格与逗号都当分隔符）。
@@ -50,7 +44,7 @@ const state = {
 };
 
 const packOf = (id = state.packId) => state.packs.find((p) => p.id === id) ?? null;
-/** 一个包的元数据/overrides 状态：`/api/packs/support` 的 `meta[<包id>]`，两条写盘路由的 200 回话也是同一个形状。 */
+/** 一个包的元数据/overrides 状态：`/api/packs` 的 `meta[<包id>]`，两条写盘路由的 200 回话也是同一个形状。 */
 const metaOf = (id = state.packId) => state.data?.meta?.[id] ?? null;
 const isChinese = (s) => /[\u4e00-\u9fa5]/.test(String(s));
 
@@ -150,7 +144,7 @@ const refusalText = refusalDetail;
  *
  * 为什么要一个函数：列表行、详情横幅、校验面板三处都要这一行，而「查不到回落」这条契约只该写一次
  * —— 三处各写一遍必然有一天漏掉一处，那一处就会变成空白（`errLine` 的注释里写了这条）。
- * @param {object} p 一个包的状态（`/api/packs/support` 的 `packs[]` 里那一条）
+ * @param {object} p 一个包的状态（`/api/packs` 的 `packs[]` 里那一条）
  * @returns {string} 至少一行；最坏情况是 `[CODE] 原文`
  */
 function refusalHintLine(p) {
@@ -172,7 +166,6 @@ function renderPackList() {
     if (p.license) bits.push(p.license);
     bits.push(p.content.length ? t('内容 {0}', p.content.join('/')) : t('内容（无）'));
     if (p.voiceLines) bits.push(t('语音 {0}', t('{0} 条', p.voiceLines)));
-    if (p.support.length) bits.push(t('助战 {0}', t('{0} 个', p.support.length)));
     const name = document.createElement('div'); name.className = 'n'; name.textContent = p.name || p.id;
     const meta = document.createElement('div'); meta.className = 'm'; meta.textContent = `${p.id} · ${bits.join(' · ')}`;
     const verdict = document.createElement('div'); verdict.className = 'm';
@@ -214,11 +207,10 @@ function renderPackList() {
   }
 }
 
-/** 选中一个包：勾选状态按它自己声明的 support 初始化（未保存的改动会被丢弃，和别的页面一样）。 */
+/** 选中一个包（未保存的改动会被丢弃，和别的页面一样）。 */
 function selectPack(id) {
   state.packId = id;
   state.message = null;
-  state.picked = new Set(packOf(id)?.support ?? []);
   state.opPicked = new Set(packOf(id)?.diyOperators?.declared ?? []);
   state.opText = {};
   state.ovId = '';
@@ -228,7 +220,7 @@ function selectPack(id) {
 
 function renderAll() { renderPackList(); renderDetail(); renderSide(); }
 
-// ---- 中栏：包的详情 + 包元数据 + overrides + 助战声明 --------------------------------------------------------------
+// ---- 中栏：包的详情 + 包元数据 + overrides --------------------------------------------------------------------------
 
 /**
  * 「包元数据」这一块：六个输入框 + 一个保存按钮。此前这几个字段在这一页只是**只读显示**，作者要改只能手改 pack.json；
@@ -405,12 +397,12 @@ function renderDetail() {
   box.append(h(t('「{0}」', p.name)));
   const info = document.createElement('div'); info.className = 'panel kv';
   info.append(kv(t('包 id'), p.id));
-  info.append(kv(t('内容文件'), p.content.length ? p.content.join(t('、')) : t('（无 —— 只带语音/助战也是合法的包）')));
+  info.append(kv(t('内容文件'), p.content.length ? p.content.join(t('、')) : t('（无 —— 只带语音也是合法的包）')));
   info.append(kv(t('语音'), p.voiceLines ? t('{0} 条', p.voiceLines) : t('（无）')));
   info.append(kv(t('自带素材'), p.hasAssets ? t('有 assets/（必须有 license）') : t('没有 assets/')));
   box.append(info);
 
-  // 校验结论：加载器自己的答案（/api/packs/support 的 status/reason 来自 loadWorkshop）
+  // 校验结论：加载器自己的答案（/api/packs 的 status/reason 来自 loadWorkshop）
   const verdict = document.createElement('div');
   if (p.status === 'loaded') {
     verdict.className = 'banner good';
@@ -451,105 +443,12 @@ function renderDetail() {
     box.append(renderPlaytestPanel(meta, p));
   }
 
-  // ---- 助战声明 ----
-  box.append(h(t('助战声明（pack.json 的 support）')));
-  const note = document.createElement('div'); note.className = 'panel';
-  note.append(Object.assign(document.createElement('p'), {
-    className: 'hint',
-    textContent: t('只勾选**这个包自己新增**的干员：卡池是安装方的规则，包不能把官方干员塞进或移出卡池（违反会被加载器记 SUPPORT_FOREIGN_OPERATOR 并整条丢掉）。阶由记录推导，这里不接受手输的阶 —— 手写的阶一旦与记录不一致，该干员会静默不可选（isSupportChess 要求 id 出现在它自己那一阶的池子里）。'),
-  }));
-
-  if (!p.operators.length) {
-    note.append(Object.assign(document.createElement('p'), {
-      className: 'hint',
-      textContent: t('这个包还没有自己的 chess.json —— 先在干员编辑器里保存一个干员，助战声明才有对象。'),
-    }));
-  } else {
-    const table = document.createElement('table');
-    const head = document.createElement('tr');
-    for (const th of ['', t('干员 id'), t('名称'), t('阶（推导）'), t('会不会进卡池'), t('商店售价')]) head.append(Object.assign(document.createElement('th'), { textContent: th }));
-    table.append(head);
-    for (const op of p.operators) {
-      const tr = document.createElement('tr');
-      const pick = document.createElement('td'); pick.className = 'pick';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      // 记录没有 1–6 的整数阶时（SUPPORT_TIER_UNKNOWN）不给勾：勾了也进不了池，那是「看起来配好了但没生效」
-      cb.disabled = !op.tier;
-      if (!op.tier) cb.title = t('这条记录没有 1–6 的整数 tier，进不了卡池');
-      cb.checked = op.selected;
-      cb.addEventListener('change', () => {
-        if (cb.checked) state.picked.add(op.id); else state.picked.delete(op.id);
-        renderDetail();
-      });
-      pick.append(cb);
-      tr.append(pick);
-      tr.append(Object.assign(document.createElement('td'), { className: 'id', textContent: op.id }));
-      tr.append(Object.assign(document.createElement('td'), { textContent: op.name }));
-      tr.append(Object.assign(document.createElement('td'), { textContent: op.tier ? String(op.tier) : t('（无整数 tier）') }));
-      const why = document.createElement('td');
-      if (op.selected && op.entry) why.append(Object.assign(document.createElement('span'), { className: 'tag ok', textContent: t('会进 {0} 阶卡池', op.entry.tier) }));
-      else if (op.selected) why.append(Object.assign(document.createElement('span'), { className: 'tag err', textContent: t('阶梯未知，进不了池') }));
-      else why.append(Object.assign(document.createElement('span'), { className: 'tag', textContent: t('未声明') }));
-      tr.append(why);
-      tr.append(priceCell(p, op));
-      table.append(tr);
-    }
-    note.append(table);
-    const actions = document.createElement('div'); actions.className = 'row'; actions.style.marginTop = '10px';
-    const save = document.createElement('button');
-    save.className = 'primary';
-    save.textContent = state.busy ? t('保存中…') : t('保存助战声明');
-    save.disabled = state.busy;
-    save.addEventListener('click', saveSupport);
-    const reset = document.createElement('button');
-    reset.className = 'ghost';
-    reset.textContent = t('还原');
-    reset.addEventListener('click', () => { state.picked = new Set(p.support); renderDetail(); });
-    actions.append(save, reset);
-    note.append(actions);
-    note.append(Object.assign(document.createElement('p'), {
-      className: 'hint',
-      textContent: t('保存只改 pack.json 的 support 字段：其余字段、键序与两空格缩进原样保留，也不会给包补一条它没声明过的 content。'),
-    }));
-    note.append(Object.assign(document.createElement('p'), {
-      className: 'hint',
-      textContent: t('商店售价写的是 **data/support.json 的 prices**（不是这个包的清单）：助战干员进商店后按这个价买，留空就用它的阶级价。0 表示不花钱。'),
-    }));
-  }
-
-  // 已经写着的声明里，哪些是加载器会拒绝的（别人的干员 id、坏 id）
-  if (p.errors?.length) {
-    const box2 = document.createElement('div'); box2.className = 'panel';
-    box2.append(Object.assign(document.createElement('div'), { className: 'err', textContent: t('{0} 条声明会被拒绝', p.errors.length) }));
-    const ul = document.createElement('ul'); ul.className = 'issues';
-    for (const e of p.errors) ul.append(Object.assign(document.createElement('li'), { className: 'err', textContent: t('[{0}] {1}：{2}', e.code, e.id, t(e.reason)) }));
-    box2.append(ul);
-    note.append(box2);
-  }
-  box.append(note);
-
   // ---- 自选池声明（pack.json.operators）----
   // 这是「一个包新增一个干员」在界面上缺的最后一块：干员记录（units.json）由干员页写入，而**让它出现在自选
   // 池里**只有这一条路（`diy.ownedPool` 是生成物，包改不了它）。四个派生字段（名字/星级/职业/分支）不在这里
   // 写：它们从本包那条 units 记录来（服务端 mergeWorkshopOperators 就只有这一个来源）。
   box.append(renderOperatorsPanel(p));
 
-  // 卡池的归属地：说清楚 support 只是「建议」，真正的池子在服务端
-  box.append(h(t('卡池在哪里')));
-  const pool = document.createElement('div'); pool.className = 'panel';
-  if (p.workshop && Object.keys(p.workshop).length) {
-    const lines = Object.entries(p.workshop).map(([tier, ids]) => t('{0} 阶：{1}', tier, t('{0} 个', ids.length))).join(' · ');
-    pool.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: t('当前 data/support.json 的卡池：{0}', lines) }));
-  } else {
-    pool.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: t('data/support.json 里没有可用的卡池（没有这个文件，或没有「名额 + 卡池」的组合）。') }));
-  }
-  pool.append(Object.assign(document.createElement('p'), {
-    className: 'hint',
-    textContent: t('助战卡池本身由服务端的 data/support.json 决定：这个页面只写包的「建议」。安装方在那里写 "workshop": false 就会忽略所有包的助战声明（启动日志会写出来）。')
-      + (state.data?.enabled === false ? ' ' + t('⚠ 这个安装现在没有开启助战，保存后这些声明不会进卡池。') : ''),
-  }));
-  box.append(pool);
 }
 
 // ---- 右栏：导出 / 导入 ---------------------------------------------------------------------------------------------
@@ -684,7 +583,7 @@ function renderSide() {
   }));
   help.append(Object.assign(document.createElement('p'), {
     className: 'hint',
-    textContent: t('装好的包要重启游戏服务器才会出现在游戏里。这里写 workshop/<包id>/，以及 pack.json 的 support、包元数据与 overrides 字段。'),
+    textContent: t('装好的包要重启游戏服务器才会出现在游戏里。这里写 workshop/<包id>/，以及 pack.json 的元数据与 overrides 字段。'),
   }));
   // A1（2026-10-13）：这一页以前**没有任何一句话告诉作者「先读哪份」**，而仓库里恰好有一份 200 KB 的
   // docs/WORKSHOP.md。服务端早就把 /docs/**.md 挂出来了（editor/server.mjs 的 DOC_TYPES 那一条），
@@ -746,7 +645,6 @@ function checkKindLabel(kind) {
     case 'wave': return t('出怪');
     case 'item': return t('装备');
     case 'route': return t('静态路由');
-    case 'support': return t('助战声明');
     case 'variants': return t('口径表');
     default: return String(kind ?? '');
   }
@@ -872,51 +770,6 @@ async function runCheck(packId) {
 }
 
 // ---- 动作 ---------------------------------------------------------------------------------------------------------
-
-/**
- * 一个干员的「商店售价」格子：留空 = 用它的阶级价（写 `data/support.json` 的 `prices`）。
- *
- * 为什么放在这张表里：助战干员现在是**进商店**的（按阶级价买、按普通棋子卖），所以「它卖多少钱」与「它是不是助战」
- * 是同一个决定的两半 —— 分开两个页面只会让作者忘掉另一半。没被勾成助战时不给改（服务端也会拒绝）。
- */
-function priceCell(p, op) {
-  const td = document.createElement('td');
-  const declared = (p.support || []).includes(op.id);
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.min = '0';
-  input.max = '99';
-  input.style.width = '84px';
-  const current = state.data?.prices ? state.data.prices[op.id] : undefined;
-  input.value = Number.isInteger(current) ? String(current) : '';
-  input.placeholder = t('阶级价');
-  input.disabled = !declared || state.busy;
-  if (!declared) input.title = t('先勾上「助战」再定价：不在卡池里的价目没人会用到');
-  const commit = async () => {
-    const raw = input.value.trim();
-    const price = raw === '' ? null : Number(raw);
-    if (price !== null && (!Number.isInteger(price) || price < 0 || price > 99)) {
-      state.message = { kind: 'error', text: t('商店售价必须是 0–99 的整数（留空表示用它的阶级价）') };
-      renderDetail();
-      return;
-    }
-    state.busy = true; renderDetail();
-    try {
-      const r = await api('/api/support/price', { method: 'POST', body: { chessId: op.id, price } });
-      const shown = r.prices && Number.isInteger(r.prices[op.id]) ? t('{0} 金', r.prices[op.id]) : t('阶级价');
-      state.message = { kind: 'ok', text: t('{0} 的商店售价已改为 {1}', op.id, shown) };
-      await load(p.id);
-    } catch (e) {
-      state.message = { kind: 'error', text: errText(e) };
-    } finally {
-      state.busy = false; renderDetail(); renderSide();
-    }
-  };
-  input.addEventListener('change', commit);
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') commit(); });
-  td.append(input);
-  return td;
-}
 
 /** 「自选池声明」（`pack.json.operators`）的一段：列出本包自己的干员、勾选要进池的、给每个勾了的写盟约与权能。 */
 function renderOperatorsPanel(p) {
@@ -1057,7 +910,7 @@ function renderOperatorsPanel(p) {
   }));
   note.append(Object.assign(document.createElement('p'), {
     className: 'hint',
-    textContent: t('进池的是**自选编队**那一栏（房间里选四名干员），不是助战卡池 —— 两者互不影响。改完要重启游戏服务器才会生效。'),
+    textContent: t('进池的是**自选编队**那一栏（房间里选四名干员）。改完要重启游戏服务器才会生效。'),
   }));
   wrap.append(note);
   return wrap;
@@ -1086,29 +939,6 @@ async function saveOperators() {
       text: r.changed
         ? t('已写入 {0} 的 operators：{1} 个{2}', r.pack, r.declared.length, warn)
         : t('{0} 的 operators 没有变化，文件未被改写{1}', r.pack, warn),
-    };
-    await load(p.id);
-  } catch (e) {
-    state.message = { kind: 'error', text: errText(e) };
-  } finally {
-    state.busy = false; renderAll();
-  }
-}
-
-async function saveSupport() {
-  const p = packOf();
-  if (!p) return;
-  state.busy = true; renderDetail(); renderSide();
-  try {
-    const r = await api(`/api/packs/${encodeURIComponent(p.id)}/support`, { method: 'POST', body: { ids: [...state.picked] } });
-    const derived = r.derived.map((e) => t('{0}→{1} 阶', e.id, e.tier)).join(t('、'));
-    const warn = Array.isArray(r.warnings) && r.warnings.length ? ' ' + t('；⚠ {0}', r.warnings.join(' ' + t('；') + ' ')) : '';
-    const detail = derived ? ' ' + t('（{0}）', derived) : '';
-    state.message = {
-      kind: r.changed ? 'ok' : 'warn',
-      text: r.changed
-        ? t('已写入 {0} 的 support：{1} 个{2}{3}', r.pack, r.support.length, detail, warn)
-        : t('{0} 的 support 没有变化，文件未被改写{1}', r.pack, warn),
     };
     await load(p.id);
   } catch (e) {
@@ -1292,7 +1122,7 @@ function removePlaytestId(id) {
   return writePlaytest((m.playtest?.directToHand ?? []).filter((e) => e !== id), t('已删掉试玩发牌声明 {0}。', id));
 }
 
-/** 写完一次就整页重取：左栏的版本/作者/license 来自另一份形状（supportStateFor），只补 meta 会让它过期。 */
+/** 写完一次就整页重取：左栏的版本/作者/license 来自另一份形状（packStateFor），只补 meta 会让它过期。 */
 async function reloadAfterWrite(packId) {
   try { await load(packId); } catch { renderAll(); }
 }
@@ -1340,7 +1170,6 @@ async function importPack(file, force) {
     const bits = [t('{0} 个文件', data.files), t('{0} 字节', data.bytes)];
     if (data.content.length) bits.push(t('内容 {0}', data.content.join('/')));
     if (data.voiceLines) bits.push(t('语音 {0}', t('{0} 条', data.voiceLines)));
-    if (data.support.length) bits.push(t('助战 {0}', t('{0} 个', data.support.length)));
     state.message = { kind: 'ok', text: t('已安装 {0}：{1}。重启游戏服务器后生效。', data.pack, listJoin(bits)) };
     state.packId = data.pack;
     // 刚装进来的包：元数据草稿要换成它的（state.packId 已经等于 data.pack，靠 id 比较认不出这一次切换）
@@ -1398,7 +1227,7 @@ async function loadPlaytest() {
 // ---- 载入 ---------------------------------------------------------------------------------------------------------
 
 async function load(keepId = null, { resetDraft = false } = {}) {
-  state.data = await api('/api/packs/support');
+  state.data = await api('/api/packs');
   state.packs = state.data.packs ?? [];
   await loadPlaytest();
   const wanted = keepId ?? state.packId;
@@ -1410,7 +1239,6 @@ async function load(keepId = null, { resetDraft = false } = {}) {
   }
   // 换了一个包才重置元数据草稿：overrides 的写盘会重新载入这一页，不该顺手丢掉作者正在改的 license
   if (resetDraft || state.packId !== before) resetMetaDraft();
-  state.picked = new Set(packOf()?.support ?? []);
   state.opPicked = new Set(packOf()?.diyOperators?.declared ?? []);
   state.opText = {};
   $('#rootPath').textContent = state.packs.length

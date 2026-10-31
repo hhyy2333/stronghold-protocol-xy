@@ -10,7 +10,7 @@
 //
 // It checks the layers cheapest-first: pack format → record semantics → the real engine → then one layer per content
 // kind (kits, stages/maps, enemies/monsters, waves, items, a pack's voice lines, its item icons, its 外观素材
-// (avatars / portraits / spine models), its 助战 declarations and its static routes), each
+// (avatars / portraits / spine models) and its static routes), each
 // re-deriving what the engine derives. Layer 3 is what catches a record that is syntactically valid but silently
 // unplayable.
 //
@@ -57,7 +57,6 @@ const KIND_TITLES = {
   voice: '\nvoice lines:',
   itemIcon: '\nitem icons:',
   art: '\nappearance assets (pack.json 的 art):',
-  support: '\nsupport (助战):',
   kit: '\nbehaviour layer (kits/):',
   stage: '\nstages (maps):',
   enemy: '\nenemies (monsters):',
@@ -96,14 +95,13 @@ async function main() {
   if (!report.packs.length && !report.foreign.length) console.log('  no packs found');
   for (const p of report.packs) {
     // 包头的概述（与合并前逐字一致：`pack <id> (<名字>) — <内容文件> + <N voice line(s)> …`）——
-    // 各层的计数由 `validateWorkshop` 挂在这一行上（`voices` / `voiceLangs` / `itemIcons` / `art` / `support`）。
+    // 各层的计数由 `validateWorkshop` 挂在这一行上（`voices` / `voiceLangs` / `itemIcons` / `art`）。
     const bits = [];
     if (p.files && p.files.length) bits.push(p.files.join(', '));
     if (p.voices) bits.push(`${p.voices.lines} voice line(s) for ${p.voices.operators} operator(s)`);
     if (p.voiceLangs) bits.push(`${p.voiceLangs.lines} line(s) in ${p.voiceLangs.langs.join('/')}`);
     if (p.itemIcons) bits.push(`${p.itemIcons} item icon(s)`);
     if (p.art) bits.push(`${p.art} art entr${p.art === 1 ? 'y' : 'ies'}`);
-    if (p.support) bits.push(`助战: ${p.support.join(', ')}`);
     console.log(`\npack ${p.pack}${p.name ? ` (${p.name})` : ''}${bits.length ? ` — ${bits.join(' + ')}` : ''}`);
     if (!p.issues.length) console.log('  OK');
     else console.log(formatIssues(p.issues).split('\n').map((l) => `  ${l}`).join('\n'));

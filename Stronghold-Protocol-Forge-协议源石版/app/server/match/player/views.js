@@ -103,11 +103,8 @@ export class PlayerViews {
   }
 
   privateView() {
-    // `support: true` marks a slot rolled from an operator THIS player brought as 助战 (shared/support.js) — additive,
-    // so a client that does not know the field still reads the slot exactly as before.
     const slots = this.shop.slots.map((s) => (s ? {
       kind: s.kind, id: s.id, price: this.priceOf(s), basePrice: s.basePrice, sold: !!s.sold, frozen: !!s.frozen,
-      ...(s.support ? { support: true } : {}),
     } : null));
     const offer = this.offers[0] || null;
     const free = this.shop.freeRefreshes > 0;
@@ -140,6 +137,11 @@ export class PlayerViews {
         // 可露希尔大降价: the free-refresh window still ahead — every purchase is free while it is > 0 (the slots show 0)
         freeBuyWindow: this.shop.freeBuyWindow,
         frozen: this.shop.frozen,
+        // upstream 0.3.3 §38.1: an EMPTY slot carries no `kind`, so the bar can only keep the equipment column where it
+        // belongs if the server says how many of the slots are operators — the real counts (economy.js _openLevelSlots /
+        // rollShop keep this.shop.layout, frozen-slot layout included), the mode's table before the first roll. Optional
+        // and additive: a client that does not read it keeps guessing by kind (ui/shopBar.js shopColumns).
+        layout: { ...(this.shop.layout || this.gd.shopSlots(this.shop.level)) },
         slots,
         // `source` 'merge' = the promotion reward (晋升奖励); any other offer (a strategy, an item, a 特质) carries the
         // `label` the bar shows instead; `queued` = offers waiting behind it (player report #6 after 0.1.0)
@@ -160,10 +162,6 @@ export class PlayerViews {
       bonds: bondList(this.gd, this.bondsView(), { full: true, off: offBondCounts(this.gd, this) }),
       effects: this.effectsView(),
       nextEnemies: this.m.nextEnemiesFor(this),
-      // 助战 (shared/support.js): what this player brought AND what was actually granted at round 1. They differ when
-      // the server's pool changed between the lobby's check and the grant (prepareSupports re-checks), and when a granted
-      // piece is sold or merged away — so the client can say which supports it is actually fighting with.
-      support: { selected: Array.isArray(this.support) ? [...this.support] : [], granted: Array.isArray(this.supportGranted) ? [...this.supportGranted] : [] },
       // DESIGN §16: the effective operator loadout ({ [baseChessId]: { skill, module } }; chess not listed use defaults)
       loadout: this.loadout,
       // 0.2.2: the effective per-operator 潜能 / 练度 ({ [charId]: { potential, cultivate } }; operators not listed: 潜能 6,
