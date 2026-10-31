@@ -3,7 +3,9 @@
 //   * 战斗观战(显示复刻):runner 从 spec 的原始 playerEffects 客户端还原显示条目
 //     (battle/observe.js spectateEffects — 策略效果经 bands.json 的 effectId,其余经 effects.json;
 //      协议源石经 data/hextech.json 的 `hex:<hexId>` ref → 名称/描述/阶位图,§29);
-//   * 联防 / boss 对半场与服务器运行场的 meta 无 effects —— 列留空,不再显示自己的。
+//   * 联防 / boss 对半场(多玩家场):列跟着盟约栏同一位玩家(ui/watchBonds.js bondOwnerId → effectsForOwner),
+//     每位玩家的条目由 spectateEffectsByPlayer 备好 —— 业主 2026-10-31「联防时不能正确显示联防队友的协议源石」;
+//     服务器运行场的 meta 无 effects —— 列留空,不再显示自己的。
 // 服务器侧:test/match/prep-bench.test.js。
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +27,7 @@ globalThis.fetch = async (url) => {
 };
 const { data } = await import('../../public/js/data.js');
 await data.loadAll('effects', 'bands', 'assets', 'hextech');
-const { spectateEffects } = await import('../../public/js/battle/observe.js');
+const { spectateEffects, spectateEffectsByPlayer, effectsForOwner } = await import('../../public/js/battle/observe.js');
 
 describe('spectateEffects — the watched battle\'s effects column from the spec', () => {
   const spec = { players: [
@@ -63,15 +65,39 @@ describe('spectateEffects — the watched battle\'s effects column from the spec
   });
 
   test('undefined where whose column would be ambiguous or missing', () => {
-    assert.equal(spectateEffects(spec, ['p1', 'p2']), undefined, '联防 / boss pairs');
+    assert.equal(spectateEffects(spec, ['p1', 'p2']), undefined, '联防 / boss pairs: no single member — effectsForOwner names the player');
     assert.equal(spectateEffects({ players: [{ playerId: 'p1' }] }, ['p1']), undefined, 'no playerEffects on the spec');
     assert.equal(spectateEffects(null, ['p1']), undefined);
     assert.deepEqual(spectateEffects(spec, ['p2']), [], 'an empty list stays a list (empty column)');
   });
 
-  test('wiring: the runner derives it for replica fields, the game screen prefers the field\'s list (source)', () => {
+  test('a shared 联防 / boss pair field: every member\'s column, keyed by playerId', () => {
+    const by = spectateEffectsByPlayer(spec, ['p1', 'p2']);
+    assert.deepEqual(Object.keys(by), ['p1', 'p2']);
+    assert.deepEqual(by.p1, spectateEffects(spec, ['p1']), 'the same entries as the single-member path');
+    assert.deepEqual(by.p2, [], 'a member with no effects gets an empty column, not the other one\'s');
+    // a spec that carries no playerEffects at all (a server-run field / an older battle) has nothing to offer
+    assert.equal(spectateEffectsByPlayer({ players: [{ playerId: 'p1' }] }, ['p1']), undefined);
+    assert.equal(spectateEffectsByPlayer(null, ['p1']), undefined);
+  });
+
+  test('effectsForOwner: the column of the player the screen shows (the bond strip\'s owner)', () => {
+    const own = [{ id: 'mine', name: '自己的' }];
+    const theirs = [{ id: 'hex:hex_armor', name: '反击装甲', iconKind: 'hex', tier: 2 }];
+    const field = { effects: theirs, effectsByPlayer: { p2: theirs } };
+    const mapOnly = { effectsByPlayer: { p2: theirs } };
+    assert.equal(effectsForOwner(field, { effects: own }, 'me', 'me'), own, 'your own row: m.private.effects');
+    assert.equal(effectsForOwner(field, { effects: own }, 'p2', 'me'), theirs, 'a teammate: the field map');
+    assert.equal(effectsForOwner({ effects: theirs }, { effects: own }, 'p2', 'me'), theirs, 'no map (a prep scout / an older meta): the single list');
+    assert.equal(effectsForOwner(mapOnly, { effects: own }, 'p3', 'me'), null, 'a member the meta does not carry: empty, never one\'s own');
+    assert.equal(effectsForOwner({}, { effects: own }, 'p4', 'me'), null, 'a server-run field: empty, never one\'s own');
+    assert.equal(effectsForOwner({}, null, 'me', 'me'), null, 'a spectator seat has no own column');
+  });
+
+  test('wiring: the runner derives it for replica fields, the game screen follows the bond strip\'s owner (source)', () => {
     assert.match(read('public/js/battle/runner.js'), /effects: spectateEffects\(e\.spec, e\.members\)/);
-    assert.match(read('public/js/battle/runner.js'), /import \{ spectateEffects \} from '\.\/observe\.js'/);
-    assert.match(read('public/js/screens/game.js'), /watchingOther && field \? \(field\.effects \?\? null\) : priv\?\.effects/);
+    assert.match(read('public/js/battle/runner.js'), /effectsByPlayer: spectateEffectsByPlayer\(e\.spec, e\.members\)/);
+    assert.match(read('public/js/battle/runner.js'), /import \{ spectateEffects, spectateEffectsByPlayer \} from '\.\/observe\.js'/);
+    assert.match(read('public/js/screens/game.js'), /effectsForOwner\(field, priv, strip\.ownerId, myId\)/);
   });
 });

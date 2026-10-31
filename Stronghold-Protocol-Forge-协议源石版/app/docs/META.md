@@ -257,7 +257,10 @@ Client-side combat (the default, DESIGN §14 Spectating; `Match._watchClient`): 
 while its own normal battle runs (`WRONG_PHASE 'own battle running'`) nor the other pair's boss field (`BAD_TARGET 'other
 group hidden'`); eliminated players watch anything. Whatever is watched, the viewer's bond strip shows the bonds of the
 player on screen from that player's `m.public players[].bonds` (§5) plus the replica's live layers (DESIGN §20.15) — no
-extra message. On a shared field (联防 / a pair's boss field) the client remembers the teammate picked with 前往查看
+extra message. The right effects column follows the same player (业主 2026-10-31「联防时不能正确显示联防队友的协议源石」):
+a display replica resolves it per player (`battle/observe.js spectateEffectsByPlayer` → `field.effectsByPlayer`), the
+screens/game.js `effectsForOwner` picks the strip's owner, and a 协议源石 entry reads data/hextech.json (name, text and
+its rarity's 阶位 art) rather than effects.json. On a shared field (联防 / a pair's boss field) the client remembers the teammate picked with 前往查看
 (the `g.watch` request still names the field) and frames that player's half; a viewer who does not fight on the field
 never gets its own strip there. A detail card's bond chips — and the popup a chip opens — follow the unit's owner
 (the popup carries the player it was opened for); a teammate's popup lists as members their operators in the battle on

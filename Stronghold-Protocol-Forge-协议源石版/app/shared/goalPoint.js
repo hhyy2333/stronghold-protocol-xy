@@ -52,14 +52,15 @@ export function goalPointKeys(stage, field = 'normal', layout = null) {
 
 /**
  * 这条（已经过 loadout 组合的）干员记录能不能站上保护目标点：号角 + 启用中的 ISW- 特限模组 + 拥有【特限恢复】。
- * @param {{ record: any, ownsModeModules: boolean }} o `record` = loadoutRecord(chess, resolveRecordLoadout(...))（或
- *   数据里那条默认记录）；`ownsModeModules` = 玩家是否拥有 hex_mode_modules
+ * @param {{ record: any, module?: any, ownsModeModules: boolean }} o `record` = loadoutRecord(chess, resolveRecordLoadout(...))
+ *   （或数据里那条默认记录）；`module` = 覆盖用的模组对象（普通形态没有模组列表，玩家在干员调配里选的那个由
+ *   shared/loadoutRecord.js `selectedModuleOf` 给出）；`ownsModeModules` = 玩家是否拥有 hex_mode_modules
  * @returns {boolean}
  */
-export function canStandOnGoalPoint({ record, ownsModeModules }) {
+export function canStandOnGoalPoint({ record, module = null, ownsModeModules }) {
   if (!ownsModeModules || !record || typeof record !== 'object') return false;
   if (record.charId !== GOAL_POINT_CHAR_ID) return false;
-  const m = record.module;
+  const m = module || record.module;
   if (!m || m.active !== true) return false;
   return typeof m.type === 'string' && m.type.toUpperCase().startsWith(GOAL_POINT_MODULE_PREFIX);
 }

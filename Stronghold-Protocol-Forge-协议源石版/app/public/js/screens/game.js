@@ -125,7 +125,7 @@ import { net } from '../net.js';
 import { store, useStore, shallowEqual, serverNow, isSpectating, loadPref, savePref } from '../store.js';
 import { battleRunner } from '../battle/runner.js';
 import '../ui/pluginFrame.js';
-import { isClientCombat, observeTarget, teammateProgress, cameraLayers, layerCamera, loneHalf, sidesOf, resumedWatch, followedScout } from '../battle/observe.js';
+import { isClientCombat, observeTarget, teammateProgress, cameraLayers, layerCamera, loneHalf, sidesOf, resumedWatch, followedScout, effectsForOwner } from '../battle/observe.js';
 import { screenStrip, playerBonds, playerLayer, detailBondOwner, toggleBond, popupView } from '../ui/watchBonds.js';
 import { data, getMode } from '../data.js';
 import { audio, resultSpeaker, resultVoiceSlot } from '../audio.js';
@@ -1946,7 +1946,11 @@ function MatchScreen() {
         self=${Number.isFinite(priv?.lp) ? { lp: priv.lp, pending: liveLpNow.pending, unite: liveLpNow.unite, left: liveLpNow.left } : null}
         observe=${cc ? { canObserve: (p) => observeTarget(p, pub, myId, { observing: watchingOther, ownDone: localDone }), observing: watchingOther, onBack: backHome } : null} />
 
-      <div class="gm__effects"><${EffectsList} effects=${watchingOther && field ? (field.effects ?? null) : priv?.effects} /></div>
+      ${/* the effects column shows the player the bond strip follows (ui/watchBonds.js screenStrip.ownerId): your own
+            board / battle, a teammate's scouted board or watched battle, and on a shared 联防 / boss pair field the
+            player of the ‹ › half on screen — 业主 2026-10-31「联防时不能正确显示联防队友的协议源石」（此前多玩家场
+            整列空白）。A field whose meta carries no effects (a server-run field) stays empty, never one's own. */ ''}
+      <div class="gm__effects"><${EffectsList} effects=${effectsForOwner(field, priv, strip.ownerId, myId)} /></div>
 
       ${watchingOther && !combat ? html`<div class="gm__watching" role="status">
         <${GIcon} name="eye" /><span>${tParts('正在查看 {name} 的阵地（只读）', { name: html`<b>${watchedName}</b>` })}</span>

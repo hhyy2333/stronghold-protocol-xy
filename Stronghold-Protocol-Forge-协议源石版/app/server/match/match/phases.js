@@ -346,7 +346,8 @@ export class MatchPhases {
     // FIGHT RULES: a real leader round would bring the shared pool (bloodPoint overrides the enemy row's maxHp), the
     // per-hit 限伤 BOSS_HIT_LIMIT 300000 (a hit ≥ 300 k is CANCELLED whole in a kind==='boss' battle — it would silently
     // eat every burst, which is the one thing this round exists to measure) and an end condition that only fires when
-    // the pool empties (a 325 亿 pool never does ⇒ the round could only end by the overtime LP drain, i.e. as a defeat on
+    // the pool empties (the 木桩 cannot be emptied at all — 锁血 + a full bar per second since 2026-10-31 ⇒ the round could
+    // only end by the overtime LP drain, i.e. as a defeat on
     // the last round). So the round stays a NORMAL combat and only registers into `bossWaves` — see `_planDummyField`.
     // leader field, which is exactly what the round must not be.
     const isBoss = r === this.gd.bossRound || r === this.gd.hiddenRound;
@@ -457,7 +458,7 @@ export class MatchPhases {
    * 第16回合「木桩演练」的「boss 场地」：只把这一组玩家登记进 `bossWaves`，让 `deployFieldOf` 给出 bossL / bossR、
    * `m.public` 给出配对与预览，而这一场本身仍是 PHASE.COMBAT 的普通作战（敌人来自 `this.wave`）。
    *
-   * **不**建共享血池（血条会来自 bosses.json 的 bloodPoint、把木桩的 325 亿覆写掉）、**不**跑 BOSS_HIT 限伤
+   * **不**建共享血池（血条会来自 bosses.json 的 bloodPoint、把木桩那 20 亿覆写掉）、**不**跑 BOSS_HIT 限伤
    * （kind === 'boss' 的战场上单发 ≥ 30 万的伤害会被整段取消 —— 那正是这一回合要量到的东西）、**不**开加时扣 LP
    * （否则时间一到就判负，而这是最后一回合）。业主 2026-10-30「16回合没有设置成boss回合，导致地图有问题」要的
    * 只是地图与布阵区。

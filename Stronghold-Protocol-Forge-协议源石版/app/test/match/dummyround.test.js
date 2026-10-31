@@ -45,7 +45,7 @@ test('data: the six hidden-core modes have rounds["16"] + dummyRound; lastRound 
     assert.equal(gd.lastRound, 14, `${modeId}: lastRound`);
     assert.equal(gd.bossRound, 14, `${modeId}: bossRound`);
     assert.equal(gd.hiddenRound, 15, `${modeId}: hiddenRound`);
-    // neutral enemy multipliers: any other value would scale the dummy's 32,500,000,000 (enemyScaleFor clamps a round past
+    // neutral enemy multipliers: any other value would scale the dummy's 2,000,000,000 (enemyScaleFor clamps a round past
     // the table to its last row — ABYSS kHp 7 ⇒ hp ×2.87 — and waves.js templateSpawns multiplies every non-leader spawn)
     assert.deepEqual(gd.enemyScale(16), { hpMul: 1, atkMul: 1, speedMul: 1 }, `${modeId}: neutral enemyScale`);
   }
@@ -57,14 +57,14 @@ test('data: the six hidden-core modes have rounds["16"] + dummyRound; lastRound 
   }
 });
 
-test('data: the dummy enemy row — 木桩, ELITE, 32,500,000,000 HP, lpr 0, self-healing, acdeer\'s art, no hitArea', () => {
+test('data: the dummy enemy row — 木桩, ELITE, 2,000,000,000 HP + 2,000,000,000/s regen, lpr 0, acdeer\'s art, no hitArea', () => {
   const gd = new GameData(DATA, 'mode_multi_hard');
   const e = gd.enemy('enemy_9901_dummy');
   assert.ok(e, 'enemy_9901_dummy is in enemies.json');
   assert.equal(e.name, '木桩');
   // rank ELITE, not BOSS: the sim decides 首领 by the spawn's tag, and a BOSS rank would make the CLIENT draw a leader
   assert.equal(e.rank, 'ELITE');
-  assert.equal(e.stats.maxHp, 32500000000);
+  assert.equal(e.stats.maxHp, 2000000000, '20 亿 (owner 2026-10-31)');
   assert.equal(e.stats.atk, 0, 'does not fight back');
   assert.equal(e.stats.moveSpeed, 0, 'does not move');
   // def 0 / res 0 = an unarmoured target: `max(A − D, 5 %·A)` would otherwise compress every low-ATK operator's reading
@@ -76,9 +76,11 @@ test('data: the dummy enemy row — 木桩, ELITE, 32,500,000,000 HP, lpr 0, sel
   assert.equal(e.stats.massLevel, 10);
   // lpr 0: a leaked dummy must cost no LP — that is what makes a measurement-only round possible
   assert.equal(e.stats.lpr, 0);
-  assert.equal(e.stats.hpRecoveryPerSec, 1000, '每秒自愈 1000');
-  // no invincibility flag is invented: the window is held by the HP pool alone (research notes), and a unit with
-  // `staticBody` / SELF_BOUND would be a different rule — neither applies here
+  assert.equal(e.stats.hpRecoveryPerSec, 2000000000, '每秒回 20 亿 = 一整个血条／秒');
+  // 锁血 is a KIT rule, not a data column: `enemies.json` has no death-prevention field, so
+  // server/sim/content/enemies/dummy.js installs it through the `fatal` hook (test/sim/dummy.test.js pins the behaviour).
+  // What must stay absent here is a `staticBody` / invulnerability flag — those are different rules (a body that cannot
+  // be moved vs a unit that takes no damage at all).
   assert.equal(e.staticBody, undefined);
   // 素材照抄萨米（客户端实际绘制走 data/assets.json 的 spine/spineAliasOf，由 tools/fetch-assets.mjs 产生）
   assert.equal(e.iconId, 'enemy_9033_acdeer');
@@ -106,7 +108,7 @@ test('wave: custom_dummy has exactly ONE spawn — the dummy itself, not a leade
   assert.equal(sp.count, 1);
   assert.equal(sp.time, 0, 'on the field from the first game second');
   assert.equal(sp.tag, undefined, 'neither 首领 nor 零件 —— 首领会被并进共享血池，零件不计入本回合总数');
-  assert.deepEqual(sp.mods, { hpMul: 1, atkMul: 1, speedMul: 1, slot: 'E' }, 'neutral multipliers: 32,500,000,000 arrives as is');
+  assert.deepEqual(sp.mods, { hpMul: 1, atkMul: 1, speedMul: 1, slot: 'E' }, 'neutral multipliers: 2,000,000,000 arrives as is');
   assert.equal(wave.routes.length, 1);
   // 业主 2026-10-30「16回合没有设置成boss回合，导致地图有问题」: the post stands where a LEADER stands — on the arena
   // rows of the official leader wave (act1autochess_h07_07's route 8, [3,10] → [2,2]) — because the round is played on
@@ -147,7 +149,7 @@ for (const [label, opts] of [
     assert.equal(m.bossPool, null, 'no shared leader pool during the dummy round');
     // 业主 2026-10-30: the round must stand on the BOSS DEPLOY FIELD (that was the map complaint) while staying a
     // NORMAL combat — so bossWaves carries the group for deployFieldOf / the pairing preview, and nothing else:
-    // no pool (no bloodPoint override of the 325 亿), no BOSS_HIT 限伤, no overtime LP drain.
+    // no pool (no bloodPoint override of the 20 亿), no BOSS_HIT 限伤, no overtime LP drain.
     assert.ok(Array.isArray(m.bossWaves) && m.bossWaves.length > 0, 'the dummy round registers a boss-field group');
     assert.equal(m.bossWaves[0].wave, m.wave, 'the group carries the very wave the combat spawns from');
     assert.equal(m.bossPool, null, 'still no shared leader pool');

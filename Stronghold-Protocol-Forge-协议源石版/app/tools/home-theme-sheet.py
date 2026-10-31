@@ -10,7 +10,7 @@ bg_<theme>_left.png + bg_<theme>_right.png，各 912x1024，运行时按视口�
 
 用法：
   python tools/home-theme-sheet.py                     # 默认 start（始发 / rogue_3）
-  python tools/home-theme-sheet.py --theme star        # 星迹 / p3r_1
+  python tools/home-theme-sheet.py --theme lonetrail   # 孤星 / lonetrail_1
   python tools/home-theme-sheet.py --check             # 只校验输入是否齐全
 """
 from __future__ import annotations
@@ -25,9 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'public' / 'assets' / 'local' / 'ui' / 'hometheme'
 
 # 输出 id -> 客户端 bundle 名（bg_<stem>_left / bg_<stem>_right）
+# 注意：星迹（p3r_1）已按业主要求删除，不要再加回来。
 THEMES = {
-    'start': 'rogue_3',   # 始发：雪原冰湖 + 天环（业主 2026-10-26 指定）
-    'star': 'p3r_1',      # 星迹：蓝丝绒厅堂 + 金色天文仪
+    'start': 'rogue_3',   # 始发：雪原冰湖 + 天环（业主 2026-10-26 指定，当前默认）
     'lonetrail': 'lonetrail_1',  # 孤星：灰色厅堂（第一张截图那套）
 }
 # 拼接底色的世界色：与大厅 .lobby-hub 的 #050909 一致，透明边缘不会亮

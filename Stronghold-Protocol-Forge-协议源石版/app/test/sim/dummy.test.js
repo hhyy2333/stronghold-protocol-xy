@@ -1,12 +1,16 @@
 // 第 16 回合「木桩演练」: the training dummy the player hits to read their damage — enemy_9901_dummy.
 //
-// The dummy is an ordinary enemy record (data/enemies.json) plus the kit in server/sim/content/enemies/dummy.js: three
+// The dummy is an ordinary enemy record (data/enemies.json) plus the kit in server/sim/content/enemies/dummy.js: four
 // engine primitives and nothing invented —
 //   · 不还手        `e.profile.noAttack` (ai.js enemyAttack / attackStand, the 黑蛇 flag) — it never swings;
 //   · 不移动/不可阻挡 the SELF_BOUND buff of the 巨型单位 (bosses.js): `noMove` + `selfBound` + `unblockable`
 //                   (PRTS 自缚 = 无法移动, deliberately not `bind`);
 //   · 自愈          the row's `stats.hpRecoveryPerSec` → units.js `s.hpRegen` → battle/status.js natural regeneration.
-//                   No heal is written in the kit, so this test measures the data path, not a hand-rolled heal.
+//                   No heal is written in the kit, so this test measures the data path, not a hand-rolled heal. Since
+//                   owner 2026-10-31「每秒回20亿」 it is exactly one pool per second (20 亿 血 / 20 亿 per s);
+//   · 锁血          the kit's one authored line: `battle.on('fatal')` sets `c.prevented`, so damage.js applyHpLoss
+//                   leaves HP at 1 instead of calling battle.kill (owner 2026-10-31「加上锁血」). It does not distort the
+//                   reading — `dealt` is still `before − max(0, hp)`, i.e. the whole hit.
 //
 // The kit is exercised on a SYNTHETIC record (enemyRec) so these tests need no generated data; the last test pins the real
 // data/enemies.json row against the same contract and runs as soon as build-data has generated it.
@@ -23,10 +27,11 @@ import { DUMMY_KITS } from '../../server/sim/content/enemies/dummy.js';
 const E = JSON.parse(fs.readFileSync(new URL('../../data/enemies.json', import.meta.url), 'utf8'));
 
 const KEY = 'enemy_9901_dummy';
-/** The contract row's HP pool: 5 × the ABYSS 首领血池 (4,000,000), so a full team cannot empty it inside the round's
- *  measurement window. The kit does not read it — every assertion below is written against `e.s.maxHp`. */
-const HP = 32_500_000_000;   // 325 亿, owner 2026-10-30「木桩太脆了，血量改为325亿」
-const REGEN = 1000;   // stats.hpRecoveryPerSec of the contract row
+/** The contract row's HP pool (20 亿, owner 2026-10-31「修改木桩至20亿血」) and its regeneration (20 亿/s,
+ *  「每秒回20亿」): one whole bar per second, so a hit is undone on the next tick. The kit reads neither number — every
+ *  assertion below is written against `e.s.maxHp` / `e.s.hpRegen`. */
+const HP = 2_000_000_000;      // 20 亿
+const REGEN = 2_000_000_000;   // stats.hpRecoveryPerSec: one whole pool per second
 
 /** The contract's row shape, built synthetically (data/enemies.json enemy_9901_dummy is a copy of enemy_9033_acdeer).
  *  def / res are 0 — the dummy is a 量具, not an enemy: with the template's 800 DEF the physical formula
@@ -112,7 +117,10 @@ test('不可阻挡: an operator standing on the dummy tile does not block it, an
 // ---------------------------------------------------------------------------------------------------------------
 // 自愈 / 打不死
 
-test('自愈: the data row\'s hpRecoveryPerSec refills it — 1000 HP per second, no heal written in the kit', () => {
+// ---------------------------------------------------------------------------------------------------------------
+// 自愈 / 锁血 / 打不死
+
+test('自愈: the data row\'s hpRecoveryPerSec refills it — a whole pool per second, no heal written in the kit', () => {
   const h = dummyBattle();
   h.step();
   // Out of the operator's 1-tile reach: this measures the DATA regen alone, so nothing else may touch its HP meanwhile
@@ -121,49 +129,75 @@ test('自愈: the data row\'s hpRecoveryPerSec refills it — 1000 HP per second
   const e = h.spawn(KEY, { pos: [10, 6], routeIndex: 0 });
   const u = h.unit('t_hit');
   assert.equal(e.s.hpRegen, REGEN, 'units.js folds stats.hpRecoveryPerSec into s.hpRegen');
-  h.b.dealDamage(u, e, { amount: 40000, type: 'true', canDodge: false });
-  assert.ok(Math.abs(e.hp - (HP - 40000)) < 1, `hp after the damage: ${e.hp}`);
+  h.b.dealDamage(u, e, { amount: e.s.maxHp * 0.4, type: 'true', canDodge: false });
+  assert.ok(Math.abs(e.hp - e.s.maxHp * 0.6) < 1, `hp after the damage: ${e.hp}`);
   const hits = h.hooksOf('damaged').filter((c) => c.target === e).length;
-  const hpLow = e.hp;
-  h.run(30);
+  h.run(1);   // 20 亿/s ≥ the 8 亿 missing: one second is more than enough
   assert.equal(h.hooksOf('damaged').filter((c) => c.target === e).length, hits, 'nobody hit it during the measurement');
-  const gained = e.hp - hpLow;
-  // 30 s × 1000 HP/s; the accumulation gate costs at most one tick
-  assert.ok(gained > 29999 && gained <= 30000 + 1e-6, `regenerated ${gained} HP in 30 s (expected 30000)`);
+  assert.equal(e.hp, e.s.maxHp, 'back at full HP one second later');
   assert.ok(h.hooksOf('heal').filter((c) => c.target === e).length > 0, 'through the engine\'s natural regeneration');
   checkInvariants(h.b);
 });
 
-test('打不死: a single hit of 95 % of its pool leaves it alive, and it starts refilling again right away', () => {
-  // The dummy has NO death-prevention: a single hit ≥ maxHp kills it, deliberately — 免死 (invulnerable) would also stop
-  // the damage the player is there to measure, and 频次 (setHits) would turn its HP into a hit counter. What keeps the
-  // measurement window open is the pool's SIZE (5 × the ABYSS 首领血池) plus the data regen, not a cancel — so this test
-  // pins the 95 % hit and the refill, never a fixed number.
+test('自愈 = one pool per second (the owner\'s number, not a coincidence): REGEN equals HP', () => {
+  // owner 2026-10-31「每秒回20亿」: the regen number IS the pool, so the post is at full on the tick after any hit. Pinning
+  // the RATIO catches a later edit that rescales maxHp without the regen (a fixed 1000/s could not refill 20 亿).
+  assert.equal(REGEN, HP, 'the contract row regenerates exactly one whole pool per second');
   const h = dummyBattle();
   h.step();
-  const e = h.spawn(KEY, { pos: [10, 6], routeIndex: 0 });   // out of the operator's reach: the refill is measured alone
+  const e = h.spawn(KEY, { pos: [10, 6], routeIndex: 0 });
   const u = h.unit('t_hit');
-  h.b.dealDamage(u, e, { amount: e.s.maxHp * 0.95, type: 'true', canDodge: false });
-  assert.ok(e.alive, 'still alive after a hit worth 95 % of its whole pool');
-  assert.ok(Math.abs(e.hpRatio - 0.05) < 1e-6, `left at 5 % (${e.hpRatio})`);
-  const hits = h.hooksOf('damaged').filter((c) => c.target === e).length;
-  const hpLow = e.hp;
-  h.run(60);
-  assert.equal(h.hooksOf('damaged').filter((c) => c.target === e).length, hits, 'nobody hit it meanwhile');
-  assert.ok(e.alive, 'alive a minute later');
-  assert.ok(e.hp > hpLow, `and it has been refilling the whole time (${hpLow} → ${e.hp})`);
-  assert.equal(h.hooksOf('enemyLeak').filter((c) => c.enemy === e).length, 0, 'it never walks off and leaks either');
+  h.b.dealDamage(u, e, { amount: e.s.maxHp - 1, type: 'true', canDodge: false });
+  assert.equal(e.hp, 1, 'left on 1 HP');
+  h.run(1);
+  // The regen flushes in whole-HP amounts per tick, so the last fraction of a tick is still in `_regenAcc` at 1.0 s:
+  // "within one second" means ≥ 99.99999 % of the bar, and the carry is what tops it off.
+  assert.ok(e.hp / e.s.maxHp > 0.9999999, `refilled inside one second: ${e.hp} / ${e.s.maxHp}`);
+  h.run(1);
+  assert.equal(e.hp, e.s.maxHp, 'and exactly full one tick later');
   checkInvariants(h.b);
 });
 
-test('no 免死 is installed (deliberate): a hit of its whole pool does kill it — the dummy is durable, not invulnerable', () => {
+test('锁血: a hit of its whole pool leaves it on 1 HP, alive, and it is full again a second later', () => {
+  // owner 2026-10-31「加上锁血」: a 20 亿 pool can be exceeded by one burst, and the round must never end because the post
+  // died. The lock is the `fatal` hook (damage.js applyHpLoss): `c.prevented` ⇒ HP stays at 1 and battle.kill never runs.
   const h = dummyBattle();
   h.step();
   const e = h.spawn(KEY, { pos: [9, 5], routeIndex: 0 });
   const u = h.unit('t_hit');
-  h.b.dealDamage(u, e, { amount: e.s.maxHp, type: 'true', canDodge: false });
-  assert.equal(e.alive, false, 'a hit ≥ maxHp is lethal: no invulnerable / 免死 flag on the dummy');
-  assert.deepEqual(e.buffs.filter((b) => b.flags && (b.flags.invulnerable || b.flags.untargetable)), [], 'and no such buff either');
+  const dealt = h.b.dealDamage(u, e, { amount: e.s.maxHp, type: 'true', canDodge: false });
+  assert.equal(e.alive, true, 'a hit ≥ maxHp does not kill it');
+  assert.equal(e.hp, 1, 'the engine leaves it on 1 HP (applyHpLoss 的 prevented 分支)');
+  assert.equal(dealt, e.s.maxHp - 1, 'and the reading is still the whole hit — the lock only keeps the last 1 HP');
+  h.run(2);   // the regen's accumulation gate leaves at most one tick of carry behind (see the test above)
+  assert.equal(e.alive, true, 'still alive');
+  assert.equal(e.hp, e.s.maxHp, 'full again');
+  checkInvariants(h.b);
+});
+
+test('锁血 filters on the dummy: another enemy in the same battle still dies normally', () => {
+  const h = dummyBattle();
+  h.step();
+  const e = h.spawn(KEY, { pos: [10, 6], routeIndex: 0 });
+  const w = h.spawn('enemy_walker', { routeIndex: 0 });
+  const u = h.unit('t_hit');
+  h.b.dealDamage(u, w, { amount: w.s.maxHp, type: 'true', canDodge: false });
+  assert.equal(w.alive, false, 'the hook must not protect anybody but the 木桩');
+  h.b.dealDamage(u, e, { amount: e.s.maxHp * 3, type: 'true', canDodge: false });
+  assert.equal(e.alive, true, 'three pools worth of damage still leaves the dummy alive');
+  checkInvariants(h.b);
+});
+
+test('打不死: ten whole-pool bursts later it is still standing — the round can only end on its own timer', () => {
+  const h = dummyBattle();
+  h.step();
+  const e = h.spawn(KEY, { pos: [10, 6], routeIndex: 0 });
+  const u = h.unit('t_hit');
+  for (let i = 1; i <= 10; i++) {
+    h.b.dealDamage(u, e, { amount: e.s.maxHp * 1.5, type: 'true', canDodge: false });
+    assert.equal(e.alive, true, `alive after burst ${i}`);
+  }
+  assert.equal(h.hooksOf('enemyLeak').filter((c) => c.enemy === e).length, 0, 'it never walks off and leaks either');
   checkInvariants(h.b);
 });
 

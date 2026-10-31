@@ -164,31 +164,114 @@ export function loneHalf(field) {
   return occupied.length === 1 ? occupied[0] : null;
 }
 
+/** The spec entry of one battle member (`players[]`), or null. */
+function specPlayer(spec, playerId) {
+  const list = isObj(spec) && Array.isArray(spec.players) ? spec.players : [];
+  return list.find((p) => isObj(p) && p.playerId === playerId) || null;
+}
+
+/** The 协议源石 roster record of a spec effect ref (data/hextech.json `playerHexes`, keyed by the hex id), or null. */
+function hexRecord(pe) {
+  const roster = data.get('hextech')?.playerHexes;
+  const fromData = isObj(pe) && isObj(pe.data) && typeof pe.data.hexId === 'string' ? pe.data.hexId : '';
+  const id = fromData || (isObj(pe) && typeof pe.id === 'string' && pe.id.startsWith('hex:') ? pe.id.slice(4) : '');
+  if (!id) return null;
+  if (Array.isArray(roster)) return roster.find((h) => isObj(h) && h.id === id) || null;
+  return isObj(roster) ? roster[id] || null : null;
+}
+
+/** The 阶位 (1 / 2 / 3) of a 协议源石 rarity id (data/hextech.json `rarities[].tier`), else null. */
+function hexTierOf(rarity) {
+  const list = data.get('hextech')?.rarities;
+  const r = Array.isArray(list) ? list.find((x) => isObj(x) && x.id === rarity) : null;
+  const tier = r ? Number(r.tier) : NaN;
+  return Number.isInteger(tier) && tier > 0 ? tier : null;
+}
+
+/**
+ * One spec `playerEffects` ref (Battle spec: `{ id, source = iconKind, counter, data?, … }`, PlayerState.battleInput)
+ * as an effects-column entry (ui/effectsList.js), or null to drop it. Resolved client-side:
+ *   * `band` — bands.json by `effectId` (the band's own name / text / icon);
+ *   * `hex` — data/hextech.json `playerHexes` by `data.hexId` (else the id's `hex:` prefix), never effects.json: the
+ *     card's name / text AND the tier of its rarity (`tier`, which is what gives the tile its 阶位 art); the roster
+ *     carries no rune icon, so `iconId` is undefined and the tile draws the tier art (EffectsList);
+ *   * anything else — effects.json by the id, the id itself when no record names it.
+ */
+function effectEntry(pe) {
+  if (!isObj(pe) || typeof pe.id !== 'string' || !pe.id) return null;
+  const counter = pe.counter != null ? { counter: pe.counter } : {};
+  if (pe.source === 'hex') {
+    const rec = hexRecord(pe);
+    // no record (a hex this build does not know): the raw ref, the same fallback as any unknown effect
+    if (!rec) return { id: pe.id, name: pe.id, desc: '', iconKind: 'hex', iconId: pe.id, ...counter };
+    const rarity = isObj(pe.data) && typeof pe.data.rarity === 'string' && pe.data.rarity ? pe.data.rarity : rec.rarity;
+    const tier = hexTierOf(rarity);
+    return { id: pe.id, name: rec.name || pe.id, desc: rec.desc || '', iconKind: 'hex', iconId: rec.icon, ...counter, ...(tier ? { tier } : {}) };
+  }
+  if (pe.source === 'band') {
+    const band = data.list('bands').find((b) => b && b.effectId === pe.id);
+    if (band) return { id: pe.id, name: band.effectName || band.name, desc: band.desc || '', iconKind: 'band', iconId: band.iconId || band.bandId, ...counter };
+  }
+  const rec = data.lookup('effects', pe.id);
+  return { id: pe.id, name: rec?.name || pe.id, desc: rec?.desc || rec?.descRaw || '', iconKind: pe.source || 'choice', iconId: pe.id, ...counter };
+}
+
+/** One member's resolved column, or null when the spec carries no `playerEffects` for it (never an empty stand-in). */
+function memberEffects(spec, playerId) {
+  const p = specPlayer(spec, playerId);
+  if (!p || !Array.isArray(p.playerEffects)) return null;
+  return p.playerEffects.map(effectEntry).filter(Boolean);
+}
+
 /**
  * The watched player's effects column for a battle watched as a display replica (user playtest #2: while spectating,
- * the right column shows the spectated player's effects, not one's own). The spec's raw playerEffects (Battle spec:
- * `{ id, source = iconKind, counter, … }`) resolved client-side — a band effect through bands.json (its effectId),
- * everything else through effects.json; `effectIconUrl`'s per-kind fallbacks cover the missing icon ids. Undefined
- * where whose column would be ambiguous (联防 / boss pairs) or there are no effects data (a server-run field's meta
- * comes from the server without effects — the column stays empty rather than showing one's own).
+ * the right column shows the spectated player's effects, not one's own). Undefined where whose column would be
+ * ambiguous (a 联防 / boss pair field lists more than one player — the screen then names the player with the bond
+ * strip's owner, see `effectsForOwner`) or there are no effects data (a server-run field's meta comes from the server
+ * without effects — the column stays empty rather than showing one's own).
  */
 export function spectateEffects(spec, members) {
   if (!Array.isArray(members) || members.length !== 1 || !isObj(spec)) return undefined;
-  const p = Array.isArray(spec.players) ? spec.players.find((x) => isObj(x) && x.playerId === members[0]) : null;
-  if (!p || !Array.isArray(p.playerEffects)) return undefined;
-  const out = [];
-  for (const pe of p.playerEffects) {
-    if (!isObj(pe) || typeof pe.id !== 'string' || !pe.id) continue;
-    const counter = pe.counter != null ? { counter: pe.counter } : {};
-    if (pe.source === 'band') {
-      const band = data.list('bands').find((b) => b && b.effectId === pe.id);
-      if (band) {
-        out.push({ id: pe.id, name: band.effectName || band.name, desc: band.desc || '', iconKind: 'band', iconId: band.iconId || band.bandId, ...counter });
-        continue;
-      }
-    }
-    const rec = data.lookup('effects', pe.id);
-    out.push({ id: pe.id, name: rec?.name || pe.id, desc: rec?.desc || rec?.descRaw || '', iconKind: pe.source || 'choice', iconId: pe.id, ...counter });
+  return memberEffects(spec, members[0]) ?? undefined;
+}
+
+/**
+ * Every member's effects column of a display replica, keyed by playerId — the 联防 / boss pair counterpart of
+ * `spectateEffects` (业主 2026-10-31「联防时不能正确显示联防队友的协议源石」: a shared field has no single member, so
+ * the column used to be empty; the screen now picks the player it shows, like the bond strip). Members whose spec
+ * carries no `playerEffects` are left out; undefined when none has any (an older spec / a server-run field).
+ * @param {any} spec Battle spec @param {string[]} members the field's players
+ * @returns {Record<string, any[]>|undefined}
+ */
+export function spectateEffectsByPlayer(spec, members) {
+  if (!isObj(spec) || !Array.isArray(members)) return undefined;
+  const out = {};
+  let any = false;
+  for (const pid of members) {
+    if (typeof pid !== 'string' || !pid) continue;
+    const list = memberEffects(spec, pid);
+    if (!list) continue;
+    out[pid] = list;
+    any = true;
   }
-  return out;
+  return any ? out : undefined;
+}
+
+/**
+ * The effects column of the player on screen (ui/effectsList.js), following the SAME owner as the bond strip
+ * (ui/watchBonds.js `bondOwnerId` / `screenStrip().ownerId`): your own m.private.effects for your own board / battle,
+ * a teammate's otherwise. A teammate's list comes from the field meta — the per-player map of a display replica
+ * (`field.effectsByPlayer`, `spectateEffectsByPlayer`), else the single list the runner / the server's prep scout sends
+ * (`field.effects`). Null = an empty column (a field whose players' effects the meta does not carry, e.g. a server-run
+ * field) — never one's own.
+ * @param {any} field the field meta on screen (store.match.field) @param {any} priv m.private (own effects)
+ * @param {string|null|undefined} ownerId whose column (ui/watchBonds.js bondOwnerId) @param {string} myId
+ * @returns {any[]|null}
+ */
+export function effectsForOwner(field, priv, ownerId, myId) {
+  if (typeof ownerId !== 'string' || !ownerId || ownerId === myId) return priv?.effects ?? null;
+  const by = isObj(field) && isObj(field.effectsByPlayer) ? field.effectsByPlayer : null;
+  const mine = by && Array.isArray(by[ownerId]) ? by[ownerId] : null;
+  if (mine) return mine;
+  return isObj(field) && Array.isArray(field.effects) ? field.effects : null;
 }

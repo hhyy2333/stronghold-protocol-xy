@@ -785,33 +785,22 @@
   --beacon: #9fd4ff; --window: rgba(200, 226, 248, .72); --grid: rgba(180, 210, 236, .3);
   --mote: rgba(236, 246, 255, .82); --radar: rgba(180, 214, 240, .2);
 }
-/* 星迹（官方主页大厅）：官方那张厅堂图的色调是「深蓝丝绒 + 金色天文仪」，
-   HUD token 跟着走 —— 蓝作底、金作强调，和 mint 的系统色区分开但不冲突。 */
-[data-hub-theme="star"] {
-  --sky-0: #05060c; --sky-1: #0a0f1e; --sky-2: #14224a; --sky-3: #04050a;
-  --haze: rgba(70, 110, 200, .16); --cloud: rgba(120, 150, 210, .05);
-  --ridge-far: #0d1730; --ridge-mid: #091020; --ridge-near: #04070f;
-  --rim: rgba(150, 190, 255, .30); --fog: rgba(30, 46, 84, .3); --beam: rgba(200, 220, 255, .08);
-  --beacon: #e8c667; --window: rgba(232, 198, 103, .7); --grid: rgba(150, 190, 255, .26);
-  --mote: rgba(190, 215, 255, .8); --radar: rgba(150, 190, 255, .16);
-}
 
 .lobby-hub { --hub-entry-w: 2.1rem; --hub-gap: .14rem; display: flex; flex-direction: column; overflow: hidden; background: #050909; }
 .hub-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; background: var(--sky-3); }
 .hub-bg__sky { position: absolute; inset: 0;
   background: linear-gradient(180deg, var(--sky-0) 0%, var(--sky-1) 36%, var(--sky-2) 63%, var(--sky-3) 100%); }
 /* 官方主页大厅整图（左右两半预拼，tools/home-theme-sheet.py）。1824x1024，按 cover 铺满。
-   挂两个主题：data-art="start" = 始发（雪原天环，默认）/ "star" = 星迹（蓝丝绒厅堂）。
-   始发那张很亮，所以默认略压 + 底部加深，保证贴底的入口卡与顶部工具条读得清。 */
-.hub-bg__star {
+   data-art="start" = 始发（雪原天环，默认）。这张很亮，所以默认略压，保证贴底的入口卡与顶部工具条读得清。 */
+.hub-bg__art {
   position: absolute; inset: 0;
   background-position: center 46%; background-size: cover; background-repeat: no-repeat;
   filter: brightness(.92) saturate(1.06);
-  animation: star-breathe 26s ease-in-out infinite alternate;
+  animation: hub-art-breathe 26s ease-in-out infinite alternate;
 }
-.hub-bg__star[data-art="start"] { filter: brightness(.82) saturate(.98) contrast(1.02); }
-@keyframes star-breathe { from { transform: scale(1.02); } to { transform: scale(1.06); } }
-@media (prefers-reduced-motion: reduce) { .hub-bg__star { animation: none; transform: scale(1.03); } }
+.hub-bg__art[data-art="start"] { filter: brightness(.82) saturate(.98) contrast(1.02); }
+@keyframes hub-art-breathe { from { transform: scale(1.02); } to { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .hub-bg__art { animation: none; transform: scale(1.03); } }
 .hub-bg__stars { position: absolute; left: 0; top: 0; width: 1px; height: 1px; border-radius: 50%;
   animation: hub-twinkle 7s ease-in-out infinite alternate; }
 .hub-bg__haze { position: absolute; inset: 0;
@@ -1089,8 +1078,8 @@
 .bgset__swatch .sw-near { fill: var(--ridge-near); }
 .bgset__swatch .sw-beacon { fill: var(--beacon); }
 .bgset__swatch--custom { display: grid; place-items: center; background: #0b1110 center / cover no-repeat; outline: 1px dashed rgba(223, 230, 226, .2); outline-offset: -1px; }
-/* 官方大厅主题（始发 / 星迹）：缩略图直接裁各自的大厅整图 */
-.bgset__swatch--star { background-position: center 46%; background-repeat: no-repeat; background-size: cover; }
+/* 官方大厅主题（始发）：缩略图直接裁大厅整图 */
+.bgset__swatch--art { background-position: center 46%; background-repeat: no-repeat; background-size: cover; }
 .bgset__plus { font-size: calc(.34 * var(--t)); line-height: 1; color: rgba(223, 230, 226, .5); }
 .bgset__name { font-size: calc(.15 * var(--t)); font-weight: 800; white-space: nowrap; }
 .bgset__en { font: 700 .09rem/1 ui-monospace, Consolas, monospace; letter-spacing: .14em; color: var(--text-dim); white-space: nowrap; }

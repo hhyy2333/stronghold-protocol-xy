@@ -1298,9 +1298,9 @@ export function LobbyScreen() {
   const modeCard = MODE_CARDS.find((c) => c.id === simulation) || MODE_CARDS[0];
 
   return html`<div class="screen lobby-screen lobby-hub" data-hub-theme=${backdropTheme(bg)}>
-    ${/* 大厅背景（业主 2026-10-26 最终版）：官方主页大厅整图 —— 「始发」默认，「星迹」可选；
+    ${/* 大厅背景（业主 2026-10-26 最终版）：官方主页大厅整图 —— 「始发」默认；
          程序化远景（夜巡/霜原/烬野/静默）与玩家自选图保持原样。
-         战场 3D 背景按业主要求已移除。 */ ''}
+         战场 3D 背景与「星迹」主题均按业主要求移除。 */ ''}
     <${HubBackdrop} bg=${bg} />
     <header class="topbar hub-topbar">
       <div class="topbar__left">

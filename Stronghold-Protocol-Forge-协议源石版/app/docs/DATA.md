@@ -445,16 +445,22 @@ The round-16 target is the one enemy row this fork invents rather than takes fro
 | `name` | 木桩 | |
 | `rank` | `ELITE` | **not** `BOSS`: a spawn is a leader only when its `tag` is `boss` (`sim/battle/spawns.js`), and the
   post must never look like — or be counted as — a leader |
-| `stats.maxHp` | 32500000000 | owner 2026-10-30「木桩太脆了，血量改为325亿」: ABYSS's leader pool is 4 000 000 and the window is 60 real s ≈ 120 game s, but a real fully-built team still emptied a 20 000 000 post inside it — 325 亿 (~81 000× the ABYSS pool) is the owner's number for "cannot be emptied", not a derivation, so the post has
-  headroom and cannot be emptied mid-measurement. There is **no** 免死/无敌: a single hit ≥ maxHp does kill it — an
-  invulnerable post would read 0 damage and defeat the round's purpose (`test/sim/dummy.test.js` pins both directions) |
+| `stats.maxHp` | 2000000000 | owner 2026-10-31「修改木桩至20亿血」: the pool is **20 亿**, not a number chosen so it "cannot be
+  emptied" — since the same instruction added 每秒回 20 亿 and 锁血, the post no longer survives on size alone. A single
+  burst from a fully-built team can exceed 20 亿, which is exactly why the other two halves exist |
 | `stats.atk` | 0 | it never fights back (`profile.noAttack` from its kit) |
 | `stats.def`, `stats.res` | 0, 0 | [ASSUMED] 萨米本体 is 800 / 40, but `max(A − D, 5 %·A)` floors every low-ATK operator at
   5 % against 800 DEF, so the reading would be “output vs an 800-DEF target”, not the operator's own — the post is a
   measuring device, so it is an unarmoured target |
 | `stats.moveSpeed` | 0 | plus the kit's `selfBound`/`noMove` flags |
 | `stats.lpr` | 0 | a leak would cost nothing (it cannot leak — `selfBound` — this is belt and braces) |
-| `stats.hpRecoveryPerSec` | 1000 | 自愈 through the engine's ordinary `s.hpRegen`; the kit writes no healing of its own |
+| `stats.hpRecoveryPerSec` | 2000000000 | 自愈 through the engine's ordinary `s.hpRegen`; the kit writes no healing of its
+  own. One whole pool per second (owner 2026-10-31「每秒回20亿」), so any hit is undone on the next tick |
+| 锁血 (**not** a data column) | kit `fatal` hook | `enemies.json` has no death-prevention field, so the lock lives in
+  `server/sim/content/enemies/dummy.js`: the `fatal` hook sets `c.prevented` and `applyHpLoss` leaves HP at 1 instead of
+  killing it (owner 2026-10-31「加上锁血」). It does **not** distort the reading — `dealt` is still `before − max(0, hp)`,
+  i.e. the whole hit — which is why this is a `fatal` hook and not an 无敌 buff (an invulnerable unit takes no damage and
+  would read 0). `test/sim/dummy.test.js` pins both the lock and the reading |
 | `hitArea` | `{"w":4.95,"h":2.95,"dx":0,"dy":1}` | **the same body as 萨米** (owner 2026-10-30「木桩的受击范围」): it draws that
   model and stands where a leader stands on the boss deploy field, so the hit rectangle has to match the picture — a
   1-tile body under a huge model reads as cutting air. That is also why the key is on both `HIT_AREAS` and

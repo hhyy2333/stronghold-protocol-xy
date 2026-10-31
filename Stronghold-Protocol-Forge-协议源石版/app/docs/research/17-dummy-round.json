@@ -1,17 +1,17 @@
 {
   "_meta": {
-    "about": "第16回合「木桩演练」：隐藏核心（第15回合）打完之后多打一回合，场上只有一只不还手、不移动、血超高且自愈的木桩，给玩家量输出。官方 autochess 表里既没有这一回合、也没有这只怪，所以整条链路由本文件声明，tools/build-data.mjs 把它落到三处 data/：data/enemies.json 的 enemy_9901_dummy（以官方 enemy_9033_acdeer「萨米的意志」为模板复制改数值）、data/waves.json 的 custom_dummy（只有一条 spawn）、data/config.json 6 个有隐藏核心的模式（mode_single_normal / _hard / _abyss、mode_multi_normal / _hard / _abyss）的 rounds[\"16\"] 与 dummyRound。",
+    "about": "第16回合「木桩演练」：隐藏核心（第15回合）打完之后多打一回合，场上只有一只不还手、不移动、每秒回满血且锁血的木桩，给玩家量输出。官方 autochess 表里既没有这一回合、也没有这只怪，所以整条链路由本文件声明，tools/build-data.mjs 把它落到三处 data/：data/enemies.json 的 enemy_9901_dummy（以官方 enemy_9033_acdeer「萨米的意志」为模板复制改数值）、data/waves.json 的 custom_dummy（只有一条 spawn）、data/config.json 6 个有隐藏核心的模式（mode_single_normal / _hard / _abyss、mode_multi_normal / _hard / _abyss）的 rounds[\"16\"] 与 dummyRound。",
     "sources": [
       "enemy_database.json (zh_CN) enemy_9033_acdeer level 0：生命 240000、攻击 800、防御 800、法抗 40、移动 1、攻击间隔 6.0、攻击半径 -1（MELEE 化后 0）、重量 10、目标价值 2、抗性 晕眩·沉默·沉睡·冻结·浮空；skills Lasso / Doom；talentBlackboard Madness.*。木桩的每一列数值都是从这一行抄来再改的（见 enemy.stats 的说明）。",
       "enemy_handbook_table.json enemy_9033_acdeer：name「萨米的意志」/ enemyIndex SAM / 能力文本（冰凌、自然涌动、半血减伤）。木桩沿用这行的 abilities 与 desc 文本（见 notes「[ASSUMED] 文案照抄」）。",
       "data/enemies.json enemy_9033_acdeer：iconId / spine = enemy_9033_acdeer、attackAnim { clip: Attack, dur: 3, hit: 1 }、hitArea { w: 4.95, h: 2.95, dx: 0, dy: 1 }（HIT_AREAS 表里就是这一条 —— 木桩**不**继承它，见 notes）。",
-      "data/bosses.json bloodPoint（boss_11 黑蛇、boss_12 梅菲斯特同为 { FUNNY: 277500, NORMAL: 787500, HARD: 2000000, ABYSS: 4000000 }）：木桩血量上限最初的取值基准（见 notes「maxHp 325,000,000,000」）。",
+      "data/bosses.json bloodPoint（boss_11 黑蛇、boss_12 梅菲斯特同为 { FUNNY: 277500, NORMAL: 787500, HARD: 2000000, ABYSS: 4000000 }）：木桩血量上限最初的取值基准（见 notes「maxHp 2,000,000,000」）。",
       "data/stages.json：12 张战场地图的 row 9 都是「蓝门 E @ col 2 … 红门 S @ col 10、col 18」，col 9 在**每一张**图里都是 'r'（可部署道路）—— 木桩钉在 (9,9) 的依据。",
       "契约（Lead 2026-10-29 定，本文件一字不改地落实）：回合号 16、只给 6 个有 hiddenRound 的模式、rounds[\"16\"] 的字段、custom_dummy 只有一条 spawn、enemy_9901_dummy 的数值表、素材照抄 acdeer、五处回合接线。"
     ],
     "notes": [
-      "[ASSUMED] maxHp 325,000,000,000（325 亿）。业主 2026-10-30「木桩太脆了，血量改为325亿」——20,000,000（ABYSS 首领血池 4,000,000 的 5 倍）在真实满配队面前仍会在 60 实秒 ≈ 120 游戏秒的窗口内被打空，一死测量窗口就提前结束、读数失真。325 亿 = ABYSS 血池的 81,250 倍，任何队伍都打不空。（这个数是业主给的，不是推导出来的：目标就是「窗口内不可能打完」。）",
-      "[ASSUMED] 木桩**没有免死机制**：单发 ≥ maxHp 的伤害仍然会打死它。窗口内不死靠的是血池规模（325 亿）而不是无敌 —— 无敌会让玩家量不到任何伤害，与这一回合的目的相反。hpRecoveryPerSec 1000（每秒自愈 1000）在这个血量下只是「残血了会回起来」的观感，不是抗打来源。",
+      "[ASSUMED] maxHp 2,000,000,000（20 亿）+ hpRecoveryPerSec 2,000,000,000（每秒回满）+ 锁血。业主 2026-10-31「修改木桩至20亿血，加上每秒回20亿和锁血」——这条指令把 2026-10-30 的「靠血池规模扛住窗口」换成了「靠机制扛住」：血量本身缩小到 20 亿（任何满配队在一次爆发里都可能打穿这个数），不再指望「打不空」，而是每秒自愈 20 亿（= 一个完整血条／秒，被打掉多少下一秒就回满）+ 锁血（单发 ≥ maxHp 也不死，见下一条）。三个数都是业主给的，不是推导出来的。",
+      "[ASSUMED] 500 字以内说明 锁血 由 kit 实现而不是数据列：data 表里没有「免死 / 锁血」这一列（enemies.json 只有 stats），所以锁血写在 server/sim/content/enemies/dummy.js：`battle.on('fatal')` 里把 `c.prevented` 置真，引擎（server/sim/damage.js applyHpLoss）于是把 HP 留在 1 点、不调 battle.kill，下一秒自愈 20 亿把它拉回满血。这**不影响读数**：伤害统计按「打掉多少 HP」算（`before − max(0, hp)`），锁血只决定「最后 1 点不死」，所以每一发的读数都是完整的一发。2026-10-30 那条「木桩没有免死机制、单发 ≥ maxHp 会打死它」的裁决已被业主 2026-10-31 的「加上锁血」取代。",
       "lpr 0（lifePointReduce）：木桩漏了也不扣生命。这是这一回合能成立的前提 —— 木桩 moveSpeed 0 站在原地，但如果它从任何一路「漏过去」（或结算把它算成漏怪），lpr 1 会罚掉玩家的 LP，一个只为量输出的回合就不该动 LP。另外 lpr 0 也让 过路费 之类「按漏怪付钱」的卡不会凭空赚钱（server/match/hextech.js enemyHexPayoutFor 与 _bossLeak 都读 lpr）。",
       "atk 0：不还手。官方 acdeer 是 RANGED（applyWay RANGED）且自带 Lasso / Doom 两个技能，atk 0 之后它们的伤害系数乘 0，木桩不会造成任何伤害；技能表本身照抄（见「[ASSUMED] 其余照抄」）。",
       "rank 'ELITE'（Lead 2026-10-29 修正，不是 'BOSS'）：server/sim/battle/spawns.js 里 isBoss **只由 spawn 的 tag === 'boss' 决定**，rank 不触发首领的限伤 / 共享血池；但 rank BOSS 会让客户端把一只「木桩」按领袖渲染（血条样式、图鉴地位）。木桩不是领袖，所以是 ELITE。配套：custom_dummy 那条 spawn **不带 tag**（既不是 'boss' 也不是 'part'）—— 带了 'boss' 会被当领袖、进共享血池，整套量表都错；带了 'part' 则不计入本回合的敌人总数。",
@@ -20,12 +20,12 @@
       "bat 6 / blockCnt 1 / massLevel 10：照 acdeer 原值，不另调 —— 木桩只提供「一个能被稳定打到的靶子」，攻速与阻挡不影响读数（atk 0 所以也不存在回击）。",
       "波次落点 (9,9)：所有 12 张战场图的 row 9 col 9 都是 'r'（可部署道路），col 10 是红门 S、col 2 是蓝门 E。放在 (9,9) 而不是红门 (9,10)：木桩站在门口会挡住后面可能刷进来的东西（悬赏 / 协议源石 / 彩蛋首领都会往本回合的波次里插 spawn），而 (9,9) 两侧都是可部署格，近战能贴、远程能覆盖，是「能站着挨打、又不挡路线」的位置。",
       "rounds[\"16\"] 的 prepTime：契约原文给 6 个模式统一 195，但仓库惯例（docs/DATA.md §1.1、server/match/match/prep.js prepDeadlineSeconds）是 SINGLE 模式的休整期**不限时 ⇒ prepTime null**，test/data.test.js:276 也钉着这一条。Lead 2026-10-29 拍板：3 个 SINGLE 模式写 null、3 个 MULTI 模式写 195；prepTimeData 六个模式统一 195（官方 normalPhaseTime 字段，与单人无关）。",
-      "enemyScale[\"16\"] = { atk: 1, hp: 1, speed: 1, kAtk: 0, kHp: 0 }（中性倍率）。necessary：enemyScaleFor 对超出表格的回合号会夹到**最后一行**（第 15 行，ABYSS kHp 7 ⇒ hp ×2.87），木桩的 maxHp 就会被放大成 约 933 亿；而 templateSpawns 给每一条非首领 spawn 都会乘本回合的 roundMods。中性倍率让 maxHp 325,000,000,000 就是场上真值。",
+      "enemyScale[\"16\"] = { atk: 1, hp: 1, speed: 1, kAtk: 0, kHp: 0 }（中性倍率）。necessary：enemyScaleFor 对超出表格的回合号会夹到**最后一行**（第 15 行，ABYSS kHp 7 ⇒ hp ×2.87），木桩的 maxHp 就会被放大成 约 933 亿；而 templateSpawns 给每一条非首领 spawn 都会乘本回合的 roundMods。中性倍率让 maxHp 2,000,000,000 就是场上真值。",
       "[ASSUMED] 木桩**不复制 hitArea**（Lead 2026-10-29 裁决）。acdeer 的 { w: 4.95, h: 2.95, dx: 0, dy: 1 } 是它自己那张 PRTS 巨型单位的体块；`hitArea` 在本仓库是 HIT_AREAS 表给「PRTS 有据的巨型单位」的标记，而 test/sim/playtest5_bossbody.test.js 把它与 server/sim/content/bosses.js 的 SELF_BOUND 钉成互为充要。木桩是 fork 自造的 1 格体、没有 PRTS 页，所以这个字段**不写**（数据里为 undefined，正是 HIT_AREAS 没有该 key 时的默认）。1 格体完全够用：它钉在 (9,9) 不动，近战贴得到、远程射程都覆盖得到。",
-      "[ASSUMED] 其余照抄 acdeer：desc / descRaw / abilities / talents / skills / be / beFactor / attrPower / immunities / attackAnim / iconId / spine 全部从模板行复制。后果写清楚：敌方情报里木桩会显示「萨米的意志」的说明与三条能力文本，`attrPower` 仍是 246520（与 325 亿血不符，但 attrPower 只用于波次替换池的强度换算，木桩不在任何池子里）。要改文案就改这里的 `enemy.text`（见该字段）。*** 例外：hitArea 不复制（见上一条）。",
+      "[ASSUMED] 其余照抄 acdeer：desc / descRaw / abilities / talents / skills / be / beFactor / attrPower / immunities / attackAnim / iconId / spine 全部从模板行复制。后果写清楚：敌方情报里木桩会显示「萨米的意志」的说明与三条能力文本，`attrPower` 仍是 246520（与 20 亿血不符，但 attrPower 只用于波次替换池的强度换算，木桩不在任何池子里）。要改文案就改这里的 `enemy.text`（见该字段）。*** 例外：hitArea 不复制（见上一条）。",
       "[ASSUMED] 素材：木桩没有自己的美术，enemy.iconId / enemy.spine 都写成 'enemy_9033_acdeer'，于是 data/enemies.json 里这一行自洽地指向萨米的模型 id。**客户端实际绘制走 data/assets.json 的 enemies['enemy_9901_dummy'].spine / spineAliasOf**，那份清单由 tools/fetch-assets.mjs（ENEMY_SPINE_ALIAS）产生，不由 build-data 生成 —— 这一步由 Lead 接手（2026-10-29），本表只写 enemies.json 的两个字段。",
       "回合接线（服务端，不在本文件）：gamedata.js get dummyRound / phases.js startRound 走普通回合分支 / bossRounds.js _finishFinal 的隐藏核心分支 / settle.js afterSettle / views.js publicView。roundsPassed 与奖励、奖杯**不受影响**：server/match/results.js 的 teamRounds 只读 gd.bossRound + hiddenCleared，不读第 16 回合。",
-      "【2026-10-30 地图修正】业主「16回合没有设置成boss回合，导致地图有问题」。第16回合要的是 boss 的**布阵区**（玩家在 bossL / bossR 上布阵），不是 boss 的**血池**：真正的 BOSS 回合会带来三样会毁掉这一回合的东西 —— ① 共享血池（血条来自 bosses.json 的 bloodPoint，敌人行的 maxHp 会被 _syncBossHp 覆写掉）；② 限伤 BOSS_HIT_LIMIT 300000（kind === 'boss' 的战场上，对 isBoss 单位单发 ≥ 30 万的伤害**整段取消**，高爆发干员的读数会被静默吃掉）；③ 没有硬性时限、只靠「池子打空 / 队伍生命归零」结束（325 亿打不空 ⇒ 只能等加时扣光 LP ⇒ 判负，而这是最后一回合）。所以做法是：这一场仍是**普通作战**（PHASE.COMBAT、敌人来自 this.wave、无血池无加时），只把这一组玩家登记进 `bossWaves`（server/match/match/phases.js `_planDummyField`），让 deployFieldOf 给出 bossL / bossR —— 也就是「用 boss 的地图与布阵区，不用 boss 的战斗规则」。"
+      "【2026-10-30 地图修正】业主「16回合没有设置成boss回合，导致地图有问题」。第16回合要的是 boss 的**布阵区**（玩家在 bossL / bossR 上布阵），不是 boss 的**血池**：真正的 BOSS 回合会带来三样会毁掉这一回合的东西 —— ① 共享血池（血条来自 bosses.json 的 bloodPoint，敌人行的 maxHp 会被 _syncBossHp 覆写掉）；② 限伤 BOSS_HIT_LIMIT 300000（kind === 'boss' 的战场上，对 isBoss 单位单发 ≥ 30 万的伤害**整段取消**，高爆发干员的读数会被静默吃掉）；③ 没有硬性时限、只靠「池子打空 / 队伍生命归零」结束（20 亿 + 每秒回 20 亿 + 锁血的木桩打不空 ⇒ 只能等加时扣光 LP ⇒ 判负，而这是最后一回合）。所以做法是：这一场仍是**普通作战**（PHASE.COMBAT、敌人来自 this.wave、无血池无加时），只把这一组玩家登记进 `bossWaves`（server/match/match/phases.js `_planDummyField`），让 deployFieldOf 给出 bossL / bossR —— 也就是「用 boss 的地图与布阵区，不用 boss 的战斗规则」。"
     ]
   },
   "round": {
@@ -109,7 +109,7 @@
       "spine": "enemy_9033_acdeer"
     },
     "stats": {
-      "maxHp": 32500000000,
+      "maxHp": 2000000000,
       "atk": 0,
       "def": 0,
       "res": 0,
@@ -118,7 +118,7 @@
       "blockCnt": 1,
       "massLevel": 10,
       "lpr": 0,
-      "hpRecoveryPerSec": 1000
+      "hpRecoveryPerSec": 2000000000
     }
   }
 }
