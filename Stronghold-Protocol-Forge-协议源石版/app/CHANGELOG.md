@@ -9,6 +9,108 @@
 
 ---
 
+## 0.19.42 — 2026-11-02
+
+**官方时装上车（276 套：头像 / 立绘 / 局内战斗模型）+ 开场演出 + 第 6 回合协议源石「点卡刷新」。**
+
+### 官方时装：276 套，头像 / 立绘 / 局内模型（业主 2026-11-02「加皮肤」）
+
+- **内容包** `workshop/official-skins/`（v2.0.0）：社区整合包「融合版 0.3.3」里的 302 套官方时装，按本仓现有干员过滤后 **276 套 / 174 名干员**——552 张 WebP（头像 180×180 + 半身像 180×360）≈ 9.8 MB，战斗 Spine **1641 个文件 / 302.7 MB**（271 套有 Back 面、5 套单面；骨架全部 Spine 3.8.99）。素材不进 git（`app/.gitignore` 单独忽略 `workshop/official-skins/assets/`），`pack.json`（1.36 MB）与 `PROVENANCE.md` 入库；重建脚本在 `.scratch/`（先图后模型）。
+- **皮肤的决策层**：`ui/skins.js`（清单 / 选择 `{charId: skinId}` / `sp.pref.skins` / `room.appearance { picks }` 发帧：去抖 500 ms、进房与重连重发、清空发 `{picks:{}}`、只在房间上下文）、`ui/skinProvider.js`（内置外观提供者，开机注册）、`ui/skinPicker.js`（干员调配里的「皮肤」区，复用 `loadout.css` 既有的 `.lo-skin*`，无新增 CSS）。**外观只走一条通道 = 工坊包**：插件面板再导出 `appearance(ctx)` 会被 `CLIENT_APPEARANCE_TAKEN` 拒绝（§28.28）。
+- **局内换装**：`assets.js spineEntry(m, id, { skin })` 让时装换掉棋盘上的骨架（整套 `art` / `{ spine }` / sides 三种形状；**能不能用只看 `front`**，正面不成形就整份回落原版，避免「官方正面 + 时装背面」的换人混搭；单面时装没有 Back 模型）。新增 `render/skinSpine.js`：**单位 → 座位 → `room.state.seats[].appearance.picks` → `assets.skins` → `art.spine`**（`info.ownerId` 即座位 `playerId`，**不动 server、不加 UnitInfo 字段**；自己的单位本机 `sp.pref.skins` 优先），外观帧一到就按既有 `retryAssets()` 重解析，队友对局中换装不必重开。
+- **41 套「普通攻击不叫 `Attack*`」不需要特例**：每套时装自带 `anims`（`tools/assets/anim-roles.mjs resolveRoles` 对这套骨架自己算，与融合版 `plugin.lock.json` **547 个面逐字节一致**），渲染器按 `roles.attack.loop` 播，代码里没有按名字找攻击 clip 的路径。Spine 缓存键是 `skel` 的 URL ⇒ 同一干员两套时装绝不串（这条同时也是内容纪律：每套时装自带骨架目录）。
+- **修掉一条挡住换装的边界**：`portraitChain` 的 `explicitVariant` 只留 `variant: 'elite'`；`_1`/`_2` 后缀与 `isGolden` 不再挡住外观提供者 —— 而 `data/chess.json` 里 **262/262 张立绘**全是 `_1`/`_2` 后缀，不改这一行「选了时装、立绘一个字节都不变」。开关关掉 / `skins:false` / 没有提供者时，262 个棋子的解析结果与旧实现**逐项相等**（测试钉住）。
+
+### 开场演出（业主 2026-11-01「融合版里值得吸取的」）
+
+- `ui/allianceScene.js`（逐帧重放的 DOM 动画，按官方活动录屏 30 fps 打表）+ `ui/lobbyIntro.js`（只管何时播、声音怎么接），`main.js` 在首帧之后调一次，约 2.8 秒；**素材 8 张入场贴图全部 decode 成功才播**，缺图静默跳过、不黑屏。不播：房间 / 对局、带 `?room=` 邀请、刷新后正等服务端重推对局、手机竖屏、系统关了动效（`prefers-reduced-motion`）、偏好 `sp.pref.lobby.intro === false`。点一下 / 任意键 / Esc 跳过；声音尽力而为（`audio.ctx` 首次手势才创建，首屏多半静音放完）。
+
+### 协议源石：第 6 回合「点卡刷新」（业主 2026-10-30 / 10-31，本轮另一轮会话实现）
+
+- 第 6 回合的三选一照常，**选完就能换**：每局 2 张，点哪张刷哪张（点一次花一次）；换回的牌按 1/2/3 阶抽取权重完全随机、不会再是刚换掉的那张；已经发出去的一次性收益（资金 / 部署位 / 装备）不回收。规则在 `server/match/match/hexDraft.js recycleHex`，意图 `g.hexRecycle { ids }`，余数写在 `m.public.players[].hexRecycleLeft`（只在第 6 回合的帧里）；面板与交互在 `ui/hexOverlay.js` / `screens/game.js`。`test/match/hex-recycle.test.js` 7 条 + `test/ui/hexRecycle.test.js` 16 条全绿。
+
+### 测试与基线
+
+- 本轮新增 / 相关：`test/render/spine-skin.test.js` 11（含真内容：盘上 276 套里本仓认识的 271 套逐套过 `spineEntry`）、`test/render/skin-spine.test.js` 12、`test/ui/portraitChain.test.js` 12、`test/ui/skins.test.js` 19、`test/match/hex-recycle.test.js` 7、`test/ui/hexRecycle.test.js` 16 —— 全绿；`eslint` 0 error、`tsc --noEmit --checkJs` 零输出。
+- `APP_VERSION` 0.19.41 → **0.19.42**（Service Worker 缓存名跟着换，玩家硬刷新一次即可）；`UPSTREAM_VERSION` 仍 `0.3.3`，`PROTOCOL_VERSION`（2）与 `MOD_API_VERSION`（1）未动。
+
+## 0.19.41 — 2026-11-01
+
+**三个 v79 自选干员接进「自选编队」：塔露拉 / 冻河 / 国度——官方数据行注入、三个完整 kit、头像立绘战斗模型技能图标、中/日双语音与技能音效、官方技能特效；同时修掉塔露拉 S3 簇火的视觉（位置、朝向、命中即熄）。**
+
+### 三个自选干员（业主 2026-11-01）
+
+- **数据**：新增 `tools/extra-operators.mjs` + 已提交的 `tools/extra-operators.json`，把三人的官方行（character_table / skill_table / range_table，客户端 v79）注入 `build-data`，其余数据一个字节不动：`diy.ownedPool` 72 → **75**、`backupUnits` 89 → **92**、`backupForms` 259 → **268**。三人在 v79 没有模组（面板只有「不装备模组」）。
+- **kit**：`kits/ops/op-oxi.js`（塔露拉：攻击为法术伤害并附灼燃损伤、停手 3 秒后的法术/元素增伤、灼燃爆发后的「足迹」、S1 恐惧、S2 受击充能反击＋庇护＋5 层攻防、S3 簇火波与过载）、`op-tocka.js`（冻河：从零建立「触发型效果」模型——受击/可开启/开启三种触发、可再次触发、S3 转移给技力比最高的友方；屏障＋晕眩、攻速窗、四目标物理＋SP 供给）、`op-dminon.js`（国度：攻击范围弥漫「国度」、每秒 13% 攻击力法术＋攻速−15、撤退时 600% 爆破、敌人首次踏上的停顿、S2 无法闪避、S3 扩散与重置）。
+- **触发规则**：`UNIT_TRIGGER_CORRECTIONS` 补三人在本地 `activity_table` 里缺失的「技能策略」行（塔露拉 S2 = `TAKE_DAMAGE`，冻河 S1/S2 = `SP_FULL`）。
+- **素材**：头像 / 精二头像 / 立绘 / 精二立绘、战斗 Spine front+back（含 `anims` / `animations` / `hits` / `bounds`）、9 张技能图标、分支图标 `supportiveranger`。
+- **语音**：`audio.voice`（默认日配）/ `audio.voiceJp` / `audio.voiceLangs.cn` 各 12 槽（每人 cn+jp 各 14 个文件）——配音干员 192 → **195**、语音条数 2688 → **2730**。
+- **技能音效**：国度 S1/S2/S3、塔露拉 S3、冻河 S3 的官方激活音效；`tools/assets/plan.mjs` 的 `skills` 条件从「超过一个技能有激活音效」改成「有一个也收」——塔露拉 / 冻河只有 S3 有官方激活音效，原来会被整条丢掉。
+- **官方技能特效**：从本机客户端补抽 `oxi_skill_03_hit_01`（簇火命中）与 `oxi_skill_03_trail_01`（簇火拖尾）——`oxi.ab` 容器里其实是 17 个 prefab，原抽取只落 15 个。
+- **塔露拉 S3 特效**：簇火每 0.4 秒在自身位置放一个官方拖尾实例（每个存活 1.2 秒），画面上的弹带间距按 1.15 倍撑开（只动绘制，判定与伤害仍按格子）、按飞行方向旋转、抵消 prefab 烘死的世界偏移（`offsetX/offsetY/drop`）、命中的那一刻熄掉**它自己那道**火（`oxiTrailStop` + `trailKey`）；爆炸用官方命中 prefab。顺带修掉 `render/vfx/wiring.js _orient` 里「调用方显式给的 yaw 被每帧 track 抹平」的问题（这就是「一开始能转、后来不转」的根因）。
+- **塔露拉 S3 的释放策略**：官方是 MANUAL（引擎里等于永不自动放），改成**只要地图上还有活着的敌人就自动开启**（不管在不在攻击范围）；场上没有敌人就不放。技能不再自动关闭（「可随时主动关闭」是玩家的操作），会跑满 36 秒，过载照常。
+- **过载看得见了**：本模式战斗区只有 4 行，弹带「加宽到 13 行」会被裁成和普通波一样宽，所以过载时额外用火焰橙（新 fx kind `oxiOverload`，2.5 秒）把整条弹带亮一次。
+- **冻河 S2/S3 的触发主语修正**：两条「触发型效果」原来把效果作用在冻河自己身上——S2「期间技能变为自动开启」实际没让任何队友自动开技能，S3 的「开启技能时自身和冻河攻击力+」也挂在她自己放技能的瞬间。现在两条都挂在**持有该效果的干员**身上：S2 在该干员技能可开启时给 +攻速并把其技能策略切成 `SP_FULL`（窗口结束恢复原策略），S3 在该干员真正开启技能时给双方衰减攻击力（她自己的施放仍保留「已存在时改为将其触发」）。
+
+### 融合版 0.3.3 汲取：开场演出 + 皮肤决策层（业主 2026-11-01「看看这个有什么值得吸取的」）
+
+取舍与证据：`04-文档/融合版0.3.3对比/`（总纲 `00-总纲与取舍.md`、分报告 A/B/C）。规范落点：DESIGN §41（`docs/history/0.19.41.md`）、§28.28（`docs/design/mod-layer.md`）、§10（`docs/design/client.md`）。只动客户端。
+
+- **开场演出**：`ui/allianceScene.js`（逐帧重放的 DOM 动画，按官方活动录屏 30 fps 打表）+ `ui/lobbyIntro.js`（只管什么时候播、声音怎么接），`main.js` 在首帧之后调一次，约 2.8 秒。**不播**：房间 / 对局、带 `?room=` 邀请、刷新后正等服务端重推对局、手机竖屏、系统关了动效（`prefers-reduced-motion`）、偏好 `sp.pref.lobby.intro === false`。**素材没下载齐就不播**（8 张入场贴图全部 decode 成功才播），不会黑屏。声音尽力而为（本仓 `audio.ctx` 首次手势才创建，首屏多半静音放完）；点一下 / 任意键 / Esc 跳过。删掉了来源里那套死代码「盟约 20 s 昼夜循环」约 65 行。
+- **皮肤决策层**：`ui/skins.js`（清单 / 选择 / `sp.pref.skins` / `room.appearance { picks }` 发帧：去抖 500 ms、进房与重连重发、清空发 `{picks:{}}`、只在房间上下文发）、`ui/skinProvider.js`（内置外观提供者，开机注册）、`ui/skinPicker.js`（干员调配里的「皮肤」区，复用 `loadout.css` 既有的 `.lo-skin*`，无新增 CSS）。**外观只走一条通道 = 工坊包**：插件面板再导出 `appearance(ctx)` 会被 `CLIENT_APPEARANCE_TAKEN` 拒绝（有意，见 `skinProvider.js` 文件头与 §28.28）。只有「真有图」的时装算可选（局内 Spine 换装是另一刀）。
+- **`ui/portraitChain.js` 的一条边界收窄**（本次唯一行为改动）：`appearanceFirst` 从前还被「`id` 以 `_1`/`_2` 结尾」「`chess.isGolden`」挡住，而 `data/chess.json` 的 **262/262 张立绘**全是 `_1`/`_2` 后缀 ⇒ 玩家选了时装、立绘一个字节都不变。现在只有 `variant: 'elite'` 还能挡住提供者；开关关掉 / `skins: false` / 没有提供者时，262 个棋子的解析结果与旧实现**逐项相等**（测试钉住）。
+- **i18n**：新增 9 条（`点击跳过` + 皮肤区 8 条），en / ja / ko / zh-TW 四包同步。
+- **官方时装内容包** `workshop/official-skins/`（v2.0.0）：把社区整合包里 302 套官方时装的头像 + 半身像 **+ 局内战斗模型**转成本仓工坊包格式（`pack.json.skins[]`，落点 `assets.skins`）。按本仓已有干员过滤后 **276 套 / 174 名干员**（融合版覆盖 193 名，其中 19 名本仓还没有素材）：图片 552 张 WebP ≈ 9.8 MB，模型 **1641 个文件 / 302.7 MB**（271 套有 Back 面、5 套单面；骨架全部 Spine 3.8.99）。都放在 `workshop/official-skins/assets/`（**素材不进 git**，`app/.gitignore` 单独忽略；`pack.json` 1.36 MB 与 `PROVENANCE.md` 入库）。每条 `art.spine` 带 `anims`/`animations`/`hits` —— `anims` 用 `tools/assets/anim-roles.mjs resolveRoles` 对**这套骨架自己**算，并与融合版 `plugin.lock.json` 逐字节对账 **547 个面全一致**。`workshop-validate` → 0 error / 0 warning；实测 `/data/assets.json` 的 `assets.skins` 带齐 174 名干员、276 套模型，`/workshop-assets/official-skins/spine/**.{skel,atlas,png}` 全部 200。
+- **局内换装（刀二引擎）**：`assets.js` 的 `spineEntry(m, id, { skin })` 认一套时装的 `art.spine`（整套 `art` / `{ spine }` / sides 三种形状，只在 `chars` 分支生效，`back` 缺失回落 `front`），**「能不能用」只看 `front`**（`spineSides()` + `validSpine`：`skel`+`atlas`+`anims`），正面不成形就整份回落原版（不会出现「官方正面 + 时装背面」的换人混搭）；`hasBackSpine` 透传，单面时装没有 Back 模型。新增 `render/skinSpine.js`：**单位 → 座位 → `room.state.seats[].appearance.picks` → `assets.skins` → `art.spine`**（`info.ownerId` 就是座位 `playerId`，**不动 server、不加 UnitInfo 字段**；自己的单位本机 `sp.pref.skins` 优先、房间那份兜底），`appearanceGen()` 变了就走既有 `retryAssets()` 重解析，队友在对局里换装不必重开。**不继承官方 `anims`** —— 所以 41 套普通攻击不叫 `Attack*` 的时装（23 套编号式、16 套借 `Skill_*_Loop`）靠自己的 anims 就对，渲染器里没有「按名字找攻击 clip」的路径。缓存键是 `entry.skel` URL，没有第二把 id 键 ⇒ 同一干员两套时装是两个骨架、绝不串（这条同时也是内容纪律：每套时装自带骨架目录）。测试 `test/render/spine-skin.test.js` 11 条（含**真内容**：盘上 276 套里本仓认识的 271 套逐套过 `spineEntry`）+ `test/render/skin-spine.test.js` 12 条，全绿；`eslint` 0 error、`tsc` 零输出。
+- **未做**（§41.4）：`render/artWarm.js` 预热仍是官方模型；菱形占位图仍是官方头像（`diamondTexture` 的键要先放宽才不串图，只做一半更糟）；`availableSkins` 仍只收「有图」的时装；时装语音。
+
+### 协议源石：业主 2026-11-01 的三处改口径（困毙之雪 / 不区区！/ 复制）
+
+- **【困毙之雪】**`hex_kjerag_frostdeath`（2 阶）：霜寒上限 5 → **10 层**；<在场3名> 整段替换为「敌人被冻结时（**来源不限**）
+  所有【谢拉格】干员 +1 层霜寒」+「冰封干员**周围八格**内的敌人每秒 100 + 40×谢拉格层数 真伤，被该真伤杀死的敌人使
+  【谢拉格】层数 +1」；<在场6名> 死亡移除霜寒 2 → **4 层**、全员冰封的真伤窗口 15 → **5 秒**（被该真伤杀死使层数 +2）。
+  删掉每层 30% 攻击施寒、解冻回层（半径 1.5）、冰封干员**阻挡的**敌人真伤。卡面 / `params` / `data/hextech.json` / 英文
+  卡面文案 / 规则文档与 14 条战斗测试同批更新。
+- **【不区区！】**`hex_sharepain`（2 阶）：业主「不屈干员之间不应该相互分担」—— 挨打的那名**自己就是〖不屈〗**时不再转移伤害，
+  分担只发生在「非不屈干员挨打、由一名〖不屈〗替它吃 50%」。
+- **【复制】**`hex_replicate`（2 阶）：业主「加个第一个时保留效果」—— 获得时手上没有别的协议源石可复制（它是你的第一枚）
+  时【复制】**不消失**，留到下一次获得协议源石时复制**刚到手的那一枚**再消失（有对象可复制时仍是随机复制一张已拥有的卡，
+  随后自身消失）。
+
+### 装备与协议源石：三条调整（业主 2026-11-01）
+
+- **【特质扩散】**`hex_traitspread`（2 阶）：「加强成给右边和上面」—— 受益者由「最近的干员（优先右边）」改成 **右边最近** +
+  **上面最近** 各一名（不要求相邻；某方向没人就那个方向没有；同一人只复制一次），复制仍是追加去重、目标保留自己的特质。
+- **装备【有限加速器】**`chess_item_4_03_e_a` / `_b`（4 阶）：「能被同构体识别成灵巧装备」—— `giveBondId` 由官方空值补成
+  `skillfulShip`（`tools/build-data.mjs` 的 `ITEM_BOND_GRANTS` 作者声明表）⇒ 与【变形同构体】同穿即算【灵巧】成员，
+  计入灵巧人数与层数；天赋栏配对 14 → 15 行。
+- **【不屈余烬】**`hex_indomember`（3 阶）：「抽到不屈余烬的概率增加」—— 卡面新增 `drawBoost { bond: indomShip,
+  fromLayers: 200, pct: 20 }`，【不屈】层数 > 200 时它在同阶位内的抽取权重 ×1.2（首抽 / 单刷新 / 整批刷新 / 管理员额外
+  选牌 / 换牌 / 二次抽取 / 无私奉献 七条路都吃）。装备发放阶梯（超 200 层后每 150 层一件）不变。
+
+### 点卡刷新：同名的两张协议源石要按两张算（业主 2026-11-02）
+
+- 玩家真的可能同时持有两张同名协议源石（【复制】/「管理员」/ 镜像协议的第二份 ref）。第 6 回合的点卡刷新原来在三层都按
+  「卡 id」处理：面板只显示一张、点一次却把两张 ref 全删掉、只换回一张。现在：行上多一个 `hexRefs`（**带重复**的卡 id，
+  只在有重复时出现），面板铺**两个槽**，「在飞 / 新卡入场」按槽键 `idx:id` 认，服务端每个请求 id 只摘**一张** ref。
+  `hexes`（去重的拥有列表）与 `g.hexRecycle` 的协议形状都没动。
+
+### 敌方协议源石：莱茵护甲次数盾 3 → 1（业主 2026-11-02）
+
+- **【莱茵护甲】**`ehex_leine`：「把次数盾改成 1 次」—— 卡面 `params.hits` 3 → 1，文案与四语译文同步；
+  仍走引擎自己的 `ab.hitShield`（整段伤害被挡一发、破盾放特效），血量与 `hitCount` 机制一概不碰。
+
+### 测试
+
+`op_oxi` 15 / `op_tocka` 9 / `op_dminon` 7 / `kits_layout` 6 / `content/diy` 6 / `backups` 12 / `diy` 7 / `assets-diy` 6 / `i18n-data` 9 / `diy-ui` 19 / `lobby-diy` 4 / `diy-bonds` 4 —— 全绿；`eslint` 0 error。
+本轮新增：`test/ui/portraitChain.test.js` 12 / `test/ui/skins.test.js` 19 —— 全绿（这个文件此前被 `shared/modSurface.js` 与 `docs/WORKSHOP.md` 点名却不存在，一并补上）。`npx eslint` 本轮 6 个改动文件 0 error；`node tools/check-imports.mjs` 只有 `server/sim/nodeData.js` 的既有 3 条。
+
+### 已知
+
+- 英 / 日 / 韩 / 繁的**文本**还没有这三人的官方翻译（界面显示中文）；语音 cn+jp 齐。
+- `test/golden/` 在本工作树不存在，golden 未更新；沙箱里 `node --test` 的 spawn 曾被拦，测试以「直接跑测试文件」等价验证。
+- 开场演出的**观感与真实发声**、手机竖/横屏、「从对局刷新不播」的时序、「皮肤」区在详情面板里的实际排版、真服务端跑一遍 `room.appearance` —— 沙箱内起不了浏览器（`spawn EPERM`），这些都还要在有浏览器的机器上走一遍。
+
 ## 0.19.40 — 2026-10-31
 
 **第 16 回合的木桩改成「20 亿血 + 每秒回 20 亿 + 锁血」：单发打不穿也打不死，血量表每秒回满一次，读数不受影响 —— 这一回合从此只有「时间到」一种结束方式。同版修好「联防时右侧效果列不能正确显示联防队友的协议源石」，上线协议源石第二十五 / 第二十六批（七张卡调整 + 十条 bug 与增强），删掉大厅背景的「星迹」主题。**
@@ -26,7 +128,7 @@
 ### 协议源石第二十六批：十条 bug / 增强（业主 2026-11-01）
 
 - **首领【伤心的大锁】**：受击反击的计数只算**「可触发受击回复」的伤害**（生命流失 / 反伤 / `noSp` 的持续伤害不再推进计数，PRTS「每受到20次可触发受击回复的伤害后」），并**有意偏离官方**给溅射加**最小间隔 4 秒**（`aoetrigger.min_interval`，缺省取大锁自己的攻击间隔；0 = 关闸回到官方）—— 本模式 8–12 人围一个静止、全场射程的领袖，官方口径下 20 次受击 1–3 秒就攒满、全场溅射变成每 1–2 秒一发。「无视不屈」不复现：不屈只保**地面**干员（官方口径）。
-- **【困毙之雪】**（2 阶）：①「每 5 秒获得 1 层霜寒」提升为**完全无条件**的基础效果（不看在场人数、不看有没有敌人被冻结）；② <在场6名> 的 15 秒真伤改成**事件驱动触发 + 绝对截止时刻**，不再因为「全员冰封的重叠窗口短于轮询间隔」整段丢掉。
+- **【困毙之雪】**（2 阶）：①「每 5 秒获得 1 层霜寒」提升为**完全无条件**的基础效果（不看在场人数、不看有没有敌人被冻结）；② <在场6名> 的真伤窗口改成**事件驱动触发 + 绝对截止时刻**，不再因为「全员冰封的重叠窗口短于轮询间隔」整段丢掉（2026-11-01 业主再改口径：霜寒上限 5 → 10 层、真伤窗口 15 秒 → **5 秒**、3 名档整段替换，详见 `docs/history/0.3.3.md` §40.6）。
 - **【炎百兽】**（2 阶）：① 生命共享改成**双向** —— 干员被治疗时炎佑按同数值回血；② 炎佑 **100% 继承**对应干员的防御力与法术抗性（`inheritDefPct` / `inheritResPct`）。
 - **【突破极限】**（3 阶）：**拥有者在联防战斗中也能叠盟约层**（每玩家 `flags.layerGainsByPlayer`；结算、客户端战报校验、盟约条显示都按玩家判）。
 - **赤刃明霄陈 S3 剑气**：每段直行只结算一次（原来被墙角卡住时会**每 tick 命中同一目标**，30 次/秒 × 6% 当前生命）。木桩的锁血未被绕过，百分比伤害不封顶。
@@ -73,6 +175,21 @@
     自己场上就是自己的效果，联防 / 双人首领场则是「‹ › 看哪半场就显示哪位的」；全景时你没参战就看 `前往查看` 点的那位、
     否则看场上第一位。服务器运行场没有 effects 数据，列照旧留空，不会显示成自己的。
 - **测试**：`test/ui/spectate-effects.test.js`（6 条：单成员还原、协议源石读名册与阶位、多成员按玩家、`effectsForOwner`、接线）。
+
+### 狂躁异质裂兽（强怪悬赏）：锁血只锁第一形态（业主 2026-11-01「狂躁异质裂兽出现锁血bug」）
+
+- **症状**：血条停在**正好 20%**（15 万血的裂兽 = 30 000，业主截图上的数）再也不动，第二形态怎么打都打不死，这一波只能等时间到。
+  同一个疏忽还让**第二形态的【落石】一次都没放过**、**爱国者重生期的【献祭】一次都没结算过**。
+- **根因**：`server/sim/content/enemies/forkwave.js` 里这几处守卫读的是 `e.mem.ab.state`（「现在是第几形态」），
+  而 `reborn()`（`server/sim/content/enemies/archetypes.js`）只把形态写在**能力自己**的 `a.state` 上，从来没写过 `e.mem.ab.state` ——
+  守卫读到的永远是 `undefined`：
+  - 第一形态的伤害下限 `HpRatioCtrl.min_hp_ratio` 0.2（`taken` 钩子把 HP 抬回 20%）因此**跟进了第二形态**；
+  - 而「逃跑 → 第二形态」只发生一次（`a.asked` 一次性上锁），第二形态于是**被 20% 下限永久钉死** —— 就是看到的锁血；
+  - `!== 'form2'` 的【落石】守卫、`!== 'reborn'` 的爱国者【献祭】守卫同理，永远不成立。
+- **修法**：`reborn()` 写 `a.state` 的同时把它镜像到 `e.mem.ab.state`（新增 `setState`，两处调用），守卫按原意生效：
+  20% 下限只覆盖第一形态，第二形态照常被打死，【落石】与【献祭】恢复。
+- **测试**：`test/content/forkwave-batch5.test.js` 新增两条 —— 第二形态两发 300% 真伤后必须阵亡（修前停在 30 000）、
+  第二形态必须对「造成自身最多伤害的单位」打出【落石】；原有「第一形态不破 20% → 逃跑 → 第二形态」那条不变。
 
 ## 0.19.39 — 2026-10-31
 
