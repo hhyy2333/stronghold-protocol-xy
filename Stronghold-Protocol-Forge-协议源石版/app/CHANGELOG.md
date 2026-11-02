@@ -9,6 +9,34 @@
 
 ---
 
+## 0.19.45 — 2026-11-02
+
+**时装那 321 MB 从包里搬进站点素材：预载得到、素材包收得下、对局里也不再每局重下。**
+
+- **为什么搬**（业主 2026-11-02：「皮肤 mod 有点大了，做到素材包里好导入」）：官方时装包的 2 193 个文件
+  （552 张图 + 1 641 个战斗模型，327 723 316 字节）一直住在包的 `assets/` 里，走 `/workshop-assets/<包>/…`。
+  那条路由**不在**内容哈希根里（`shared/assetPaths.js` 只认 `/assets/`、`/fonts/`、`/media/`），所以：
+  每个文件只能 `no-cache` 回源（没有长缓存），而且「导入素材包」一个都收不下 —— 导入按 URL 里的内容哈希逐个
+  校验字节，包素材的 URL 没有哈希段。
+- **搬法**：素材进 `public/assets/skins/{art,spine}`（部署时随服务器素材一起上去），`pack.json` 里每条 `art`
+  路径写成站点素材 `/assets/skins/…`，包目录里不再有 `assets/`（`hasAssets: false`，包本身只剩 1.43 MB 数据）。
+  声明层（`shared/workshop.js`）新增 `isSiteArtPath`：**只有 `/assets/` 这一个绝对根**，段里不许 `.` / `..` /
+  空段 / 反斜杠 / `?` `#` / 百分号编码穿越，**也不许自带内容哈希段**（哈希由服务器按磁盘字节算）。包内相对路径
+  照旧有效（老包一个字都不用改），`ART_NEEDS_ASSETS` 的判据收窄成「声明了**包内**路径」。两条通道的 URL 拼法
+  只有一处：`workshopArtUrl`。
+- **服务器**：合并后的 `data.assets.skins` 里就是 `/assets/skins/…`，既有那条「合并体也要套 `rewriteManifest`」
+  的分支自动给它们盖上内容哈希（Spine 整组一个**模型哈希**）。另补两处：
+  `/room-data/<摘要>/assets.json` **也套这一层**（这是对局中客户端真正读的数据面；不套的话进了对局每个美术 URL
+  都是裸路径，预载按地址存，一个都命中不了）；`assetViews.js siteModels` + `server/index.js extraModels` 把这些
+  模型登记进索引（否则派生出来的 atlas / 页 URL 退成 `no-cache`，2 193 个文件每次都回源）。
+- **打包**：`tools/package.mjs` 新增 `packSiteArt`，把已装包声明的 `/assets/…` 并进素材包的 plan —— 否则新素材包
+  会少 2 193 个文件且不报错，玩家导入后照样要在对局里下 321 MB。
+- **实测**（本地服务器 + 真包）：`workshop:validate` 0 error；合并清单 276/276 套带哈希；`skel`/`atlas`/页 三个
+  URL 全 `immutable`；`/room-data/<digest>/assets.json` 同样 276/276 带哈希；「预载素材」的 plan 里多出 2 193 条
+  `assets/skins/…`；素材包 plan 的增量正好 2 193 个文件、磁盘 0 缺失。细节：[docs/history/0.19.45.md](docs/history/0.19.45.md)。
+- **新测试**：`test/workshop-site-art.test.js`（6）、`test/workshop-site-art-server.test.js`（4）、
+  `test/tools/package-site-art.test.js`（3）。
+
 ## 0.19.44 — 2026-11-02
 
 **「进对局不出怪」的真根因：房间数据面的文件名白名单漏了 `moduleLevels` —— 每一个声明了模组集合的房间都取不到它。**
