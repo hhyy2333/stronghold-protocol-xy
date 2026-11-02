@@ -366,6 +366,10 @@ export const PLAYER_HEXES = [
     desc: '获得时立即得到装备【不屈余烬】（该装备同时具有【变形同构体】效果）：己方每有一名【不屈】干员阵亡，装备者便继承其基础生命上限、攻击力、防御力与法抗的 5%（无限叠加，跨战斗保留；同一玩家的所有【不屈余烬】共享同一份累计值）。【不屈】盟约层数超过 200 层后，每多出 150 层再获得一件【不屈余烬】（所有副本属性一致）。',
     rarity: 'prismatic',
     effect: {
+      // 业主 2026-11-01「抽到不屈余烬的概率增加」/「不屈叠层超 200 后增加出现不屈余烬机会增加 20%」：
+      // 抽卡池权重（不是装备发放阶梯 —— `indomEmberGift` 那条 150 层一件保持不变）。`bond` 的**实时层数** > `fromLayers`
+      // 时，这张卡在同阶位内被抽中的权重 × (1 + pct/100)；`pct` 按「出现机会」算，不是按层数算。
+      drawBoost: { bond: 'indomShip', fromLayers: 200, pct: 20 },
       onPick: { item: { id: 'chess_item_9_99_e_a', count: 1 }, indomEmberGift: { base: 200, step: 150 } },
       onRoundStart: { indomEmberGift: { base: 200, step: 150 } },
     },
@@ -373,7 +377,9 @@ export const PLAYER_HEXES = [
   {
     id: 'hex_traitspread',
     name: '特质扩散',
-    desc: '战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给最近的干员（优先右边）。',
+    // 业主 2026-11-01「特质扩散加强成给右边和上面」：受益者从「最近的干员（优先右边）」改成**两个方向各挑最近的一个** ——
+    // 右边最近的己方干员 + 上面最近的己方干员（不要求相邻，见 server/sim/content/garrisons/battle.js applyTraitSpread）。
+    desc: '战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给右边和上面最近的干员。',
     rarity: 'gold',
     effect: { traitSpread: true },
   },
@@ -1307,7 +1313,9 @@ export const PLAYER_HEXES = [
     // 2 阶 = rarity 'gold'. The copy is a second EffectRef of a random OTHER card the player owns, then 复制 removes
     // itself — both halves are match state, so the spec only carries the switch (server/match/hextech.js
     // `drainPendingHexCopies`).
-    desc: '获得时，随机复制一个你已拥有的协议源石，随后【复制】自身消失。',
+    // 业主 2026-11-01「协议『复制』加个第一个时保留效果」：手上还没有别的协议源石可复制时（它是你的第一枚）**不消失**，
+    // 留到下一次获得协议源石时复制**那一枚**再消失（server/match/hextech.js `resolveWaitingReplicate`）。
+    desc: '获得时，随机复制一个你已拥有的协议源石，随后【复制】自身消失；若你还没有其他协议源石可复制，则【复制】保留，直到你获得下一枚协议源石时复制它。',
     rarity: 'gold',
     effect: { onPick: { copyOwnedHex: true } },
   },
@@ -1556,34 +1564,40 @@ export const PLAYER_HEXES = [
       },
     },
   },
-  // 第二十一批（业主 2026-10-31）：谢拉格 ·【困毙之雪】（2 阶专属协议）。
-  // 设计稿：04-文档/协议源石-专属协议-困毙之雪-设计稿-20261031.md；战斗半段在
+  // 第二十一批（业主 2026-10-31，2026-11-01 改口径）：谢拉格 ·【困毙之雪】（2 阶专属协议）。
+  // 设计稿：04-文档/协议源石-专属协议-困毙之雪-设计稿-20261031.md（§8 = 2026-11-01 改版）；战斗半段在
   // server/sim/content/hexcards/stone_kjerag_frostdeath.js（gated by params.kjeragFrostDeath）。
+  //
+  // 业主 2026-11-01 改版原文（逐字）：「修改困毙之雪寒霜上限变到10层，3人口效果改为敌人被冻结时给所有谢拉格干员
+  // 一层寒霜，冰封干员周围8格敌人每秒受到真伤，若敌人被该真伤杀死则使谢拉格层数+1，六人口就改为谢拉格干员死亡
+  // 移出4层寒霜，真伤持续时间改为5s，被该真伤杀死的怪给谢拉格层数+2」
   {
     id: 'hex_kjerag_frostdeath',
     name: '困毙之雪',
-    desc: '仅【谢拉格】盟约激活时才会出现。【谢拉格】干员冻结敌人时获得 1 层霜寒；每层霜寒使防御力 +5%、攻击速度 −5。所有【谢拉格】干员每 5 秒获得 1 层霜寒。霜寒达到 5 层时消耗全部霜寒进入「冰封」5 秒：无法攻击、无法使用技能、无法被治疗，但阻挡数 +1 且免疫所有伤害。<在场3名不同【谢拉格】干员>每有 1 层霜寒，攻击时有 30% 概率施加寒冷；敌人冻结结束时未被击杀，则该敌人周围半径 1.5 内所有【谢拉格】干员获得 1 层霜寒；冰封干员阻挡的敌人每秒受到 100 点真实伤害（随【谢拉格】层数每层 +40）。<在场6名不同【谢拉格】干员>【谢拉格】干员死亡时，冻结全场敌人 5 秒，并为全体【谢拉格】干员移除 2 层霜寒；若场上所有【谢拉格】干员同时处于冰封状态，则对所有敌人每秒造成 100 点真实伤害（随【谢拉格】层数每层 +50）并施加寒冷，持续 15 秒。',
+    desc: '仅【谢拉格】盟约激活时才会出现。每层霜寒使防御力 +5%、攻击速度 −5；所有【谢拉格】干员每 5 秒获得 1 层霜寒。霜寒达到 10 层时消耗全部霜寒进入「冰封」5 秒：无法攻击、无法使用技能、无法被治疗，但阻挡数 +1 且免疫所有伤害。<在场3名不同【谢拉格】干员>敌人被冻结时，所有【谢拉格】干员获得 1 层霜寒；冰封干员周围八格内的敌人每秒受到 100 点真实伤害（随【谢拉格】层数每层 +40），被该真实伤害杀死的敌人使【谢拉格】层数 +1。<在场6名不同【谢拉格】干员>【谢拉格】干员死亡时，冻结全场敌人 5 秒，并为全体【谢拉格】干员移除 4 层霜寒；若场上所有【谢拉格】干员同时处于冰封状态，则对所有敌人每秒造成 100 点真实伤害（随【谢拉格】层数每层 +50）并施加寒冷，持续 5 秒，被该真实伤害杀死的敌人使【谢拉格】层数 +2。',
     rarity: 'gold',
     requiresBond: 'kjeragShip',
     effect: {
       kjeragFrostDeath: {
+        // 基础：霜寒 / 冰封 / 每 5 秒 +1 层（完全无条件，不看在场人数也不看有没有敌人被冻结）
         unlockCount: 3,
-        frostMax: 5,
+        frostMax: 10,
         defPctPerStack: 5,
         aspdPerStack: 5,
         sealSec: 5,
-        coldChancePerStack: 30,
-        coldSec: 5,
-        freezeEndRadius: 1.5,
         idleFrostSec: 5,
-        // 业主 2026-11-01：每 5 秒 +1 层霜寒改成**基础效果** —— 不要求在场 3 名谢拉格，也不要求「场上没有敌人被冻结」。
-        idleFrostUnconditional: true,
-        sealedBlockDmg: 100, sealedBlockDmgPerLayer: 40,
+        // 3 名档：敌人被冻结 ⇒ 全体 +1 层（无参数）；冰封干员周围八格真伤 + 击杀返层
+        sealedAuraDmg: 100, sealedAuraDmgPerLayer: 40,
+        sealedAuraRadius: 1,              // 周围八格 = 切比雪夫距离 ≤ 1
+        sealedAuraKillLayers: 1,
+        // 6 名档：死亡（冻结全场 + 移除 4 层霜寒）、全员冰封 5 秒真伤窗口 + 击杀返 2 层
         highCount: 6,
         deathFreezeSec: 5,
-        deathRemoveStacks: 2,
+        deathRemoveStacks: 4,
         allSealedDmg: 100, allSealedDmgPerLayer: 50,
-        allSealedSec: 15,
+        allSealedSec: 5,
+        allSealedColdSec: 5,
+        allSealedKillLayers: 2,
       },
     },
   },
@@ -1882,10 +1896,11 @@ export const ENEMY_HEXES = [
   {
     id: 'ehex_leine',
     name: '莱茵护甲',
-    desc: '敌人获得一层次数盾（可抵挡 3 次攻击）。',
+    // 业主 2026-11-02「把莱茵护甲的次数盾改成 1 次」：hits 3 → 1（仍是「整段伤害被挡掉一次」的那层盾，不是血量）。
+    desc: '敌人获得一层次数盾（可抵挡 1 次攻击）。',
     rarity: 'silver',
     verb: 'hitShield',
-    params: {"hits":3},
+    params: { hits: 1 },
   },
   {
     id: 'ehex_unstoppable',

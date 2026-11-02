@@ -10,7 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch } from './harness.js';
-import { hexIdsOf } from '../../server/match/hextech.js';
+import { hexIdsOf, applyBandHexCopy } from '../../server/match/hextech.js';
 import { HEX_RECYCLE_BUDGET } from '../../shared/hextech.js';
 
 /** Drive the match to the prep phase of `round`. */
@@ -37,6 +37,17 @@ function rowOf(m, pid) {
   return m.publicView().players.find((p) => p && p.playerId === pid);
 }
 
+/**
+ * 策略「管理员」的复制（`applyBandHexCopy`）要读玩家自己的 `band_hex_copy_once` buff；本用例只钉复制**机制**，所以给这个
+ * 座位把 buff 挂上（与 test/match/hextech.test.js 的 armCopyBuff 同一条 fixture）。
+ */
+function armCopyBuff(h, ps) {
+  const real = h.m.gd.band(ps.bandId);
+  h.m.gd.band = (id) => (id === ps.bandId
+    ? { ...(real || {}), bandId: ps.bandId, buffs: [{ key: 'band_hex_copy_once', bb: { count: 1 }, bbStr: {} }] }
+    : real);
+}
+
 test('选完协议源石就能换：抽卡阶段里点一张换一张，抽卡的 offer / picks 一个字节都不动', () => {
   const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 71, fake: true });
   h.start();
@@ -59,6 +70,8 @@ test('选完协议源石就能换：抽卡阶段里点一张换一张，抽卡�
   assert.equal(m.hex.picks.p_0, 0, 'picks 照旧');
   assert.deepEqual(m.hexOfferOf('p_0'), offerBefore, 'offer 照旧');
   assert.equal(rowOf(m, 'p_0').hexRecycleLeft, HEX_RECYCLE_BUDGET, '第 6 回合的帧里带剩余次数');
+  // 没有重复的卡 ⇒ 行上不带 hexRefs（帧与从前逐字节一致，业主 2026-11-02 那条只加在有重复的时候）
+  assert.equal('hexRefs' in rowOf(m, 'p_0'), false, '没有同名的两张就不写这个键');
 
   // 换掉刚选的那张：换回来一张新牌
   assert.deepEqual(m.handle('p_0', { t: 'g.hexRecycle', ids: [picked] }), { ok: true });
@@ -102,6 +115,46 @@ test('休整期里也能换，而且可以一次换 2 张（每局共 2 张）',
   // `>= 2` 而不是 `=== 2`：换回的卡本身可能再发牌（二次抽取 / 镜像协议），那是那张卡的效果，不是这次交换多发。
   assert.ok(fresh.length >= 2, `两张都换回了新卡（新 ${fresh.join(', ')}）`);
   assert.equal(rowOf(m, 'p_0').hexRecycleLeft, 0);
+  h.invariants();
+  m.dispose();
+});
+
+test('同名的两张协议源石就是两张：点一次只走一张、只换回一张', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 78, fake: true });
+  h.start();
+  toPrep(h, 6);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  // 造出「同一张卡的两个 ref」：正常拿一张，再走复制（第二个 ref `hex:<id>#2`）
+  const card = 'hex_stipend';
+  assert.ok(m.grantHex(ps, card), '先正常拿到一张');
+  armCopyBuff(h, ps);
+  assert.equal(applyBandHexCopy(m, ps, m.gd.hex(card)), 1, '复制出第二个 ref');
+  const refsOf = (id) => hexRefs(ps).filter((e) => e.data && e.data.hexId === id);
+  assert.deepEqual(refsOf(card).map((e) => e.id).sort(), [`hex:${card}`, `hex:${card}#2`], '两个 ref、同一张卡');
+  assert.equal(hexIdsOf(ps).filter((id) => id === card).length, 1, 'hexIdsOf 依旧去重（别的读者读的是拥有列表）');
+  // 视图：hexes 不变，hexRefs 里同 id 出现两次（客户端的刷新面板靠它铺两个槽）
+  const row = rowOf(m, 'p_0');
+  assert.deepEqual(row.hexes.filter((id) => id === card), [card], 'hexes 不变');
+  assert.deepEqual(row.hexRefs.filter((id) => id === card), [card, card], 'hexRefs 里同 id 出现两次');
+  assert.deepEqual(row.hexRefs, hexRefs(ps).map((e) => e.data.hexId), '展开顺序 = ps.effects 顺序');
+  // 点一次：只掉一个 ref、还留一张同名卡、只换回一张、次数只 −1
+  const left0 = ps.hexRecycleLeft;
+  const ownedBefore = hexIdsOf(ps);
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexRecycle', ids: [card] }), { ok: true });
+  assert.equal(ps.hexRecycleLeft, left0 - 1, '只花一次次数');
+  assert.equal(refsOf(card).length, 1, '只摘掉一个 ref（以前两个一起没）');
+  assert.ok(hexIdsOf(ps).includes(card), '同名卡还剩一张');
+  const fresh = hexIdsOf(ps).filter((id) => !ownedBefore.includes(id));
+  assert.ok(fresh.length >= 1, `换回一张新卡（新 ${fresh.join(', ')}）`);
+  const refIdsAfter = hexRefs(ps).map((e) => e.data.hexId);
+  const stillDup = refIdsAfter.length > new Set(refIdsAfter).size;
+  assert.equal('hexRefs' in rowOf(m, 'p_0'), stillDup, '键的取舍只看「还有没有同名的两张」');
+  // 再点一次：剩下的那张同名卡才跟着走
+  assert.deepEqual(m.handle('p_0', { t: 'g.hexRecycle', ids: [card] }), { ok: true });
+  assert.equal(refsOf(card).length, 0, '第二下才摘掉剩下的那个 ref');
+  assert.equal(hexIdsOf(ps).includes(card), false);
+  assert.equal(ps.hexRecycleLeft, 0);
   h.invariants();
   m.dispose();
 });

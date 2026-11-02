@@ -535,6 +535,43 @@ test('不区区！(sharePain, 2026-10-28): every 不屈 trigger gives ALL active
   h.invariants();
 });
 
+test('不区区！(sharePain, 2026-11-01): 不屈干员之间不相互分担——非不屈挨打才由不屈替它吃 50%', () => {
+  // 业主 2026-11-01 裁定：「不屈干员之间不应该相互分担」。分担只发生在「**非**不屈干员挨打、由一名〖不屈〗替它吃」这一种
+  // 情形；挨打的那名自己就是〖不屈〗时，这一发完全不转移（否则替它挨刀的也是不屈，等于不屈在互相分摊）。
+  const indomOp = (id) => chessRec({ id, bonds: ['indomShip'], stats: { maxHp: 2000, atk: 0, def: 200, res: 0, blockCnt: 1, respawnTime: 20 }, skill: null });
+  const plainOp = (id) => chessRec({ id, bonds: [], stats: { maxHp: 2000, atk: 0, def: 200, res: 0, blockCnt: 1, respawnTime: 20 }, skill: null });
+  const h = soloBattle({
+    hexes: ['hex_sharepain'],
+    chess: { test_indom_a: indomOp('test_indom_a'), test_indom_b: indomOp('test_indom_b'), test_plain: plainOp('test_plain') },
+    // 三个都站在路线（第 9 行）之外，整场不接敌：数字只可能来自本卡的转移
+    units: [
+      { uid: 1, kind: 'chess', chessId: 'test_indom_a', row: 12, col: 4 },
+      { uid: 2, kind: 'chess', chessId: 'test_indom_b', row: 12, col: 6 },
+      { uid: 3, kind: 'chess', chessId: 'test_plain', row: 12, col: 8 },
+    ],
+    timeLimit: 10,
+  });
+  h.run(0.5);
+  const byId = (id) => ops(h).find((u) => u && u.defId === id);
+  const a = byId('test_indom_a');
+  const b = byId('test_indom_b');
+  const p = byId('test_plain');
+  assert.ok(a && b && p, 'premise: 两名〖不屈〗+ 一名普通干员在场');
+
+  // ① 普通干员挨 400 真伤 ⇒ 一名〖不屈〗替它分担 50%（200）：普通干员被补回 200，分担者掉 200，队伍总损失仍是 400
+  const pHp = p.hp; const aHp = a.hp; const bHp = b.hp;
+  assert.equal(h.battle.dealDamage(null, p, { amount: 400, type: 'true', canDodge: false }), 400, 'premise: 400 真伤全落地');
+  assert.equal(pHp - p.hp, 200, '普通干员净损失 = 400 − 分担回来的 200');
+  assert.equal((aHp - a.hp) + (bHp - b.hp), 200, '由一名〖不屈〗掉 200（不是两人各掉 200）');
+
+  // ② 〖不屈〗自己挨 400 真伤 ⇒ 另一名〖不屈〗**不**替它分担
+  const a2 = a.hp; const b2 = b.hp;
+  assert.equal(h.battle.dealDamage(null, a, { amount: 400, type: 'true', canDodge: false }), 400, 'premise: 400 真伤全落地');
+  assert.equal(a2 - a.hp, 400, '〖不屈〗挨打：全额自己吃，不会分担回来');
+  assert.equal(b.hp, b2, '另一名〖不屈〗一点血都没掉');
+  h.invariants();
+});
+
 test('盟约裂变 (bondFission): only the two bonds with the most layers gain ×3 in battle', () => {
   const bonds = {
     yanShip: { count: 3, active: true, tier: 1, layers: 30 },
@@ -989,12 +1026,13 @@ test('破甲弹 (armorbreak): the enemy’s physical hits shred the struck opera
   h.invariants();
 });
 
-test('莱茵护甲 (hitShield): 敌人血量不变，额外挡 3 次攻击（业主 2026-10-16）', () => {
+test('莱茵护甲 (hitShield): 敌人血量不变，额外挡 1 次攻击（业主 2026-10-16；2026-11-02 改成 1 次）', () => {
   // 业主报「莱茵护甲怎么把怪的生命值改了」。旧实现是 `hitCount` + `setHits`，而 `setHits` 会把 `base.maxHp`
   // 整个**覆盖**成"次数"（helpers.js 的注释就是 `maxHp := hits`）—— 十万血的首领也变成 3 点血、血条消失。
   // `hitCount` 是给器物 / 频次怪用的另一种机制（它们本来就是"打 N 次才倒"），不是给"加一层盾"用的。
   // 真正的一层盾是引擎自己的 `ab.hitShield`（enemies.js onHitIn：整段物理/法术伤害被 cancel、扣 1 层、
   // 破盾放 shieldBreak），官方莱茵生命防卫科高级成员与假想敌：再生用的都是它。
+  // 业主 2026-11-02「把莱茵护甲的次数盾改成 1 次」：卡面 `params.hits` 3 → 1，所以只挡一发。
   const h = enemyVerbBattle('ehex_leine', { enemyKey: 'enemy_dummy', timeLimit: 30 });
   h.run(0.5);
   const e = h.enemies()[0];
@@ -1002,17 +1040,15 @@ test('莱茵护甲 (hitShield): 敌人血量不变，额外挡 3 次攻击（业
   assert.ok(e, 'the enemy is on the field (premise)');
   assert.equal(e.s.maxHp, 100000, 'the HP is untouched (the bug made this 3)');
   assert.ok(!isHitCount(e), 'it is NOT a 频次 unit: that mechanic exists for 器物, not for a shield');
-  assert.equal(abOf(b, e).hitShield, 3, '3 layers of the real hit shield');
+  assert.equal(abOf(b, e).hitShield, 1, '1 layer of the real hit shield (业主 2026-11-02「改成 1 次」)');
   const breaks = [];
   const fx = b.fx.bind(b);
   b.fx = (k, p) => { if (k === 'shieldBreak') breaks.push(p.id); return fx(k, p); };
-  for (let i = 1; i <= 3; i++) {
-    assert.equal(b.dealDamage(null, e, { amount: 25000, type: 'phys', ignoreSleep: true }), 0, `hit ${i}: the whole instance is negated`);
-    assert.equal(e.hp, 100000, `hit ${i}: no HP was lost`);
-    assert.equal(abOf(b, e).hitShield, 3 - i, `hit ${i}: ${3 - i} layers left`);
-  }
+  assert.equal(b.dealDamage(null, e, { amount: 25000, type: 'phys', ignoreSleep: true }), 0, 'hit 1: the whole instance is negated');
+  assert.equal(e.hp, 100000, 'hit 1: no HP was lost');
+  assert.equal(abOf(b, e).hitShield, 0, 'hit 1: the only layer is spent');
   assert.deepEqual(breaks, [e.id], 'the shield breaks once, with its fx');
-  assert.equal(b.dealDamage(null, e, { amount: 25000, type: 'phys', ignoreSleep: true }), 25000, 'the 4th hit lands');
+  assert.equal(b.dealDamage(null, e, { amount: 25000, type: 'phys', ignoreSleep: true }), 25000, 'the 2nd hit lands');
   assert.equal(e.hp, 75000);
   h.invariants();
 });

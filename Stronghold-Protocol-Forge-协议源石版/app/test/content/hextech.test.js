@@ -1474,10 +1474,15 @@ test('第二十一批：谢拉格【困毙之雪】—— 2 阶专属协议，�
   assert.ok(BATTLE_SPEC_KEYS.includes('kjeragFrostDeath'), 'kjeragFrostDeath 必须进 BATTLE_SPEC_KEYS，否则 ref 不会进战斗');
   assert.equal(HEX_SCRIPT_KEYS.hex_kjerag_frostdeath, 'kjeragFrostDeath', 'HEX_SCRIPT_KEYS 接线');
   assert.ok(rec.desc.includes('仅【'), '卡面写明只在对应盟约激活时出现');
-  // 业主 2026-10-31 确认的口径：霜寒 5 层清零、冰封 5 秒；阻挡真伤按谢拉格层数 +40；全冰封 +50 / 15 秒；解冻回层半径 1.5
+  // 业主 2026-11-01 改口径：霜寒上限 10 层（冰封 5 秒）；3 名档 = 冻结时全员 +1 层 + 冰封干员周围八格真伤（+40/层，
+  // 击杀 +1 层）；6 名档 = 死亡移除 4 层 + 全员冰封 5 秒真伤窗口（+50/层 + 寒冷 5 秒，击杀 +2 层）
   const p = rec.effect.kjeragFrostDeath;
-  assert.deepEqual([p.frostMax, p.sealSec, p.sealedBlockDmg, p.sealedBlockDmgPerLayer, p.allSealedDmg, p.allSealedDmgPerLayer, p.allSealedSec, p.freezeEndRadius],
-    [5, 5, 100, 40, 100, 50, 15, 1.5]);
+  assert.deepEqual([p.frostMax, p.sealSec, p.sealedAuraDmg, p.sealedAuraDmgPerLayer, p.sealedAuraRadius, p.sealedAuraKillLayers,
+    p.allSealedDmg, p.allSealedDmgPerLayer, p.allSealedSec, p.allSealedColdSec, p.allSealedKillLayers, p.deathRemoveStacks],
+  [10, 5, 100, 40, 1, 1, 100, 50, 5, 5, 2, 4]);
+  // 旧 3 名档的三个参数已删除（业主 2026-11-01）：30% 施寒 / 解冻回层半径 1.5 / 冰封阻挡真伤；idleFrostUnconditional 也没了
+  assert.deepEqual([p.coldChancePerStack, p.coldSec, p.freezeEndRadius, p.sealedBlockDmg, p.sealedBlockDmgPerLayer, p.idleFrostUnconditional],
+    [undefined, undefined, undefined, undefined, undefined, undefined]);
 });
 
 test('第二十二批：卡西米尔【骑士金神】—— 2 阶专属协议，击杀金币 / 刷怪表 / 金币伤害全部在卡面', () => {
@@ -1586,11 +1591,12 @@ test('第二十六批：十条 bug/增强 —— 卡面参数全部到位（业�
   const mp = HEXTECH.playerHexes.hex_massprod;
   assert.deepEqual(mp.effect.onPick.chess, { tier: 'level', count: 1 });
   assert.deepEqual(mp.effect.onRoundStart.chess, { tier: 'level', count: 1 });
-  // 困毙之雪：每 5 秒 +1 层霜寒改成完全无条件（不看在场人数、不看有没有冻结敌人）
+  // 困毙之雪：每 5 秒 +1 层霜寒是完全无条件的基础效果（不看在场人数、不看有没有冻结敌人；旧的 idleFrostUnconditional
+  // 开关在 2026-11-01 改口径时删掉了）；6 名档真伤窗口同期由 15 秒改回 5 秒
   const fd = HEXTECH.playerHexes.hex_kjerag_frostdeath.effect.kjeragFrostDeath;
   assert.equal(fd.idleFrostSec, 5);
-  assert.equal(fd.idleFrostUnconditional, true);
-  assert.equal(fd.allSealedSec, 15, '六人口 15 秒真伤');
+  assert.equal(fd.idleFrostUnconditional, undefined, '无条件叠层已归入基础效果，不再有开关参数');
+  assert.equal(fd.allSealedSec, 5, '六人口真伤窗口 5 秒');
   assert.ok(HEXTECH.playerHexes.hex_kjerag_frostdeath.desc.includes('所有【谢拉格】干员每 5 秒获得 1 层霜寒'));
   // 炎百兽：生命共享双向（回血镜像）+ 炎佑 100% 继承防御力/法抗
   const yb = HEXTECH.playerHexes.hex_yan_beasts.effect.yanBeasts;

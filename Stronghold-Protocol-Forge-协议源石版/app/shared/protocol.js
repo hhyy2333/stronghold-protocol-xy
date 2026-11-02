@@ -862,6 +862,9 @@ export const C2S = {
   // 每局 2 张的余量）、换牌池与随机流都在 `server/match/match/hexDraft.js recycleHex` / `_hexRecycleGate`。
   // **新增的 C2S 类型，`PROTOCOL_VERSION` 不动**（先例 `records.mine` / `g.unequip` / `g.testChess`）：老客户端不发它，
   // 一切照旧；服务端只在**第 6 回合**的帧里把余数写成 `m.public.players[].hexRecycleLeft`（其它回合逐字节不变）。
+  // 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」: 每个 id 只摘**一个** EffectRef —— 同名的两张协议源石就是
+  // 两张，点一次只走一张（另一个同名 ref 留在手上，再点一次才轮到它），换回的张数仍 = `ids` 的个数。面板要能看见两张，
+  // 于是行上另带一个**不去重**的 `m.public.players[].hexRefs`（只在有卡被拥有多于一次时才写，见 views.js）。
   'g.hexRecycle': { ids: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 2 && v.every(isId) },
   // 测试场 (the owner's request of 2026-10-11): the in-match test panel of a room created with `room.create.test`. The
   // intents below are every one refused outside a test field (ERR.WRONG_PHASE) and only for the requesting player:

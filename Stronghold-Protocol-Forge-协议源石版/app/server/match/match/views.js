@@ -35,6 +35,23 @@ function cultivationInfo(lo) {
   return out;
 }
 
+/**
+ * The hex ids a player owns, **de-duplication NOT applied** — one entry per `hex:<id>` EffectRef, in `ps.effects` order.
+ *
+ * 业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」: a player really can own the same card twice (策略「管理员」/
+ * 镜像协议 write a second ref `hex:<id>#<n>`, server/match/hextech.js addHexRef), and 第 6 回合's 点卡刷新 refunds ONE ref
+ * per tap — so the panel has to see two cards there. `hexIdsOf` (the ownership list the draft pool, 潘多拉魔盒 and the
+ * battle flags read) stays de-duplicated: this is only the ref-shaped twin that `publicPlayerView` puts on the wire as
+ * `hexRefs`.
+ * @param {any} ps @returns {string[]}
+ */
+function hexRefIdsOf(ps) {
+  return (ps.effects || [])
+    .filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:'))
+    .map((e) => e.data && e.data.hexId)
+    .filter(Boolean);
+}
+
 export class MatchViews {
   statusOf(ps) {
     if (ps.left) return 'left';
@@ -184,6 +201,8 @@ export class MatchViews {
    * @param {any} ps PlayerState
    */
   publicPlayerView(ps) {
+    const hexes = ps.alive ? hexIdsOf(ps) : [];
+    const hexRefs = ps.alive ? hexRefIdsOf(ps) : [];
     return {
       playerId: ps.playerId,
       seat: ps.seat,
@@ -193,7 +212,13 @@ export class MatchViews {
       alive: ps.alive,
       lp: Math.max(0, ps.lp),
       bandId: ps.bandId,
-      hexes: ps.alive ? hexIdsOf(ps) : [],
+      hexes,
+      // 业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」: `hexes` above is de-duplicated (`hexIdsOf`), so a card
+      // owned TWICE shows up once and 第 6 回合's 点卡刷新 panel gets one slot for two refs. `hexRefs` is that same list
+      // without the dedup (one entry per `hex:<id>` ref, `ps.effects` order), written **only when some card is owned more
+      // than once** — every other row stays byte-for-byte what it was, exactly like `hexRecycleLeft` below (a later
+      // appearance of a row key rides the delta as a whole patch, and one that leaves is patched as null).
+      ...(hexRefs.length > hexes.length ? { hexRefs } : {}),
       // 第 6 回合的「点卡刷新」(业主 2026-10-30 / 2026-10-31): 这一局还能换几张（0–2）。**只在第 6 回合的帧里出现** ——
       // 其它回合不写这个键，于是没走到第 6 回合的对局与从前逐字节相同（`viewsDelta` 把后来出现的行键当整块补丁带上）。
       ...(ps.alive && Number(this.round) === 6 ? { hexRecycleLeft: ps.hexRecycleLeft } : {}),

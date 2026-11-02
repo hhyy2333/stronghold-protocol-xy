@@ -431,7 +431,8 @@ export const HEX_RECYCLE_ROUND = 6;
 export const RECYCLE_FLASH_MS = 1100;
 
 /**
- * m.public.players[] 里属于自己那一行（`hexes` / `hexRecycleLeft` 都在这行上），观战 / 已淘汰没有这一行时返回 null。
+ * m.public.players[] 里属于自己那一行（`hexes` / `hexRefs` / `hexRecycleLeft` 都在这行上），观战 / 已淘汰没有这一行
+ * 时返回 null。
  * @param {any} pub m.public
  * @param {string|null|undefined} myId
  * @returns {any|null}
@@ -442,16 +443,21 @@ export function playerRowOf(pub, myId) {
 }
 
 /**
- * 自己已拥有的协议源石 id（行上的 `hexes`），去重并丢掉非字符串 —— 这份列表既是面板铺卡的数据源，也是「至少拥有一张」
- * 那条判据。
+ * 自己已拥有的协议源石 id —— 这份列表既是面板铺卡的数据源，也是「至少拥有一张」那条判据。
+ *
+ * 业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」：行上另有 `hexRefs` 是**不去重**的那一份（同名的两张写
+ * 两次，服务端只在「有卡被拥有多于一次」时才写它，见 `server/match/match/views.js publicPlayerView`），有它就用它 ——
+ * 同名的两张于是铺成两个槽。没有 `hexRefs`（老服务端 / 没有重复的帧）仍读 `hexes`，并照旧去重、丢掉非字符串。
  * @param {any} pub m.public
  * @param {string|null|undefined} myId
  * @returns {string[]}
  */
 export function ownHexIds(pub, myId) {
   const row = playerRowOf(pub, myId);
-  const list = Array.isArray(row?.hexes) ? row.hexes : [];
-  return [...new Set(list.filter((id) => typeof id === 'string' && id))];
+  const refs = Array.isArray(row?.hexRefs) ? row.hexRefs : null;
+  const list = refs || (Array.isArray(row?.hexes) ? row.hexes : []);
+  const ids = list.filter((id) => typeof id === 'string' && id);
+  return refs ? ids : [...new Set(ids)];
 }
 
 /**
@@ -526,15 +532,17 @@ export function hexRecycleAvailable(pub, myId) {
 /**
  * 一张卡此刻能不能点：还有次数，并且没有别的卡正在刷新（请求在途时整排都禁用，避免一次点击花掉两次）。
  * @param {number} left 剩余次数
- * @param {string|null} [busyId] 正在刷新的那张 id
+ * @param {string|null} [busyKey] 正在刷新的那个槽的键（`recycleCardKey`；非空 = 有请求在飞）
  * @returns {boolean}
  */
-export function recycleCanRefresh(left, busyId = null) {
-  return !busyId && Number.isFinite(Number(left)) && Number(left) > 0;
+export function recycleCanRefresh(left, busyKey = null) {
+  return !busyKey && Number.isFinite(Number(left)) && Number(left) > 0;
 }
 
 /**
  * 把「自己拥有的 id」换成卡面记录（HexCard 要的 `{ id, name, desc, rarity }`），保持行上的顺序。
+ *
+ * 一对同名卡（`ownHexIds` 给出两个相同 id）就是**两个槽**：映射 1:1，`idx` 不同即可 —— 点哪一个都由这个 `idx` 认领。
  *
  * 记录来自 `data.get('hextech').playerHexes` —— 那是**以 id 为键的对象**（data/hextech.json；ui/guide.js 与
  * ui/testArena.js hexesOf 都按 Object.values 读），不是数组；这里也接受数组形态，省得两处写法对不上。
@@ -561,24 +569,41 @@ export function recycleCardsOf(ownedIds, roster) {
 }
 
 /**
+ * 一个卡槽的身份（`recycleCardsOf` 的一张卡 → 「正在刷新的那个槽」「刚换回来的那个槽」的键）。
+ *
+ * 业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」：同名的两张卡是两个槽，它们只有 `idx` 不同，所以
+ * 「在飞」与「新卡入场」都按这个键记 —— 按 `id` 记的话两张同名卡会一起闪光、一起演「被吸走」，等于又合成了一张。
+ * @param {{ id?: string, idx?: number }|null|undefined} card
+ * @returns {string}
+ */
+export function recycleCardKey(card) {
+  const idx = Number.isFinite(Number(card?.idx)) ? Math.trunc(Number(card?.idx)) : -1;
+  const id = typeof card?.id === 'string' ? card.id : '';
+  return `${idx}:${id}`;
+}
+
+/**
  * 「协议源石 · 刷新」面板：业主 2026-10-31「把有的协议源石放上去点击刷新」。
  *
  * 外壳就是抽卡那套（`.spov` veil / inner / head / grid + `HexCard`），所以两个界面读起来是同一个游戏。纯视图 ——
- * `cards` / `left` / `busyId` / `freshId` 都由 screens/game.js 给，关面板也由它决定（组件只回调 `onClose`：
+ * `cards` / `left` / `busyKey` / `freshKey` 都由 screens/game.js 给，关面板也由它决定（组件只回调 `onClose`：
  * 「完成」按钮、点 veil、Esc 三处都走同一条）。
  *
- * 点卡即刷新（没有确认按钮）：`onRefresh(id)` 由屏幕立刻发 `g.hexRecycle`。请求在途时**整排卡都点不动**
- * （`recycleCanRefresh`）—— 一次点击只该花一次次数。
+ * 点卡即刷新（没有确认按钮）：`onRefresh(id, idx)` 由屏幕立刻发 `g.hexRecycle { ids: [id] }`。请求在途时**整排卡都点
+ * 不动**（`recycleCanRefresh`）—— 一次点击只该花一次次数。
  *
- * @param {{ cards?: any[], left?: number, busyId?: string|null, freshId?: string|null,
- *   onRefresh?: ((id: string) => void)|null, onClose?: (() => void)|null }} props
+ * `busyKey` / `freshKey` 是**槽**的键（`recycleCardKey`）而不是卡 id：同名的两张是两张，点其中一张时只有它自己被吸走，
+ * 换回来的那张也只在它自己的槽里闪（业主 2026-11-02）。
+ *
+ * @param {{ cards?: any[], left?: number, busyKey?: string|null, freshKey?: string|null,
+ *   onRefresh?: ((id: string, idx: number) => void)|null, onClose?: (() => void)|null }} props
  */
-export function HexRecyclePanel({ cards = [], left = 0, busyId = null, freshId = null, onRefresh = null, onClose = null }) {
+export function HexRecyclePanel({ cards = [], left = 0, busyKey = null, freshKey = null, onRefresh = null, onClose = null }) {
   const list = Array.isArray(cards) ? cards : [];
   const rest = Math.max(0, Math.min(HEX_RECYCLE_BUDGET, Math.trunc(Number(left) || 0)));
-  const canRefresh = recycleCanRefresh(rest, busyId);
+  const canRefresh = recycleCanRefresh(rest, busyKey);
   // 一行状态：在飞 > 还有次数 > 用完了。业主 2026-10-31 要「剩 n 次」看得见，用完那一刻也要说清楚。
-  const status = busyId ? t('刷新中') : rest > 0 ? t('剩 {n} 次', { n: rest }) : t('次数已用完');
+  const status = busyKey ? t('刷新中') : rest > 0 ? t('剩 {n} 次', { n: rest }) : t('次数已用完');
   return html`<div class="spov hxrec" role="dialog" aria-label=${t('协议源石 · 刷新')} data-testid="hex-recycle-panel">
     <div class="spov__veil" aria-hidden="true" onClick=${() => onClose?.()}></div>
     <div class="spov__inner">
@@ -590,7 +615,7 @@ export function HexRecyclePanel({ cards = [], left = 0, busyId = null, freshId =
         </div>
         <div class="spov__turn">
           ${/* 剩余次数：几颗菱形（业主「算力无限，搞美观些」），数出来的那一行同时给出文字 */ ''}
-          <span class=${cx('hxrec__pips', rest > 0 && 'is-live', busyId && 'is-busy')} data-testid="hex-recycle-pips"
+          <span class=${cx('hxrec__pips', rest > 0 && 'is-live', busyKey && 'is-busy')} data-testid="hex-recycle-pips"
             aria-hidden="true">${Array.from({ length: HEX_RECYCLE_BUDGET }, (_, i) => html`<i key=${i}
               class=${cx('hxrec__pip', i < rest && 'is-on')}></i>`)}</span>
           <span class=${cx('hxrec__left', rest > 0 && 'is-live')} data-testid="hex-recycle-left"
@@ -598,14 +623,19 @@ export function HexRecyclePanel({ cards = [], left = 0, busyId = null, freshId =
         </div>
       </header>
       ${/* 一张卡一个槽：卡自己仍是那个大按钮（点整张 = 刷新它），槽负责悬停抬升 / 点击波纹 / 新卡入场的那一下闪光。
-            `vanishing` 是抽卡确认时那套「化作数据流被吸走」的动画，这里借来表示「这张正在被换掉」。 */ ''}
+            `vanishing` 是抽卡确认时那套「化作数据流被吸走」的动画，这里借来表示「这张正在被换掉」。
+            槽的身份是 `recycleCardKey(c)`（`idx:id`）而不是卡 id：同名的两张是两个槽，按 id 记会把它们合成一个（业主
+            2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」）。 */ ''}
       <div class=${cx('spov__grid', list.length <= 3 ? 'spov__grid--3' : list.length > 6 && 'spov__grid--many')}
         data-testid="hex-recycle-grid">
-        ${list.map((c) => html`<span key=${c.id}
-          class=${cx('hxcard-slot', 'hxrec__slot', freshId === c.id && 'is-fresh', busyId === c.id && 'is-refreshing')}>
-          <${HexCard} hex=${c} vanishing=${busyId === c.id} vanishDir=${c.idx % 3}
-            onClick=${canRefresh ? () => onRefresh?.(c.id) : null} />
-        </span>`)}
+        ${list.map((c) => {
+          const key = recycleCardKey(c);
+          return html`<span key=${key}
+          class=${cx('hxcard-slot', 'hxrec__slot', freshKey === key && 'is-fresh', busyKey === key && 'is-refreshing')}>
+          <${HexCard} hex=${c} vanishing=${busyKey === key} vanishDir=${c.idx % 3}
+            onClick=${canRefresh ? () => onRefresh?.(c.id, c.idx) : null} />
+        </span>`;
+        })}
       </div>
       <footer class="hxov__foot">
         <span class="hxov__hint hxrec__hint">${t('点击一张协议源石，随机换回一张')}</span>

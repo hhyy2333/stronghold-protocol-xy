@@ -111,6 +111,10 @@ export function installBlockwall(hooks) {
  * 「不区干员会为其他干员分担 50% 伤害」. When any OWN operator takes damage and a 不屈 carrier of the same player is on
  * the field, `pct` of that instance is moved to the carrier.
  *
+ * 业主 2026-11-01 裁定：**不屈干员之间不相互分担** —— 挨打的那名本身就是〖不屈〗干员时，这一发**完全不**转移
+ * （否则「替它挨刀」的也是不屈，等于不屈们在互相分摊伤害：谁挨打都掉两份血、谁也吃不掉谁，看起来像这张卡没生效）。
+ * 所以分担只发生在「非不屈干员挨打、由一名不屈替它吃」这一种情形。
+ *
  * WHY IT IS DONE ON `damaged` (the POST-mitigation hook) rather than on `hit`. The `hit` hook runs before mitigation,
  * so at that point the final number is not known — and a share computed from a pre-mitigation amount would move more
  * than the ally actually lost. `damaged` carries `amount` = what really landed, which is exactly the base the card's
@@ -140,6 +144,8 @@ export function installSharePain(hooks) {
     if (isRetaliation(dmg) || isHpLoss(dmg)) return;
     if (dmg.type === 'element') return;
     if (!(c.amount > 0)) return;
+    // 业主 2026-11-01：不屈干员之间不相互分担 —— 挨打的这名自己就是〖不屈〗干员 ⇒ 这一发不转移
+    if (isMember(battle, tgt, 'indomShip')) return;
     for (const pid of owners) {
       const spec = specOf(pid, 'hex_sharepain', 'sharePain');
       const pct = Math.max(0, Math.min(90, optNumber(spec, 'pct', 50))) / 100;

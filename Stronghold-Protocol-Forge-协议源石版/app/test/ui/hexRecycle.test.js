@@ -6,6 +6,8 @@
 //   * 窗口判据 `hexRecycleAvailable`：第 6 回合 / 存活 / 还有次数 / 至少拥有一张 / (HEX_DRAFT 已选完 或 PREP)；
 //   * 剩余次数 `hexRecycleLeft`：读行上的 `hexRecycleLeft`，缺省按 `HEX_RECYCLE_BUDGET`（2）；
 //   * 点卡能不能点 `recycleCanRefresh`：还有次数、且没有别的卡在飞；
+//   * 同名的两张协议源石是**两个槽**（业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」）：行上有 `hexRefs`
+//     就读它（不去重），面板铺两个槽，点哪一个都只发那一个 id，「在飞」与「新卡入场」按槽（`recycleCardKey`）记；
 //   * 面板 `HexRecyclePanel` 是**纯视图**（props 进、回调出，没有 DOM、没有 hooks），所以组件直接当函数调、vnode 树当普通
 //     对象读（与 test/ui/hextechDraft.test.js 同一条路子）。
 //
@@ -19,7 +21,7 @@ import { HEX_RECYCLE_BUDGET } from '../../shared/hextech.js';
 import * as hexOverlay from '../../public/js/ui/hexOverlay.js';
 import {
   HEX_RECYCLE_ROUND, RECYCLE_FLASH_MS, playerRowOf, ownHexIds, hexRecycleLeft, draftPicked,
-  hexRecycleWindow, hexRecycleAvailable, recycleCanRefresh, recycleCardsOf, HexCard, HexRecyclePanel,
+  hexRecycleWindow, hexRecycleAvailable, recycleCanRefresh, recycleCardsOf, recycleCardKey, HexCard, HexRecyclePanel,
 } from '../../public/js/ui/hexOverlay.js';
 import { Button } from '../../public/js/ui/components.js';
 
@@ -143,12 +145,23 @@ test('hexRecycleWindow vs hexRecycleAvailable: 次数用完，阶段窗口还在
   assert.equal(hexRecycleAvailable(null, 'p_0'), false);
 });
 
-test('ownHexIds / playerRowOf: 行上的 hexes 去重、丢非字符串', () => {
+test('ownHexIds / playerRowOf: 行上的 hexes 去重、丢非字符串；有 hexRefs 时按不去重的那一份', () => {
   assert.deepEqual(ownHexIds(pubWith(), 'p_0'), ['hex_stipend', 'hex_armor']);
   assert.deepEqual(ownHexIds(pubWith({ hexes: ['a', 'a', 'b', '', null, 3] }), 'p_0'), ['a', 'b']);
   assert.deepEqual(ownHexIds(pubWith({ hexes: undefined }), 'p_0'), []);
   assert.equal(playerRowOf(pubWith(), 'p_0').name, 'me');
   assert.equal(playerRowOf(pubWith(), 'nobody'), null);
+  // 业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」: 同名的两张 = 两个槽
+  const dup = pubWith({ hexes: ['a', 'b'], hexRefs: ['a', 'b', 'a'] });
+  assert.deepEqual(ownHexIds(dup, 'p_0'), ['a', 'b', 'a'], 'hexRefs 不去重（服务端只在真有重复时才写它）');
+  // 老服务端 / 没有重复的帧：没有这个键，退回 hexes 并去重
+  const noRefs = pubWith({ hexes: ['a', 'b'] });
+  assert.equal('hexRefs' in noRefs.players[0], false);
+  assert.deepEqual(ownHexIds(noRefs, 'p_0'), ['a', 'b']);
+  // 坏值：hexRefs 不是数组时退回 hexes；是数组时也只留字符串
+  assert.deepEqual(ownHexIds(pubWith({ hexRefs: 'nope' }), 'p_0'), ['hex_stipend', 'hex_armor']);
+  assert.deepEqual(ownHexIds(pubWith({ hexRefs: ['a', '', null, 'a'] }), 'p_0'), ['a', 'a']);
+  assert.deepEqual(ownHexIds(pubWith({ hexRefs: [] }), 'p_0'), [], 'hexRefs 空数组就真的是空（不退回 hexes）');
 });
 
 // ---- 点卡 ----------------------------------------------------------------------------------------------------
@@ -221,7 +234,7 @@ test('HexRecyclePanel: 点一张就回调 onRefresh（没有确认按钮），�
   const labels = findAll(panel, Button).map((b) => String(b.props?.children ?? ''));
   assert.deepEqual(labels, ['完成'], 'no 确认 — the tap IS the confirmation');
   // 一张在飞：整排 onClick 都撤掉（HexCard 于是退回纯展示的 span），那张进「被吸走」的动画，状态行改口
-  const busy = HexRecyclePanel({ cards: CARDS, left: 1, busyId: 'hex_armor', onRefresh: () => {} });
+  const busy = HexRecyclePanel({ cards: CARDS, left: 1, busyKey: recycleCardKey(CARDS[1]), onRefresh: () => {} });
   for (const c of findAll(busy, HexCard)) assert.equal(c.props.onClick, null, 'every card waits for the reply');
   const busyCards = findAll(busy, HexCard);
   assert.equal(busyCards[1].props?.vanishing, true, 'the tapped card plays the draft’s suck-in animation');
@@ -231,13 +244,49 @@ test('HexRecyclePanel: 点一张就回调 onRefresh（没有确认按钮），�
 });
 
 test('HexRecyclePanel: 新换回来的那张带 is-fresh（入场闪一下）', () => {
-  const panel = HexRecyclePanel({ cards: CARDS, left: 1, freshId: 'hex_armor' });
+  const panel = HexRecyclePanel({ cards: CARDS, left: 1, freshKey: recycleCardKey(CARDS[1]) });
   const fresh = findAllByClass(panel, 'is-fresh');
   assert.equal(fresh.length, 1);
   assert.ok(String(fresh[0].props.class).includes('hxrec__slot'), 'the flash lives on the card slot');
   assert.ok(RECYCLE_FLASH_MS > 0, 'and the CSS animation length follows it');
   // 别的卡不带
   assert.equal(findAllByClass(HexRecyclePanel({ cards: CARDS, left: 1 }), 'is-fresh').length, 0);
+});
+
+// ---- 同名的两张就是两个槽 (业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」) ---------------------------
+
+test('recycleCardKey: 同名的两张卡是两个槽（键带 idx），坏输入也稳定', () => {
+  const twos = recycleCardsOf(['hex_armor', 'hex_armor'], { hex_armor: { id: 'hex_armor', name: '反击装甲', rarity: 'gold' } });
+  assert.deepEqual(twos.map((c) => c.id), ['hex_armor', 'hex_armor'], '1:1 映射：同 id 的两张各占一个槽');
+  assert.deepEqual(twos.map((c) => c.idx), [0, 1], '只有 idx 不同');
+  assert.equal(recycleCardKey(twos[0]), '0:hex_armor');
+  assert.equal(recycleCardKey(twos[1]), '1:hex_armor');
+  assert.notEqual(recycleCardKey(twos[0]), recycleCardKey(twos[1]), '两个槽的身份不同（按 id 记就是同一个）');
+  assert.equal(recycleCardKey(null), '-1:');
+  assert.equal(recycleCardKey({}), '-1:');
+});
+
+test('HexRecyclePanel: 同名的两张铺两个槽，点其中一个只发一次 1 张的请求', () => {
+  const roster = { hex_armor: { id: 'hex_armor', name: '反击装甲', desc: '防御 +15%。', rarity: 'gold' } };
+  const owned = ownHexIds(pubWith({ hexes: ['hex_armor'], hexRefs: ['hex_armor', 'hex_armor'] }), 'p_0');
+  const cards = recycleCardsOf(owned, roster);
+  assert.equal(cards.length, 2, '两张同名卡 = 两个槽');
+  const asked = [];
+  const panel = HexRecyclePanel({ cards, left: 2, onRefresh: (id, idx) => asked.push([id, idx]) });
+  const rendered = findAll(panel, HexCard);
+  assert.equal(rendered.length, 2, '面板上两个槽都画出来');
+  rendered[1].props.onClick();
+  assert.deepEqual(asked, [['hex_armor', 1]], '点哪一张都只发那一个 id（另带槽号给屏幕记状态）');
+  // 「在飞」是**那个槽**：只有它在演「被吸走」，另一张同名卡不动
+  const busy = HexRecyclePanel({ cards, left: 1, busyKey: recycleCardKey(cards[1]) });
+  const busyCards = findAll(busy, HexCard);
+  assert.equal(busyCards[1].props.vanishing, true);
+  assert.equal(busyCards[0].props.vanishing, false, '另一张同名卡跟着一起消失就是原来的 bug');
+  assert.equal(findAllByClass(busy, 'is-refreshing').length, 1);
+  // 新卡入场也只闪那个槽
+  const fresh = HexRecyclePanel({ cards, left: 1, freshKey: recycleCardKey(cards[0]) });
+  assert.equal(findAllByClass(fresh, 'is-fresh').length, 1, '两个同名槽不能一起闪');
+  assert.ok(String(findAllByClass(fresh, 'is-fresh')[0].props.class).includes('hxrec__slot'));
 });
 
 test('HexRecyclePanel: 完成 / 点 veil 都回调 onClose（Esc 由屏幕接，见 screens/game.js）', () => {

@@ -11,7 +11,7 @@
 import { PHASE, ERR } from '../../../shared/constants.js';
 import { rollOffers, pickEnemyRarity, pickEnemyHex } from '../../../shared/hextech.js';
 import { protocolLevelExtraHexesAt } from '../../../shared/protocolLevels.js';
-import { applyHex, hexIdsOf, hexPoolFor } from '../hextech.js';
+import { applyHex, hexIdsOf, hexPoolFor, hexDrawWeight } from '../hextech.js';
 import { OK, fail, DELAYS } from './common.js';
 
 /**
@@ -49,7 +49,12 @@ export class MatchHexDraft {
     /** @type {Record<string, number>} */
     const rerolls = {};
     for (const ps of alive) {
-      offers[ps.playerId] = rollOffers(this.rngHex, { pool: poolFor(ps), owned: hexIdsOf(ps), weights, count: offer });
+      // `weightOf` = 不屈余烬's 抽卡池权重 (业主 2026-11-01, `hexDrawWeight`): every draw out of the player pool passes
+      // the SAME per-player predicate, so 刷新 / 换牌 / 二次抽取 / 无私奉献 cannot绕开 it. It only re-weighs cards
+      // inside the rarity `weights` already picked, and 1 for every card without a `drawBoost`.
+      offers[ps.playerId] = rollOffers(this.rngHex, {
+        pool: poolFor(ps), owned: hexIdsOf(ps), weights, count: offer, weightOf: (h) => hexDrawWeight(ps, h),
+      });
       rerolls[ps.playerId] = gd.hexRerolls();
     }
     // 业主 2026-10-20「单个刷新应该3个都能刷一次」: `rerolls` is now the budget of the WHOLE-BATCH button (unchanged),
@@ -217,14 +222,18 @@ export class MatchHexDraft {
     if (Number.isInteger(idx)) {
       // one slot: everything else about the batch is kept, so the other two cards must be excluded from the draw as well
       const next = offered.slice();
-      next[idx] = rollOffers(this.rngHex, { pool, owned: [...hexIdsOf(ps), ...offered], weights, count: 1 })[0] || next[idx];
+      next[idx] = rollOffers(this.rngHex, {
+        pool, owned: [...hexIdsOf(ps), ...offered], weights, count: 1, weightOf: (h) => hexDrawWeight(ps, h),
+      })[0] || next[idx];
       this.hex.offers[ps.playerId] = next;
     } else {
       // 池子被「已拥有 + 当前这一批」占满时（第 7 回合的专属池只有 1–2 张，很容易占满），整批刷新会抽到**空数组** ——
       // 那会把手里还有牌的 offer 直接清空，于是玩家欠一次选牌却没有牌可选：限时的局靠超时兜底，单人 / 单人不限时的局
       // 就永远卡在 HEX_DRAFT（fuzz seed 27 实测：R7 专属池只剩 1 张且正在 offer 里，整批刷新后 offer = []，无 deadline）。
       // 抽不出新的一批就保留原来那一批；单张刷新早就是这个口径（`|| next[idx]`）。
-      const next = rollOffers(this.rngHex, { pool, owned: [...hexIdsOf(ps), ...offered], weights, count: gd.hexOfferCount() });
+      const next = rollOffers(this.rngHex, {
+        pool, owned: [...hexIdsOf(ps), ...offered], weights, count: gd.hexOfferCount(), weightOf: (h) => hexDrawWeight(ps, h),
+      });
       if (next.length) this.hex.offers[ps.playerId] = next;
     }
     this.markPrivate(ps);
@@ -264,6 +273,7 @@ export class MatchHexDraft {
       const weights = this.gd.hexWeights();
       s.offers[ps.playerId] = rollOffers(this.rngHex, {
         pool, owned: [...hexIdsOf(ps), ...offer], weights, count: this.gd.hexOfferCount(),
+        weightOf: (h) => hexDrawWeight(ps, h),
       });
       // the re-dealt batch gets its own per-card reroll budget, like the first one
       s.slotRerolls[ps.playerId] = s.offers[ps.playerId].map(() => 1);
@@ -326,6 +336,8 @@ export class MatchHexDraft {
    *     抽卡阶段里 `picks[pid]` 已经落下（`_hexRecycleGate` 的 HEX_DRAFT 分支），或者进了休整期（PREP 且未准备）。
    *     业主 2026-10-31「就是选完协议源石，这面板直接出现」—— 选完不必等别人、也不必等机变。
    *   * **每局 2 张**（`HEX_RECYCLE_BUDGET`）—— 点一次花一次，可以点同一张两次，也可以点两张各一次；每次 `ids` 1–2 个。
+   *   * **每个 id 只摘一张**（业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」）—— 同名的两张协议源石是
+   *     两张：一次点击只摘掉其中一个 ref（另一个同名卡留在手上，再点一次才轮到它），换回的张数照旧 = 请求的 id 个数。
    *   * **完全随机、沿用抽取权重** —— 换回来的牌走 `rollOffers` 与 `gd.hexWeights()`（当前 1/2/3 阶 0.46/0.38/0.16），
    *     池子是这个玩家自己的 `_hexPoolFor`（禁用 + 未激活盟约的专属卡都照旧收窄，第 7 回合的 exclusive 收窄在第 6 回合
    *     不生效）。
@@ -355,11 +367,23 @@ export class MatchHexDraft {
     const pool = this._hexPoolFor(ps);
     const remaining = owned.filter((id) => !list.includes(id));
     const weights = this.gd.hexWeights();
-    const replacements = rollOffers(this.rngHex, { pool, owned: [...remaining, ...list], weights, count: list.length });
+    const replacements = rollOffers(this.rngHex, {
+      pool, owned: [...remaining, ...list], weights, count: list.length, weightOf: (h) => hexDrawWeight(ps, h),
+    });
     if (replacements.length < list.length) return fail(ERR.BAD_TARGET, 'pool exhausted');
-    // 舍弃：只摘自己身上的 ref —— 复制（`hex:<id>#<n>`）也是同一张卡，一起走
-    ps.effects = (ps.effects || []).filter((e) => !(e && typeof e.key === 'string' && e.key.startsWith('hex:')
-      && list.includes(e.data && e.data.hexId)));
+    // 舍弃：只摘自己身上的 ref，**每个 id 只摘一个** —— 业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」：
+    // 同名的两张协议源石就是两张，点一次只走一张（以前按 id 全删：一次点击丢掉两张、只换回一张）。
+    // 复制的 `hex:<id>#<n>` 是同一张卡的另一个 ref，所以它也可能是被摘掉的那一个；没被点到的那个同名 ref 留在原地，
+    // 玩家再点一次才轮它走。
+    const dropped = new Set();
+    ps.effects = (ps.effects || []).filter((e) => {
+      if (dropped.size >= list.length) return true;
+      if (!(e && typeof e.key === 'string' && e.key.startsWith('hex:'))) return true;
+      const id = e.data && e.data.hexId;
+      if (!id || !list.includes(id) || dropped.has(id)) return true;
+      dropped.add(id);
+      return false;
+    });
     // 换回：走正式的发牌路径（`applyHex`），所以立即生效的那一半、持续 ref、战斗半段与各种额外（镜像协议 / 二次抽取）都照常
     for (const id of replacements) {
       const hex = this.gd.hex(id);

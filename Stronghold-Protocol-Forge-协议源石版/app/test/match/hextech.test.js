@@ -1472,6 +1472,9 @@ test('盟约寄生: a second copy keeps its OWN partner and drains on its own (�
   }
   a.recompute();
   assert.equal(a.bonds.yanShip?.active, true, 'premise: 炎 is active');
+  // 这局开局就带了一枚【复制】：业主 2026-11-01「第一个时保留效果」之后它会一直等到下一次获得协议源石再兑现，
+  // 下面获得盟约寄生时就会自己复制一份 —— 本 test 只量「寄生副本各记各的」，先把它摘掉。
+  a.effects = (a.effects || []).filter((e) => !(e && e.key === 'hex:hex_replicate'));
   // the copy seam (a workshop pack / 复制 still calls it): the player's band is armed for one copy
   const realBand = m.gd.band(a.bandId);
   m.gd.band = (id) => (id === a.bandId ? { ...(realBand || {}), bandId: a.bandId, buffs: [{ key: 'band_hex_copy_once', bb: { count: 1 }, bbStr: {} }] } : realBand);

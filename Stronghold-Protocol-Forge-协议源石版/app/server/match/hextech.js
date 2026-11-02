@@ -64,6 +64,43 @@ export function hexPoolFor(ps, gd) {
   return all.filter((h) => h && !bans.includes(h.id) && hexAvailableTo(ps, h));
 }
 
+/**
+ * 不屈余烬's **抽卡池权重** (业主 2026-11-01「抽到不屈余烬的概率增加」/「不屈叠层超 200 后增加出现不屈余烬机会增加
+ * 20%」). The card record carries `effect.drawBoost = { bond, fromLayers, pct }`: while the player's 〖不屈〗
+ * (`indomShip`) stands ABOVE `fromLayers` layers, this card's weight **inside its own rarity** is × (1 + pct/100) — with
+ * the roster's 200 / 20 that is ×1.2 from the 201st layer on (`shared/hextech.js rollOffers`'s `weightOf` hook).
+ *
+ * Two things this is NOT:
+ *   * **not a gate** — that is `requiresBond` / `hexAvailableTo` (a completely different field): this card has no
+ *     `requiresBond`, so it is offered to everybody and merely becomes MORE LIKELY for a deep-〖不屈〗 player;
+ *   * **not the equipment ladder** — `effect.onPick/onRoundStart.indomEmberGift { base: 200, step: 150 }` (one 装备 per
+ *     150 layers above 200) is untouched here; this function only ever feeds the draw.
+ *
+ * 层数读**实际层数**：`ps.bonds[bondId].layers` is the STORED value `computeBonds` derives from `ps.layers` (with
+ * `ps.layers` as the fallback for a PlayerState whose bonds view was not recomputed yet) — NOT the 里程碑视图, i.e. not
+ * 圣约回响's `bondLayerViewPct` +50 % (`bondLayerViewMulOf`), which only ever moves the layer-threshold payouts.
+ *
+ * Everything else answers 1 (no bias at all, the `rollOffers` default): a record without `drawBoost`, a missing bond /
+ * missing data fields, and layers that do not exceed `fromLayers`.
+ * @param {{ bonds?: Record<string, { layers?: number }>, layers?: Record<string, number> } | null} ps
+ * @param {any} rec a data/hextech.json player-hex record
+ * @returns {number} the card's same-rarity weight (1 = unbiased)
+ */
+export function hexDrawWeight(ps, rec) {
+  const boost = rec && rec.effect ? rec.effect.drawBoost : null;
+  if (!boost || typeof boost !== 'object') return 1;
+  const bondId = typeof boost.bond === 'string' ? boost.bond : '';
+  const fromLayers = Number(boost.fromLayers);
+  const pct = Number(boost.pct);
+  if (!bondId || !Number.isFinite(fromLayers) || !Number.isFinite(pct) || pct <= 0) return 1;
+  const state = ps && ps.bonds ? ps.bonds[bondId] : null;
+  const stored = state && Number.isFinite(Number(state.layers)) ? Number(state.layers) : null;
+  const raw = stored != null ? stored : Number(ps && ps.layers ? ps.layers[bondId] : 0);
+  const layers = Number.isFinite(raw) && raw > 0 ? raw : 0;
+  if (layers <= fromLayers) return 1;
+  return 1 + pct / 100;
+}
+
 /** 锻炉's fused item (data/items.json CUSTOM_ITEMS `chess_item_9_97_e_a`, 百变). */
 export const FORGE_ITEM_ID = 'chess_item_9_97_e_a';
 
@@ -331,6 +368,8 @@ export function applyHex(m, ps, hex, opts = {}) {
     // GAIN, and only applyHex may grant one); drain here, after the pick has fully settled, so the copy cannot re-enter
     // the dispatch that armed it.
     drainPendingHexCopies(m, p, hex);
+    // 复制 (业主 2026-11-01): 手上留着的那枚【复制】等的就是这一枚 —— 现在就复制它，然后消失
+    resolveWaitingReplicate(m, p, hex);
     p.recompute();
   }
   // 策略「管理员」 — REPLACED 2026-10-25 (业主「管理员策略改成第一回合多选择一次海克斯」). The old mechanic was
@@ -433,6 +472,9 @@ export function applyBandHexCopy(m, ps, hex, { depth = 0, gift = false } = {}) {
  *     mechanic), with per-ref counters kept apart by makeCtx;
  *  2. then remove 复制 itself: its refs are dropped and the card leaves the collection — 「自身消失」.
  *
+ * 业主 2026-11-01「协议『复制』加个第一个时保留效果」：**没有可复制的对象时（它是你拿到的第一枚协议源石）不消失**，
+ * 留在收藏里等；之后你每获得一枚协议源石，就用它复制**刚到手的那一枚**，然后它才消失 —— 见 `resolveWaitingReplicate`。
+ *
  * Deterministic: the pick uses the match's seeded rng and a sort on the ids, so the same battle replays identically.
  * @param {any} m @param {any} ps @param {any} hex the card that queued the job (its own refs are the ones removed)
  */
@@ -453,21 +495,52 @@ function drainPendingHexCopies(m, ps, hex) {
       if (id && id !== srcId) owned.add(id);
     }
     const candidates = [...owned].sort();
-    // 1) the copy (skipped when there is nothing to copy — 「自身消失」 still happens below)
-    if (candidates.length) {
-      const pickId = candidates[Math.floor(m.rngHex() * candidates.length) % candidates.length];
-      const target = m.gd.hex(pickId);
-      // 业主 2026-11-01: 复制的**team 卡**（战争机器）要按 applyHex 的 targets 发到每个队友，不只是复制者自己 ——
-      // applyCopiedHex 就是 applyHex 的「第二个 ref」版本（见它的注释）。
-      if (target) applyCopiedHex(m, ps, target, { depth: 1, copiedBy: srcId });
-    }
-    // 2) 自身消失: drop every ref of 复制 from this player
+    // 业主 2026-11-01「协议『复制』加个第一个时保留效果」: 手上还没有别的协议源石可复制 ⇒ **不消失**，留在收藏里等 ——
+    // 之后这个玩家再获得一枚协议源石时，由 `resolveWaitingReplicate` 复制**那一枚**、然后它才消失。
+    //（旧行为：没得复制也照样把自己删掉，于是「第一张就是复制」等于白拿一张卡。）
+    if (!candidates.length) continue;
+    // 1) 自身消失先结算：下面那次复制会走 applyCopiedHex，而它每个目标都会问一次「留着的那枚【复制】要不要兑现」——
+    //    这一枚还没摘掉的话会被再兑现一次，一次拿两张（业主 2026-11-01 的保留效果与「自身消失」在这里交接）。
     const before = (ps.effects || []).length;
     ps.effects = (ps.effects || []).filter((e) => !(e && typeof e.key === 'string' && e.key === `hex:${srcId}`));
     if (ps.effects.length !== before) ps.dirty?.();
+    // 2) the copy: 随机挑一张自己已拥有的卡，再获得一次
+    const pickId = candidates[Math.floor(m.rngHex() * candidates.length) % candidates.length];
+    const target = m.gd.hex(pickId);
+    // 业主 2026-11-01: 复制的**team 卡**（战争机器）要按 applyHex 的 targets 发到每个队友，不只是复制者自己 ——
+    // applyCopiedHex 就是 applyHex 的「第二个 ref」版本（见它的注释）。
+    if (target) applyCopiedHex(m, ps, target, { depth: 1, copiedBy: srcId });
     done++;
   }
   return done;
+}
+
+/**
+ * 复制 的第二段（业主 2026-11-01「协议『复制』加个第一个时保留效果」）：等它终于有对象时。
+ *
+ * 【复制】是玩家拿到的**第一枚**协议源石（或拿到时手上没有别的卡）时，`drainPendingHexCopies` 不再让它消失，而是把它
+ * 留在收藏里等：之后这个玩家**再获得**一枚协议源石，就用这枚留着的【复制】去复制**刚到手的那一枚**（不掷骰，就是它），
+ * 然后【复制】才消失 —— 口径「留到下一张，用完再消失」。
+ *
+ * 每个「获得」只兑现一枚：同时留着多枚【复制】（镜像协议 / 策略「管理员」的副本）时，每次获得消耗其中一枚，其余继续等。
+ * 只在「获得」这条路上兑现（`applyHex` / `applyCopiedHex` 的每个目标各调一次），所以回合结算、商店刷新这些没有
+ * 「获得」的时刻不会凭空发作。刚到手的就是【复制】本身时不动 —— 卡面「复制一个你**已拥有**的协议源石」不含自己。
+ *
+ * @param {any} m @param {any} ps @param {any} gainedHex 刚获得的卡（catalogue record）
+ * @returns {number} 这次兑现了几枚【复制】（0 或 1）
+ */
+function resolveWaitingReplicate(m, ps, gainedHex) {
+  if (!m || !ps || !gainedHex || !Array.isArray(ps.effects)) return 0;
+  if (gainedHex.id === 'hex_replicate') return 0;            // 新到手的也是【复制】：继续等，不复制自己
+  const waiting = ps.effects.find((e) => e && e.key === 'hex:hex_replicate');
+  if (!waiting) return 0;                                    // 手上没有等着的那枚
+  // 先摘掉这枚【复制】（「用完再消失」），再复制：复制自己会走 applyCopiedHex，其递归调用此时已经找不到它
+  ps.effects = ps.effects.filter((e) => e !== waiting);
+  ps.dirty?.();
+  try {
+    applyCopiedHex(m, ps, gainedHex, { depth: 1, copiedBy: 'hex_replicate' });
+  } catch (e) { m.reportError?.('hex 复制（保留后兑现）', e); }
+  return 1;
 }
 
 /** `effect.onPick.lp` (the ctx has no LP mutator and LP is match state, not sim state). */
@@ -569,6 +642,8 @@ function applyCopiedHex(m, ps, hex, { depth = 1, copiedBy = null } = {}) {
       m.dispatch(p, 'onHexPick', ev, { skipKey: ref.key });
       // 层数里程碑：副本也是一次「获得」（计数器与原件共用 ⇒ 同一 rung 不会因为复制而发第二次）
       replayLayerGift(m, p, hex, ref);
+      // 复制 (业主 2026-11-01): 「获得」也包含复制来的这一份 —— 留着的【复制】在副本上同样兑现
+      resolveWaitingReplicate(m, p, hex);
       p.recompute?.();
     } catch (e) { m.reportError?.(`hex ${hex.id} (copy)`, e); }
   }
@@ -771,8 +846,10 @@ function applyHexExtras(m, ps, hex, { depth = 0, ref: gainRef = null } = {}) {
   if (spec.copyAllyHex) armMirrorCopy(m, ps, hex);
   if (Number.isInteger(spec.randomHexes) && spec.randomHexes > 0 && depth < 2) {
     const pool = hexPoolFor(ps, m.gd);
+    // 不屈余烬's draw weight (业主 2026-11-01): this is the PICKER's own pool, so the PICKER's 〖不屈〗 layers decide.
     const offer = rollOffers(m.rngHex, {
       pool, owned: hexIdsOf(ps), weights: m.gd.hexWeights(), count: spec.randomHexes,
+      weightOf: (h) => hexDrawWeight(ps, h),
     });
     for (const id of offer) {
       const rec = m.gd.hex(id);
@@ -844,8 +921,12 @@ function applyHexExtras(m, ps, hex, { depth = 0, ref: gainRef = null } = {}) {
     for (const mate of m.alivePlayers()) {
       if (mate === ps) continue;
       const pool = hexPoolFor(mate, m.gd);
+      // 不屈余烬's draw weight is per-PLAYER: each teammate draws from their OWN pool, so it is the TEAMMATE's
+      // 〖不屈〗 layers that weigh this roll (not the picker's — 无私奉献 must not hand out a boosted card to a shallower
+      // board, nor skip the boost on a deeper one).
       const offer = rollOffers(m.rngHex, {
         pool, owned: hexIdsOf(mate), weights: m.gd.hexWeights(), count: spec.otherRandomHexes,
+        weightOf: (h) => hexDrawWeight(mate, h),
       });
       for (const id of offer) {
         const rec = m.gd.hex(id);

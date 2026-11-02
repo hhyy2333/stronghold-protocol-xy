@@ -31,14 +31,14 @@ const CARDS = {
       flameCount: 7, flameTargets: 2, flameScale: 60, flameScalePerLayer: 0.2,
     },
   },
-  // twenty-first batch (业主 2026-10-31): 谢拉格 2 阶专属
+  // twenty-first batch (业主 2026-10-31；2026-11-01 改口径：霜寒 10 层、八格真伤、5 秒窗口)
   hex_kjerag_frostdeath: {
     key: 'kjeragFrostDeath',
     effect: {
-      unlockCount: 3, frostMax: 5, defPctPerStack: 5, aspdPerStack: 5, sealSec: 5,
-      coldChancePerStack: 30, coldSec: 5, freezeEndRadius: 1.5, idleFrostSec: 5,
-      sealedBlockDmg: 100, sealedBlockDmgPerLayer: 40, highCount: 6, deathFreezeSec: 5, deathRemoveStacks: 2,
-      allSealedDmg: 100, allSealedDmgPerLayer: 50, allSealedSec: 15,
+      unlockCount: 3, frostMax: 10, defPctPerStack: 5, aspdPerStack: 5, sealSec: 5, idleFrostSec: 5,
+      sealedAuraDmg: 100, sealedAuraDmgPerLayer: 40, sealedAuraRadius: 1, sealedAuraKillLayers: 1,
+      highCount: 6, deathFreezeSec: 5, deathRemoveStacks: 4,
+      allSealedDmg: 100, allSealedDmgPerLayer: 50, allSealedSec: 5, allSealedColdSec: 5, allSealedKillLayers: 2,
     },
   },
   // twenty-second batch (业主 2026-10-31): 卡西米尔 2 阶专属

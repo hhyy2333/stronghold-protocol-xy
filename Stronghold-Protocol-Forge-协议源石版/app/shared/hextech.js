@@ -93,14 +93,49 @@ export function pickRarity(rng, available, weights = null) {
 }
 
 /**
+ * One card of a same-rarity group, drawn with `weightOf(record)` as its weight (the 抽卡池权重 hook of `rollOffers`).
+ *
+ * Arithmetic copied from `pickRarity` on purpose: the weighted step consumes exactly ONE `rng()` call, just like the
+ * `pickOne` it replaces, so turning the hook on never changes how many numbers a seeded stream hands out at that step.
+ * Weights that are not finite positive numbers count as 0 (a card the caller wants excluded), and a group whose weights
+ * are ALL 0 falls back to `pickOne` — the same "no usable weights ⇒ uniform" rule `pickRarity` applies.
+ * @param {() => number} rng
+ * @param {Array<{ id: string }>} list
+ * @param {(rec: any) => number} weightOf
+ */
+function pickWeighted(rng, list, weightOf) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const w = list.map((rec) => {
+    const v = Number(weightOf(rec));
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  });
+  const total = w.reduce((s, v) => s + v, 0);
+  if (!(total > 0)) return pickOne(rng, list);
+  let roll = rng() * total;
+  for (let i = 0; i < list.length; i++) {
+    roll -= w[i];
+    if (roll < 0) return list[i];
+  }
+  return list[list.length - 1];
+}
+
+/**
  * The hexes one player is offered: `count` distinct records they do not own, drawn by rarity weight (a rarity with no
  * candidates left is skipped). Fewer than `count` are returned when the pool is exhausted.
+ *
+ * `weightOf` is the optional **same-rarity** weight hook (业主 2026-11-01, 不屈余烬 「抽到不屈余烬的概率增加」): when it
+ * is a function, the card INSIDE the drawn rarity is no longer uniform — it is drawn with weight `weightOf(record)`, so a
+ * boost can only ever re-weigh cards of the same 阶位 against each other and never the 1/2/3-阶 mix (that is `weights`,
+ * the rarity weights, a separate argument). Omitted / not a function ⇒ the previous path byte for byte: the same
+ * `pickRarity` + `pickOne` calls in the same order, hence the same rng draws for the same seed (replays, goldens and
+ * every caller that does not know about the hook are unaffected).
  * @param {() => number} rng
- * @param {{ pool: Array<{id: string, rarity: string}>, owned?: Iterable<string>, weights?: Record<string, number>, count?: number }} args
+ * @param {{ pool: Array<{id: string, rarity: string}>, owned?: Iterable<string>, weights?: Record<string, number>, count?: number, weightOf?: ((rec: any) => number) | null }} args
  * @returns {string[]} hex ids, in the order drawn
  */
-export function rollOffers(rng, { pool, owned = [], weights = null, count = 3 }) {
+export function rollOffers(rng, { pool, owned = [], weights = null, count = 3, weightOf = null }) {
   const taken = new Set(owned);
+  const weigh = typeof weightOf === 'function' ? weightOf : null;
   const out = [];
   for (let n = 0; n < count; n++) {
     const candidates = pool.filter((h) => h && !taken.has(h.id));
@@ -109,7 +144,7 @@ export function rollOffers(rng, { pool, owned = [], weights = null, count = 3 })
     const rarity = pickRarity(rng, available, weights);
     if (!rarity) break;
     const ofRarity = candidates.filter((h) => h.rarity === rarity);
-    const picked = pickOne(rng, ofRarity);
+    const picked = weigh ? pickWeighted(rng, ofRarity, weigh) : pickOne(rng, ofRarity);
     if (!picked) break;
     taken.add(picked.id);
     out.push(picked.id);

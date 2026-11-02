@@ -85,7 +85,7 @@ import { ShopBar } from '../ui/shopBar.js';
 import { DetailPanel, resolveDetail } from '../ui/detailPanel.js';
 import { RewardOverlay } from '../ui/rewardOverlay.js';
 import { ChoiceOverlay } from '../ui/choiceOverlay.js';
-import { HexOverlay, HexRecyclePanel, hexRecycleAvailable, hexRecycleWindow, hexRecycleLeft, ownHexIds, recycleCardsOf, RECYCLE_FLASH_MS } from '../ui/hexOverlay.js';
+import { HexOverlay, HexRecyclePanel, hexRecycleAvailable, hexRecycleWindow, hexRecycleLeft, ownHexIds, recycleCardsOf, recycleCardKey, RECYCLE_FLASH_MS } from '../ui/hexOverlay.js';
 // 测试场 (the owner's request of 2026-10-11): the funds / 协议源石 panel a room created with `test: true` offers.
 // 业主 2026-10-26: the same panel now also BUYS any operator (`operatorsOf` builds its roster from data/chess.json).
 import { TestArenaButton, TestArenaPanel, operatorsOf } from '../ui/testArena.js';
@@ -287,8 +287,10 @@ function MatchScreen() {
   // 协议源石 (Hextech): the card being confirmed / -1 while the reroll is in flight
   const [hexBusy, setHexBusy] = useState(null);
   // 协议源石 · 刷新（业主 2026-10-31「就是选完协议源石，这面板直接出现」「把有的协议源石放上去点击刷新」）：哪一回合按过
-  // 「完成」、正在刷新的那张 id、刚换回来要闪一下的那张 id。面板是不持有状态的纯视图（ui/hexOverlay.js
+  // 「完成」、正在刷新的那个**槽**、刚换回来要闪一下的那个**槽**。面板是不持有状态的纯视图（ui/hexOverlay.js
   // HexRecyclePanel），状态留在这一层；「开没开」不再是玩家点出来的开关，而是窗口 × 没按过完成派生出来的。
+  // 槽而不是卡 id：同名的两张协议源石是两个槽（业主 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」），
+  // 按 id 记会让两张同名卡一起进动画 / 一起闪光。
   const [recycleDismissed, setRecycleDismissed] = useState(null);
   const [recycleBusy, setRecycleBusy] = useState(null);
   const [recycleFresh, setRecycleFresh] = useState(null);
@@ -382,9 +384,10 @@ function MatchScreen() {
   const recycleOpen = recycleWindow && recycleDismissed !== pub?.round
     && (recycleLeft > 0 || recycleShownRound === pub?.round);
   const recycleCards = recycleCardsOf(ownHexIds(pub, myId), data.get('hextech')?.playerHexes);
-  const recycleIdKey = recycleCards.map((c) => c.id).join('|');
-  /** 上一帧自己拥有的 id 集合 —— 「换回来的那张」就是这一帧新出现的 id（见下面那条 effect）。 */
-  const recycleSeen = useRef(new Set());
+  // 槽的身份（`idx:id`）：同名的两张卡只有 `idx` 不同，见 ui/hexOverlay.js recycleCardKey
+  const recycleCardsKey = recycleCards.map(recycleCardKey).join('|');
+  /** 上一帧自己拥有的每一张卡的**张数**（id → 张数）—— 「换回来的那张」= 这一帧多出来的那一张（见下面那条 effect）。 */
+  const recycleSeen = useRef(new Map());
   useEffect(() => {
     setRecycleDismissed((d) => (d != null && d !== pub?.round ? null : d));
     setRecycleShownRound((r) => (r != null && r !== pub?.round ? null : r));
@@ -394,18 +397,24 @@ function MatchScreen() {
     if (!recycleOpen || recycleShownRound === pub?.round) return;
     setRecycleShownRound(pub?.round ?? null);
   }, [recycleOpen, recycleShownRound, pub?.round]);
-  // 新卡入场：请求成功后服务端把那张换成另一张，id 集合一变就闪一下（业主「换回来的那张是新的」）。只在面板本来就开着
+  // 新卡入场：请求成功后服务端把那张换成另一张，手里的牌一变就闪一下（业主「换回来的那张是新的」）。只在面板本来就开着
   // 的时候闪 —— 第一次铺卡不是「换回来的」。
+  // 比的是**张数**（id → 张数）而不是 id 集合：同名的两张卡（业主 2026-11-02）在一张被换掉、又换回一张同名卡时，集合
+  // 一个都没变，集合比法会说「没有新卡」；张数比法把多出来的那一张认出来。闪的是它在的那个槽（`recycleCardKey`）。
   useEffect(() => {
     const prev = recycleSeen.current;
-    recycleSeen.current = new Set(recycleCards.map((c) => c.id));
+    const next = new Map();
+    for (const c of recycleCards) next.set(c.id, (next.get(c.id) || 0) + 1);
+    recycleSeen.current = next;
     if (!recycleOpen || !prev.size) return undefined;
-    const fresh = [...recycleSeen.current].find((id) => !prev.has(id));
+    // 服务端把新 ref 追加在 `ps.effects` 末尾，所以「多出来的那一张」里最后出现的那张才是新来的
+    let fresh = null;
+    for (const c of recycleCards) if ((next.get(c.id) || 0) > (prev.get(c.id) || 0)) fresh = recycleCardKey(c);
     if (!fresh) return undefined;
     setRecycleFresh(fresh);
     const timer = setTimeout(() => setRecycleFresh(null), RECYCLE_FLASH_MS);
     return () => clearTimeout(timer);
-  }, [recycleIdKey, recycleOpen]);
+  }, [recycleCardsKey, recycleOpen]);
   // 面板收掉时（换阶段 / 次数用完 / 已准备 / 按了完成）把「在飞的那张」一起清掉：下一轮出现时是干净的
   useEffect(() => {
     if (recycleOpen) return;
@@ -1137,12 +1146,14 @@ function MatchScreen() {
   // 协议源石 · 刷新（业主 2026-10-31「把有的协议源石放上去点击刷新」）：点一张就发一张，没有确认、没有多选。
   // 成功后**不关面板** —— 服务端把那张换成另一张的帧随后就到，玩家接着点下一张（或按「完成」）；失败时 act() 已经
   // toast 过，面板留着、卡也恢复可点。请求在途时整排卡都点不动（`recycleCanRefresh` 在面板里判），一次点击只花一次。
-  const refreshRecycle = useCallback(async (id) => {
+  // `idx` 只用来记「在飞的是哪个槽」：同名的两张卡只有 `idx` 不同（业主 2026-11-02），发出去的仍然只有那一个 id
+  // （协议不变：`g.hexRecycle { ids: [id] }`，服务端每次只摘一个 ref）。
+  const refreshRecycle = useCallback(async (id, idx) => {
     if (recycleBusy || !id) return;
     // 服务端此刻会不会受理（阶段窗口 + 还有次数）：面板已经把卡禁掉了，这一句是同一份判据的第二道门 —— 一个注定被
     // 拒绝的请求不必发出去。
     if (!hexRecycleAvailable(pub, myId)) return;
-    setRecycleBusy(id);
+    setRecycleBusy(recycleCardKey({ id, idx }));
     setRecycleFresh(null);
     const ok = await actions.hexRecycle([id]);
     setRecycleBusy(null);
@@ -2077,8 +2088,8 @@ function MatchScreen() {
           overlay, mounted AFTER the draft's (same `.spov` shell, and `.hxrec` lifts it above `.spov`'s z-index 20), so in
           HEX_DRAFT it sits ON TOP of the 三选一 overlay that is still up behind it. It shows only while the window is
           accepted (`recycleOpen`), so a phase change / a spent budget takes it away on its own. */ ''}
-    ${recycleOpen ? html`<${HexRecyclePanel} cards=${recycleCards} left=${recycleLeft} busyId=${recycleBusy}
-      freshId=${recycleFresh} onRefresh=${refreshRecycle} onClose=${closeRecycle} />` : null}
+    ${recycleOpen ? html`<${HexRecyclePanel} cards=${recycleCards} left=${recycleLeft} busyKey=${recycleBusy}
+      freshKey=${recycleFresh} onRefresh=${refreshRecycle} onClose=${closeRecycle} />` : null}
 
     ${banner ? html`<${PhaseBanner} key=${banner.key} mode="overlay" title=${banner.title} sub=${banner.sub} micro=${banner.micro}
       tone=${banner.tone} duration=${banner.duration || 1500} onDone=${() => setBanner(null)} />` : null}

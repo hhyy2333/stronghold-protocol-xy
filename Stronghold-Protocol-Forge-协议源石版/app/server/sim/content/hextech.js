@@ -2398,7 +2398,8 @@ const ENEMY_VERB_SCRIPTS = Object.freeze({
    * 已经带着自己的次数盾的单位不再叠加（`Math.max`）：它自己那层还在，玩家打掉多少就是多少。
    */
   hitShield(battle, p) {
-    const hits = Math.max(1, Math.round(pnum(p.hits, 3)));
+    // 业主 2026-11-02「把莱茵护甲的次数盾改成 1 次」：卡面 `hits` 3 → 1，缺参数时的兜底同样是 1。
+    const hits = Math.max(1, Math.round(pnum(p.hits, 1)));
     battle.on('enemySpawn', ({ enemy }) => {
       if (!enemy || !enemy.alive) return;
       const ab = abOf(battle, enemy);
