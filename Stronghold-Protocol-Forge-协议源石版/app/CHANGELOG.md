@@ -9,6 +9,24 @@
 
 ---
 
+## 0.19.44 — 2026-11-02
+
+**「进对局不出怪」的真根因：房间数据面的文件名白名单漏了 `moduleLevels` —— 每一个声明了模组集合的房间都取不到它。**
+
+- **现象**（业主 2026-11-02 转来的报告）：三个不同摘要的房间（4 包 / 5 包 / 刚换过的）取 `/room-data/<房间摘要>/…` 都
+  **缺同一个文件**：`moduleLevels 404`。
+- **根因**：`/room-data/` 的文件名白名单原先直接复用 `DATA_FILES`（`server/data.js`，那是「缺文件时喊一声」的
+  **必存在**清单），而 `data/moduleLevels.json` 是 build-data 额外产出的**可选**文件（老内容集合法地没有它），所以
+  不在 `DATA_FILES` 里；但浏览器的 `SIM_DATA_FILES` **需要它**（协议源石【特限恢复】的 3 级模组）。于是任何声明了
+  模组集合的房间，客户端取 `moduleLevels.json` 必然 404：0.19.42 及以前 `loadBrowserSim` 缺文件直接抛 → **整场不模拟**
+  → 服务端 60 秒后按 `timeout` 接管（就是「不出怪」）；0.19.43 起回落到全局 `/data/`（能打，但与被声明子集不同步）。
+- **修**：`server/data.js` 新增 `ROOM_DATA_FILES = [...DATA_FILES, 'moduleLevels']` 作为**房间数据面的白名单**，
+  `server/http/static.js` 改用它；`DATA_FILES` 的语义（必存在清单）不动。漂移守卫 `test/match/room-data-files.test.js`
+  钉住 `SIM_DATA_FILES ⊆ ROOM_DATA_FILES`，并断言房间物化出来的数据里确实带 `moduleLevels`。
+- **端到端实测**（本地服务器，房间声明 `yana-addition` + 自动并入的 `official-skins`）：`/room-data/<digest>/` 的
+  **13 个文件全部 200**（含 `moduleLevels.json`），伪造摘要仍 404。
+- 0.19.43 的「房间面取不到就整份回落到 `/data/`」保留不动 —— 它现在是兜底，不再是主路径。
+
 ## 0.19.43 — 2026-11-02
 
 **修「进对局不出怪」：房间数据面取不到时模拟整份回落到全局 `/data/`；修三类「诚实战报被判伪造」（`leak key` / `coins` / `layer bound`）；官方时装包改成自动生效。**
