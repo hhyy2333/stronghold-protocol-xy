@@ -58,16 +58,37 @@ function garrisonIdsOf(u) {
 }
 
 /**
- * 特质扩散 (hex_traitspread, 业主 2026-10-18): at battle start the owner's leftmost-bottom operator copies its
- * IN_BATTLE traits to the NEAREST own operator, the right side preferred. Written as extra garrison ids on the target
- * before the install loop, so the target keeps its own traits and the copy is additive.
+ * 特质扩散 (hex_traitspread, 业主 2026-10-18; 加强 2026-11-01「给右边和上面」): at battle start the owner's
+ * leftmost-bottom operator copies its IN_BATTLE traits to the NEAREST own operator on its RIGHT and to the NEAREST
+ * own operator ABOVE it — two beneficiaries, and neither has to stand adjacent to the source. Written as extra
+ * garrison ids on the targets before the install loop, so a target keeps its own traits and the copy is additive.
  *
- * [ASSUMED] nearest = Manhattan distance; a tie prefers right → left → up → down (row 0 is the BOTTOM row, so up is
- * +row), then the lower row / the left column, so the pick is deterministic. Runs once per player; no card → no copy.
+ * [ASSUMED] the card text only says 「复制给右边和上面最近的干员」; these details are decided here, deterministically:
+ *   · 「最近」in one direction = the smallest MANHATTAN distance on the deployment grid (homeR / homeC); a tie is
+ *     settled by the distance along that direction first (right: homeC − src.homeC, above: homeR − src.homeR), then
+ *     the smaller row, then the smaller column — so two equidistant candidates can never swap between runs (a shared
+ *     tile, impossible in practice, keeps the board order: the sort is stable).
+ *   · 「上」= the LARGER row (row 0 is the BOTTOM row, as noted throughout this file).
+ *   · A candidate must be strictly on that side — right = `homeC > src.homeC`, above = `homeR > src.homeR` (the same
+ *     row on the right and the same column above both count) — so the left and below directions never grant anything,
+ *     and a direction with nobody on it grants nothing while the other direction still does.
+ *   · Both directions landing on the same operator = ONE copy (the ids are merged once, never twice).
+ * Runs once per player (the card is per player); no card → no copy; the source's own traits are untouched, and an id
+ * the target already carries is not added twice.
  * `最靠左（同列更靠下）` = the smallest column, and in one column the smaller row (the lower tile).
  */
 function applyTraitSpread(battle) {
   const cmp = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+  /** Nearest own operator of `src` strictly along `axis` ('homeC' = to the right, 'homeR' = above), or null. */
+  const nearest = (ops, src, axis) => {
+    const cand = ops.filter((u) => u !== src && u[axis] > src[axis]);
+    if (!cand.length) return null;
+    const rank = (u) => {
+      const dr = u.homeR - src.homeR, dc = u.homeC - src.homeC;
+      return [Math.abs(dr) + Math.abs(dc), u[axis] - src[axis], u.homeR, u.homeC];
+    };
+    return cand.sort((a, b) => cmp(rank(a), rank(b)))[0];
+  };
   for (const ps of battle.players || []) {
     const refs = (ps && ps.playerEffects) || [];
     if (!refs.some((e) => e && (e.data?.hexId === 'hex_traitspread' || e.key === 'hex:hex_traitspread'))) continue;
@@ -82,16 +103,13 @@ function applyTraitSpread(battle) {
     const src = ops[0];
     const srcIds = garrisonIdsOf(src);
     if (!srcIds.length) continue;
-    const rank = (u) => {
-      const dr = u.homeR - src.homeR, dc = u.homeC - src.homeC;
-      const dir = dc > 0 ? 0 : dc < 0 ? 1 : dr > 0 ? 2 : 3; // right → left → up → down
-      return [Math.abs(dr) + Math.abs(dc), dir, Math.abs(dr), u.homeR, u.homeC];
-    };
-    const target = ops.filter((u) => u !== src).sort((a, b) => cmp(rank(a), rank(b)))[0];
-    if (!target) continue;
-    const have = new Set(garrisonIdsOf(target));
-    const extra = srcIds.filter((id) => !have.has(id));
-    if (extra.length) target.spreadGarrisonIds = [...(target.spreadGarrisonIds || []), ...extra];
+    const targets = [nearest(ops, src, 'homeC'), nearest(ops, src, 'homeR')];
+    for (const target of new Set(targets)) { // the same operator in both directions copies once
+      if (!target) continue;
+      const have = new Set(garrisonIdsOf(target));
+      const extra = srcIds.filter((id) => !have.has(id));
+      if (extra.length) target.spreadGarrisonIds = [...(target.spreadGarrisonIds || []), ...extra];
+    }
   }
 }
 

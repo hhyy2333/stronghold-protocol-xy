@@ -79,7 +79,7 @@ export function ExitModal({ open, onClose, solo, onAway }) {
   };
   if (spectator) {
     return html`<${Modal} open=${open} onClose=${onClose} tone="red" title=${t('离开观战')} micro="LEAVE SPECTATING" width="6.8rem"
-      actions=${html`<${Button} variant="secondary" onClick=${onClose}>${t('取消')}<//>
+      actions=${html`<${Button} variant="secondary" data-sfx="back" onClick=${onClose}>${t('取消')}<//>
         <${Button} variant="danger" icon="exit" loading=${busy === 'quit'} onClick=${quit}>${t('离开观战')}<//>`}>
       <div class="exitm"><p>${t('离开观战席并返回大厅，本局模拟不受影响；观战席空着时可以凭同盟密钥再次观战。')}</p></div>
     <//>`;
@@ -93,7 +93,7 @@ export function ExitModal({ open, onClose, solo, onAway }) {
   };
   return html`<${Modal} open=${open} onClose=${onClose} tone="red" title=${t('离开模拟')} micro="LEAVE SIMULATION" width="6.8rem"
     actions=${html`
-      <${Button} variant="secondary" onClick=${onClose}>${t('取消')}<//>
+      <${Button} variant="secondary" data-sfx="back" onClick=${onClose}>${t('取消')}<//>
       ${!solo ? html`<${Button} variant="ice" icon="robot" loading=${busy === 'away'} onClick=${away}>${t('暂离（AI 托管）')}<//>` : null}
       <${Button} variant="danger" icon="exit" loading=${busy === 'quit'} onClick=${quit}>${t('放弃模拟')}<//>`}>
     <div class="exitm">

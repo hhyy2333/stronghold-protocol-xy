@@ -68,6 +68,10 @@ export function onRefreshBusy(fn) { refreshBusyListeners.add(fn); try { fn(refre
  * @returns {Promise<boolean>}
  */
 export async function act(t, fields = {}, opts = {}) {
+  // 按钮点击音 (public/js/audio.js header): this press is spoken for by the cue the request settles with (`buy`,
+  // `refresh`, `ready` …) — the delegated button listener must not add a click on top of it. Marked here, on entry,
+  // because that is the one moment inside the press; the response may be a round trip away.
+  audio.markPress();
   inflight += 1;
   emitBusy();
   try {

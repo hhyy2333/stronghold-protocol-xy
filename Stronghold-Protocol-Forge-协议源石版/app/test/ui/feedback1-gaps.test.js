@@ -91,11 +91,14 @@ function expectedPairings() {
 }
 
 describe('§21.26 1 — 变形同构体: the pairing list (gameLogic morphPairings)', () => {
-  test('from the data: 14 bonds in bonds.json order, 18 items, the same giveBondId the server counts with', () => {
+  test('from the data: 15 bonds in bonds.json order, 19 items, the same giveBondId the server counts with', () => {
     const rows = morphPairings(ITEMS, BONDS);
     const want = expectedPairings();
-    assert.equal(rows.length, 14);
-    assert.equal(want.size, 14);
+    // 15 = the official 14 pairings + 灵巧: the author's declaration of 2026-11-01 (tools/build-data.mjs
+    // `ITEM_BOND_GRANTS`: 有限加速器 `chess_item_4_03_e_a` → `skillfulShip`; the normal and the 进阶 record both take it,
+    // so 19 items = the official 18 + those two). Officially 灵巧 has no bond item (research 02 §2.1).
+    assert.equal(rows.length, 15);
+    assert.equal(want.size, 15);
     assert.deepEqual(rows.map((r) => r.bondId), BONDS.map((b) => b.bondId).filter((id) => want.has(id)), 'bonds.json order');
     for (const r of rows) {
       assert.equal(r.name, bonds[r.bondId].name);
@@ -104,7 +107,8 @@ describe('§21.26 1 — 变形同构体: the pairing list (gameLogic morphPairin
       assert.equal(r.off, false);
       assert.equal(r.worn, false);
     }
-    assert.equal(rows.reduce((n, r) => n + r.items.length, 0), 18, '18 bond items');
+    // 19 = 18 official bond items (the hammer series shares one name per quality) + 有限加速器 (作者声明 2026-11-01)
+    assert.equal(rows.reduce((n, r) => n + r.items.length, 0), 19, '19 bond items');
     const vic = rows.find((r) => r.bondId === 'victoriaShip');
     assert.deepEqual(vic.items.map((it) => it.name), ['维式重锤', '战栗维式重锤', '坚固维式重锤', '加速维式重锤', '灼燃维式重锤'], 'by tier: the hammer series');
     assert.ok(!rows.some((r) => r.items.some((it) => items[it.id].canGiveBond)), '变形同构体 itself is no partner');
@@ -112,17 +116,25 @@ describe('§21.26 1 — 变形同构体: the pairing list (gameLogic morphPairin
     for (const r of rows) for (const it of r.items) assert.deepEqual(grantedBonds([ISO, it.id], (id) => items[id]), [r.bondId], it.name);
   });
 
-  test('the official 天赋栏 (character_table trap_1073_acarm073) lists the same 14 pairings', { skip: !existsSync(path.join(ROOT, '.cache/gamedata/excel/character_table.json')) && 'no official cache' }, () => {
+  test('the official 天赋栏 (character_table trap_1073_acarm073) lists 14 pairings; the 15th (灵巧) is this remake\'s 作者声明, not official', { skip: !existsSync(path.join(ROOT, '.cache/gamedata/excel/character_table.json')) && 'no official cache' }, () => {
     const ct = JSON.parse(readFileSync(path.join(ROOT, '.cache/gamedata/excel/character_table.json'), 'utf8'));
     const talent = ct[items[ISO].trapId].talents[0].candidates.at(-1).description.replace(/\\n/g, '\n');
     const pairs = [...talent.matchAll(/“([^”]+)”(?:系列装备)?→【([^】]+)】盟约/g)].map(([, item, bond]) => ({ item, bond }));
     assert.equal(pairs.length, 14, talent);
     const rows = morphPairings(ITEMS, BONDS);
-    assert.deepEqual(pairs.map((p) => p.bond).sort(), rows.map((r) => r.name).sort(), 'the same 14 bonds');
+    // the OFFICIAL half: the 14 pairings the item's own talent lists, matched one by one against the data
+    const official = rows.filter((r) => pairs.some((p) => p.bond === r.name));
+    assert.deepEqual(pairs.map((p) => p.bond).sort(), official.map((r) => r.name).sort(), 'the same 14 official bonds');
     for (const p of pairs) {
-      const r = rows.find((x) => x.name === p.bond);
+      const r = official.find((x) => x.name === p.bond);
       assert.ok(r.items.some((it) => it.name.includes(p.item)), `“${p.item}”→【${p.bond}】`);
     }
+    // the AUTHOR half: exactly one pairing the official talent does NOT list, and it is the owner's 灵巧 declaration
+    // (tools/build-data.mjs `ITEM_BOND_GRANTS` — 业主 2026-11-01, 有限加速器 `chess_item_4_03_e_a` / `_b`)
+    const declared = rows.filter((r) => !pairs.some((p) => p.bond === r.name));
+    assert.deepEqual(declared.map((r) => r.bondId), ['skillfulShip'], 'not an official pairing');
+    // one row per item family (normal / 进阶 share it), so the family id `_a` stands for both records
+    assert.deepEqual(declared[0].items.map((it) => ({ id: it.id, name: it.name })), [{ id: 'chess_item_4_03_e_a', name: '有限加速器' }]);
   });
 
   test('本局禁用: 标准 marks the 5 bonds it switches off (拉特兰 阿戈尔 卡西米尔 奥术 突袭), the other modes none', () => {
@@ -131,7 +143,10 @@ describe('§21.26 1 — 变形同构体: the pairing list (gameLogic morphPairin
       const rows = morphPairings(ITEMS, BONDS, { off });
       const marked = rows.filter((r) => r.off).map((r) => r.bondId);
       assert.deepEqual(marked, rows.map((r) => r.bondId).filter((b) => config.modes[id].inactiveBondIds.includes(b)), id);
-      assert.deepEqual(marked.map((b) => bonds[b].name), ['拉特兰', '阿戈尔', '卡西米尔', '奥术', '突袭']);
+      assert.deepEqual(marked.map((b) => bonds[b].name), ['拉特兰', '阿戈尔', '卡西米尔', '灵巧', '奥术', '突袭'],
+      // 灵巧 (skillfulShip) is on the mode's inactive list too, and it only has a list row since the 作者声明 of 2026-11-01
+      // (有限加速器; tools/build-data.mjs `ITEM_BOND_GRANTS`) — the other 5 are the official bond items' bonds
+    );
     }
     for (const id of ['mode_single_normal', 'mode_multi_hard', 'mode_multi_abyss']) {
       assert.equal(morphPairings(ITEMS, BONDS, { off: modeOffBonds(getMode(id)) }).filter((r) => r.off).length, 0, id);
@@ -156,15 +171,16 @@ describe('§21.26 1 — 变形同构体: the pairing list (gameLogic morphPairin
 describe('§21.26 1 — 变形同构体 on the cards', () => {
   const funny = modeOffBonds(getMode('mode_multi_funny'));
 
-  test('the item card (shop / reward / hand): a 天赋 section with the 14 lines, 本局禁用 struck through, no highlight', () => {
+  test('the item card (shop / reward / hand): a 天赋 section with the 15 lines, 本局禁用 struck through, no highlight', () => {
     const v = ItemDetail({ item: items[ISO], piece: null, editable: false, onDestroy() {}, offBonds: funny });
     const sec = [...walk(v)].find((x) => x.type?.name === 'Section' && x.props.title === '天赋');
     assert.ok(sec, 'a 天赋 section (the item text points at its 天赋栏)');
     assert.match(textOf(v), /搭配以下装备时，携带者视为对应盟约的成员：/);
     const rows = byClass(v, 'dmorph__row');
-    assert.equal(rows.length, 14);
+    // 15 lines: the official 14 + 灵巧 (有限加速器, 作者声明 2026-11-01 — tools/build-data.mjs `ITEM_BOND_GRANTS`)
+    assert.equal(rows.length, 15);
     const off = rows.filter((r) => hasClass(r, 'is-off'));
-    assert.deepEqual(off.map((r) => r.props['data-bond']), ['lateranoShip', 'egirShip', 'kazimierzShip', 'arcaneShip', 'raidShip']);
+    assert.deepEqual(off.map((r) => r.props['data-bond']), ['lateranoShip', 'egirShip', 'kazimierzShip', 'skillfulShip', 'arcaneShip', 'raidShip']);
     for (const r of off) assert.match(textOf(r), /本局禁用/);
     assert.equal(rows.filter((r) => !hasClass(r, 'is-off') && /本局禁用/.test(textOf(r))).length, 0);
     assert.equal(byClass(v, 'is-worn').length, 0, 'no wearer: nothing highlighted');
@@ -179,7 +195,8 @@ describe('§21.26 1 — 变形同构体 on the cards', () => {
     const blocks = ChessDetail({ chess: chess[WEARER], piece, editable: false, bonds: [], offBonds: funny, loadout: null });
     const equip = blocks.find((b) => b?.key === 'equip');
     const rows = byClass(equip, 'dmorph__row');
-    assert.equal(rows.length, 14);
+    // 15 = the official 14 + 灵巧 (有限加速器, 作者声明 2026-11-01)
+    assert.equal(rows.length, 15);
     const worn = rows.filter((r) => hasClass(r, 'is-worn'));
     assert.deepEqual(worn.map((r) => r.props['data-bond']), ['victoriaShip']);
     assert.match(textOf(worn[0]), /生效中/);

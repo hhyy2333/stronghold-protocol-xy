@@ -11,11 +11,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeMatch, give, giveItem, DATA, legalTileFor } from './harness.js';
 import { unitBonds, isMember } from '../../server/sim/content/support/index.js';
+import { pieceBonds } from '../../server/match/bondsMeta.js';
 import { unitInfo } from '../../server/sim/snapshot.js';
 
 const ISO = 'chess_item_6_09_e_a';
 const ISO_B = 'chess_item_6_09_e_b';
 const HAMMER = 'chess_item_1_01_e_a';
+// 业主 2026-11-01:「让装备有限加速器能被同构体识别成灵巧装备，让人增加灵巧盟约」 — the 有限加速器 grants 灵巧 in this
+// remake although the official row has no `giveBondId` (tools/build-data.mjs `ITEM_BOND_GRANTS`, both qualities).
+const ACCEL = 'chess_item_4_03_e_a';
+const ACCEL_B = 'chess_item_4_03_e_b';
+const SKILLFUL = 'skillfulShip';
 const GRANTS = Object.values(DATA.items).filter((r) => r.giveBondId).map((r) => r.id).sort();
 
 /** A target chess outside `bond` (and not 调和: its +1 would blur the count). */
@@ -72,10 +78,10 @@ test('缪尔赛思 hands out 变形同构体 on purchase (garrison_76), the boug
   h.invariants();
 });
 
-test('every pairing (18 bond items × normal / golden, both 变形同构体): the wearer counts in prep, in the views, in the battle input and in the real battle', () => {
+test('every pairing (19 bond items × normal / golden, both 变形同构体): the wearer counts in prep, in the views, in the battle input and in the real battle', () => {
   const grants = Object.values(DATA.items).filter((r) => r.giveBondId);
-  assert.equal(grants.length, 36);
-  assert.equal(new Set(grants.map((r) => r.giveBondId)).size, 14, '14 bonds have a bond item (the official talent\'s list)');
+  assert.equal(grants.length, 38, '19 bond items × normal / golden');
+  assert.equal(new Set(grants.map((r) => r.giveBondId)).size, 15, '14 bonds of the official talent\'s list + 灵巧 (作者声明: 有限加速器)');
   for (const r of grants) {
     const bond = r.giveBondId;
     const iso = r.isGolden ? ISO_B : ISO; // golden bond items with the golden 变形同构体, normal with normal
@@ -162,4 +168,49 @@ test('a teammate\'s views: m.public counts the wearer; the scouting UnitInfo and
   const plain = battle.allyUnits.find((x) => x.kind === 'op' && x.defId === a);
   assert.equal(unitInfo(plain).items, undefined, 'no items: no field');
   assert.equal(battle.enemies.every((e) => unitInfo(e).items === undefined), true, 'enemies: never');
+});
+
+// 业主 2026-11-01:「让装备有限加速器能被同构体识别成灵巧装备，让人增加灵巧盟约」. Officially 有限加速器 (trap_1052_acarm052)
+// has no `giveBondId`, so the 变形同构体 had nothing to pair with and a player could never push 灵巧 over its threshold
+// with it. The generator now declares the bond (tools/build-data.mjs `ITEM_BOND_GRANTS`, keyed by baseId so `_a` and `_b`
+// both take it); no engine code changed — this pins the whole chain on the real data: data → pieceBonds (prep) → the
+// count and activation → the battle input → the real battle's unitBonds. Without a 变形同构体 the same item still grants
+// nothing (it is a bond item, never a carrier: `canGiveBond` stays false).
+test('有限加速器 (作者声明 2026-11-01): with a 变形同构体 the wearer is a 灵巧 member, without one it is not', () => {
+  for (const id of [ACCEL, ACCEL_B]) {
+    assert.equal(DATA.items[id].giveBondId, SKILLFUL, `${id}: the declared 灵巧 bond`);
+    assert.equal(DATA.items[id].canGiveBond, false, `${id}: a bond item, never a carrier itself`);
+  }
+  const h = prep({ seed: 21 });
+  const { m } = h; const ps = h.ps('p_0');
+  const [a, b] = members(SKILLFUL);
+  place(h, 'p_0', a); place(h, 'p_0', b);
+  assert.equal(count(ps, SKILLFUL), 2, 'two 灵巧 members on the board');
+  const w = wearer(h, 'p_0', outsider(SKILLFUL), [ACCEL, ISO]);
+  assert.equal(count(ps, SKILLFUL), 3, 'the 有限加速器 + 变形同构体 wearer joins 灵巧');
+  assert.equal(ps.bonds[SKILLFUL].active, true, 'the threshold of 2 is passed with it');
+  assert.ok(pieceBonds(m.gd, w).includes(SKILLFUL), 'pieceBonds: the wearer is a 灵巧 member');
+  assert.equal(ps.battleInput().bonds[SKILLFUL].count, 3, 'battle input');
+  assert.equal(ps.privateView().bonds.find((x) => x.bondId === SKILLFUL).count, 3, 'm.private');
+  let battle = null;
+  const orig = m.newBattle.bind(m);
+  m.newBattle = (o) => { const bt = orig(o); battle ??= bt; return bt; };
+  assert.ok(h.drive(() => battle != null), 'combat starts');
+  assert.equal(battle.getPlayer('p_0').bonds[SKILLFUL].count, 3, 'the battle\'s count');
+  const u = battle.allyUnits.find((x) => x.kind === 'op' && x.uid === w.uid);
+  assert.ok(unitBonds(u).includes(SKILLFUL) && isMember(battle, u, SKILLFUL), 'the battle\'s member');
+  h.invariants();
+  // the same item alone (no 变形同构体) grants nothing — the official 14 bond items behave alike (the test above)
+  const h2 = prep({ fake: true });
+  const [a2, b2] = members(SKILLFUL);
+  place(h2, 'p_0', a2); place(h2, 'p_0', b2);
+  const w2 = wearer(h2, 'p_0', outsider(SKILLFUL), [ACCEL]);
+  assert.equal(count(h2.ps('p_0'), SKILLFUL), 2, 'the 有限加速器 alone: no 灵巧 membership');
+  assert.ok(!pieceBonds(h2.m.gd, w2).includes(SKILLFUL), 'pieceBonds: not a member');
+  // the 进阶 有限加速器 with the 进阶 变形同构体 pairs the same way
+  const h3 = prep({ fake: true });
+  const w3 = wearer(h3, 'p_0', outsider(SKILLFUL), [ACCEL_B, ISO_B]);
+  assert.equal(count(h3.ps('p_0'), SKILLFUL), 1, 'the only 灵巧 member is the wearer');
+  assert.ok(pieceBonds(h3.m.gd, w3).includes(SKILLFUL), 'pieceBonds: golden pair');
+  h2.invariants(); h3.invariants();
 });

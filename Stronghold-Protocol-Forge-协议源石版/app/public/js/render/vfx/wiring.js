@@ -572,6 +572,11 @@ export class FxWiring {
    */
   _orient(def, place, pose, o, v) {
     if (!def) return;
+    // an effect the caller turns explicitly (o.yaw): a kit's own moving effect — 塔露拉 S3's 簇火 tail, FX_BINDINGS
+    // `offsetDir` — turns with its flight. The client turns such a prefab with the projectile that parents it; here the
+    // caller supplies the angle, and it must survive the every-frame track that re-places the effect on its point
+    // (without this the track re-runs _orient, which for a prefab with no rotateType leaves the yaw at 0).
+    if (typeof o.yaw === 'number') { place.yaw = o.yaw; return; }
     const rt = def.rotateType;
     // an effect that takes its mount point's rotation faces with the unit already (the FaceSwitcher's turn is part of
     // that rotation): FLIP_TWO_SIDE adds no flip of its own [ASSUMED]

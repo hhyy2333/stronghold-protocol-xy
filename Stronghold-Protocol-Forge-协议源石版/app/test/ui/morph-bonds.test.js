@@ -56,7 +56,9 @@ describe('变形同构体 — the client rule', () => {
   test('the client rule equals the server\'s (bondsMeta.pieceBonds) for every bond item, normal and golden', () => {
     const gd = new GameData(getData({ log: { warn() {}, error() {}, info() {} } }), 'mode_multi_hard');
     const grants = Object.values(items).filter((r) => r.giveBondId);
-    assert.equal(grants.length, 36, '18 bond items × normal / golden');
+    // 19 bond items = the official 18 (14 pairings × normal / 进阶) + 有限加速器 _a / _b, the author's 灵巧 declaration
+    // of 2026-11-01 (tools/build-data.mjs `ITEM_BOND_GRANTS`) → 38 records with the golden twins.
+    assert.equal(grants.length, 38, '19 bond items × normal / golden');
     for (const r of grants) {
       for (const iso of [ISO, ISO_B]) {
         const p = { id: WEARER, items: [{ id: r.id }, { id: iso }] };

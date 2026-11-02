@@ -382,3 +382,45 @@ test('狂躁异质裂兽: 第一形态 cannot be taken below `HpRatioCtrl.min_hp
   for (const st of ['sleep', 'fear']) assert.ok(e.mem.ab.immune.has(st), `第二形态 is immune to ${st}`);
   checkInvariants(h.b);
 });
+
+test('狂躁异质裂兽: 第二形态 has NO `HpRatioCtrl.min_hp_ratio` floor — the floor belongs to 第一形态, so form 2 can die', () => {
+  // 业主 2026-11-01「狂躁异质裂兽出现锁血bug」: the HP bar parked at exactly 30 000 / 150 000 (= the 0.2 floor) and the
+  // enemy never died. `min_hp_ratio` is the FIRST form's floor ("第一形态 受到的伤害不会使自身生命值低于20%"); once the
+  // 逃跑 has happened and 第二形态 is up, nothing may hold its HP up any more.
+  const h = arena({ block: 4 });
+  const e = put(h, 'enemy_1571_mirbst', [10, 5]);
+  const w = wall(h);
+  h.run(0.3);
+  const mirror = e.mem.ab.list.find((a) => typeof a.killed === 'function');
+  h.b.dealDamage(null, e, { amount: e.s.maxHp * 4, type: 'true', canDodge: false });
+  h.run(0.2);
+  assert.equal(mirror.state, 'reborn', 'the first form escapes instead of dying');
+  h.run((DATA.enemy_1571_mirbst.talents.bb['RunToNearestHole.delay'] ?? 10) + 1);
+  assert.equal(mirror.state, 'form2', 'second form up');
+  assert.ok(e.hpRatio > 0.99, `the second form stands up at full HP (${e.hpRatio.toFixed(2)})`);
+  // 第二形态 takes −60 % 物理 / 法术, so its 300 % true hits are 120 % of the bar in total
+  h.b.dealDamage(w, e, { amount: e.s.maxHp * 3, type: 'true', canDodge: false });
+  h.run(0.2);
+  assert.ok(e.alive && e.hpRatio > 0.2, `the first hit lands (${e.hpRatio.toFixed(2)})`);
+  h.b.dealDamage(w, e, { amount: e.s.maxHp * 3, type: 'true', canDodge: false });
+  h.run(0.2);
+  assert.ok(!e.alive, `第二形态 dies once its HP is gone (hp ${Math.round(e.hp)})`);
+  checkInvariants(h.b);
+});
+
+test('狂躁异质裂兽: 第二形态 casts 【落石】 (ThrowStone) at the operator that has hurt it most', () => {
+  const h = arena({ block: 4 });
+  const e = put(h, 'enemy_1571_mirbst', [10, 5]);
+  const w = wall(h);
+  h.run(0.5);                                    // the blocked boss hits the wall → that is its 「造成最多伤害的单位」
+  h.b.dealDamage(null, e, { amount: e.s.maxHp * 4, type: 'true', canDodge: false });
+  h.run((DATA.enemy_1571_mirbst.talents.bb['RunToNearestHole.delay'] ?? 10) + 1.2);
+  // ThrowStone's own cooldown only runs once the 第二形态 is up (10 s `initCooldown`), then the boulder flies
+  const stone = DATA.enemy_1571_mirbst.skills.find((s) => s.prefabKey === 'ThrowStone');
+  h.run((stone?.initCooldown ?? 10) + 6);
+  const rocks = h.hooksOf('damaged').filter((c) => c.source === e && c.dmg
+    && Array.isArray(c.dmg.tags) && c.dmg.tags.includes('fallingRock'));
+  assert.ok(rocks.length > 0, 'a 【落石】 landed');
+  assert.equal(rocks[0].target, w, 'it lands on the operator that hurt it most');
+  checkInvariants(h.b);
+});

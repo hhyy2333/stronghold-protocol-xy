@@ -163,7 +163,7 @@ export function MatchInfo({ model }) {
 export function MatchInfoDialog({ open, onClose, model, status = null }) {
   return html`<${Modal} open=${open && !!model} onClose=${onClose} title=${t('本局信息')} micro="MATCH INFO // BONDS & BANNED OPERATORS" class="minfo-dlg"
     actions=${html`${status ? html`<div class="minfo-dlg__status" data-testid="match-info-status">${status}</div>` : null}
-      <${Button} variant="secondary" icon="close" data-autofocus data-testid="match-info-close" onClick=${onClose}>${t('关闭')}<//>`}>
+      <${Button} variant="secondary" data-sfx="back" icon="close" data-autofocus data-testid="match-info-close" onClick=${onClose}>${t('关闭')}<//>`}>
     ${open && model ? html`<${MatchInfo} model=${model} />` : null}
   <//>`;
 }

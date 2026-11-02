@@ -1,8 +1,14 @@
-// 特质扩散 (hex_traitspread, 业主 2026-10-18): at battle start the owner's leftmost-bottom operator copies its
-// IN_BATTLE traits to the NEAREST own operator, right side preferred; the target keeps its own traits (additive).
-// Owner's clarifications: with nobody on the right, keep looking left / up / down; the copy never replaces the
-// target's own traits. The description says exactly 「复制给最近的干员（优先右边）」 — the fallback and stacking
-// details are NOT part of the card text.
+// 特质扩散 (hex_traitspread, 业主 2026-10-18; 加强 2026-11-01「给右边和上面」): at battle start the owner's
+// leftmost-bottom operator copies its IN_BATTLE traits to the NEAREST own operator on its RIGHT and to the NEAREST
+// own operator ABOVE it (row 0 is the BOTTOM row, so above = +row). Neither beneficiary has to stand adjacent to the
+// source; a direction with nobody on it simply grants nothing; both directions landing on one operator copy once; a
+// target keeps its own traits (the copy is additive). The card text says exactly
+// 「把自身的战斗特质复制给右边和上面最近的干员」 — 「最近」, the tie-break and the diagonal case are [ASSUMED] and
+// live in applyTraitSpread (server/sim/content/garrisons/battle.js).
+//
+// NB the left / below directions can no longer receive anything, and that is not directly assertable: the leftmost
+// operator of the leftmost column IS the source (the lower tile wins a column), so nobody can ever sit to its left or
+// below it in that column — every other operator is either to its right or above it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -47,56 +53,73 @@ function setup(units, { hex = true } = {}) {
 
 const buffOf = (h, chessId) => h.unit(chessId).findBuff('gar:garrison_03_a');
 
-test('the card text is 「复制给最近的干员（优先右边）」 (generated data + roster)', () => {
+test('the card text is 「复制给右边和上面最近的干员」 (generated data + roster)', () => {
   assert.equal(HEXTECH.playerHexes.hex_traitspread.desc,
-    '战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给最近的干员（优先右边）。');
+    '战斗开始时，你最靠左（同列更靠下）的干员把自身的战斗特质复制给右边和上面最近的干员。');
   assert.deepEqual(HEXTECH.playerHexes.hex_traitspread.effect, { traitSpread: true });
 });
 
-test('nearest operator gains the trait; further operators do not; the target keeps its own trait', () => {
+test('both beneficiaries gain the trait: the nearest on the RIGHT and the nearest ABOVE', () => {
   const h = setup([
-    { chessId: 'src', row: 10, col: 3, rec: carrier('src') },
-    { chessId: 'near', row: 10, col: 5, rec: plain('near', {}) }, // 2 tiles right = nearest
-    { chessId: 'far', row: 10, col: 9, rec: plain('far') },
+    { chessId: 'src', row: 9, col: 3, rec: carrier('src') }, // bottom row of the field, leftmost column
+    { chessId: 'right', row: 9, col: 6, rec: plain('right') }, // 3 tiles right = nearest to the right
+    { chessId: 'up', row: 12, col: 3, rec: plain('up') }, // 3 rows above, same column = nearest above
+    { chessId: 'farRight', row: 9, col: 9, rec: plain('farRight') },
+    { chessId: 'farUp', row: 12, col: 9, rec: plain('farUp') }, // above, but further than `up`
   ]);
   // the source keeps its own trait
   assert.ok(buffOf(h, 'src'), 'the source keeps its own in-battle trait');
-  // the nearest operator gains the copy
-  assert.ok(buffOf(h, 'near'), 'the nearest operator gains the copied trait');
-  // the far operator does not
-  assert.equal(buffOf(h, 'far'), null, 'an operator further away gains nothing');
+  // one copy each way, no adjacency required
+  assert.ok(buffOf(h, 'right'), 'the nearest operator on the right gains the copied trait');
+  assert.ok(buffOf(h, 'up'), 'the nearest operator above gains the copied trait');
+  // further away in either direction gains nothing
+  assert.equal(buffOf(h, 'farRight'), null, 'a further operator on the right gains nothing');
+  assert.equal(buffOf(h, 'farUp'), null, 'a further operator above gains nothing');
+});
+
+test('nobody above (the source is in the top row): only the operator on the right gains the trait', () => {
+  const h = setup([
+    { chessId: 'src', row: 12, col: 3, rec: carrier('src') },
+    { chessId: 'right', row: 12, col: 6, rec: plain('right') },
+    { chessId: 'farRight', row: 12, col: 9, rec: plain('farRight') },
+  ]);
+  assert.ok(buffOf(h, 'right'), 'the right direction still copies when there is nobody above');
+  assert.equal(buffOf(h, 'farRight'), null, 'only the NEAREST operator on the right is used');
+});
+
+test('nobody on the right (the source is in the rightmost column): only the operator above gains the trait', () => {
+  const h = setup([
+    { chessId: 'src', row: 10, col: 9, rec: carrier('src') },
+    { chessId: 'up', row: 12, col: 9, rec: plain('up') },
+  ]);
+  assert.ok(buffOf(h, 'up'), 'the up direction still copies when there is nobody on the right');
 });
 
 test('the copy is additive: the target keeps its own IN_BATTLE trait too', () => {
-  const target = plain('near');
-  target.garrisonIds = ['garrison_08_a']; // its own stat trait (SP recovery)
+  const right = plain('right');
+  right.garrisonIds = ['garrison_08_a']; // its own stat trait (SP recovery)
+  const up = plain('up');
+  up.garrisonIds = ['garrison_08_a'];
   const h = setup([
-    { chessId: 'src', row: 10, col: 3, rec: carrier('src') },
-    { chessId: 'near', row: 10, col: 5, rec: target },
+    { chessId: 'src', row: 9, col: 3, rec: carrier('src') },
+    { chessId: 'right', row: 9, col: 5, rec: right },
+    { chessId: 'up', row: 12, col: 3, rec: up },
   ]);
-  assert.ok(buffOf(h, 'near'), 'the copied trait is installed on the target');
-  assert.ok(h.unit('near').findBuff('gar:garrison_08_a'), 'the target keeps its own trait');
+  for (const id of ['right', 'up']) {
+    assert.ok(buffOf(h, id), `the copied trait is installed on ${id}`);
+    assert.ok(h.unit(id).findBuff('gar:garrison_08_a'), `${id} keeps its own trait`);
+  }
 });
 
-test('a tie prefers the operator on the RIGHT', () => {
-  // the source must be the leftmost operator (the left side can therefore never hold a candidate), so the tie is
-  // right vs up — both one tile away
+test('both directions land on ONE operator (diagonal upper-right): it copies once', () => {
   const h = setup([
     { chessId: 'src', row: 10, col: 4, rec: carrier('src') },
-    { chessId: 'right', row: 10, col: 5, rec: plain('right') },
-    { chessId: 'up', row: 11, col: 4, rec: plain('up') },
+    { chessId: 'diag', row: 12, col: 6, rec: plain('diag') }, // nearest right AND nearest above
+    { chessId: 'farRight', row: 10, col: 9, rec: plain('farRight') },
   ]);
-  assert.ok(h.unit('right').findBuff('gar:garrison_03_a'), 'right wins an equal-distance tie');
-  assert.equal(h.unit('up').findBuff('gar:garrison_03_a'), null, 'the up one gains nothing');
-});
-
-test('with nobody beside it, the search continues up / down', () => {
-  // the source is the leftmost operator, so nothing can stand to its left; the vertical neighbours are the fallback
-  const h = setup([
-    { chessId: 'up', row: 11, col: 5, rec: plain('up') }, // the only neighbour, above the source
-    { chessId: 'src', row: 10, col: 5, rec: carrier('src') },
-  ]);
-  assert.ok(h.unit('up').findBuff('gar:garrison_03_a'), 'the up neighbour is used when right and left are empty');
+  assert.deepEqual(h.unit('diag').spreadGarrisonIds, ['garrison_03_a'], 'the diagonal operator copies exactly once');
+  assert.ok(buffOf(h, 'diag'), 'and the copy is installed');
+  assert.equal(buffOf(h, 'farRight'), null, 'a further operator on the right gains nothing');
 });
 
 test('the SOURCE is the leftmost-bottom operator, even when it has no traits to copy', () => {
@@ -106,14 +129,16 @@ test('the SOURCE is the leftmost-bottom operator, even when it has no traits to 
     { chessId: 'carrier', row: 10, col: 6, rec: carrier('carrier') },
     { chessId: 'target', row: 10, col: 8, rec: plain('target') },
   ]);
-  assert.equal(h.unit('target').findBuff('gar:garrison_03_a'), null, 'a trait-less leftmost operator copies nothing');
-  assert.ok(h.unit('carrier').findBuff('gar:garrison_03_a'), 'the carrier still carries its own trait');
+  assert.equal(buffOf(h, 'target'), null, 'a trait-less leftmost operator copies nothing');
+  assert.ok(buffOf(h, 'carrier'), 'the carrier still carries its own trait');
 });
 
 test('no card = no copy', () => {
   const h = setup([
-    { chessId: 'src', row: 10, col: 3, rec: carrier('src') },
-    { chessId: 'near', row: 10, col: 5, rec: plain('near') },
+    { chessId: 'src', row: 9, col: 3, rec: carrier('src') },
+    { chessId: 'near', row: 9, col: 5, rec: plain('near') },
+    { chessId: 'up', row: 12, col: 3, rec: plain('up') },
   ], { hex: false });
-  assert.equal(h.unit('near').findBuff('gar:garrison_03_a'), null, 'without the card the trait never spreads');
+  assert.equal(buffOf(h, 'near'), null, 'without the card the trait never spreads to the right');
+  assert.equal(buffOf(h, 'up'), null, 'without the card the trait never spreads upwards');
 });

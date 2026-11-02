@@ -650,7 +650,7 @@ function QuickMatchPanel({ queue, busy, onCancel }) {
     </div>
     <div class="quickmatch-foot">
       <span class="t-dim">${t('等待中的第 {position} 位 · 还需 {need} 名博士 · 剩余 {left} 秒', { position: queue.position, need: queue.need, left })}</span>
-      <${Button} variant="secondary" size="sm" loading=${busy === 'dequeue'} onClick=${onCancel}>${t('取消搜寻')}<//>
+      <${Button} variant="secondary" data-sfx="back" size="sm" loading=${busy === 'dequeue'} onClick=${onCancel}>${t('取消搜寻')}<//>
     </div>
   <//>`;
 }

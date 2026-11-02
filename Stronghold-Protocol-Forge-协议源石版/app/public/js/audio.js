@@ -73,6 +73,17 @@
 //   board, a purchase, a move onto or across the board) makes its battle deploy sound once (`deployCue`): the same file
 //   and gain through the SFX channel's volume and mute, in its own voices (LAND_VOICES) instead of the battle limiter —
 //   a full pool hands the oldest landing's voice to the newest, so every piece of the chain is heard.
+// - 按钮点击音 (owner request of 2026-11-01 「添加按钮的点击音效」): every press on the client's own controls — the
+//   `<button>`s, the `.btn`-styled links, checkboxes / radios / switches / tabs — sounds once, from ONE delegated
+//   listener on the document (`installButtonCues`) instead of a call site per button (the client has ~350 of them and
+//   most were silent). Four cues, the 原版 set the owner supplied (Arkdays UI: ui.ON_DEFAULT_BTN_CLICK /
+//   ON_CANCEL_BTN_CLICK / ON_CONFIRM_BTN_CLICK / ON_CHECKBOX_CLICK), sorted by role from the element itself
+//   (`buttonCueFor`): 普通按钮 `click-n`, 返回·取消·关闭 `click-back`, 确认·主操作·危险 `click-confirm`,
+//   复选框·开关·单选 `click-tick`; `data-sfx="<role>"` overrides, `data-sfx="none"` / `data-nosfx` / a disabled control
+//   stays silent. They are the local client's `ui/sfx` group (docs/ASSETS.md 「本机素材清单」), not manifest entries —
+//   `installAudio({ buttonCueUrl })` resolves them through `localAsset` and `playUrl` plays them on the SFX channel
+//   (settings 音效 / 静音 apply). A press whose own handler already played a cue of its own (`sfx` / `playUrl` during
+//   that click) keeps that one: the delegated listener stays quiet for BUTTON_CUE_DEDUPE_MS, so no press sounds twice.
 // - Buffers are fetched once and cached (LRU); failed fetch/decode ⇒ silent (logged once as a warning).
 //
 // `bgmKeyFor(route, pub)` picks the track for the current screen/phase (main.js calls `audio.install()`,
@@ -571,6 +582,152 @@ function isAudioResponse(res) {
   const type = res.headers?.get?.('content-type');
   return !type || /^\s*audio\//i.test(type);
 }
+// ---- 按钮点击音 (owner request 2026-11-01 「添加按钮的点击音效」) ---------------------------------------------
+/**
+ * The four button cues and the files of the 原版 set the owner supplied — the Arkdays UI cues, whose official bank
+ * names are `ui.ON_DEFAULT_BTN_CLICK` / `ON_CANCEL_BTN_CLICK` / `ON_CONFIRM_BTN_CLICK` / `ON_CHECKBOX_CLICK`.
+ * They are **not** `audio.sfx.ui` manifest entries: the set is not on the CDN `tools/fetch-assets.mjs` reads, so the
+ * files live in the local client's `ui/sfx` group (`public/assets/local/ui/sfx/`, listed in `data/local-assets.json`,
+ * docs/ASSETS.md 「本机素材清单」) and `installAudio({ buttonCueUrl })` resolves them through `localAsset` — the same
+ * road as the 协议源石 draft's hextech cues (ui/gameActions.js hexCue + `playUrl`). No entry ⇒ no sound, never an error.
+ */
+export const BUTTON_CUE_FILES = Object.freeze({
+  click: 'click-n',         // 普通按钮
+  back: 'click-back',       // 返回 / 取消 / 关闭
+  confirm: 'click-confirm', // 确认 / 主操作 / 危险操作
+  tick: 'click-tick',       // 复选框 / 单选 / 开关
+});
+
+/**
+ * Gain per role (the SFX channel's own volume and mute still apply): the confirm cue is the loudest of the set and a
+ * tick the quietest, so a checkbox does not read as a button press in a row of them.
+ */
+export const BUTTON_CUE_VOLUME = Object.freeze({ click: 0.5, back: 0.5, confirm: 0.6, tick: 0.45 });
+
+/**
+ * A press whose own handler already played a cue (`sfx` / `playUrl` during that click) keeps that one: the delegated
+ * listener stays quiet for this window. It is measured between that explicit cue and the document's `click` handler,
+ * which run in the same dispatch — microseconds apart — so anything wider would only swallow the NEXT press.
+ */
+export const BUTTON_CUE_DEDUPE_MS = 120;
+
+/**
+ * What one delegated listener treats as a press. `.btn` covers the `<a>`/`<label>`-styled controls of the lobby and
+ * the settings screens; `[role=...]` the tab bars, switches and checkbox cells of the in-match HUD.
+ */
+export const BUTTON_CUE_SELECTOR = 'button, .btn, input[type="checkbox"], input[type="radio"], [role="button"], '
+  + '[role="switch"], [role="checkbox"], [role="tab"]';
+
+/** Class tokens that make a press a 返回 / 取消 / 关闭 rather than a plain one (every `.btn--ghost` modal cancel, the
+ * in-match HUD's `.gtop__exit` 离开). */
+const CUE_BACK_TOKENS = new Set(['ghost', 'back', 'cancel', 'close', 'dismiss', 'exit', 'skip']);
+/** …and one that makes it a 确认 / 主操作 (`variant="primary"` / `"danger"` of ui/components.js Button). */
+const CUE_CONFIRM_TOKENS = new Set(['primary', 'danger', 'confirm', 'ok', 'submit', 'cta']);
+/** Elements that tick instead of clicking (settings 设置 → Toggle at ui/settings.js, 私密房间's checkbox, the tab bars,
+ * the `<button role="radio">` cards of 干员调配 / 协议源石). */
+const CUE_TICK_ROLES = new Set(['switch', 'checkbox', 'radio', 'tab']);
+
+const cueNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+
+/**
+ * The class tokens of a cue element, split on every non-alphanumeric run and compared whole: the variant of a `.btn` is
+ * a modifier (`btn btn--primary` ⇒ `primary`), the HUD marks its buttons with BEM parts (`gtop__exit` ⇒ `exit`), and a
+ * substring rule would read `btn--square` as `square` only by luck while `is-disabled` would match `disabled`.
+ * @param {any} el
+ * @returns {Set<string>}
+ */
+function cueTokens(el) {
+  const out = new Set();
+  const raw = typeof el?.className === 'string' ? el.className : '';
+  for (const token of raw.split(/\s+/)) {
+    if (!token) continue;
+    for (const part of token.toLowerCase().split(/[^a-z0-9]+/)) if (part) out.add(part);
+  }
+  return out;
+}
+
+/**
+ * Is this cue element switched off? A disabled `<button>` is not a press, and `aria-disabled` / `.is-disabled` are how
+ * this client's own controls say "not now" (ui/components.js Button, the shop cards, the HUD).
+ * `.is-frozen` is deliberately NOT one of them: a frozen shop card is still purchasable (`shopBar.js` fills `disabled`
+ * from its own reason, the frost is a layer on top) and a frozen bond disc is a card whose layers are hidden.
+ * @param {any} el
+ */
+export function buttonCueDisabled(el) {
+  if (!el || typeof el !== 'object') return true;
+  if (el.disabled === true) return true;
+  if (el.getAttribute?.('aria-disabled') === 'true') return true;
+  const cls = typeof el.className === 'string' ? el.className : '';
+  return /\b(is-disabled|is-busy|is-loading)\b/.test(cls);
+}
+
+/**
+ * The control a `<label>` stands for (HTMLLabelElement.control resolves `for=` and nesting itself; the querySelector
+ * answers a stub). Only checkboxes and radios tick — the labels that wrap a text field or a slider (ui/components.js
+ * TextField, 设置's rows) are not controls of their own.
+ * @param {any} label
+ * @returns {any|null}
+ */
+function labelCueControl(label) {
+  if (!label || typeof label !== 'object') return null;
+  const own = label.control;
+  if (own && own !== label) return own;
+  const inner = typeof label.querySelector === 'function' ? label.querySelector('input[type="checkbox"], input[type="radio"]') : null;
+  return inner && inner !== label ? inner : null;
+}
+
+/**
+ * The cue element a press lands on, walking up from the event target — the nearest control, or null when the target is
+ * not inside one, when that control is switched off, or when a `data-sfx="none"` / `data-nosfx` ancestor silences it
+ * (a board, a video player, a drag surface: a press there is not an interface press).
+ * @param {any} target event.target / event.currentTarget of a click
+ * @returns {any|null}
+ */
+export function buttonCueElement(target) {
+  try {
+    const closest = typeof target?.closest === 'function' ? target.closest.bind(target) : null;
+    if (!closest) return null;
+    if (closest('[data-sfx="none"], [data-nosfx]')) return null;
+    const el = closest(BUTTON_CUE_SELECTOR);
+    if (el) return buttonCueDisabled(el) ? null : el;
+    // A <label> that carries a checkbox / radio: a press on its TEXT lands on a span, and the browser ticks the
+    // control (私密房间, the three 大厅背景 switches, a plugin's boolean setting are all written that way)
+    const control = labelCueControl(closest('label'));
+    return control && !buttonCueDisabled(control) ? control : null;
+  } catch { return null; }
+}
+
+/**
+ * Which cue a press plays: `'click'` | `'back'` | `'confirm'` | `'tick'` (a BUTTON_CUE_FILES key), or null for a press
+ * that stays silent. The element decides, in this order: `data-sfx="<role>"` on it or an ancestor, then its role /
+ * class — `tick` for checkboxes, radios, switches and tabs; `back` for ghost / cancel / close / exit; `confirm` for
+ * primary / danger / submit (a 确认 is read only after the back marks: the HUD's 离开 is a `danger` button, and a
+ * dangerous 确定 in a dialog is a `btn--danger` that carries no back mark) — else the plain cue.
+ * Pure enough to unit-test with a stub element (test/ui/button-sfx.test.js).
+ * @param {any} target event.target of a click
+ * @returns {'click'|'back'|'confirm'|'tick'|null}
+ */
+export function buttonCueFor(target) {
+  const el = buttonCueElement(target);
+  if (!el) return null;
+  const explicit = el.getAttribute?.('data-sfx') ?? el.closest?.('[data-sfx]')?.getAttribute?.('data-sfx') ?? null;
+  if (typeof explicit === 'string' && explicit) {
+    const name = explicit.trim().toLowerCase();
+    return Object.hasOwn(BUTTON_CUE_FILES, name) ? name : null;   // 'none' and any other word: silent
+  }
+  const role = String(el.getAttribute?.('role') ?? '').toLowerCase();
+  if (CUE_TICK_ROLES.has(role)) return 'tick';
+  const tag = String(el.tagName ?? '').toUpperCase();
+  const type = String(el.getAttribute?.('type') ?? el.type ?? '').toLowerCase();
+  if (tag === 'INPUT' && (type === 'checkbox' || type === 'radio')) return 'tick';
+  const tokens = cueTokens(el);
+  if (tokens.has('toggle') || tokens.has('switch') || tokens.has('checkbox')) return 'tick';
+  for (const t of tokens) if (CUE_BACK_TOKENS.has(t)) return 'back';
+  if (type === 'submit') return 'confirm';
+  for (const t of tokens) if (CUE_CONFIRM_TOKENS.has(t)) return 'confirm';
+  return 'click';
+}
+
 export class AudioManager {
   /**
    * @param {{ getManifest?: () => any, win?: any }} [opts]
@@ -624,8 +781,15 @@ export class AudioManager {
                                    // including the running skill's own `hits` — 赤刃明霄陈 S3's slash)
     this.consumed = new Set();     // summons used up by their own effect (香槟炸弹 exploded): no death sound
     this.installed = false;
+    // 按钮点击音 (installButtonCues): the resolver of the local `ui/sfx` group, the listener's own flag, and the time
+    // of the last cue an explicit call site played — see BUTTON_CUE_DEDUPE_MS
+    this.cueUrl = null;
+    this.cuesInstalled = false;
+    this._cueAt = 0;
     this._unlock = this._unlock.bind(this);
     this._onVis = this._onVis.bind(this);
+    this._onCueClick = this._onCueClick.bind(this);
+    this._onCuePress = this._onCuePress.bind(this);
   }
 
   /** Attach gesture unlock + visibility handling. Idempotent. */
@@ -643,6 +807,65 @@ export class AudioManager {
   }
 
   get unlocked() { return !!this.ctx; }
+
+  // ---- 按钮点击音 ---------------------------------------------------------------------------------------------
+
+  /**
+   * Attach the delegated 按钮点击音 listener (header). Idempotent; a client without a document (tests, Node) is fine.
+   * @param {(file: string) => string|null} [resolveUrl] a BUTTON_CUE_FILES value → URL (main.js: `localAsset('ui/sfx', …)`)
+   */
+  installButtonCues(resolveUrl) {
+    if (typeof resolveUrl === 'function') this.cueUrl = resolveUrl;
+    const doc = this.win?.document ?? (typeof document !== 'undefined' ? document : null);
+    if (this.cuesInstalled || !doc?.addEventListener) return;
+    this.cuesInstalled = true;
+    try {
+      // The press, first: it marks a new dispatch, so a cue an element's own handler played in THIS press is the one
+      // that counts (a keyboard / programmatic click has no pointerdown and is not suppressed — the window handles it).
+      doc.addEventListener('pointerdown', this._onCuePress, { capture: true, passive: true });
+      doc.addEventListener('keydown', this._onCuePress, { capture: true, passive: true });
+      // …then the click itself, in the bubble phase: every element handler of the press has run by now, so `_cueAt`
+      // tells us whether this press was already heard.
+      doc.addEventListener('click', this._onCueClick, false);
+    } catch { /* ignore */ }
+  }
+
+  /** A new gesture: forget the previous press's explicit cue (see installButtonCues). */
+  _onCuePress() { this._cueAt = 0; }
+
+  /**
+   * Say that the press now in flight is already spoken for. `act()` (ui/gameActions.js) announces a successful intent
+   * with its own cue once the request settles (`buy` / `sell` / `refresh` / `ready` …), and a press would otherwise be
+   * heard twice: the click at once and that cue a round trip later, a few ms apart on a local host — a flam, not a
+   * button. act() calls this on entry (synchronously, inside the press), so the delegated listener stays quiet; the
+   * next press clears the mark (`_onCuePress`), so a second click after a slow request still sounds.
+   */
+  markPress() { this._cueAt = cueNow(); }
+
+  /** One press, one sound: play the cue of the control the click landed on, unless this press was already heard. */
+  _onCueClick(e) {
+    try {
+      const name = buttonCueFor(e?.target);
+      if (!name) return;
+      const now = cueNow();
+      if (this._cueAt && now - this._cueAt < BUTTON_CUE_DEDUPE_MS) return;
+      this.buttonCue(name);
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Play one button cue by role (`buttonCueFor`'s answer). A role without a file — no local `ui/sfx` group on this
+   * machine — is silently nothing, like every other missing sound.
+   * @param {string} name BUTTON_CUE_FILES key
+   * @returns {boolean} whether a cue was started
+   */
+  buttonCue(name) {
+    if (!Object.hasOwn(BUTTON_CUE_FILES, name)) return false;
+    const url = this.cueUrl?.(BUTTON_CUE_FILES[name]);
+    if (typeof url !== 'string' || !url) return false;
+    this._play(url, { volume: BUTTON_CUE_VOLUME[name] ?? 0.5 });
+    return true;
+  }
 
   /**
    * First user gesture: create the context. The gesture listeners stay until the context actually runs — iOS Safari
@@ -1105,6 +1328,8 @@ export class AudioManager {
       const pick = () => this.getManifest()?.audio?.sfx?.ui?.[name];
       const url = pick();
       if (typeof url === 'string') {
+        // this press has been heard by its own handler: the delegated 按钮点击音 listener keeps quiet (header)
+        this._cueAt = cueNow();
         if (name === 'bondUp') this._playBondCue(url, o.volume ?? 0.9, o.scope, pick);
         else this._play(url, { volume: o.volume ?? 0.9, again: pick });
       }
@@ -1120,7 +1345,10 @@ export class AudioManager {
    */
   playUrl(url, o = {}) {
     try {
-      if (typeof url === 'string' && url) this._play(url, { volume: o.volume ?? 0.9 });
+      if (typeof url === 'string' && url) {
+        this._cueAt = cueNow();   // the same "already heard" mark as sfx() (header)
+        this._play(url, { volume: o.volume ?? 0.9 });
+      }
     } catch { /* ignore */ }
   }
 
@@ -1545,7 +1773,10 @@ export function installAudio(deps) {
     manifestGetter = typeof deps?.getManifest === 'function' ? deps.getManifest : manifestGetter;
     if (typeof deps?.voiceLangOf === 'function') audio.voiceLangOf = deps.voiceLangOf;
     audio.install();
-    // 逐干员的配音覆盖由宿主注入的 `voiceLangOf`（settings 的 voiceLangByChar）在播放时解析，见上面的说明，
+    // 按钮点击音 (owner request 2026-11-01 「添加按钮的点击音效」): one delegated listener for the whole client, the
+    // file of each role out of the local `ui/sfx` group (main.js passes `localAsset`). Without that resolver — or on a
+    // machine whose local client has no such group — every press simply stays silent, exactly as before.
+    audio.installButtonCues(deps?.buttonCueUrl);    // 逐干员的配音覆盖由宿主注入的 `voiceLangOf`（settings 的 voiceLangByChar）在播放时解析，见上面的说明，
     // 所以这里只传全局那一个 —— 上游 0.2.3 让 `setVoiceLang` 再收一份 overrides 映射是同一件事的第二种存储，
     // 两套并存会出现「设置里选了 A、实际播 B」。
     if (deps?.settings) { audio.setVolumes(deps.settings); audio.setVoiceLang(deps.settings.voiceLang); }

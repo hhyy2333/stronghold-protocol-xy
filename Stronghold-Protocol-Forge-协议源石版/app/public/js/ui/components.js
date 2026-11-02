@@ -525,7 +525,7 @@ export function DialogHost() {
     <${Modal} key=${d.id} open=${true} title=${title} micro=${micro} tone=${tone || (danger ? 'red' : 'mint')}
       onClose=${() => closeDialog(d.id, isConfirm ? false : true)}
       actions=${html`
-        ${isConfirm ? html`<${Button} variant="secondary" onClick=${() => closeDialog(d.id, false)}>${cancelText}<//>` : null}
+        ${isConfirm ? html`<${Button} variant="secondary" data-sfx="back" onClick=${() => closeDialog(d.id, false)}>${cancelText}<//>` : null}
         <${Button} variant=${danger ? 'danger' : 'primary'} icon="check" data-autofocus onClick=${() => closeDialog(d.id, true)}>${okText}<//>`}>
       ${typeof text === 'string' ? html`<p class="modal__text">${text}</p>` : text}
     <//>

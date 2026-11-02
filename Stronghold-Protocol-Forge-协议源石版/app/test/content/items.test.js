@@ -684,10 +684,10 @@ test('变形同构体: carrier counts as a member of the other item\'s giveBondI
   assert.deepEqual([...unitBonds(h.unit('t_op'))], ['lateranoShip']);
   const h2 = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [A('4_08')] }] });
   assert.deepEqual([...unitBonds(h2.unit('t_op'))], [], 'the bond item alone grants nothing');
-  // every giveBondId item grants its bond (14 bonds)
+  // every giveBondId item grants its bond (19 bond items, 15 bonds: the official 14 + 灵巧, 作者声明 2026-11-01)
   const grants = Object.values(DATA.items).filter((r) => r.giveBondId && !r.isGolden);
-  assert.equal(grants.length, 18);
-  assert.equal(new Set(grants.map((r) => r.giveBondId)).size, 14);
+  assert.equal(grants.length, 19);
+  assert.equal(new Set(grants.map((r) => r.giveBondId)).size, 15);
   for (const r of grants) {
     const hh = fight({ units: [{ chessId: 't_op', row: 10, col: 4, items: [r.id, A('6_09')] }] });
     assert.ok(unitBonds(hh.unit('t_op')).includes(r.giveBondId), r.id);

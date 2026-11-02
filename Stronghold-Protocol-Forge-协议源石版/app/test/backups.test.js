@@ -1,7 +1,7 @@
 // test/backups.test.js — the data of 补位 (stand-ins) and 自选 (DIY slots): chess.json `backup` and data/backups.json
 // (docs/DATA.md §18; tools/build-data.mjs buildBackups; shared/standIn.js, shared/diy.js). These tests pin the data the
 // gameplay reads: the 133 base chess and their types, the 17 stand-in characters and their forms, every NORMAL chess
-// resolving to its stand-in, the 4 DIY slots, the legal picks (the 72 owned 6★ with their forms and summons, the
+// resolving to its stand-in, the 4 DIY slots, the legal picks (the 75 owned 6★ with their forms and summons, the
 // prototypes and their locked selections) and the faction bonds.
 // With the official-data cache (.cache/gamedata) the backup fields, the stand-in numbers and the bond derivation are
 // re-derived from the raw tables.
@@ -16,6 +16,8 @@ import { standInRecord, composeUnitRecord, unitForm, statusKey, IDENTITY_FIELDS 
 import { diyRecordOf, lockedSelection } from '../shared/diy.js';
 import { composeStats, composeTalents, resolveLoadout, loadoutRecord, normalizeChess } from '../server/sim/simdata.js';
 import { FIXED_CHESS_IDS, FIXED_OP_IDS } from '../tools/custom-ops.mjs';
+// 三个 v79 自选干员（塔露拉 / 冻河 / 国度）的官方行不在 .cache 的表里：tools/extra-operators.mjs 在 build-data 时注入
+import { EXTRA } from '../tools/extra-operators.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DATA = process.env.DATA_DIR || join(ROOT, 'data');
@@ -249,9 +251,9 @@ test('DIY: prototype picks — the 9 elites at tiers 5 and 6, six 4★ reserves 
   assert.equal(diyRecordOf(chess.chess_char_5_01_a, { charId: 'char_608_acpion' }, data), null, 'not a DIY slot');
 });
 
-test('DIY: the 72 owned 6★ picks — a form at every slot status with all three skills, every module at stage 1 and 3, their summons', () => {
+test('DIY: the 75 owned 6★ picks — a form at every slot status with all three skills, every module at stage 1 and 3, their summons', () => {
   const { ownedPool } = backups.diy;
-  assert.equal(ownedPool.length, 72);
+  assert.equal(ownedPool.length, 75);
   let summoners = 0;
   for (const id of ownedPool) {
     const u = backups.units[id];
@@ -323,7 +325,7 @@ test('DIY: prototype picks carry the skill / module of their 补位 rows at the 
 test('DIY: the owned-6★ pool and the faction → bond rule (mainPower + every subPower vs powerIdList, else 协防干员)', () => {
   const { ownedPool, operators, prototypes } = backups.diy;
   const roster = new Set(base.map((c) => c.charId).filter(Boolean));
-  assert.equal(ownedPool.length, 72);
+  assert.equal(ownedPool.length, 75);
   for (const id of ownedPool) {
     assert.ok(!roster.has(id), `${id}: a roster operator is never a pick`);
     assert.deepEqual([operators[id].rarity, operators[id].obtainable], [6, true], id);
@@ -337,7 +339,7 @@ test('DIY: the owned-6★ pool and the faction → bond rule (mainPower + every 
   }
   const tally = {};
   for (const id of ownedPool) { const k = operators[id].bonds.join('+'); tally[k] = (tally[k] || 0) + 1; }
-  assert.deepEqual(tally, { emptyShip: 38, yanShip: 14, victoriaShip: 8, sargonShip: 4, siracusaShip: 4, lateranoShip: 1, kazimierzShip: 1, egirShip: 1, 'yanShip+victoriaShip': 1 });
+  assert.deepEqual(tally, { emptyShip: 41, yanShip: 14, victoriaShip: 8, sargonShip: 4, siracusaShip: 4, lateranoShip: 1, kazimierzShip: 1, egirShip: 1, 'yanShip+victoriaShip': 1 });
   // the collab operators are out of the data and the pool (the owner's decision of 2026-10-05: copyright)
   // 业主 2026-10-25：结城理 / 丰川祥子 已改成固定干员（tools/custom-ops.mjs，进商店池），不再是「被排除的自选」，
   // 所以这张名单只剩另外五名联动干员
@@ -349,15 +351,16 @@ test('DIY: the owned-6★ pool and the faction → bond rule (mainPower + every 
 });
 
 test('DIY: powers and the owned pool re-derived from character_table', { skip: !HAS_CACHE && 'no .cache/gamedata' }, () => {
-  const CT = raw('character_table');
+  // the three v79 自选 operators' rows are injected by tools/extra-operators.mjs (they are not in the cached dump)
+  const CT = { ...raw('character_table'), ...EXTRA.operators };
   const act = raw('activity_table').activity.AUTOCHESS_SEASON.act2autochess;
   // 固定干员的商店行不在官方表里（tools/custom-ops.mjs 在构建时补进去），这里按同一份声明把它们也算进池内
   const roster = new Set([...Object.values(act.charShopChessDatas).map((r) => r.charId).filter(Boolean), ...FIXED_OP_IDS]);
   const collab = (c) => [c.mainPower, ...(c.subPower || [])].some((p) => ['rainbow', 'action4', 'mujica', 'sees', 'laios'].includes(p?.teamId))
     || /^(?:MH|RS|AM|PS|DD)\d/.test(c.displayNumber || '');
   const legal = Object.entries(CT).filter(([id, c]) => id.startsWith('char_') && c.rarity === 'TIER_6' && !['TOKEN', 'TRAP'].includes(c.profession) && !c.isNotObtainable && !roster.has(id));
-  // 结城理 / 丰川祥子 现在是固定干员（在 chess 池里），所以「池外的可获 6★」从 79 变成 77
-  assert.equal(legal.length, 77, 'the excel\'s obtainable 6★ outside the chess pool');
+  // 结城理 / 丰川祥子 现在是固定干员（在 chess 池里），所以「池外的可获 6★」从 79 变成 77；加上三个 v79 自选干员 = 80
+  assert.equal(legal.length, 80, 'the excel\'s obtainable 6★ outside the chess pool');
   assert.deepEqual([...backups.diy.ownedPool].sort(), legal.filter(([, c]) => !collab(c)).map(([id]) => id).sort());
   assert.deepEqual([...backups.diy.excluded].sort(), legal.filter(([, c]) => collab(c)).map(([id]) => id).sort());
   for (const [id, o] of Object.entries(backups.diy.operators)) {

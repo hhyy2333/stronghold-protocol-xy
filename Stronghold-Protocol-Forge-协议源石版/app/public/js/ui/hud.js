@@ -66,7 +66,7 @@ export function SpectatorPill({ spectators, myId, isHost, onRemove }) {
       <span class="specpill__num num">${list.length}</span>
     <//>
     ${open ? html`<${Modal} open=${true} title=${t('观战席')} micro="SPECTATORS" width="6.4rem" onClose=${() => setOpen(false)}
-        actions=${html`<${Button} variant="secondary" onClick=${() => setOpen(false)}>${t('关闭')}<//>`}>
+        actions=${html`<${Button} variant="secondary" data-sfx="back" onClick=${() => setOpen(false)}>${t('关闭')}<//>`}>
       <ul class="spec__roster" data-testid="spectator-roster">
         ${list.map((s) => html`<li key=${s.playerId} class=${cx('spec__row', s.playerId === myId && 'is-me', s.connected === false && 'is-offline')}>
           <${Icon} name=${s.connected === false ? 'wifiOff' : 'eye'} class="spec__ico" />

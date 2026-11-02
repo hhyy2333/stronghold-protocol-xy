@@ -116,7 +116,7 @@ export function EquipReplaceDialog({ request, getItem = () => null, busy = false
   return html`<div class="eqr-host" style=${style} onKeyDown=${(e) => { if (e.key === 'Enter' && e.target?.tagName !== 'BUTTON' && chosen && !busy) { e.preventDefault(); onConfirm(chosen.uid); } }}>
     <${Modal} open=${true} tone="red" class="eqr" width="min(7.6rem, 96vw)" micro="EQUIPMENT · REPLACE" title=${t('替换装备')} onClose=${onCancel}
       actions=${html`
-        <${Button} variant="secondary" icon="close" class="eqr__cancel" onClick=${onCancel}>${t('取消')}<//>
+        <${Button} variant="secondary" data-sfx="back" icon="close" class="eqr__cancel" onClick=${onCancel}>${t('取消')}<//>
         <${Button} variant="danger" class="eqr__ok" disabled=${!chosen} loading=${busy} data-autofocus onClick=${() => chosen && onConfirm(chosen.uid)}>
           ${confirmIcon ? html`<img class="eqr__ok-icon" src=${confirmIcon} alt="" draggable=${false} />` : null}${t('确认替换')}<//>`}>
       <p class="eqr__lead">${tParts('「{name}」的装备栏已满（2/2）。选择一件装备进行替换，{warn}。', { name: html`<b>${request.targetName}</b>`, warn: html`<b class="t-red">${t('被替换的装备将被销毁')}</b>` })}</p>

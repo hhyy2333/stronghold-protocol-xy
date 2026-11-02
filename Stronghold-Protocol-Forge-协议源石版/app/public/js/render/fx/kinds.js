@@ -16,6 +16,12 @@ export const FX_KINDS = Object.freeze({
   // whole field — a long, low, burning comet, not the mortar drop the bare 'shell' archetype draws. `pt`: its `id` is
   // the leader, the fireball is at (x, y) on the field edge, never on it.
   bsnakeFire: { a: 'fireball', c: 0xff7a33, r: 0.6, pt: true },
+  // 塔露拉 S3 的簇火（kits/ops/op-oxi.js 每颗一次，带 tx / ty / dr / dc / dur）：关掉官方特效时的替身 —— 一颗沿地面从
+  // (x, y) 飞向 (tx, ty)、用 dur 秒的火球（'fireball' 原型的默认行为）；开着时 FX_BINDINGS.skchr_oxi_3.oxiTrail 用客户端
+  // 的 oxi_skill_03_trail_01（按朝向旋转 + 每帧推进，见 render/vfx/skillfx.js）。
+  oxiTrail: { a: 'fireball', c: 0xff7a33, r: 0.6, pt: true },
+  // 簇火命中：只用来叫停那一道簇火已经播出的官方火焰（FX_BINDINGS.oxiTrailStop），本身不画任何东西
+  oxiTrailStop: { a: 'none' },
   airstrike: { a: 'blast', c: 0xff8a3d, r: 1.5, heavy: true }, splash: { a: 'blast', c: 0xffc27a },
   scorchBurst: { a: 'blast', c: 0xff6a2a }, champagneBomb: { a: 'blast', c: 0xffd27a }, shockBlast: { a: 'blast', c: 0x9fd4ff, smoke: 0x1c2630 },
   frostNova: { a: 'blast', c: 0x9fe6ff, smoke: 0x1c2630 }, sunBurst: { a: 'blast', c: 0xffe28a }, meltdown: { a: 'blast', c: 0xff5a2a, r: 1.5, heavy: true },
@@ -31,6 +37,9 @@ export const FX_KINDS = Object.freeze({
   // 一片**判定格**的地面高亮（不是圆）：kit 用 `battle.fx('field', { x, y, tiles, dur })` 把技能范围铺在地上，
   // 逐格点亮 + 慢脉动，持续 dur 秒（`tiles` 为空时退回 r 的圆/方范围）。深水区的盟约/技能范围用它。
   field: { a: 'field', c: 0x9fe6ff, dur: 2 },
+  // 塔露拉 S3 的过载提示：同一条弹带，换成火焰橙、亮 2.5 秒（本模式战斗区只有 4 行，弹带「加宽到 13 行」会被裁成与普通波
+  // 一样的 4 行，不加这个提示玩家根本看不出过载）
+  oxiOverload: { a: 'field', c: 0xff7a33, dur: 2.5 },
   // 一段**声音**：`battle.fx('music', { url, dur })` 开始播、`battle.fx('musicStop', {})` 停（fx/ 里唯一不画东西的
   // 类型；由 FxSystem 的每帧 update 管生命周期，所以技能停了声音一定停）
   music: { a: 'music', c: 0x9fe6ff }, musicStop: { a: 'musicStop', c: 0x9fe6ff }, healField: { a: 'zone', c: 0x62f08a, dur: 4 }, firewall: { a: 'wall', c: 0xff6a2a, dur: 4 },

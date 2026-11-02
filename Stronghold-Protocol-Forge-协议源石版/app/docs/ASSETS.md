@@ -316,7 +316,7 @@ The `stem` of a Spine model is the upstream file name. Two examples: `char_107_l
 
 ### Id scope
 
-- **Operators:** all 138 pool charIds from `activity_table` (`charShopChessDatas[*].charId ∪ backupCharId`), including hidden chess and backup operators; plus every unit of `data/backups.json` research 07 does not list — the 72 自选 owned-6★ picks (`diy.ownedPool`, DATA.md §18; the collab operators are not in the data, and 焰狐龙梓兰's entries left the manifest when she left the pool in 0.2.0) — planned from 07's URL patterns (`tools/assets/plan.mjs patternOperator`, `tools/fetch-assets.mjs dataExtras`): avatar and portrait (E0–E1 and E2), the default-skin battle Spine Front / Back, the icon and skill sound of each skill, the sub-profession icon. 209 operators in all (206 with a Back model).
+- **Operators:** all 138 pool charIds from `activity_table` (`charShopChessDatas[*].charId ∪ backupCharId`), including hidden chess and backup operators; plus every unit of `data/backups.json` research 07 does not list — the 75 自选 owned-6★ picks (`diy.ownedPool`, DATA.md §18; the collab operators are not in the data, and 焰狐龙梓兰's entries left the manifest when she left the pool in 0.2.0) — planned from 07's URL patterns (`tools/assets/plan.mjs patternOperator`, `tools/fetch-assets.mjs dataExtras`): avatar and portrait (E0–E1 and E2), the default-skin battle Spine Front / Back, the icon and skill sound of each skill, the sub-profession icon. 212 operators in all (209 with a Back model).
 - **Tokens:** the 20 pool tokens, and the 38 summons of the 自选 picks (`data/backups.json tokens`) as extra tokens (below): their avatars; no dump carries the battle Spine of the 自选 summons (upstream has at most skin variants, which the default locations miss), so the web manifest has no model for them — 35 of them, and 4 pool summons, have the official model as an optional local-client overlay ("Token models from the local client"); 3 have no model in the game at all.
 - **Enemies:** 253 ids planned, 252 in the manifest (心烛 has no assets). The set is the union of:
   - the 07 enemy list;
@@ -328,7 +328,7 @@ The `stem` of a Spine model is the upstream file name. Two examples: `char_107_l
   - enemy units spawned by operator kits (research 03 skills/talents). For example, 隐德来希's default S3 summons 心烛 `enemy_5601_entlec` through the talent key `take_extra_enemy_key`. 心烛 has no icon and no Spine in any dump, so it has no manifest entry: it is reported as a miss, and the client must draw a glyph.
 - **Extra tokens:** any `token_*` key of `data/tokens.json` that research does not list gets the default avatar and Spine locations.
   - The non-token summons in that file (`enemy_9012_acloon` 炎佑, `char_605_cmedic`, `char_613_acmedc`) are found under `enemies` and `chars`.
-- **Skill icons:** every skill index of every planned operator (the default one first; DESIGN §16 loadouts, the 自选 picks' three skills): 522 icons.
+- **Skill icons:** every skill index of every planned operator (the default one first; DESIGN §16 loadouts, the 自选 picks' three skills): 531 icons.
 - **UI:**
   - every group from `07-assets.json → autochessUi`: rarity, elite and chess-level sprites, the shop panel and cards, HUD, bond board, equip slot, round dialog, band choose, settlement, prepare backdrop;
   - `arts` (rarity stars, elite icons, the camp logos of pool nations, the loading illustrations used by the act2 modes, battle common sprites, act2 entry backdrops and season logo, item rarity frames);
@@ -740,6 +740,36 @@ node tools/asset-pack-doctor.mjs check-groups --json       # 给发版脚本用
 **故意**把 `fx` group 从 `data/local-assets.json` 里丢掉的（见 `extract.py` 头部说明和 `fx.py` 的
 `FX_GROUPS` / `ran_groups` 注释：一次 fx 跑会把残留的 `fx` / `fx/*` group 一起换掉）。所以
 体检必须排除 `fx` 与 `fx/*`，否则每次都是假警报；反过来也**不要**把 `fx` 补进 `data/local-assets.json`。
+
+### 手工登记的 `ui/sfx`：全站按钮点击音效
+
+这一组**不是** `extract.py` 抽出来的，是业主给的 4 个原版（Arkdays）UI 点击音效，所以由人手工登记进本机清单：
+`extract.py` 不认识它，`--only <job>` 跑别的 job 也不会动它（那只替换它自己那几个 group），但**从另一台机器拷一份
+`data/local-assets.json` 过来**、或照 0.19.36 的办法恢复旧备份，就可能把这 4 条一起丢掉 —— 和别的 group 一样会漂。
+`public/js/audio.js` 的 `buttonCueFor` 按控件的角色分成四档（`BUTTON_CUE_FILES`），
+`installAudio({ buttonCueUrl })` 用 `localAsset('ui/sfx', 'click-n')` 取 URL，所以**条目名不带扩展名**，
+扩展名只在 `path` 里（与 `hextech/audio` 的 `reroll` 同形）：
+
+| 条目 | 文件（`public/assets/local/ui/sfx/`） | 用途 |
+| --- | --- | --- |
+| `click-n` | `click-n.mp3` | 普通按钮点击 |
+| `click-back` | `click-back.mp3` | 返回 / 取消 / 关闭 |
+| `click-confirm` | `click-confirm.mp3` | 确认 / 主操作 / 危险操作 |
+| `click-tick` | `click-tick.mp3` | 复选框 / 单选 / 开关 |
+
+四份都是 MPEG-1 Layer III、44.1 kHz 立体声 VBR，4.0–15.3 KB、0.26–0.97 秒（`click-tick` 最短，`click-back` 最长）。
+来源是 Arkdays Godot 工程 fx 音效表里的 `ui.ON_DEFAULT_BTN_CLICK`、`ui.ON_CANCEL_BTN_CLICK`、`ui.ON_CONFIRM_BTN_CLICK`、
+`ui.ON_CHECKBOX_CLICK` 四条。
+
+**为什么走本机清单，而不是 `data/assets.json`**：官方清单是 `tools/fetch-assets.mjs` 从 CDN 取、发给所有人的那一份，
+每条都指向一个上游能下载到的地址；这 4 个文件只在这台机器上（业主给的素材，`public/assets/` 整棵 git-ignored）。写进
+官方清单等于让下载器去取一个上游不存在的地址 —— 那不是「有素材」，那只是清单里多 4 条取不到的东西，客户端照样
+404。同理它们也不进 `tools/assets/plan.mjs`。
+
+**漏登记的表现**：还是静默那一种 —— `localAsset()` 返回 null，`installAudio` 拿不到 URL 就不播，按钮照常可点，只是
+**全站没有点击音效**；没有报错、没有日志，除了 `check-groups` 没有测试会红。补登记照下一节做（4 条，`count` +4），
+补完 `check-groups` 必须 0 缺口：`ui/sfx` 目录里直接有文件，它就是一个普通 group，漏了会进 `unlisted`（exit 1），
+不会被当成「清单有、磁盘没有」那种警告。
 
 ### 救援步骤：漏 group 时重新登记，不是重新解包
 

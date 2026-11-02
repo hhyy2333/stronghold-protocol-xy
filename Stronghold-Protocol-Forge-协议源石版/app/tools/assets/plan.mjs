@@ -473,7 +473,10 @@ export function buildPlan({ assets07, ops03, enemies05, maps05, audio, modelsDat
     }
     const primarySkill = skillSfx[String(idx[0])];
     if (primarySkill) u.skill = primarySkill;
-    if (Object.keys(skillSfx).length > 1) u.skills = skillSfx;
+    // one recorded activation sound is enough for the per-skill map: 塔露拉 and 冻河 only have it on their S3
+    // (`battle.ON_SKILL_START.skchr_oxi_3` / `.skchr_tocka_3`), and with the old `> 1` rule that one was dropped —
+    // the client then had no skill sound at all for them (owner's request of 2026-11-01)
+    if (Object.keys(skillSfx).length) u.skills = skillSfx;
     if (Object.keys(attacks).length) u.attacks = attacks;
     if (Object.keys(hits).length) u.hits = hits;
     if (Object.keys(attackMix).length) u.attackMix = attackMix;

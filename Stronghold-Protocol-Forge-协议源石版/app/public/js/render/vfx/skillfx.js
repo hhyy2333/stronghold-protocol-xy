@@ -997,6 +997,20 @@ export class SkillFx {
    * says; a binding's own `keys` at 'target' once on the unit the fx names.
    */
   _bound(U, bind, x, y, extra) {
+    // a kit's stop signal (塔露拉 S3: a 簇火 detonated — FX_BINDINGS.skchr_oxi_3.oxiTrailStop): the trail instances that
+    // fx key still runs are stopped, so the fire ends where it hit
+    if (bind.stopTrails) {
+      const key = extra.trailKey;
+      let stopped = false;
+      for (const m of this.marks) {
+        if (m.owner !== U.id || m.stopped) continue;
+        if (key != null && m.trailKey != null && m.trailKey !== key) continue;
+        m.h.stop();
+        m.stopped = true;
+        stopped = true;
+      }
+      return stopped;
+    }
     const keys = bindingEffects(this.w.idx, bind).filter((k) => this.w.ofx.lib.has(k));
     if (!keys.length) return false;
     if (bind.at === 'target') {
@@ -1012,13 +1026,34 @@ export class SkillFx {
     const fxS = Number(extra.duration ?? extra.dur ?? extra.hold);
     const holdS = bind.hold === 'fx' ? (fxS > 0 ? fxS : bind.holdS || SKILL_CAST_S)
       : Number(bb[bind.hold]) > 0 ? Number(bb[bind.hold]) : bind.holdS || SKILL_CAST_S;
+    // `offsetDir` / `turn` / `drop`: the prefab draws its content `offsetDir` tiles BEHIND its anchor and `drop` units up
+    // (塔露拉 S3's 簇火 tail: root node [-6.5, 2, 0] — the tail the official 簇火 drags). With `turn` the effect is played
+    // turned to the fx's travel direction (`extra.dr` / `extra.dc`), so that baked offset swings behind the 簇火 and the
+    // fire marches along the row / column it is crossing; `drop` lowers it back onto the ground.
+    // The placement knobs of a directional effect (owner's tuning of 2026-11-01, the 塔露拉 S3 簇火 tail): `offsetDir`
+    // tiles along the travel direction, `offsetX` / `offsetY` tiles in world axes, `drop` units down, and a yaw of
+    // `yawSign · atan2(dr, dc) + yawExtra` (so the effect is turned to its flight; the client turns such a prefab with the
+    // projectile that parents it). `offsetDir` stays 0 for a prefab whose baked offset is world-space.
+    const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    const od = num(Number(bind.offsetDir), 0);
+    const drop = num(Number(bind.drop), 0);
+    const ox = num(Number(bind.offsetX), 0);
+    const oy = num(Number(bind.offsetY), 0);
+    const yawSign = bind.yawSign === undefined ? 1 : num(Number(bind.yawSign), 1);
+    const yawExtra = bind.yawExtra === undefined ? 0 : num(Number(bind.yawExtra), 0);
+    const dr = Number(extra.dr) || 0, dc = Number(extra.dc) || 0;
+    const dir = (dr || dc) ? true : false;
+    const at2 = (od && dir) || drop || ox || oy
+      ? { ...at, x: at.x + dc * od + ox, y: at.y + dr * od + oy, z: (at.z || 0) - drop }
+      : at;
+    const yawOpt = bind.turn && dir ? { yaw: yawSign * Math.atan2(dr, dc) + (yawExtra * Math.PI) / 180 } : null;
     let drew = false;
     for (const k of keys) {
-      const h = this.w.playOn(k, at, { loop: true, important: true });
+      const h = this.w.playOn(k, at2, { loop: true, important: true, ...(yawOpt || null) });
       if (!h) continue;
       drew = true;
       later(this.w.ofx, holdS, () => h.stop());
-      this.marks.push({ owner: U.id, r: Math.round(y), c: Math.round(x), until: this.w.ofx.time + holdS, h, cover: bind.cover || [] });
+      this.marks.push({ owner: U.id, r: Math.round(y), c: Math.round(x), until: this.w.ofx.time + holdS, h, cover: bind.cover || [], trailKey: extra.trailKey ?? null });
     }
     return drew;
   }

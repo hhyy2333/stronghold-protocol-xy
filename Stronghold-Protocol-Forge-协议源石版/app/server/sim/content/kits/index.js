@@ -160,6 +160,10 @@ export const OPERATOR_KIT_FILES = Object.freeze([
   'op-kalts2.js',
   'op-monstr.js',
   'op-clemnt.js',
+  // 业主 2026-11-01：三个 v79 自选干员（塔露拉 / 冻河 / 国度）—— 官方行由 tools/extra-operators.mjs 注入。
+  'op-oxi.js',
+  'op-tocka.js',
+  'op-dminon.js',
 ]);
 
 /**

@@ -1304,6 +1304,30 @@ export const FX_BINDINGS = Object.freeze({
   skchr_blkkgt_3: Object.freeze({
     slash: binding({ owner: 'id', attack: 'Damage' }),
   }),
+  // 塔露拉 S3 日冕重烈 (op-oxi.js):
+  //   `oxiTrail` — one instance per ~0.4 s of each 簇火's flight, at the 簇火's position: the client's
+  //     oxi_skill_03_trail_01. That prefab draws its fire 6.5 tiles BEHIND its anchor and 2 units up (root node
+  //     [-6.5, 2, 0] — the tail the official 簇火 drags, which the client turns with the projectile that parents it), so
+  //     this binding plays each instance TURNED to the travel direction (`turn`) and cancels the authored offset with
+  //     `offsetDir: 6.5` + `drop: 2`: the fire sits on the 簇火 and lies along the direction it crosses. `hold: 'fx'`
+  //     holds each instance for the kit's `dur`.
+  //   `blast` — each detonation is the client's oxi_skill_03_hit_01.
+  // Neither is rowed by the fx index (`units.char_4247_oxi.skills.skchr_oxi_3` lists only start / loop): oxi.ab's
+  // container has 17 prefabs, the crawl exported 15, so hit / trail were extracted by hand
+  // (`extract.py --only fx --fx-keys oxi_skill_03_hit_01,oxi_skill_03_trail_01`).
+  skchr_oxi_3: Object.freeze({
+    oxiTrail: binding({
+      owner: 'id', keys: ['oxi_skill_03_trail_01'], at: 'point', hold: 'fx', holdS: 1.2, during: true,
+      // the prefab's baked offset (root node [-6.5, 2, 0]) is WORLD-space — it does not follow the travel direction — so
+      // it is cancelled by a constant: 6.5 right for the tail + the owner's 5 tiles right (2026-11-01) and 1 row the other
+      // way (the row axis runs opposite on screen), with the 2 units of height pressed back to the ground.
+      offsetX: 7, offsetY: -1, drop: 2, turn: true, yawSign: 1, yawExtra: 0,
+    }),
+    blast: binding({ owner: 'id', keys: ['oxi_skill_03_hit_01'], at: 'point', holdS: 3, during: true }),
+    //   `oxiTrailStop` — that 簇火 detonated: stop the trail instances still playing for it (their `trailKey`), so the fire
+    //     vanishes where it hit instead of fading on for its 1.2 s hold.
+    oxiTrailStop: binding({ owner: 'id', stopTrails: true, during: true }),
+  }),
 });
 
 /**

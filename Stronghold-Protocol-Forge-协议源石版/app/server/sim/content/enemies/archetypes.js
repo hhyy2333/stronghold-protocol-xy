@@ -363,11 +363,21 @@ function rebirthCleanse(b, e) {
  * `invincibleUntargetable` opts a verified enemy into hostile selection immunity for that same window (Xi, #510).
  * `a.state`: undefined → 'reborn' → 'form2'. The 'telegraph' fx of the knock-out carries `form: 'reborn'` and the 'revive'
  * fx `form: 'form2'`: models with those clip sets (render/units.js FORMS — 锏, 扎罗, “复仇者”, 杰斯顿) play them.
+ * The state is ALSO mirrored on the enemy's ability record (`e.mem.ab.state`): a kit that has to ask "which form is it
+ * in" asks the enemy, not this ability object (forkwave.js — 狂躁异质裂兽's 第一形态-only `HpRatioCtrl.min_hp_ratio`
+ * floor and its 第二形态 落石, 爱国者's 献祭 during the 重生 window). Before the mirror existed those guards read
+ * `undefined` on every tick, so the floor never lifted and both form-2 behaviours never ran (业主 2026-11-01
+ * 「狂躁异质裂兽出现锁血bug」).
  */
 function reborn({ dur = 0, hpRatio = 1, invincible = 0, invincibleUntargetable = false, onKo = null, during = null, onReborn = null, key = 'ab:reborn' } = {}) {
+  /** Set the form state on the ability AND on the enemy's ability record (see the header). */
+  const setState = (e, a, s) => {
+    a.state = s;
+    if (e.mem && e.mem.ab) e.mem.ab.state = s;
+  };
   const finish = (b, e, a) => {
     if (!e.alive || a.state !== 'reborn') return;
-    a.state = 'form2';
+    setState(e, a, 'form2');
     b.removeBuff(e, key);
     e.profile.noAttack = a.noAtk;
     if (onReborn) safe(b, e, () => onReborn(b, e, a));
@@ -382,7 +392,7 @@ function reborn({ dur = 0, hpRatio = 1, invincible = 0, invincibleUntargetable =
   return {
     killed(c, b, e, a) {
       if (a.state) return false;
-      a.state = 'reborn';
+      setState(e, a, 'reborn');
       a.t0 = b.time;
       a.noAtk = e.profile.noAttack;
       e.unbalanceUntil = -Infinity;   // a 重生 is a forced state change: it ends a 失衡 (PRTS 失衡位移机制 「例如复活」)

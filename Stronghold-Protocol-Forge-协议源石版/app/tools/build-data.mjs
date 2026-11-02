@@ -40,6 +40,7 @@ import { validateReferences } from '../shared/plugins/validate.js';
 import { computeGroundPaths } from '../server/sim/groundPaths.js';
 import { applyCustomOps, FIXED_CHESS_IDS } from './custom-ops.mjs';
 import { applyCustomModules } from './custom-modules.mjs';
+import { applyExtraOperators } from './extra-operators.mjs';
 import { bandBondIds } from '../shared/bandBonds.js';
 import { statusKey, composeUnitRecord } from '../shared/standIn.js';
 import { extendedGrid } from '../shared/loadoutRecord.js';
@@ -550,6 +551,13 @@ const STANDIN_TRIGGER_DEVIATIONS = Object.freeze({
  */
 const UNIT_TRIGGER_CORRECTIONS = Object.freeze({
   char_300_phenxi: { skchr_phenxi_1: 'DEFAULT' },
+  // 三个 v79 自选干员（tools/extra-operators.mjs）：它们的「技能策略」行在本地 activity_table 的 skillTriggerDataList 里
+  // 没有（那张表停在 char_4237_jcinta），resolveTrigger 便退回 DEFAULT。按技能原文与既有口径补齐：
+  //   塔露拉 S2 阘断院雪「受到攻击后触发，可充能5次」⇒ TAKE_DAMAGE；
+  //   冻河 S1 / S2 是对**友方**施加触发型效果的 AUTO 技能 ⇒ 满技力即放（SP_FULL，与引星繣刺 S1 同一口径，DESIGN §21.11）。
+  // 其余七个技能（AUTO 瞬时 / MANUAL）的 DEFAULT 与原文及业主口径一致，无需覆盖。
+  char_4247_oxi: { skchr_oxi_2: 'TAKE_DAMAGE' },
+  char_4244_tocka: { skchr_tocka_1: 'SP_FULL', skchr_tocka_2: 'SP_FULL' },
 });
 
 /**
@@ -2189,6 +2197,25 @@ const ITEM_RULES = Object.freeze({
 });
 
 /**
+ * Items the official tables give NO `giveBondId` although they should be bond items — keyed by NORMAL item id (`baseId`;
+ * `_a` and `_b` both take the value, the generator reads `giveBondId` per record). The mirror image of ITEM_RULES: there
+ * the official text is silent about a rule, here the official data is silent about a bond and the owner says what the
+ * 变形同构体 pairing must be.
+ *   有限加速器 (chess_item_4_03_e_a / _b, trap_1052_acarm052) — 业主 2026-11-01:「让装备有限加速器能被同构体识别成
+ *     灵巧装备，让人增加灵巧盟约」. Officially the item grants nothing (`giveBondId: null`), so worn together with
+ *     【变形同构体】 (`canGiveBond`) it paired with nothing and its carrier never counted as a 灵巧 member. It now grants
+ *     灵巧 (`skillfulShip`), the 15th pairing a 变形同构体 can make beside the 14 the item's own talent lists (灵巧 is
+ *     deliberately not one of the official 14 — research 02 §bonds: 灵巧/远见/奇迹/投资人/助力/调和/协防干员/独行/绝技
+ *     have no bond item).
+ * Precedence: the author's value WINS over the official one — this table is an override, not a gap-filler; a differing
+ * official value is reported as a build warning so the divergence stays visible, and validateAll pins the result on both
+ * qualities.
+ */
+const ITEM_BOND_GRANTS = Object.freeze({
+  chess_item_4_03_e_a: 'skillfulShip',
+});
+
+/**
  * Build data/items.json: every item chess (EQUIP normal + golden, MAGIC Arts), keyed by chessId.
  */
 function buildItems(ctx, effects) {
@@ -2214,6 +2241,10 @@ function buildItems(ctx, effects) {
     const upgradeNum = t.upgradeNum;
     const excluded = Object.hasOwn(SHOP_EXCLUDED_ITEMS, baseId) ? SHOP_EXCLUDED_ITEMS[baseId] : null;
     const rule = Object.hasOwn(ITEM_RULES, baseId) ? ITEM_RULES[baseId] : null;
+    const declaredBond = Object.hasOwn(ITEM_BOND_GRANTS, baseId) ? ITEM_BOND_GRANTS[baseId] : null;
+    if (declaredBond && t.giveBondId && t.giveBondId !== declaredBond) {
+      warn(`item ${chessId}: official giveBondId ${t.giveBondId} overridden by ITEM_BOND_GRANTS → ${declaredBond}`);
+    }
     out[chessId] = {
       id: chessId, baseId, goldenId: shop?.goldenItemId || null, isGolden,
       trapId: t.charId, iconId: t.charId, identifier: t.identifier,
@@ -2224,7 +2255,7 @@ function buildItems(ctx, effects) {
       mergeable: !isGolden && upgradeNum > 0 && upgradeNum < 100,
       upgradeNum, upgradeChessId: t.upgradeChessId || null,
       duration: t.trapDuration,
-      giveBondId: t.giveBondId || null, givePowerId: t.givePowerId || null, canGiveBond: !!t.canGiveBond,
+      giveBondId: declaredBond || t.giveBondId || null, givePowerId: t.givePowerId || null, canGiveBond: !!t.canGiveBond,
       requiresBondId: ri?.requiresBond || null,
       effectId: t.effectId, effectName: eff?.name || null,
       desc: eff?.desc || null, descRaw: eff?.descRaw || null,
@@ -4968,6 +4999,15 @@ function validateAll(f) {
     }
   }
   for (const id of Object.keys(SHOP_EXCLUDED_ITEMS)) if (!items[id] || items[id].itemType !== 'EQUIP' || items[id].isGolden) err(`SHOP_EXCLUDED_ITEMS: ${id} is not a normal EQUIP item`);
+  // the author-declared bond items (ITEM_BOND_GRANTS) really grant that bond, on the normal AND the 进阶 record
+  for (const [id, bond] of Object.entries(ITEM_BOND_GRANTS)) {
+    const it = items[id];
+    if (!it || it.itemType !== 'EQUIP' || it.isGolden) err(`ITEM_BOND_GRANTS: ${id} is not a normal EQUIP item`);
+    else if (!bonds[bond]) err(`ITEM_BOND_GRANTS: ${id}: no bond ${bond}`);
+    else for (const rec of [it, ...(it.goldenId ? [items[it.goldenId]] : [])]) {
+      if (rec?.giveBondId !== bond) err(`ITEM_BOND_GRANTS: ${rec?.id ?? id} giveBondId ${rec?.giveBondId ?? 'null'}, expected ${bond}`);
+    }
+  }
   for (const [id, fl] of Object.entries(TOKEN_ABNORMAL)) {
     if (!tokens[id]) err(`TOKEN_ABNORMAL: ${id} is not a token`);
     for (const f of fl) if (f !== 'healFree' && f !== 'isolated') err(`TOKEN_ABNORMAL: ${id}: unknown effect ${f}`);
@@ -4995,6 +5035,10 @@ async function main() {
   // uniequip_table 的 equipDict / charEquip 与 battle_equip_table，生成逻辑一行不改。
   const customModules = applyCustomModules(ctx);
   if (customModules.length) log(`custom modules: ${customModules.length} row(s) merged (${customModules.join(', ')})`);
+  // 数据表里还没有的官方干员（tools/extra-operators.mjs）：三个自选干员（塔露拉 / 冻河 / 国度）的官方行逐字节
+  // 注入 character_table / skill_table / range_table，生成逻辑一行不改；dump 升级后已含他们时自动跳过。
+  const extraOps = applyExtraOperators(ctx);
+  if (extraOps.length) log(`extra operators: ${extraOps.length} row(s) merged (${extraOps.join(', ')})`);
   log('building…');
   // one pass of the operator builders per potential rank (潜能 1–6, ctx.potRank): the full-potential pass is the data,
   // annotated below with what every lower rank changes (attachPotential)
