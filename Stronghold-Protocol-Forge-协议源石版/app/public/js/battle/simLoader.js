@@ -38,15 +38,7 @@ export async function loadBrowserSim({ base = '/sim/', dataBase = '/data/', fetc
   const [spec, simdata, support] = await Promise.all([
     import(`${base}spec.js`), import(`${base}simdata.js`), import(`${base}content/support/index.js`),
   ]);
-  const fetchOnce = async (n) => {
-    try {
-      const res = await fetchFn(`${dataBase}${n}.json`, { cache: 'no-cache' });
-      return res && res.ok ? await res.json() : null;
-    } catch { return null; }
-  };
-  // (a content set's data: structured copies, frozen below like downloaded files)
-  const files = data ? SIM_DATA_FILES.map((n) => (data[n] && typeof data[n] === 'object' ? structuredClone(data[n]) : null))
-    : await Promise.all(SIM_DATA_FILES.map(async (n) => (await fetchOnce(n)) ?? fetchOnce(n)));
+  const { files, dataBase: usedDataBase } = await loadSimData({ dataBase, fetchFn, data });
   // a battle simulated without part of the data would still produce a plausible result the server accepts: never run
   // one — the loader fails (the next b.start retries it; meanwhile the server's deadline takes the field over)
   const missing = SIM_DATA_FILES.filter((n, i) => !files[i] || typeof files[i] !== 'object');
@@ -62,7 +54,44 @@ export async function loadBrowserSim({ base = '/sim/', dataBase = '/data/', fetc
     await loadScripts(scripts,{hashInput,sdkUrl,extensionsUrl:base+'content/extensions.js',cs,nativeVerified});
   } else if (loadedScripts) (await import(base+'content/extensions.js')).resetExtensions();
   loadedScripts = !deferScripts && scripts.length > 0;
-  return { spec, ds: new simdata.DataSource(raw, null), cs, raw };
+  return { spec, ds: new simdata.DataSource(raw, null), cs, raw, dataBase: usedDataBase };
+}
+
+/** 一次 fetch：`<base><name>.json`，失败（非 2xx / 抛错）返回 null。 */
+async function fetchOne(fetchFn, base, name) {
+  try {
+    const res = await fetchFn(`${base}${name}.json`, { cache: 'no-cache' });
+    return res && res.ok ? await res.json() : null;
+  } catch { return null; }
+}
+
+/**
+ * 这一场要用的数据文件：`data`（房间内容集的结构化副本）优先，否则从 `dataBase` 取。
+ *
+ * **房间面取不到就回落到全局 `/data/`**（0.19.43，业主 2026-11-02「还是有人不出怪」）：
+ * `/room-data/<digest>/` 是**进程内存**里的物化结果（`server/roomAssets.js` 的 `byDigest`）。服务重启、房间的模组集合
+ * 在玩家打开页面之后又改过、或者那个摘要从来没被物化过，这一面就会 404；而调用方在缺文件时是**直接抛错**的 ——
+ * 于是这一场**一次模拟都跑不起来**，服务端 60 秒后按 `timeout` 接管，玩家看到的就是「进对局不出怪」（战场空着、
+ * 不刷敌人、计时还在走）。回落到全局数据最多是与房间声明的子集有出入（服务端自己有校验与重算兜底），比整场空白好。
+ * 全局也取不到时仍然把 null 交回去，由调用方抛同一个错。
+ * @param {{ dataBase?: string, fetchFn?: Function, data?: any }} [opts]
+ * @returns {Promise<{ files: any[], dataBase: string, fellBack: boolean }>}
+ */
+export async function loadSimData({ dataBase = '/data/', fetchFn = (...a) => globalThis.fetch(...a), data = null } = {}) {
+  // (a content set's data: structured copies, frozen by the caller like downloaded files)
+  if (data) return { files: SIM_DATA_FILES.map((n) => (data[n] && typeof data[n] === 'object' ? structuredClone(data[n]) : null)), dataBase, fellBack: false };
+  const grab = async (base) => Promise.all(SIM_DATA_FILES.map(async (n) => (await fetchOne(fetchFn, base, n)) ?? fetchOne(fetchFn, base, n)));
+  let files = await grab(dataBase);
+  const missing = () => SIM_DATA_FILES.filter((n, i) => !files[i] || typeof files[i] !== 'object');
+  if (missing().length && dataBase !== '/data/') {
+    const fallback = await grab('/data/');
+    if (!SIM_DATA_FILES.filter((n, i) => !fallback[i] || typeof fallback[i] !== 'object').length) {
+      files = fallback;
+      try { console.warn(`[sim] simulation data at ${dataBase} is unavailable (${missing().join(', ')}) — fell back to /data/`); } catch { /* no console */ }
+      return { files, dataBase: '/data/', fellBack: true };
+    }
+  }
+  return { files, dataBase, fellBack: false };
 }
 
 /**

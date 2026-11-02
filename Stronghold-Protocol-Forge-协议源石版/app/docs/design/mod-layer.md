@@ -1638,7 +1638,12 @@ makes the declaration true. `server/roomAssets.js` is the whole mechanism:
   packs (never the others the server carries) and re-asks, and `roomDataBase` is the one rule for which face a battle
   simulates on: `/room-data/<digest>/` when the spec carries a room set that is not the process set, `/data/` otherwise.
   `public/js/battle/runner.js` passes its data face through `dataBaseFor(spec)` and caches the sim **per face**, so a
-  page that plays in a subset room and later in a plain one never mixes the two. The room screen shows the set, the
+  page that plays in a subset room and later in a plain one never mixes the two.
+  **`/room-data/` is in-memory**, so its 404 is a real state (a restart, a room whose set changed after the page loaded,
+  a digest this process never materialised). `loadSimData` (`public/js/battle/simLoader.js`) therefore falls back to
+  `/data/` as a whole — never mixing the two faces file by file — and only throws `simulation data unavailable` when
+  neither face answers. Before that fallback existed the throw left the field unsimulated: the player saw a battle with
+  no enemies for the whole deadline and the server took it over as `timeout` (owner report 2026-11-02, 「进对局不出怪」). The room screen shows the set, the
   per-pack state and, once `planAlignment` says this client is short, **starts the fetch by itself** (`public/js/mods/autoFill.js`
   `shouldAutoFill`: one automatic attempt per digest, never for a pack this server does not carry) with `sync`'s progress
   (file count + MB), a 取消 remembered per digest and a manual 重试; it **does not press Ready** afterwards (owner's
