@@ -1898,6 +1898,37 @@ export const SKIN_FIELDS = Object.freeze(['id', 'charId', 'name', 'series', 'des
 /** 一套时装的 id：包内唯一、短、出现在 `settings.skinByChar` 的 `<包id>:<皮肤id>` 指针里。 */
 export const SKIN_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
 
+/**
+ * 这个包是不是**纯外观包**（只带看得见的东西，改不了对局）。
+ *
+ * 判据是「**没有**任何能影响一局的东西，且**有**至少一件外观」：
+ *   * 不能有内容文件（`content` 空）、不能有 `server` / `client` / `overrides` / `behaviour` / `variants` / `forms` / `fx`
+ *     （这些都能改对局或改行为）、`combat` 必须是 false；
+ *   * 至少带一项外观贡献：`skins` / `art` / `voices` / `bondIcons` / `itemIcons`。
+ *
+ * 干什么用的（业主 2026-11-02「皮肤模组应该自动选择上」）：房间声明的模组集合（`room.modIds`）决定**这一局的
+ * 素材与内容集**（`server/roomAssets.js` 按集合materialise）。一个纯外观包被房主漏勾时，那间房的玩家就看不到时装 ——
+ * 而它本来就不可能影响战果。所以纯外观包**一律自动进房间集合**（`server/lobby.js resolveRoomModSet`），房主不必、
+ * 也无法把它勾掉；反过来它仍然可以被卸载（删目录）或由玩家用设置里的「工坊外观」整体关掉。
+ *
+ * 注意：这是**判定**，不是「包类型」字段 —— 作者不必声明任何东西，包一改内容（比如加了一个 kit）就自动失去这个身份。
+ * @param {any} pack `loadWorkshop()` 交出来的包对象（归一化后的 manifest）
+ * @returns {boolean}
+ */
+export function isCosmeticOnlyPack(pack) {
+  if (!pack || typeof pack !== 'object') return false;
+  if (pack.combat !== false) return false;
+  if (Array.isArray(pack.content) ? pack.content.length : pack.content != null) return false;
+  for (const k of ['server', 'client', 'forms', 'fx', 'behaviour', 'variants', 'target']) {
+    if (pack[k] != null) return false;
+  }
+  if (Array.isArray(pack.overrides) && pack.overrides.length) return false;
+  const visual = ['skins', 'art', 'voices', 'bondIcons', 'itemIcons'];
+  if (!visual.some((k) => Array.isArray(pack[k]) ? pack[k].length > 0 : pack[k] != null && typeof pack[k] === 'object')) return false;
+  // 「有外观」且「什么都没改」：`i18n` / `playtest` / `notices` 这类既不进资产也不改对局，允许存在。
+  return true;
+}
+
 export const ART_TABLES = {
   chars: { urls: ['avatar', 'avatarE2', 'portrait', 'portraitE2'], strings: [], spine: 'sides' },
   enemies: { urls: ['icon'], strings: ['spineAliasOf'], spine: 'flat' },

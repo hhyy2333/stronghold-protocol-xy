@@ -1765,6 +1765,14 @@ export function install(battle) {
 | `art.spine`（局内模型，0.19.41 §41.2c） | 要在棋盘上生效，**`front` 必须完整**：`skel` + `atlas` + **`anims`**（`assets.js validSpine` 的判据；没有 `anims` 会被当作「没有模型」并**静默回落原版**）。`back` 可选 —— 单面时装正面承担两个朝向，缺 `back` 时引擎回落到 `front`。**`anims` 要用 `tools/assets/anim-roles.mjs` 的 `resolveRoles` 对这套骨架自己算，别抄官方干员的**（普通攻击 clip 不叫 `Attack*` 的时装靠它才能播对）。每套时装的骨架必须放在自己的目录里：Spine 缓存按 `skel` 的 URL 记，同一个 URL 就是同一份模型 |
 | 贡献项 | **只带时装、`content: []` 的包合法** —— 一套时装就是这个包带来的东西（空数组仍 `EMPTY_PACK`） |
 
+**纯外观包自动进房间的模组集合**（业主 2026-11-02「皮肤模组应该自动选择上」）：一个包只要**改不了对局**
+（`content: []`、`combat: false`，且没有 `server` / `client` / `overrides` / `behaviour` / `variants` / `forms` / `fx`）、
+又**带了外观**（`skins` / `art` / `voices` / `bondIcons` / `itemIcons` 之一），就是「纯外观包」——判据只有一份，
+`shared/workshop.js isCosmeticOnlyPack`。房间一旦声明了模组子集，这些包的 id **一律自动并进集合**
+（`server/lobby.js resolveRoomModSet`）：房间的素材与数据是按集合物化的（`server/roomAssets.js`），房主漏勾就等于
+那间房没有时装，而它本来就不可能影响战果。不声明集合的房间不受影响（它跑服务器加载的全部包）；玩家仍然可以用
+设置里的「工坊外观」把外观整体关掉。
+
 落点是**清单**：`assets.skins[<charId>] = [{ pack, id, name, series?, desc?, art?, voices? }, …]`（按干员分组的
 一列；同一干员可以有几套）。两个包给同一干员的**同一套 id** 时按包 id 升序第一个赢，输的一方点名
 `SKIN_COLLISION`。路径与其它素材通道逐字相同：变成 `/workshop-assets/<包>/<路径>`，只服务登记过的 URL。

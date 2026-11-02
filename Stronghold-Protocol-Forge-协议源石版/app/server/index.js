@@ -45,6 +45,8 @@ import { loadRoomInstallers } from './roomPack.js';
 import { loadServerModules, mountServerModules, stateRootFor, bootConfigSnapshot } from './modModules.js';
 import { materializeVoiceCdn, dropFailedVoiceCdnFiles } from './voiceCdn.js';
 import { workshopNotices } from './notices.js';
+// 纯外观包判据（业主 2026-11-02「皮肤模组应该自动选择上」）：房间声明的模组集合永远带上它们。
+import { isCosmeticOnlyPack } from '../shared/workshop.js';
 import { createRoomAssets } from './roomAssets.js';
 import { Match as DefaultMatch } from './match/Match.js';
 import {
@@ -334,6 +336,12 @@ export async function startServer(opts = {}) {
     ...(Array.isArray(p.variants) && p.variants.length ? { variants: p.variants } : {}),
     ...(Array.isArray(p.behaviour) && p.behaviour.length ? { behaviour: p.behaviour } : {}),
   }));
+  // 纯外观包（只带 skins / art / voices，`content: []` 且 `combat: false`）的 id：房间一旦声明了模组子集，
+  // 这些包**自动并进集合**（`server/lobby.js resolveRoomModSet`）—— 房间的素材集按集合 materialise，漏勾就等于
+  // 那间房没有时装，而这类包不可能影响战果。判据只有一份：`shared/workshop.js isCosmeticOnlyPack`。
+  const workshopCosmeticMods = (workshopLoaded.packs || [])
+    .filter((p) => p && typeof p.id === 'string' && isCosmeticOnlyPack(p))
+    .map((p) => p.id);
   // 工坊包声明进自选池的干员（pack.json.operators）：自选界面与房间校验都要看见它们。没有这一步，一个没有
   // 引擎内置 kit 的工坊干员（结城理）会被 welcome.diyKitted / PlayerState.setDiy 过滤掉，玩家永远选不到。
   const workshopDiyKitted = [...new Set((workshopLoaded.packs || []).flatMap((p) => Object.keys(p.operators || {})))];
@@ -535,7 +543,7 @@ export async function startServer(opts = {}) {
       accounts,
       records,
       ...(matchWrappers.length ? { MatchClass } : {}),
-      workshop: { kits: workshopKits.kits, tokenKits: workshopKits.tokenKits, modules: workshopKits.modules, kitOwners: workshopKits.owners, tokenKitOwners: workshopKits.tokenOwners, kitBudgets: workshopKits.budgets, mods: workshopMods, diyKitted: workshopDiyKitted, hooks: workshopHooks.hooks, panels: workshopPanels.panels, assets: workshopModAssets, theme: workshopTheme.theme, meta: metaModules, roomAssets, battle: battleModules, battleInstallers, roomHooks: roomInstallers, transport: transport.transport, serverChannels: serverChannelMap },
+      workshop: { cosmeticMods: workshopCosmeticMods, kits: workshopKits.kits, tokenKits: workshopKits.tokenKits, modules: workshopKits.modules, kitOwners: workshopKits.owners, tokenKitOwners: workshopKits.tokenOwners, kitBudgets: workshopKits.budgets, mods: workshopMods, diyKitted: workshopDiyKitted, hooks: workshopHooks.hooks, panels: workshopPanels.panels, assets: workshopModAssets, theme: workshopTheme.theme, meta: metaModules, roomAssets, battle: battleModules, battleInstallers, roomHooks: roomInstallers, transport: transport.transport, serverChannels: serverChannelMap },
     },
     { data, log, content, plugins: roomSets, hosts },
   );

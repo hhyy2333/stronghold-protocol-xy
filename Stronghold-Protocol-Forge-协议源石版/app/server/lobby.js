@@ -201,6 +201,8 @@ import { getDefaultRegistry } from './match/effectsMeta.js';
 import { KITTED_CHARS } from './sim/content/kits/index.js';
 import { MatchmakeQueue } from './matchmaking.js';
 import { isContentHash } from '../shared/plugins/identity.js';
+// 纯外观包（只带 skins / art / voices，`content: []`、`combat: false`）自动进每一间房的模组集合 ——
+// 房间的素材集是按 `room.modIds` materialise 的（server/roomAssets.js），漏勾就等于那间房没有时装。
 import { msg, wireMessage } from '../shared/i18n.js';
 
 const VANILLA_KITTED = new Set(KITTED_CHARS);
@@ -343,7 +345,7 @@ function freezeDiy(picks) {  const out = {};
  * @returns {{ ok: true, modIds: string[], modSet: { digest: string, packs: Array<object> } }
  *          | { ok: false, unknown: string[], available: string[] }}
  */
-function resolveRoomModSet(requested, catalogue) {
+export function resolveRoomModSet(requested, catalogue, autoIds = null) {
   const available = (Array.isArray(catalogue) ? catalogue : []).filter((p) => p && isModId(p.id));
   const known = new Set(available.map((p) => p.id));
   const ids = [];
@@ -357,6 +359,12 @@ function resolveRoomModSet(requested, catalogue) {
     return { ok: false, unknown: unknown.sort(), available: [...known].sort() };
   }
   if (!ids.length) return { ok: true, modIds: [], modSet: null };
+  // 纯外观包自动进集合（业主 2026-11-02「皮肤模组应该自动选择上」，见 shared/workshop.js isCosmeticOnlyPack）。
+  // **必须放在「空列表 = 不声明」那一条之后**：不声明 = 跑服务器加载的全部包，那时候什么都不用加；一旦房主声明了
+  // 一个子集，漏勾纯外观包就会让那间房没有时装（房间素材集按 `modIds` materialise），所以这里补回来。
+  for (const id of (autoIds instanceof Set ? [...autoIds].sort() : [])) {
+    if (known.has(id) && !ids.includes(id)) ids.push(id);
+  }
   // The catalogue entry is copied, never handed out by reference: the room must not be able to reach into the loader's
   // pack objects (and `api` is dropped when the pack declared none — the wire shape is what `isModEntry` accepts).
   const picked = ids.map((id) => {
@@ -687,6 +695,16 @@ export class Lobby {  /**
      * install, in which case nothing is injected at all.
      */
     this.workshop = workshop && typeof workshop === 'object' ? workshop : null;
+    /**
+     * 纯外观包（只带 `skins` / `art` / `voices`，`content: []` 且 `combat: false`）的 id：**每一间房的模组集合都自动
+     * 带上它们**（业主 2026-11-02「皮肤模组应该自动选择上」）。房间的素材集按 `room.modIds` materialise，漏勾就等于
+     * 那间房没有时装；而这类包不可能影响战果，所以不给房主勾掉的理由。判据只有一份：`isCosmeticOnlyPack`。
+     * @type {Set<string>}
+     */
+    this.cosmeticModIds = new Set(
+      (this.workshop && Array.isArray(this.workshop.cosmeticMods) ? this.workshop.cosmeticMods : [])
+        .filter((id) => typeof id === 'string' && id),
+    );
     /**
      * 工坊包 `pack.json.operators` 声明的自选池干员 charId（server/index.js 从已装载的包里算好传进来）：
      * 它们是工坊包**有意放进 自选池**的干员，所以与引擎的 KITTED_CHARS 一起视为「自选槽可上阵」——
@@ -1523,7 +1541,7 @@ export class Lobby {  /**
     // The room's own set (W-A, DESIGN §28.9): every id must name a pack THIS server loaded, and the refusal names both
     // what was not found and what is on offer — a client cannot guess its way into a set the server cannot run. Absent
     // or `[]` = today's behaviour (the room declares nothing and `room.state` gets no `mods`).
-    const resolved = resolveRoomModSet(Array.isArray(modIds) ? modIds : [], this.workshop?.mods);
+    const resolved = resolveRoomModSet(Array.isArray(modIds) ? modIds : [], this.workshop?.mods, this.cosmeticModIds);
     if (!resolved.ok) {
       const unknown = resolved.unknown.length ? resolved.unknown.join(', ') : '(none)';
       const available = resolved.available.length ? resolved.available.join(', ') : '(none)';
@@ -1855,7 +1873,7 @@ export class Lobby {  /**
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     const early = this.roomModsRefusal(room);
     if (early) return early;
-    const resolved = resolveRoomModSet(Array.isArray(modIds) ? modIds : [], this.workshop?.mods);
+    const resolved = resolveRoomModSet(Array.isArray(modIds) ? modIds : [], this.workshop?.mods, this.cosmeticModIds);
     if (!resolved.ok) {
       const unknown = resolved.unknown.length ? resolved.unknown.join(', ') : '(none)';
       const available = resolved.available.length ? resolved.available.join(', ') : '(none)';

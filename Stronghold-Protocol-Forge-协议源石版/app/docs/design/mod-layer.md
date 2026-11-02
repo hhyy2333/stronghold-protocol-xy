@@ -1589,6 +1589,14 @@ ordinary data layer; translating pack announcements and engine credits is a `dat
 
 ### 28.16 A room runs its own set (W-B) and aligning to it (W-D)
 
+> **纯外观包自动进集合（0.19.42，业主 2026-11-02「皮肤模组应该自动选择上」）。** 一个改不了对局的包（`content: []`、
+> `combat: false`，没有 `server` / `client` / `overrides` / `behaviour` / `variants` / `forms` / `fx`）只要带了外观
+> （`skins` / `art` / `voices` / `bondIcons` / `itemIcons`），判据 `shared/workshop.js isCosmeticOnlyPack` 为真，
+> **它的 id 一律并进房间声明的模组集合**（`resolveRoomModSet` 的第三个参数，来自装载期一次算好的
+> `workshop.cosmeticMods`）。理由：本节说的物化（`server/roomAssets.js forRoom`）是**按集合**取数据与素材的 —— 房主
+> 漏勾一个外观包，那间房就没有时装；而这类包不可能改变战果，没有「允许它被勾掉」的理由。空列表（= 不声明集合）
+> 那份语义不变：仍然跑服务器加载的全部包。
+
 §28.9 declared a room's set and shipped it to the clients; by its own words it did **not** decide anything — every room
 still ran the process data, the process kits and the process `server.meta` modules, and this section is the cut that
 makes the declaration true. `server/roomAssets.js` is the whole mechanism:
