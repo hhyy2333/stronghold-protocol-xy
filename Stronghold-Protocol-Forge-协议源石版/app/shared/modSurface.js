@@ -129,11 +129,12 @@ export const MOD_SURFACE = Object.freeze([
     anchors: [{ symbol: 'SKIN_FIELDS' }, { symbol: 'PACK_FIELDS', members: ['skins'] }, { symbol: 'SKIN_ID_RE' }],
     requires: [
       '`art` 与 `art.chars` 同形（复用同一套解析器：路径必须包内相对、spine 要齐 skel + atlas）—— 引擎不认识「皮肤」，这里只判形状',
-      '**数据**在包声明里，**行为**（哪一套生效）在一个注册了的外观提供者里（`client.panels[].appearance`）',
+      '**数据**在包声明里，**行为**（哪一套生效）由一个外观提供者回答：0.19.41 起标准客户端**开机就注册内置的那个**（`public/js/ui/skinProvider.js`，读 `assets.skins` + 玩家选择），于是插件面板再导出 `appearance(ctx)` 会被 `CLIENT_APPEARANCE_TAKEN` 拒绝 —— 外观只走一条通道 = 工坊包（§28.28 第 2 段）',
       '一个进程最多一个外观提供者，且玩家可以用设置里的「工坊外观」把它整个关掉 ⇒ 关掉时解析链与不装包逐字相同',
+      '`art.spine` 要在棋盘上生效，**`front` 必须完整**（`skel` + `atlas` + `anims`，`assets.js validSpine` 的判据），`back` 可选；**`anims` 不许抄官方干员的**，用 `tools/assets/anim-roles.mjs` 的 `resolveRoles` 对这套骨架自己算。每套时装的骨架必须自带目录 —— Spine 缓存按 `skel` 的 URL 记（§28.28 第 6 条）',
     ],
-    files: ['shared/workshop.js', 'server/workshop.js', 'public/js/ui/portraitChain.js', 'public/js/ui/extensions.js'],
-    tests: ['test/workshopSkins.test.js', 'test/ui/portraitChain.test.js', 'test/lobby-appearance.test.js'],
+    files: ['shared/workshop.js', 'server/workshop.js', 'public/js/ui/portraitChain.js', 'public/js/ui/extensions.js', 'public/js/ui/skins.js', 'public/js/ui/skinProvider.js', 'public/js/ui/skinPicker.js', 'public/js/assets.js', 'public/js/render/units.js', 'public/js/render/skinSpine.js'],
+    tests: ['test/workshopSkins.test.js', 'test/ui/portraitChain.test.js', 'test/ui/skins.test.js', 'test/lobby-appearance.test.js', 'test/render/spine-skin.test.js', 'test/render/skin-spine.test.js'],
     spec: '§28.28',
   },
   {

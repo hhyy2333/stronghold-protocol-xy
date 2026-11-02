@@ -43,5 +43,6 @@ normative lines it rewrote).
 | §34 | [history/0.3.0.md](history/0.3.0.md) | 0.3.0 — the plugin system (2026-10-14) |
 | §35 | [design/vfx-format.md](design/vfx-format.md) | Official battle effects: the extracted format (0.3.0, Phase 1a–1d) |
 | §40 | [history/0.3.3.md](history/0.3.3.md) | 0.3.3 — 上游 0.3.1–0.3.3 的修复移植（2026-10-30；§38 / §39 留给上游 0.3.1 / 0.3.2 的整章移植） |
+| §41 | [history/0.19.41.md](history/0.19.41.md) | 0.19.41 — 从别人做的「融合版 0.3.3」里取的两件：开场演出、皮肤决策层（2026-11-01） |
 
 Supplementary (no section numbers of its own): [RECORDS.md](RECORDS.md) — 对局战绩与可选账号（`SP_ACCOUNTS=1`）。

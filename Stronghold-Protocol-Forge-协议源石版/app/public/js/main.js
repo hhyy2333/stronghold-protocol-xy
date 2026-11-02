@@ -52,7 +52,7 @@ import { ToastHost, toast, toastError, describeError } from './ui/toasts.js';
 import { net, identity, NetError } from './net.js';
 import { store, useStore, emptyMatch, selectRoute, entryGateBlocked, sessionResetNotice, isSpectating, applyLobbyStats } from './store.js';
 import { applyPublic } from './matchDelta.js';
-import { data } from './data.js';
+import { data, localAsset } from './data.js';
 // 战斗读数（DESIGN §28.38）：注入给注册点的**只有** `battleRunner.damage` 一个函数（`ctx.battle.damage()`），
 // 面板拿不到 runner 句柄、拿不到 `Battle`、拿不到 `_entries`。非浏览器环境里这个导出是 `null`，那一格就是 `null`
 // （一行日志，不抛）—— 与 `net` / `settings` 两条注入面同一个形状。
@@ -61,6 +61,9 @@ import { GAME_FILES } from './ui/gameComponents.js';
 // 自制美术（docs/CUSTOM-ART.md）：原创干员的 `*Local` 覆盖层由统一解析链解析，链只认一份模块级清单，
 // 这里是它**唯一**的写入面 —— 启动时就绪，以及 `data` 的 `local` 落定时各同步一次（两份都在下面）。
 import { setLocalManifest } from './ui/portraitChain.js';
+// 开场演出（ui/lobbyIntro.js + ui/allianceScene.js，业主 2026-11-01）：盖在整页之上的一次性入场片，只在这里调一次。
+// 素材没下载齐、在房间/对局里、带 ?room= 邀请、手机竖屏时它自己会静默不播；开关是 sp.pref.lobby.intro。
+import { playLobbyIntro } from './ui/lobbyIntro.js';
 import { TitleScreen, sanitizeName } from './screens/title.js';
 import { LobbyScreen, rememberRoom } from './screens/lobby.js';
 import { deepLinkSeeds, stripDeepLinkParams, runSoloPlaytest } from './playtestLink.js';
@@ -634,6 +637,10 @@ async function boot() {
     voiceLangOf: (charId) => voiceLangFor(settingsStore.get(), charId),
     // a cosmetic plugin's sound that will not load falls back like its art (content.js, DESIGN §34 P1a)
     onFailed: (url) => cosmetics.fail(url),
+    // 按钮点击音 (业主 2026-11-01「添加按钮的点击音效」): the 原版 click set lives in the local client's `ui/sfx` group
+    // (public/assets/local/ui/sfx/, docs/ASSETS.md 「本机素材清单」), so it is resolved through the same list as the
+    // rest of the local art — a machine without it keeps a silent-but-working client (`audio.buttonCue` no-ops).
+    buttonCueUrl: (name) => localAsset('ui/sfx', name),
   });
   // 资源预加载（业主 2026-10-16）：美术清单是首屏解析**所有**图的依据，所以这次**等它**（上面有上限）。
   // 从前这里是 fire-and-forget —— 首屏在清单到位之前就画了，图只能一批批晚到、挨个闪出来。
@@ -685,6 +692,8 @@ async function boot() {
     splash.classList.add('is-done');
     setTimeout(() => splash.remove(), 300);
   }
+  // 开场演出：一定要在首帧画出来之后（它是一层盖在页面上的 modal，页面先就位才接得顺），失败也只当成没这支片子。
+  try { playLobbyIntro(); } catch (err) { console.warn('[app] lobby intro failed', err); }
   globalThis.__SP__ = { store, net, data, version: 1 };
   // A page keeps the modules it imported at load time for its whole lifetime, so a deploy cannot reach an open tab
   // (ui/buildGuard.js): watch `/healthz.build`. Outside a match the page reloads itself; during a match the guard says

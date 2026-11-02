@@ -35,14 +35,20 @@
 //   调用方显式点名的变体 > 提供者的选择 > 官方回落
 //
 // 三档各有明确边界：
-//   * **调用方显式点名的变体**：`opts.variant === 'elite'`，或 `id` 以 `_1` / `_2` 结尾（`_2` = E2、
-//     `_1` = 一阶，两者都点名了一个**具体版本**，不是一个「哪套外观」的问题），或 `kind: 'portrait'` 且
-//     `chess.isGolden`（详情页 / 商店卡那条既有语义：精锐画 `portraitE2`）。命中这一档时**不打扰提供者**，
-//     直接走链自己的分支 —— 别人明确要精锐立绘，不该被一份只有一张图的时装盖掉。
-//   * **提供者的选择**：调用方没有点名版本时，提供者按 `(kind, charId, id)` 回答**这一条 kind** 的 URL
-//     （它拿得到 kind，见 `appearanceFirst`）。它给 null / 抛错 / 给一个没有可用字段的对象 ⇒ 掉到第三档。
+//   * **调用方显式点名的变体**：只有 `opts.variant === 'elite'` 这一种写法。命中时**不打扰提供者**，链先给这个
+//     干员的精锐字段、没有精锐字段就走官方回落 —— 「我要的是精锐那一档」是调用方的明确请求。
+//   * **提供者的选择**：其余所有调用都让提供者按 `(kind, charId, id)` 回答**这一条 kind** 的 URL（它拿得到
+//     kind，见 `appearanceFirst`）。它给 null / 抛错 / 给一个没有可用字段的对象 ⇒ 掉到第三档。
 //   * **官方回落**：链原来的步骤 2–5。头像那一条**不看** `isGolden`（精锐头像由调用方自己传变体，
 //     `screens/diy.js` 今天就是这么做的），立绘那一条看。
+//
+// ⚠️ **2026-11 改过一次，别再改回去**：从前这一档还包含「`id` 以 `_1` / `_2` 结尾」与「`kind: 'portrait'` 且
+// `chess.isGolden`」两条。它们看着像「调用方点名了版本」，其实是**旧链按后缀分流**的实现细节（`_2` = E2、
+// `_1` = 一阶，是**数据**的编码方式，不是调用方的意图），而 `data/chess.json` 里 **262 个棋子的
+// `assets.portrait` 全都以 `_1` / `_2` 结尾**、精锐棋子的 `assets.avatar` 也全是 `_2` —— 于是那条判据让步骤 0
+// 对**每一张立绘**都短路：装好提供者、玩家也选了时装，画面一个字节都不动（`test/ui/portraitChain.test.js` 里
+// 「选了时装 ⇒ 立绘也换」那一条就是为它补的守卫）。现在只留 `variant: 'elite'` 一条：玩家**主动选了一套时
+// 装**就该画那一套，提供者回 null 时链照旧回落，失败方向不变。
 //
 // 三档**都只作用于被问的那一条 kind**：`portrait` 与 `avatar` 各问各的、各答各的，互不串（这就是
 // 「分开受控」的另一半；另一半在提供者那一侧：按 kind 各记一份偏好）。
@@ -99,12 +105,13 @@ const FIELDS = {
  * }} [opts]
  *   `lookup` 是**唯一的 hook 点**：它回答「这个 id 是我知道的一套外观」。没有它时本链与今天逐字相同
  *   （`test/ui/portraitChain.test.js` 拿今天两个实现当对照逐项比对）。
- *   `variant: 'elite'` 是调用方**点名精锐**的第三种写法（另两种是 `id` 以 `_2` 结尾、`chess.isGolden`）：
- *   命中时提供者不参与，链先给这个干员的精锐字段、没有精英字段就走官方回落。
+ *   `variant: 'elite'` 是调用方**点名精锐**：命中时提供者不参与，链先给这个干员的精锐字段、没有精英字段就走
+ *   官方回落。（`id` 以 `_1` / `_2` 结尾、`chess.isGolden` **不算**点名 —— 它们是数据的编码方式与既有语义，
+ *   见文件头 2026-11 那一段。）
  *   另有两条**只有宿主写、包看不见**的门控：`skins`（玩家的「工坊外观」开关；`false` = 显式关掉这一步）
  *   与模块级的 `setAppearanceFirst`（设置界面同步进来的那一份，见下面）。两条与「确实注册了提供者」
- *   一起成立时，提供者在步骤 2 **之前**先被问一次 —— 但**只在这个调用方没有点名版本时**（见下面的
- *   `appearanceFirst` 与文件头的优先级那一段）。
+ *   一起成立时，提供者在步骤 2 **之前**先被问一次 —— 但**只在调用方没有点名 `variant: 'elite'` 时**
+ *   （见下面的 `appearanceFirst` 与文件头的优先级那一段）。
  * @returns {string|null} URL，或 null
  */
 export function portraitEntry(m, chess, opts = {}) {
@@ -119,8 +126,8 @@ export function portraitEntry(m, chess, opts = {}) {
 
   const charId = strOf(chess && chess.charId);
   const id = strOf(chess && chess.assets ? chess.assets[kind] : null);
-  // 步骤 0：**提供者先说话**（只有开关打开、且提供者真的在、且调用方没有点名版本时才存在这一步）
-  const first = appearanceFirst(charId, id, opts, kind, chess);
+  // 步骤 0：**提供者先说话**（只有开关打开、提供者真的在、且调用方没有点名 `variant: 'elite'` 时才存在这一步）
+  const first = appearanceFirst(charId, id, opts, kind);
   if (first) return first;
 
   if (id) {
@@ -269,12 +276,17 @@ export const appearanceFirstEnabled = () => appearanceFirstOn;
  *   1. **开关**（`appearanceFirstOn` / `opts.skins !== false`）
  *   2. **确实注册了提供者**（`appearanceLookup` 非空）
  *   3. **有 charId 也有 id**（提供者按这两样归属一套外观）
- *   4. **调用方没有点名版本**（`explicitVariant`）—— 这一条是「头像与立绘分开受控」的另一半：
- *      点名了版本的调用方**直接走链自己的分支**，提供者不参与（优先级那一段：调用方 > 提供者 > 官方回落）。
+ *   4. **调用方没有点名 `variant: 'elite'`** —— 那一句是「我要的是精锐那一档」的显式请求，
+ *      命中时提供者不参与（优先级那一段：调用方 > 提供者 > 官方回落）。
  *
- * 条件 2 就是「今天永远是死代码」那一条的原因：没有任何东西把「玩家选的那套时装 id」放到
- * `chess.assets.portrait` 上，所以提供者回答的一直是 `chars` 里没有的 id —— 而**问**这一步本身
- * 今天也不存在。现在它存在了，但它仍然**不认识皮肤**：它只是把 id 与 kind 交给提供者问一次。
+ * ⚠️ 条件 4 **只有** `variant: 'elite'` 一种写法。`id` 以 `_1` / `_2` 结尾与 `chess.isGolden` **不算**
+ * 点名：前者是数据给版本编号的方式（`data/chess.json` 全部 262 张立绘都长这样），后者是「详情页画精锐」
+ * 的既有语义 —— 从前它们也拦着提供者，结果是**每一张立绘都换不了装**（见文件头 2026-11 那一段）。
+ * 条件 1 的三条判据中任意一条不成立（开关关掉 / 调用点说 `skins: false` / 没有提供者）时，这一步整段不存在，
+ * 本链与「没装工坊外观」逐字相同 —— 那是这条链最硬的不变量。
+ *
+ * 条件 2 就是「装了时装却什么都不发生」在今天的原因：注册好的提供者从前是死代码（没有人问它，也没人
+ * 把玩家的选择放到它嘴边）。现在它被问了，但它仍然**不认识皮肤**：它只是把 id 与 kind 交给提供者问一次。
  *
  * **按 kind 分开生效**：`kind` 是这一条链的问题（立绘还是头像），提供者拿到的第一参数就是它 ——
  * 于是「立绘用这套、头像还是原版」是提供者可以回答的一件事，而不是链替它猜的。链只认**一条 kind 的
@@ -290,39 +302,18 @@ export const appearanceFirstEnabled = () => appearanceFirstOn;
  * （与步骤 4 逐字相同的吞异常写法：坏 mod 不外溢）。
  *
  * @param {string|null} charId @param {string|null} id @param {any} opts
- * @param {'portrait'|'avatar'} kind @param {any} chess
+ * @param {'portrait'|'avatar'} kind
  * @returns {string|null}
  */
-function appearanceFirst(charId, id, opts, kind, chess) {
+function appearanceFirst(charId, id, opts, kind) {
   if (!appearanceFirstOn || opts.skins === false) return null;
   if (!appearanceLookup || !charId || !id) return null;
-  if (explicitVariant(id, opts, kind, chess)) return null;
+  // 条件 4：唯一被承认的「点名版本」写法
+  if (opts.variant === 'elite') return null;
   const f = FIELDS[kind];
   const hit = ask(appearanceLookup, kind, charId, id);
   if (!hit || typeof hit !== 'object') return null;
   return strOf(hit[f.plain]) || strOf(hit[f.elite]) || null;
-}
-
-/**
- * 调用方有没有**点名一个版本**？点名了就让它先说话（`appearanceFirst` 的第一条短路）。
- *
- * 三条判据都来自「这个调用方要的是哪一个**版本**」这个问题，而不是「哪一套外观」：
- *   * `opts.variant === 'elite'` —— 调用方的显式写法（宿主用的那个口）；
- *   * `id` 以 `_1` / `_2` 结尾 —— 旧链的第一分支就是按它分流的，它就是调用方点名版本的既有编码
- *     （`_2` = 精锐、`_1` = 一阶；`public/js/ui/assetUrls.js` 逐字同一套语义）；
- *   * `kind: 'portrait'` 且 `chess.isGolden` —— 详情页 / 商店卡那条既有语义（精锐画 `portraitE2`）。
- *     **头像不看 `isGolden`**（与步骤 5 逐字同一条：精锐头像由调用方自己传变体）。
- *
- * 这三条是「别人明确要精锐立绘」的**全部**现成信号；一个没有点名版本的调用方（今天的九处渲染路径
- * 都传原版 id）仍然让提供者先说话 —— 换装照旧生效。
- *
- * @param {string} id @param {any} opts @param {'portrait'|'avatar'} kind @param {any} chess
- * @returns {boolean}
- */
-function explicitVariant(id, opts, kind, chess) {
-  if (opts.variant === 'elite') return true;
-  if (id.endsWith('_1') || id.endsWith('_2')) return true;
-  return kind === 'portrait' && !!(chess && chess.isGolden);
 }
 
 /**

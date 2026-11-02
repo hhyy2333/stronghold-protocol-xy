@@ -1762,6 +1762,7 @@ export function install(battle) {
 | 字段闭集 | `SKIN_FIELDS` = `id` / `charId` / `name` / `series` / `desc` / `art` / `voices`，一个不多一个不少；写别的名字**点名拒绝**（`SKIN_UNKNOWN_FIELD`） |
 | `id` 与 `charId` | `SKIN_ID_RE`（≤32 字符、不许下划线开头）；同一个包里两个同名 `id` ⇒ `SKIN_DUPLICATE_ID` |
 | `art` | 路径必须是包内相对路径（`ART_PATH_UNSAFE`）；spine 要齐 `skel` + `atlas`（`ART_SPINE_INCOMPLETE`）。有 `assets/` 就要声明 `license`（与 art 同一条） |
+| `art.spine`（局内模型，0.19.41 §41.2c） | 要在棋盘上生效，**`front` 必须完整**：`skel` + `atlas` + **`anims`**（`assets.js validSpine` 的判据；没有 `anims` 会被当作「没有模型」并**静默回落原版**）。`back` 可选 —— 单面时装正面承担两个朝向，缺 `back` 时引擎回落到 `front`。**`anims` 要用 `tools/assets/anim-roles.mjs` 的 `resolveRoles` 对这套骨架自己算，别抄官方干员的**（普通攻击 clip 不叫 `Attack*` 的时装靠它才能播对）。每套时装的骨架必须放在自己的目录里：Spine 缓存按 `skel` 的 URL 记，同一个 URL 就是同一份模型 |
 | 贡献项 | **只带时装、`content: []` 的包合法** —— 一套时装就是这个包带来的东西（空数组仍 `EMPTY_PACK`） |
 
 落点是**清单**：`assets.skins[<charId>] = [{ pack, id, name, series?, desc?, art?, voices? }, …]`（按干员分组的
@@ -1784,10 +1785,13 @@ export function install(battle) {
 所以提供者给出的那一套优先于 `chars` 里同名的条目；提供者给 `null`、抛错、或给一个没有可用字段的对象时，
 **继续走原来的链**（回落原版立绘，画面照旧）。
 
-**优先级：调用方显式点名的变体 > 提供者的选择 > 官方回落。** 调用方点名版本的三种写法 —— `id` 以 `_2`
-结尾（精锐）/ `_1` 结尾（一阶）、`chess.isGolden`（详情页 / 商店卡的精锐立绘）、显式传 `{ variant: 'elite' }`
-—— 都让提供者**一次都不被问到**：别人明确要精锐立绘时，不该被一份只有一张头像图的时装盖掉。头像那一条
-kind **不看 `isGolden`**（精锐头像由调用方自己传变体），所以时装在头像上照旧生效 —— 这就是「立绘与头像
+**优先级：调用方的 `variant: 'elite'` > 提供者的选择 > 官方回落。** 只有**显式传 `{ variant: 'elite' }`**
+这一种写法能让提供者**一次都不被问到**（「我要的是精锐那一档」是调用方的明确请求）。`id` 以 `_2` / `_1` 结尾
+与 `chess.isGolden` **不算**点名 —— 0.19.41 之前它们是算的，而 `data/chess.json` 里 **262/262 张立绘的
+`assets.portrait` 全都带 `_1`/`_2` 后缀**，于是提供者对每一张立绘都被短路（选了时装、立绘一个字节都不变）。
+现在那两条被明确降级为「数据给版本编号的方式」与「详情页画精锐的既有语义」，玩家主动选的一套时装在立绘与
+头像两条 kind 上都生效；提供者回 `null` 时链照旧回落，失败方向不变。头像那一条 kind **不看 `isGolden`**
+（精锐头像由调用方自己传变体），所以时装在头像上照旧生效 —— 这就是「立绘与头像
 分开受控」。
 
 **玩家可以整个关掉它**：设置 →「工坊外观」（`settings.workshopSkins`，默认开）。关掉时解析链与没有这一步

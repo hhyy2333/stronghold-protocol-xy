@@ -2277,6 +2277,13 @@ name, series?, desc?, art?, voices? }, …]`（`mergeWorkshopSkins`）—— 按
 自己那一条 kind 的字段）或者 `null`。**引擎不知道那个 `id` 是一套时装、一个包名还是一串随机字符** ——
 它把不透明 id 连同**这条链的 kind** 交给提供者问一次。
 
+自 0.19.41（§41）起，**开机就坐在那个槽位上的是内置提供者**：`public/js/ui/skinProvider.js`
+（`installBuiltinSkinProvider()`，由 `screens/loadout.js` → `skinPicker.js` 的 import 链在首帧前注册），它按
+`assets.skins`（`pack.json.skins` 的落点）＋ 玩家在「皮肤」区的选择回答。由此带来的**有意后果**：插件面板
+再导出 `appearance(ctx)` 会被 `CLIENT_APPEARANCE_TAKEN` 点名拒绝（面板本身照常挂载，只是画不了外观）——
+外观只走一条通道 = 工坊包，理由与三条回退写在 `skinProvider.js` 的文件头。选择器与提供者之间的那条缝
+（清单 / 选择 / `sp.pref.skins` / `room.appearance` 发帧）在 `public/js/ui/skins.js`。
+
 **2b. 立绘与头像分开受控。** `lookup` 的第一参数是这一条链的 `kind`（`'portrait'` / `'avatar'`），于是
 「立绘用时装那张、头像还是原版」是提供者可以回答的一件事，而不是链替它猜的。四条一起构成这条边界：
 
@@ -2287,7 +2294,8 @@ name, series?, desc?, art?, voices? }, …]`（`mergeWorkshopSkins`）—— 按
 3. **按 kind 记**：链自己**不读、不写偏好**（那是「引擎不认识皮肤」的一部分）；「记」由提供者决定
    （`skin-picker` 用 `skin:portrait:<charId>` / `skin:avatar:<charId>` 两格，旧键 `skin:<charId>` 仍作
    两条 kind 的公共退路）。链负责的只有「按 kind 问」这一半；
-4. **调用方点名版本时提供者不参与**（见下面第 3 条的第 4 点与优先级）。
+4. **调用方点名 `variant: 'elite'` 时提供者不参与**（见下面第 3 条的第 4 点与优先级）。`_1`/`_2` 后缀与
+   `chess.isGolden` **不算**点名 —— 那条边界在 0.19.41 收窄过一次，原因见下面第 3 条第 4 点。
 
 **3. 「提供者先说话」（步骤 0）。** 解析链（`public/js/ui/portraitChain.js`）里，`_1`/`_2` 后缀那一步
 **之前**先问一次提供者：给 URL 就用它，给 `null` / 抛错 / 给一个没有可用字段的对象就**继续走原来的链**
@@ -2297,15 +2305,17 @@ name, series?, desc?, art?, voices? }, …]`（`mergeWorkshopSkins`）—— 按
 1. **开关**：玩家设置里的「工坊外观」（`settings.workshopSkins`，默认 `true`）。链的门控是模块级的一份
    （`setAppearanceFirst`，唯一写入面是 `public/js/ui/settings.js`：启动时 + 每次变更的同一次订阅里），
    **默认 `true` 且与设置默认同值**；`opts.skins === false` 是这一个调用点的否决（压过模块值）。
-2. **确实注册了提供者**（`appearanceLookup` 非空）—— 这就是「装了时装却什么都不发生」在今天的原因：
-   没有任何东西把「玩家选的那套」写进 `chess.assets.portrait`，而问这一步本身也不存在，于是注册好的
-   提供者是**死代码**。
+2. **确实注册了提供者**（`appearanceLookup` 非空）。0.19.41 之前这一条等于「今天全是死代码」：没有任何东西把
+   「玩家选的那套」写进 `chess.assets.portrait`，也没有任何东西去问那个提供者。现在问的是内置提供者
+   （§2 末段），所以这一条在标准客户端里恒成立 —— 关掉它只有两条路：设置里的总闸（第 1 条），或者删掉
+   `skinPicker.js` 末尾那次 `installBuiltinSkinProvider()`（槽位随之空出来给插件面板）。
 3. **有 `charId` 也有 `id`** —— 提供者按这两样归属一套外观。
-4. **调用方没有点名版本**（`explicitVariant`）。三种写法都算点名：`opts.variant === 'elite'`、`id` 以
-   `_1` / `_2` 结尾（`assetUrls.js` 逐字同一套语义：`_2` = 精锐、`_1` = 一阶）、`kind: 'portrait'` 且
-   `chess.isGolden`（详情页 / 商店卡的既有语义）。命中时提供者**一次都不被问到**，链先给这个干员的精锐
-   字段、没有精英字段就走官方回落 —— 「别人明确要精锐立绘」不该被一份只有一张图的时装盖掉。**头像不看
-   `isGolden`**（与步骤 5 同一条：精锐头像由调用方自己传变体），所以时装在头像那一条 kind 上照旧生效。
+4. **调用方没有点名 `variant: 'elite'`** —— 这是**唯一**还挡着提供者的写法（「我要的是精锐那一档」是显式请求）。
+   **0.19.41 收窄过这一条**：从前 `id` 以 `_1` / `_2` 结尾、`kind: 'portrait'` 且 `chess.isGolden` 也各自算
+   「点名」，而 `data/chess.json` 里 **262/262 张立绘的 `assets.portrait` 全都带 `_1` / `_2` 后缀**、精锐棋子的
+   `assets.avatar` 也全是 `_2` —— 于是步骤 0 对每一张立绘都被短路：提供者装好了、玩家也选了时装，画面一个
+   字节都不动。那两条是**数据给版本编号的方式**与**详情页画精锐的既有语义**，不是调用方的意图；收窄之后
+   玩家主动选的一套时装在立绘与头像两条 kind 上都生效，而提供者回 `null` 时链照旧回落，失败方向不变。
 
 问的是**模块级那一个**提供者，不是调用点的 `opts.lookup`：后者是渲染点上那一份引用，可能比注册晚，
 而失败形态是**静默回落原版**（同一个干员在两个画面上不一样，各自都对）。步骤 4 那个 `opts.lookup` 是
@@ -2323,6 +2333,22 @@ name, series?, desc?, art?, voices? }, …]`（`mergeWorkshopSkins`）—— 按
 **5. 表面与守卫。** `skins` 进 `shared/modSurface.js`（锚 `SKIN_FIELDS` / `PACK_FIELDS{skins}` / `SKIN_ID_RE`）
 与 `docs/MOD-SURFACE.md`；`test/modSurface.test.js` 的 `SURFACE_LISTS` 里加了 `SKIN_FIELDS`，所以「字段表被
 挪走」与「新加一格没进清单」两头都红。加一格对已发布的包是纯增量，`MOD_API_VERSION` **不动**。
+
+**6. 局内模型（`art.spine`，0.19.41 §41.2c）。** 一套时装的 `art.spine` 可以把棋盘上那个干员的**骨架**也换掉，
+不只是图：`assets.spineEntry(m, id, { skin })` 认三种形状（整套 `art` / `{ spine }` / sides 本身），只在 `chars`
+分支生效，`back` 缺失回落 `front`。三条边界写死：
+
+1. **能不能用只看 `art.spine.front`**（`spineSides()`，判据仍是 `validSpine`：`skel` + `atlas` + `anims`）。正面不成形
+   ⇒ **整份不算、回落原版**，否则朝向一变就会出现「官方正面 + 时装背面」的换人混搭。
+2. **不继承官方 `anims`**。每套时装自己带 `anims`（作者用 `tools/assets/anim-roles.mjs` 的 `resolveRoles` 对
+   **这套骨架自己**算，参数与官方 `chars` 条目同一套），缺 `anims` 就是「没有模型」。所以「普通攻击 clip 不叫
+   `Attack*`」的时装不需要特例：渲染器按 `roles.attack.loop` 播，代码里没有按名字找攻击 clip 的路径。
+3. **缓存键是 `entry.skel` URL**（`assets.js` 的 `spine.acquire(entry.skel, …)`，没有第二把「skeleton id」键）⇒
+   **每套时装必须自带骨架目录**：同一 URL 就是同一份模型，两套时装同一 URL 会共用一份、换装也不生效。
+
+玩家看到谁的换装由「单位 → 座位 → `room.state.seats[].appearance.picks`」决定（`render/skinSpine.js`，客户端
+只读；服务端那半边是 `server/lobby.js appearance()`，本功能**没有**新增协议帧），外观帧一到就按既有
+`retryAssets()` 路径重解析。
 
 ### 28.29 形态（clip set）与静态相位：两条**行为增量**通道
 

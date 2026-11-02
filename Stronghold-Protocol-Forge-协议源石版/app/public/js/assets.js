@@ -173,6 +173,14 @@ export function subProfIconUrl(m, sub) {
  * web model, mostly none — its view then keeps the avatar diamond), for a load failure (DESIGN §13: local art is
  * optional, everything works without it). An ORIGINAL operator's self-made model (`chars[id].spineLocal`,
  * docs/CUSTOM-ART.md) is resolved the same way, side by side with the alias in `chars[id].spine`.
+ * `opts.skin` (刀二，局内换装；`docs/WORKSHOP.md` §1.17): the outfit this player wears for this operator — a
+ * `pack.json.skins[]` record's `art` or its `spine` sides, both accepted (`spineSides`). Its model wins over the
+ * installation's and over the self-made one (a chosen outfit is an explicit request, a self-made model is the base look),
+ * the `back` rule is the same one (`back` missing → Front), and a side that is not a model — `validSpine` wants
+ * `{ skel, atlas, anims }`, so an outfit whose `art.spine` carries no `anims` counts as none — falls back to the
+ * installation's model. **Without `opts.skin` every answer here is byte-for-byte what it was before outfits** (that is
+ * the whole rollback: the view simply stops passing one). The outfit's `anims` are never rewritten or borrowed from the
+ * official entry: 41 outfits' attack clip is not `Attack*` and is right only through their own map.
  */
 export function spineEntry(m, id, opts) {
   const s = str(id);
@@ -182,6 +190,11 @@ export function spineEntry(m, id, opts) {
     const local = opts && opts.local;
     const sl = get(ch, 'spineLocal');
     const back = opts && opts.back;
+    const sides = spineSides(opts && opts.skin);
+    if (sides && outfitUsable(sides)) {
+      const picked = outfitSide(sides, !!back);
+      if (picked) return picked;
+    }
     if (local && isObj(sl)) {
       const side = (back && isObj(sl.back)) ? sl.back : sl.front;
       const alias = (back && isObj(ch.spine?.back)) ? ch.spine.back : ch.spine?.front;
@@ -216,6 +229,44 @@ export function spineEntry(m, id, opts) {
 const localSpines = new WeakMap(); // spineLocal record → { local, web, entry } (one entry object per manifest pair)
 
 /**
+ * 一套时装的**模型那一层**（`art.spine`，`ART_TABLES.chars.spine = 'sides'`），或 null。
+ *
+ * 三种写法都在这里认，因为调用点给哪个取决于它手里拿的是哪一层：整套 `art`（`{ avatar?, portrait?, spine }`）、
+ * `{ spine }`、以及 spine 那一层本身（`{ front, back }`）。判据只有这一份，`spineEntry` 与 `hasBackSpine`
+ * 都走它 —— 两处各写一遍就是将来「Back 面的回落规则漂了」的那种错。
+ * @param {any} skin
+ * @returns {{ front?: object, back?: object } | null}
+ */
+export function spineSides(skin) {
+  if (!isObj(skin)) return null;
+  const sp = isObj(skin.spine) ? skin.spine : skin;
+  return isObj(sp.front) || isObj(sp.back) ? sp : null;
+}
+
+/**
+ * 时装的某一面：`back` 面缺失回落 `front`（与官方条目 `back && isObj(spine.back) ? back : front` 同一条规则），
+ * 这一面不成形（`validSpine`：缺 skel / atlas / anims）就是 null —— 调用方据此**回落原版模型**，绝不把半份数据
+ * 交给加载器（`PIXI.Assets.load(undefined)` 那种失败是静默的菱形）。
+ * @param {{ front?: object, back?: object }} sides
+ * @param {boolean} back
+ * @returns {object|null} the manifest object itself (one identity per side — render/units.js compares entries)
+ */
+function outfitSide(sides, back) {
+  const side = back && isObj(sides.back) ? sides.back : sides.front;
+  return validSpine(side) ? side : null;
+}
+
+/**
+ * 这套时装能不能**当成模型**用：正面必须是成形的那一面。
+ *
+ * 为什么以正面为准（而不是「要哪一面就看哪一面」）：两面各判一次会让一个坏掉的 Back 面得到「官方正面 + 时装背面」
+ * 这种混搭 —— 朝向一变就换了一个人，正是「同一干员的两套模型不许串」那条要求最难看的样子。内容侧的契约也正好
+ * 是「front 总有，back 可有可无」（271 套有 Back、5 套单面）。整份不算 ⇒ 回落原版，失败方向仍然可见、可解释。
+ * @param {{ front?: object, back?: object }} sides
+ */
+const outfitUsable = (sides) => validSpine(sides.front);
+
+/**
  * A manifest `spineLocal` (`{ group, skel, atlas, textures[], pma, anims, … }`, file names in the data/local-assets.json
  * group) as a Spine entry with URLs, when `local` lists every file — skeleton and atlas side by side (pixi-spine finds
  * the atlas by the skeleton's name); else null. `fallback` = `web`.
@@ -242,10 +293,18 @@ export function localSpineEntry(sl, local, web) {
   return entry;
 }
 
-/** Whether an operator/token/enemy has a Back model. */
-export function hasBackSpine(m, id) {
+/**
+ * Whether an operator/token/enemy has a Back model. `opts.skin` (an outfit, see `spineEntry`): the outfit's own Back
+ * side decides — a single-sided outfit has none, whatever the official entry has; its Back side is the same object
+ * `spineEntry(id, { back: true, skin })` hands out, so the view's Front ⇄ Back question and its load never disagree.
+ * @param {any} m @param {string} id @param {{ skin?: any }} [opts]
+ */
+export function hasBackSpine(m, id, opts) {
   const ch = get(get(m, 'chars'), str(id) || '') || get(get(m, 'chars'), baseCharId(id) || '');
-  return !!(ch && isObj(ch.spine) && validSpine(ch.spine.back));
+  if (!ch) return false;
+  const sides = spineSides(opts && opts.skin);
+  if (sides && outfitUsable(sides)) return validSpine(sides.back);
+  return !!(isObj(ch.spine) && validSpine(ch.spine.back));
 }
 
 export function validSpine(sp) {
@@ -993,7 +1052,7 @@ export function createAssets(options) {
     ui: (name) => uiUrl(m(), name),
     picture: (id) => unitPictureUrl(m(), id),
     spineEntry: (id, o) => spineEntry(m(), id, localManifest ? { ...o, local: localManifest } : o),
-    hasBack: (id) => hasBackSpine(m(), id),
+    hasBack: (id, o) => hasBackSpine(m(), id, o),
     audio: {
       bgm: (kind) => bgmEntry(m(), kind),
       sfx: (group, key) => sfxUrl(m(), group, key),

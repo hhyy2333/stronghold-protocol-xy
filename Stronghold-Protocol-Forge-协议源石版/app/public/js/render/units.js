@@ -18,6 +18,13 @@
 // may never settle — its view stayed the placeholder). Every bar is a tinted Texture.WHITE sprite, so HUDs batch into
 // few draw calls.
 //
+// 局内换装（刀二，DESIGN §28.28 / `docs/WORKSHOP.md` §1.17）：一个单位属于哪个座位（`info.ownerId` 就是座位的
+// `playerId`）→ 那座位在 `room.state.seats[].appearance.picks` 里给这个干员选的那一套 → `assets.skins` 里那一条的
+// `art.spine` → `assets.spineEntry(id, { skin })`。解析只有一份（`render/skinSpine.js`），本文件只做三件事：
+// 把 `sides` 传下去（`_modelEntry` / `_wantsBack` / `_fallDur`）、在**外观帧到达**时按既有 `retryAssets` 那条路重解析
+// （`update` 里每帧一个整数比较：`appearanceGen`），以及沿用 `_syncModel` 的 Front ⇄ Back 规则（一套单面时装
+// 自此没有 Back 模型，正面那一侧说了算）。没有时装时每一次调用与从前逐字相同 —— 这就是回退路径。
+//
 // Placement: feet anchored at world (x, y, z); scale = camera px-per-tile at the feet × UNIT.modelScale, so
 // chibis shrink with distance like the original. An enemy's model is also scaled by its official prefab factor
 // (enemies.json `modelScale`, user playtest #6 item 9: the official battle prefab shrinks e.g. 威龙 to 0.16 / 0.27 of
@@ -92,6 +99,9 @@ import { UF, ANIM } from '../../../shared/constants.js';
 import { formsFor } from '../../../shared/packForms.js';
 import { SpineActor } from './spine.js';
 import { skillAttackMode } from './skillAttack.js';
+// 局内换装（刀二）：这个单位该穿哪套工坊时装的模型（座位外观 → `assets.skins` → `art.spine`），以及「外观帧到了」
+// 的那一条廉价信号。解析只有一份（`render/skinSpine.js`），本文件只负责把它交给 `assets.spineEntry({ skin })`。
+import { appearanceGen, outfitOf } from './skinSpine.js';
 import { diamondTexture, shadowTexture, fxAtlas, tierChip, statusTexture, itemTexture, hudRings, ringArc, downLabel, HUD_DISC, ELEMENT_RING } from './textures.js';
 import { COLORS, TIER_COLORS, ENEMY_FRAME, UNIT, PROJ, statusIconKey, statusIconSuppressed } from './style.js';
 import { drawCrate, rowDepthKey, ROW_KEY, deviceBoxOf, DEVICE_BOX } from './tiles.js';
@@ -869,6 +879,7 @@ export class UnitView {
     this._retryAt = 0;                   // when the next retry is due (ms, performance clock; 0 = none)
     this._spineHidden = false;           // the load in flight began while the tab was hidden (SPINE_STUCK_MS)
     this._stuckAt = 0;                   // when that load is started again unless it settled (ms; 0 = none)
+    this._skinGen = appearanceGen();     // the outfits generation this view's model was resolved against (see update)
     this.baseTint = 0xffffff;            // the drawn model's own tint (ALIAS_TINT), under the status tints
 
     this.hud = new P.Container();
@@ -968,7 +979,25 @@ export class UnitView {
   _modelEntry(back = this._wantsBack()) {
     const a = this.ctx.assets;
     const id = this.info.spine || this.info.defId;
-    return a && a.spineEntry && id ? a.spineEntry(id, { back }) || null : null;
+    if (!a || !a.spineEntry || !id) return null;
+    // 工坊时装的模型（刀二）：`opts.skin` 的那一面不成形时 `spineEntry` 自己回落原版，所以这里不需要分支 ——
+    // 解析层给 null（没选 / 包被卸 / 关闭了工坊外观）时调用形状与从前逐字相同。
+    const outfit = this._outfit();
+    return a.spineEntry(id, outfit ? { back, skin: outfit.sides } : { back }) || null;
+  }
+
+  /**
+   * 这个单位现在该穿的时装模型（`render/skinSpine.js`），或 null（原版）。
+   *
+   * 只在解析模型的几个口上调用（`_loadSpine` / `retryAssets` / `_wantsBack` / `_fallDur`），**不**每帧：
+   * 结果由解析层按 (干员, 时装) 记忆化，所以同一个 `sides` 每次是同一个对象（`retryAssets` 跨帧比较模型）。
+   * 清单（`ctx.assets.manifest`）在标题页还不存在时这里就是 null —— 那时棋盘也还没有单位。
+   * try/catch：一个坏掉的座位帧不该让整个棋盘画不出来（渲染路径上没有第二道防线）。
+   */
+  _outfit() {
+    const a = this.ctx.assets;
+    if (!a || !a.manifest) return null;
+    try { return outfitOf(this.info, { manifest: a.manifest }); } catch { return null; }
   }
 
   /** @param {boolean} [retry] load again even after a remembered failure (assets.js acquire `{ retry }`) */
@@ -978,6 +1007,7 @@ export class UnitView {
     const id = this.info.spine || this.info.defId;
     const back = this._wantsBack();
     const entry = this._modelEntry(back);
+    this._skinGen = appearanceGen();    // resolved against the outfits of now (update re-resolves when that moves)
     if (!entry || this.ctx.settings?.quality === 'low' && this.isEnemy && !this.isBoss && this.ctx.crowded?.()) return;
     this.entryBack = back;
     this._resolved = entry; // what the manifest named (the model drawn may be its `fallback`)
@@ -1343,12 +1373,17 @@ export class UnitView {
    * others have no Die clip, so the Front model shows the fall and the held knocked-down pose (GitHub issue #25: the
    * Back model went on with its attack loop under the redeploy ring) [ASSUMED: no source says which model the official
    * client lies down with; a Back skeleton without a Die clip cannot show a fall].
+   * The outfit in force answers both questions (`hasBack` / `spineEntry` with `{ skin }`): a single-sided outfit has no
+   * Back model whatever the official operator has, and its own Back skeleton's Die clip decides the fall.
    */
   _wantsBack() {
     const a = this.ctx.assets;
     const id = this.info.spine || this.info.defId;
-    if (this.isEnemy || this.dir !== 'UP' || !id || !a || typeof a.hasBack !== 'function' || !a.hasBack(id)) return false;
-    return this.alive || dieClipDur(typeof a.spineEntry === 'function' ? a.spineEntry(id, { back: true }) : null) > 0;
+    if (this.isEnemy || this.dir !== 'UP' || !id || !a || typeof a.hasBack !== 'function') return false;
+    const outfit = this._outfit();
+    if (!a.hasBack(id, outfit ? { skin: outfit.sides } : undefined)) return false;
+    const back = typeof a.spineEntry === 'function' ? a.spineEntry(id, outfit ? { back: true, skin: outfit.sides } : { back: true }) : null;
+    return this.alive || dieClipDur(back) > 0;
   }
 
   /**
@@ -1594,7 +1629,10 @@ export class UnitView {
   _fallDur() {
     const a = this.ctx.assets;
     const id = this.info.spine || this.info.defId;
-    return a && typeof a.spineEntry === 'function' && id ? dieClipDur(a.spineEntry(id, { back: this._wantsBack() })) : 0;
+    if (!a || typeof a.spineEntry !== 'function' || !id) return 0;
+    const outfit = this._outfit();
+    const back = this._wantsBack();
+    return dieClipDur(a.spineEntry(id, outfit ? { back, skin: outfit.sides } : { back }));
   }
 
   /** Standing again (a redeploy, a revive): an operator facing UP gets its Back model back (this frame's update). */
@@ -1676,6 +1714,14 @@ export class UnitView {
     const P = this.P;
     // the model for the state the frame's events and snapshot left (Front ⇄ Back when it went down / stood up: die, revive)
     if (this._modelDirty) { this._modelDirty = false; this._syncModel(); }
+    // 外观帧到了（`room.state` 里座位的外观变了：别人在你面前换装、你在对局里换装）：模型按新那一套重解析。
+    // `retryAssets` 只比骨架 URL（+ 那张图），外观没变就什么都不做；所以这条检查的代价是每帧一个整数比较，
+    // 而它补上了「外观帧不经过清单变化 / 标签页可见」这两个既有重解析口的那条缝。
+    const skinGen = appearanceGen();
+    if (this._skinGen !== skinGen) {
+      this._skinGen = skinGen;
+      if (this.entry) this.retryAssets();
+    }
     // a failed / timed-out model load is tried again once its wait is over (SPINE_RETRY_MS; frames only: never hidden)
     if (this._retryAt && nowMs() >= this._retryAt) { this._retryAt = 0; if (!this.actor && !this._spineBusy) this._loadSpine(true); }
     // a load begun in a hidden tab and still in flight SPINE_STUCK_MS after it came back: started again (GitHub #68)
