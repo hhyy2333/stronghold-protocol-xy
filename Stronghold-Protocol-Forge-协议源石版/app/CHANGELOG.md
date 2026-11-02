@@ -9,6 +9,36 @@
 
 ---
 
+## 0.19.43 — 2026-11-02
+
+**修「进对局不出怪」：房间数据面取不到时模拟整份回落到全局 `/data/`；修三类「诚实战报被判伪造」（`leak key` / `coins` / `layer bound`）；官方时装包改成自动生效。**
+
+### 进对局不出怪（业主 2026-11-02「还是有人不出怪」）
+
+- **症状**：战场空着、不刷敌人、倒计时照走，60 秒后服务端接管。
+- **根因**：一个声明了模组集合的房间，对局数据从 `/room-data/<房间摘要>/<文件>.json` 取（进程内存里的物化结果，`server/roomAssets.js` 的 `byDigest`）。服务重启过、房间的模组集合在玩家打开页面之后又改过、或那个摘要从没被物化过，这一面就是 404；而 `loadBrowserSim` 在缺文件时**直接抛** `simulation data unavailable` ⇒ 这一次 `b.start` 一次模拟都不跑 ⇒ 服务端按 `timeout` 接管。
+- **修**：`public/js/battle/simLoader.js` 抽出 `loadSimData`，房间面取不到时**整份**回落到全局 `/data/`（不逐文件混用两个面，回落时 `console.warn` 一次），两个面都取不到才抛原来的错；`loadBrowserSim` 顺便把实际用到的面（`dataBase`）交回来。
+- **测试**：`test/sim/simloader-room-fallback.test.js` 5 条（整份回落 / 部分缺失也整份回落 / 两面都缺仍抛 / 纯全局面不多取 / 内容集给了结构化数据时零请求）；另补 `test/match/room-data-face.test.js` 3 条钉住「客户端与服务端用的是同一份房间数据」（这条缝此前零覆盖）。
+
+### 三类「诚实战报被判不合规」（`invalid` 接管，线上 3 小时 43 局里 16 次）
+
+- **`leak key`**：内容**链式**产出的子体（通缉令 → 俗心 `enemy_1197_sfshu` → 小说卷轴 `enemy_1198_msfshu` 的 DeadSpawn）只被 `derived` 认一层，第二环被判伪造 ⇒ 改成**传递闭包**，并给联防里「卡身子体」按 `offspringPerParent` 配额度。
+- **`coins`**：骑士金神按击杀付钱、卡面自带 `goldCap`（每场 9），校验器原先只认刷怪悬赏与 `firstKillBy` ⇒ 改为读卡面 `goldCap`。
+- **`layer bound`**：两个**不经 garrison** 的合法来源——【心之钢】装备（坚守干员每 3 秒 +2 层、每名干员各自计时，实测 128/154 层对上旧上界 104/108）与协议源石卡面（困毙之雪按击杀 +1/+2、冰雪消融按命中 +1，实测 152/123/119 对上 96/104）⇒ 按装备节奏与每事件层数折算额度。
+- **数字单一来源**：新增 `shared/battleBounds.js`（行为侧 `server/sim/content/items/protocol.js` 反过来 import 它）。**每条修改都钉住「伪造仍被拒」**：999 层、10 金、无卡/无装备时旧上界不动、联防额度有限。
+- **效果**：1128 场 coop/ABYSS Lv19 扫描 —— `leak key 6→0`、`coins 7→0`、`layer bound 6→0`（`test/match/report-bounds-honest.test.js` 7 条）。
+
+### 官方时装包自动生效（业主 2026-11-02「皮肤模组应该自动选择上」）
+
+- 判据 `shared/workshop.js isCosmeticOnlyPack`：**改不了对局**（`content: []`、`combat: false`，没有 `server` / `client` / `overrides` / `behaviour` / `variants` / `forms` / `fx`）、**又带了外观**（`skins` / `art` / `voices` / `bondIcons` / `itemIcons`）的包。
+- 房间一旦声明了模组子集，这些包的 id **一律自动并进集合**（`server/lobby.js resolveRoomModSet`）；房间的素材与数据是按集合物化的，所以以前「房主漏勾 → 那间房没有时装」正是这个原因。不声明集合的房间语义不变（跑服务器加载的全部包），玩家仍可用设置里的「工坊外观」整体关掉。
+- **测试**：`test/workshop-cosmetic-auto.test.js` 10 条；端到端实测：房主只勾 `yana-addition` 时 `room.state.mods.packs` = `official-skins, yana-addition`。
+
+### 已知局限（未改，等业主拍板）
+
+- `counts`：boss 场能无限召唤（余音 / 刺胄之弹），诚实 `killed 412` vs `maxTotal 208`（1128 场里 1 次）。改它等于放宽一条真防线；要动建议按时间/血量口径而不是放大系数。
+- `hex_kazimierz_knight.indomLayers: 5` 的同类额度没配（实测最多 5 层，远低于上界）。
+
 ## 0.19.42 — 2026-11-02
 
 **官方时装上车（276 套：头像 / 立绘 / 局内战斗模型）+ 开场演出 + 第 6 回合协议源石「点卡刷新」。**
