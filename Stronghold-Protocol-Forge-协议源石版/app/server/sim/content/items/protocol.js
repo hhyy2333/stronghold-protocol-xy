@@ -22,6 +22,7 @@ import { makeDamageInfo, isChained, isHpLoss, mitigate } from '../../damage.js';
 import { num, itemKeyOf, itemsOf, isMember, battleStore } from '../support/index.js';
 // 骑士徽章 (业主 2026-10-26)：三个互相独立的半边（转移 / 真伤 ×3 / 致命锁血）单独一个模块，见该文件头。
 import { knightBadge } from './knightbadge.js';
+import { ITEM_LAYER_SOURCES } from '../../../../shared/battleBounds.js';
 
 /** Positive number, else the documented default (a 0 / a missing field means "not configured"). */
 const pos = (v, d) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -305,8 +306,16 @@ function corpseHill(battle, u, rec, S) {
 //   150 / 2（data/items.json 的 params 是空的，数值写在卡面文字里）。]
 
 const HEARTSTEEL_KEY = 'chess_item_9_96_e';
-/** Card-face defaults for a record whose `params` carries no numbers. */
-const HEARTSTEEL_DEFAULT = Object.freeze({ every: 3, dmgMaxHpPct: 100, maxHpGain: 150, layerGain: 2 });
+/**
+ * Card-face defaults for a record whose `params` carries no numbers.
+ * `every` / `layerGain` come from `shared/battleBounds.js` on purpose: the result validator budgets this equipment's
+ * in-battle layer gain from the SAME numbers (server/match/fields.js `itemLayerAllowance`), and two copies of them is
+ * exactly how an honest battle gets rejected as a forger ('layer bound') after a rebalance.
+ */
+const HEARTSTEEL_DEFAULT = Object.freeze({
+  every: ITEM_LAYER_SOURCES[HEARTSTEEL_KEY].every, dmgMaxHpPct: 100, maxHpGain: 150,
+  layerGain: ITEM_LAYER_SOURCES[HEARTSTEEL_KEY].layers,
+});
 /** The bond whose members the equipment marks and this behaviour buffs. */
 const HEARTSTEEL_BOND = 'steadShip';
 /** The buff carrying the battle-long max-HP growth (additive `hpFlat` per stack). */

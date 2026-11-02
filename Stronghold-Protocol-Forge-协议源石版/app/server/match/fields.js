@@ -36,6 +36,7 @@ import { BOND_LAYER_CAP, layerGainRoom } from '../../shared/constants.js';
 import { verbSpawnMods } from '../../shared/hextech.js';
 import { uniteLeft } from '../sim/spec.js';
 import { diyTokenOwner, diyRecordOf } from '../../shared/diy.js';
+import { itemLayerSource, CARD_LAYER_SOURCES } from '../../shared/battleBounds.js';
 
 export const MAX_TICKS_PER_INTERVAL = 8;
 /**
@@ -525,6 +526,14 @@ function derivedKeys(gd, key) {
   return list;
 }
 
+/** Every key content can reach from `roots` (transitive: a body's own summons / splits are content-spawned too). */
+function descendantsOf(gd, roots) {
+  const out = new Set();
+  const queue = [...roots];
+  while (queue.length) for (const d of derivedKeys(gd, queue.pop())) if (!out.has(d)) { out.add(d); queue.push(d); }
+  return out;
+}
+
 /**
  * How many `child` enemies one `parent` can leave behind, when its data says so: a talent naming the child
  * (`<X>.enemy_key`) with a count (`<X>.cnt`, e.g. 磨砻 DeadSpawn 2, 烹泉 4, 沉沙's unconsumed blades ≤ 4) or without one
@@ -620,9 +629,12 @@ function layerBondsOf(p, gd) {
  * trait's too, 华法琳's 7 / 14, GitHub #175). A trait the data gives no cap (初雪 / 银灰's freeze trait, 菲莱 / 百炼嘉维尔's per-skill
  * 萨尔贡, 斯卡蒂's per-kill …) — or a 魔王, whose +extra on every trait gain counts toward no cap — leaves its bonds bounded
  * only by the room under 999 (Infinity here): such boards legitimately gain hundreds of layers a battle.
+ * 装备那半边（items 自己按 `every` 秒加层）与卡面那半边（协议源石卡按击杀加层）都不经过 garrison，由
+ * `itemLayerAllowance` / `cardLayerAllowance` 追加到同一张表上。
+ * @param {any} p one PlayerBattleInput @param {any} gd @param {{seconds: number, maxTotal: number}} ctx
  * @returns {Map<string, number>} bondId → extra allowance (Infinity: uncapped)
  */
-function layerAllowanceOf(p, gd) {
+function layerAllowanceOf(p, gd, ctx) {
   const out = new Map();
   if (typeof gd.garrison !== 'function' || typeof gd.chess !== 'function' || typeof gd.bond !== 'function') return out;
   const units = (Array.isArray(p.units) ? p.units : []).filter((u) => u && u.kind !== 'token' && typeof u.chessId === 'string');
@@ -648,7 +660,110 @@ function layerAllowanceOf(p, gd) {
     }
   }
   if (extra) for (const b of out.keys()) out.set(b, Infinity);
+  itemLayerAllowance(p, gd, ctx.seconds, out);
+  cardLayerAllowance(p, gd, ctx.maxTotal, out);
   return out;
+}
+
+/**
+ * 协议源石卡也能在战斗里加层，同样没有 garrison 承担 —— 于是实打实的层数被判成伪造（'layer bound'，实测
+ * coop/ABYSS Lv19：困毙之雪 152 / 123 / 119 层对上上界 96 / 104，冰雪消融 152）。
+ *
+ * 判据来自卡面自己的记录（`data/hextech.json`，源是 `tools/hextech/roster.mjs`）：哪一张卡的哪一格、给哪条盟约
+ * 加层，写在 `shared/battleBounds.js` 的 `CARD_LAYER_SOURCES` 里；**数字本身仍然从记录里读**，所以改数值只动
+ * roster 一处。一场最多触发几次按击杀数自己的上界 `maxTotal` 折算（与 `killed ≤ maxTotal` 同一条口径）。
+ * @param {any} p one PlayerBattleInput @param {any} gd @param {number} maxTotal @param {Map<string, number>} out
+ */
+function cardLayerAllowance(p, gd, maxTotal, out) {
+  if (!(maxTotal > 0)) return;
+  for (const ref of Array.isArray(p.playerEffects) ? p.playerEffects : []) {
+    const id = typeof ref?.id === 'string' ? ref.id.replace(/^hex:/, '') : '';
+    const src = id ? CARD_LAYER_SOURCES[id] : null;
+    if (!src) continue;
+    const slot = ref?.params && typeof ref.params === 'object' ? ref.params[src.slot] : null;
+    const per = maxLayerGain(slot, src.match);
+    if (per > 0) out.set(src.bond, (out.get(src.bond) || 0) + per * maxTotal);
+  }
+}
+
+/** `params` 里字段名匹配 `re` 的最大那个数（没有就是 0）。 */
+function maxLayerGain(params, re, depth = 0) {
+  if (!params || typeof params !== 'object' || depth > 3) return 0;
+  let max = 0;
+  for (const [k, v] of Object.entries(params)) {
+    if (v && typeof v === 'object') { max = Math.max(max, maxLayerGain(v, re, depth + 1)); continue; }
+    if (!re.test(k)) continue;
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) max = Math.max(max, Math.trunc(n));
+  }
+  return max;
+}
+
+/**
+ * 装备也能在战斗里加层（业主 2026-10-31 的【心之钢】： 「【坚守】盟约干员每隔 3 秒的攻击附带自身最大生命值 100% 的
+ * 法术伤害，并增加自身最大生命值 150 点、【坚守】层数 2 层」）。这一段没有任何 garrison 承担，所以上面那张表读不到
+ * 它，于是**诚实的**结果被判成伪造（'layer bound' —— 实测 coop/ABYSS Lv19 seed 2 R11：steadShip 128 层，上界 104；
+ * R12 154 层）。额度按装备自己的数（`shared/battleBounds.js`，与行为同一份）乘一场里最多能触发几次：每名该盟约的
+ * 干员各挂自己的 `every` 秒时钟（items/protocol.js `src.mem.heartsteelAt`），所以每人 `floor(T / every) + 1` 次。
+ *
+ * 只给「携带者算这个盟约成员」的那一条上额度（数据 bonds ∪ 装备自己的 `grantsBonds`，与支援那边 `isMember` 同一
+ * 口径），别的盟约一层都不多给 —— 伪造者没有这件装备时拿到的是原来的 60 + 4·round。
+ * @param {any} p one PlayerBattleInput @param {any} gd @param {number} seconds the battle's own time limit
+ * @param {Map<string, number>} out bondId → extra allowance (mutated)
+ */
+function itemLayerAllowance(p, gd, seconds, out) {
+  if (!gd || typeof gd.item !== 'function' || typeof gd.chess !== 'function') return;
+  const t = Number(seconds);
+  if (!Number.isFinite(t) || t <= 0) return;
+  for (const u of Array.isArray(p.units) ? p.units : []) {
+    if (!u || u.kind === 'token' || typeof u.chessId !== 'string') continue;
+    const items = Array.isArray(u.items) ? u.items : [];
+    // the loudest grant this unit carries (a record that names its own numbers wins over the shared default)
+    let src = null;
+    for (const id of items) {
+      const rec = itemLayerSource(id);
+      if (!rec) continue;
+      const params = gd.item(id)?.params || {};
+      const every = Number(params.every) > 0 ? Number(params.every) : rec.every;
+      const layers = Number(params.layerGain) > 0 ? Number(params.layerGain) : rec.layers;
+      const rate = layers / every;
+      if (!src || rate > src.rate) src = { bond: rec.bond, every, layers, rate };
+    }
+    if (!src) continue;
+    const bonded = Array.isArray(gd.chess(u.chessId)?.bonds) && gd.chess(u.chessId).bonds.includes(src.bond);
+    const granted = items.some((id) => {
+      const g = gd.item(id)?.grantsBonds;
+      return Array.isArray(g) && g.includes(src.bond);
+    });
+    if (!bonded && !granted) continue;
+    out.set(src.bond, (out.get(src.bond) || 0) + src.layers * (Math.floor(t / src.every) + 1));
+  }
+}
+
+/**
+ * The most coins a player CARD can pay inside one battle, read from the card's own record (`data/hextech.json` — the
+ * same `params` the battle's own installers read, never guessed here).
+ *
+ * A card that pays per kill declares its per-battle ceiling as `<slot>.goldCap` in its roster entry
+ * (`tools/hextech/roster.mjs`): 骑士金神 「【卡西米尔】干员击杀 4 个敌人时获得 1 金（每场战斗最多 1 金，卡西米尔每 50
+ * 层 +1，最多 +到 9）」 ⇒ `kazimierzKnightGold.goldCap = 9`. Without that ceiling an HONEST result is rejected as a
+ * forger ('coins') the moment the card pays anything — measured coop/ABYSS Lv19 seed 4 R7: `coins: 1, coinsHex: 1` on
+ * a field whose spawns carry no bounty at all. **一张在战斗里付钱的新卡必须在自己的条目里写 `goldCap`**，否则这里的
+ * 额度永远是 0，诚实结果又会被打回。
+ * @param {any} params the effect ref's `params` (the card's `effect` object)
+ * @param {number} [depth] recursion guard (hand-written records, shallow)
+ * @returns {number} coins
+ */
+function battleCoinCapOf(params, depth = 0) {
+  if (!params || typeof params !== 'object' || depth > 4) return 0;
+  let total = 0;
+  for (const v of Object.values(params)) {
+    if (!v || typeof v !== 'object') continue;
+    const cap = Number(v.goldCap);
+    if (Number.isFinite(cap) && cap > 0) { total += Math.trunc(cap); continue; }
+    total += battleCoinCapOf(v, depth + 1);
+  }
+  return total;
 }
 
 /**
@@ -683,9 +798,11 @@ export function specBounds(spec, gd = null) {
   // the same effect ref the battle installs (server/sim/content/hextech.js install → params.battle.firstKillBy).
   for (const p of Array.isArray(spec && spec.players) ? spec.players : []) {
     for (const ref of Array.isArray(p && p.playerEffects) ? p.playerEffects : []) {
-      const fk = ref && ref.params && ref.params.battle && ref.params.battle.firstKillBy;
+      const params = ref && ref.params;
+      const fk = params && params.battle && params.battle.firstKillBy;
       const c = fk ? Number(fk.coins) : 0;
       if (Number.isFinite(c) && c > 0) bountyCoins += Math.trunc(c);
+      bountyCoins += battleCoinCapOf(params);
     }
   }
   const derived = new Set();
@@ -721,6 +838,12 @@ export function specBounds(spec, gd = null) {
     }
   }
   for (const k of contentKeys.keys()) if (!gd || typeof gd.enemy !== 'function' || gd.enemy(k)) derived.add(k);
+  // 内容可以**链式**产出：一张敌方 verb 卡刷出来的身体自己还会召唤 / 分裂 —— 通缉令 刷出的 俗心
+  // (enemy_1197_sfshu) 死时 DeadSpawn 3 只 小说卷轴 (enemy_1198_msfshu)。上面那两圈只取「排定的刷怪」与「卡面
+  // 自己点名的 key」的**一层**子体，于是这条链的第二环不在 derived 里：那具**诚实的**子体一漏怪，整份战报就被判
+  // 成伪造（'leak key'，实测 coop/ABYSS Lv19 seed 3 R6：俗心 的 3 只卷轴）。内容能产出的 key，它自己能产出的
+  // key 同样是内容能产出的，所以闭包到不动点（有 derivedKeys 的缓存，规模受 data/enemies.json 限制）。
+  for (const d of descendantsOf(gd, [...derived])) derived.add(d);
   // 协议源石敌方动词「回响」(ehex_echo): a killed enemy splits into `params.count` copies of the SAME key that DO count
   // in the total (server/sim/content/hextech.js `echo`: countInTotal = unit.counted), so the wave's own count is not
   // the leak ceiling — a scheduled body that is killed leaves up to `count` children, each of which may leak, and a
@@ -764,12 +887,26 @@ export function specBounds(spec, gd = null) {
     for (const [key, n] of contentKeys) {
       if (!derived.has(key)) continue;   // a key the data does not know is rejected as before
       for (const src of leakers) derivedSourceCounts.set(`${key}|${src}`, Math.max(n, derivedSourceCounts.get(`${key}|${src}`) || 0));
+      // 链式：卡面刷出来的身体自己的子体（俗心 → 小说卷轴 ×3）同样只可能出自这张卡。额度按数据里的子体上限给
+      // （offspringPerParent；连线都没有的远房子体退回 maxTotal —— 与排定刷怪那条路同一口径），
+      // 否则诚实 helper 的那一漏被判 'leak source'。
+      for (const d of descendantsOf(gd, [key])) {
+        if (!derived.has(d)) continue;
+        const per = offspringPerParent(gd, key, d);
+        const add = Math.min(maxTotal, per == null ? maxTotal : n * per);
+        for (const src of leakers) {
+          const ks = `${d}|${src}`;
+          derivedSourceCounts.set(ks, Math.min(maxTotal, Math.max(add, derivedSourceCounts.get(ks) || 0)));
+        }
+      }
     }
   }
   for (const k of keyCounts.keys()) {
     const rec = gd && typeof gd.enemy === 'function' ? gd.enemy(k) : null;
     if (rec && rec.notCountInTotal) uncountedKeys.add(k);
   }
+  // 一场能跑多久：装备 / 特质的「每秒、每 N 秒」加层都按它折算一场的上界（与 maxTime 同一个数）
+  const battleSeconds = Number(spec && spec.timeLimit) > 0 ? Number(spec.timeLimit) : HARD_CAP_SECONDS;
   const players = new Map();
   for (const p of Array.isArray(spec && spec.players) ? spec.players : []) {
     if (!p || typeof p.playerId !== 'string') continue;
@@ -813,7 +950,7 @@ export function specBounds(spec, gd = null) {
     const layerGainsOn = gainsByPlayer && typeof gainsByPlayer[p.playerId] === 'boolean'
       ? gainsByPlayer[p.playerId]
       : !(spec && spec.flags && spec.flags.layerGainsEnabled === false);
-    players.set(p.playerId, { chess, all, names, defIds, bonds: gd ? layerBondsOf(p, gd) : null, startLayers, bondLayerCap, layerGainsOn, layerAllow: gd ? layerAllowanceOf(p, gd) : new Map() });
+    players.set(p.playerId, { chess, all, names, defIds, bonds: gd ? layerBondsOf(p, gd) : null, startLayers, bondLayerCap, layerGainsOn, layerAllow: gd ? layerAllowanceOf(p, gd, { seconds: battleSeconds, maxTotal }) : new Map() });
   }
   const round = Number(spec && spec.round) || 0;
   return {
