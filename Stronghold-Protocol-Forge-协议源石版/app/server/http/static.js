@@ -84,7 +84,7 @@ import { UI_FRAME_CSP } from '../../shared/plugins/ui.js';
 import { WORKSHOP_ASSET_PREFIX, WORKSHOP_ASSET_TYPES, ROUTE_CACHE_HEADERS, isCacheOnlyPath } from './workshop.js';
 import { WORKSHOP_PANEL_PREFIX, WORKSHOP_RESOURCE_PREFIX } from '../../shared/workshop.js';
 import { serveMods } from './mods.js';
-import { DATA_FILES } from '../data.js';
+import { DATA_FILES, ROOM_DATA_FILES } from '../data.js';
 // 包声明的动态只读端点（`server.modules[*].uses` 含 `route`，DESIGN §28.32）：判据与执行都在 routeMount.js ——
 // 静态处理器只负责「逐字命中就交给它」，所以这一层的三个纪律（JSON 可序列化 / 同步 / 有界）不会在别处出现第二份。
 import { DYNAMIC_ROUTE_CACHE_HEADERS, runDynamicRoute, coreMounts } from './routeMount.js';
@@ -403,7 +403,9 @@ export function createStaticHandler({
       const slash = rest.indexOf('/');
       const digest = slash > 0 ? rest.slice(0, slash).toLowerCase() : '';
       const name = slash > 0 ? rest.slice(slash + 1, -'.json'.length) : '';
-      const set = ROOM_DIGEST_RE.test(digest) && DATA_FILES.includes(name) ? roomData(digest) : null;
+      // 白名单是 `ROOM_DATA_FILES`（= DATA_FILES + 浏览器模拟需要、但「必存在」清单里没有的 `moduleLevels`）：
+      // 用 DATA_FILES 当白名单会让每个声明了集合的房间都取不到 moduleLevels.json（详见 server/data.js 那段注释）。
+      const set = ROOM_DIGEST_RE.test(digest) && ROOM_DATA_FILES.includes(name) ? roomData(digest) : null;
       const rec = set && set.data && Object.hasOwn(set.data, name) ? set.data[name] : null;
       if (rec !== null && rec !== undefined) {
         const buf = Buffer.from(JSON.stringify(rec), 'utf8');

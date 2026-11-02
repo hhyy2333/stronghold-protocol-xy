@@ -39,6 +39,20 @@ export const DATA_FILES = Object.freeze([
 ]);
 
 /**
+ * `data/*.json` 里**允许由房间数据面送出**的文件名（`/room-data/<房间摘要>/<文件>.json`，`server/http/static.js`）。
+ *
+ * 为什么不是直接复用 `DATA_FILES`：那个列表是「缺文件时喊一声」的**必存在**清单，而 `moduleLevels` 是**可选**的
+ * （`data/moduleLevels.json` 由 build-data 额外产出，老内容集 / 只装旧 data 的包合法地没有它 —— 见下面那段注释），
+ * 所以它不在 `DATA_FILES` 里。但**浏览器模拟需要它**（`public/js/battle/simLoader.js` 的 `SIM_DATA_FILES` 含 `moduleLevels`，
+ * 协议源石【特限恢复】的 3 级模组靠它解析 `loadout.moduleLevel === 3`），于是拿 `DATA_FILES` 当路由白名单时，
+ * 每一个**声明了模组集合的房间**去取 `/room-data/<digest>/moduleLevels.json` 都是 404 —— 客户端 `loadBrowserSim`
+ * 缺文件直接抛错，整场不模拟（玩家看到「进对局不出怪」；0.19.43 起回落到全局数据、能打但可能不同步）。
+ *
+ * 判据只有一份：`test/match/room-data-files.test.js` 钉住 `SIM_DATA_FILES ⊆ ROOM_DATA_FILES`。
+ */
+export const ROOM_DATA_FILES = Object.freeze([...DATA_FILES, 'moduleLevels']);
+
+/**
  * Recursively freeze an object graph (iterative; safe for deep JSON). Returns the same object.
  * @template T
  * @param {T} root
