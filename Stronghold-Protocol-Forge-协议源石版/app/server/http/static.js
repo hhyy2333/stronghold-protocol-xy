@@ -408,7 +408,20 @@ export function createStaticHandler({
       const set = ROOM_DIGEST_RE.test(digest) && ROOM_DATA_FILES.includes(name) ? roomData(digest) : null;
       const rec = set && set.data && Object.hasOwn(set.data, name) ? set.data[name] : null;
       if (rec !== null && rec !== undefined) {
-        const buf = Buffer.from(JSON.stringify(rec), 'utf8');
+        // 房间数据面里的**美术清单**同样要带内容哈希（0.19.45）：这条分支和上面 `/data/` 那条有同一个病根 ——
+        // 物化的数据是合并体的原始拷贝，URL 不带哈希；而它在对局中才是客户端真正用的那一份
+        // （`public/js/battle/simLoader.js` 的 dataBase）。不套这一层的话，进了对局以后**每一个**美术 URL 都是裸
+        // 路径：浏览器没法长缓存、预载（assetCache 按地址存）也一个都命中不了 —— 321 MB 的时装 Spine 会在每局
+        // 重下一次。判据、顺序与兜底都照抄 `/data/` 那条：只按文件名判、失败就照原样发。
+        let body = rec;
+        if (assetIndex && assetIndex.ready && assetIndex.size && VIEW_MANIFEST_NAMES.has(`${name}.json`)) {
+          try {
+            body = rewriteManifest(rec, `${name}.json`, assetIndex).doc;
+          } catch (e) {
+            log.warn?.(`[static] room-data ${name}.json: the content-hash view failed (${e?.message || e}); served as it is`);
+          }
+        }
+        const buf = Buffer.from(JSON.stringify(body), 'utf8');
         // 合并体与普通 JSON 一样要压缩（业主 2026-10-18：合并过的 /data/*.json 曾绕开压缩，几 MB 原样上公网）。
         await serveBuffer(req, res, {
           body: buf, hash: `room-${createHash('sha1').update(digest).update(buf).digest('hex').slice(0, 20)}`,

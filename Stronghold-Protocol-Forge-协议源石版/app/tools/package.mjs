@@ -900,6 +900,53 @@ const STAND_IN_HASH = '0'.repeat(16);
 const EVERY_FILE_HASHED = Object.freeze({ hashOf: () => STAND_IN_HASH, modelHash: () => STAND_IN_HASH });
 
 /**
+ * 「站点素材」：已装包里声明为 `/assets/…` 的那些 URL，拼成一份 `assets.json` 形状的补充文档
+ * （`{ site: [<url 字符串> | <{ skel, atlas, textures }>] }`）。
+ *
+ * 为什么需要（0.19.45）：时装那 321 MB 搬出了包、落在 `public/assets/skins/`（`shared/workshop.js isSiteArtPath`），
+ * 而素材包只收**三份清单列出的**文件 —— 这批文件在磁盘上有、在服务器合并后的清单里也有，唯独**不在磁盘上那三份
+ * 清单里**（`assets.skins` 是装载期合并出来的，`data/assets.json` 一个字节都没改）。少了这一步，时装素材会被
+ * 判成 `notListed` 从素材包里静默消失：玩家导入后仍然要在对局里下 321 MB，而这正是这次搬运要解决的事。
+ *
+ * 认的是**形状**而不是字段名：包里任何 `{ skel: '/assets/…skel', … }` 的对象算一个模型（整组共用一个哈希，和
+ * 服务器那份视图同一条规则），任何 `/assets/…` 字符串算一个独立文件。这样以后包里再加别的站点素材（比如自定义
+ * 干员的立绘）不用改这里。
+ * @param {string} root
+ */
+export function packSiteArt(root) {
+  const out = [];
+  /** @type {string[]} */
+  let dirs;
+  try {
+    dirs = fs.readdirSync(path.join(root, 'workshop'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  } catch { return { site: [] }; }
+  const seen = new Set();
+  /** @param {string} url */
+  const isSite = (url) => typeof url === 'string' && url.startsWith('/assets/') && !url.includes('..') && !/[?#]/.test(url);
+  const push = (entry, key) => { if (seen.has(key)) return; seen.add(key); out.push(entry); };
+  /** @param {any} doc */
+  const walk = (doc, dir) => {
+    if (typeof doc === 'string') { if (isSite(doc)) push(doc, `${dir}:${doc}`); return; }
+    if (Array.isArray(doc)) { for (const v of doc) walk(v, dir); return; }
+    if (!doc || typeof doc !== 'object') return;
+    if (typeof doc.skel === 'string') {
+      // 一个 Spine 模型：整组的 URL 与成员必须一起进清单，服务器的模型哈希才对得上
+      const urls = [doc.skel, doc.atlas, ...(Array.isArray(doc.textures) ? doc.textures : [])].filter(isSite);
+      if (urls.length >= 2) {
+        push({ skel: doc.skel, atlas: doc.atlas, ...(Array.isArray(doc.textures) && doc.textures.length ? { textures: doc.textures } : {}) }, `${dir}:${doc.skel}`);
+        return;
+      }
+    }
+    for (const v of Object.values(doc)) walk(v, dir);
+  };
+  for (const dir of dirs) {
+    const man = readJson(path.join(root, 'workshop', dir, 'pack.json'));
+    if (man && typeof man === 'object') walk(man, dir);
+  }
+  return { site: out };
+}
+
+/**
  * The art files of the three manifests that the title screen's import checks, as public/… paths (sorted): the
  * importer's own plan (assetPack.js planFromManifests, mergeLocalManifests) of the manifests as a host serves them
  * (server/http/assetViews.js rewriteManifest — here every URL with a stand-in hash, as on a host that has every listed
@@ -909,11 +956,18 @@ const EVERY_FILE_HASHED = Object.freeze({ hashOf: () => STAND_IN_HASH, modelHash
  * @param {object | null} assets data/assets.json
  * @param {object | null} local data/local-assets.json
  * @param {object | null} fx data/local-fx.json
+ * @param {{ site?: any[] } | null} [site] 已装包的站点素材（`packSiteArt`），与官方清单一起走同一个 plan
  * @returns {string[]}
  */
-export function importableArt(assets, local, fx) {
+export function importableArt(assets, local, fx, site = null) {
   const view = (doc, name) => (doc && typeof doc === 'object' ? rewriteManifest(doc, name, EVERY_FILE_HASHED).doc : null);
-  const plan = planFromManifests(view(assets, 'assets.json'), mergeLocalManifests(view(local, 'local-assets.json'), view(fx, 'local-fx.json')));
+  // 站点素材要**并进文档再走 rewrite**：`rewriteManifest` 是给每条 URL 盖内容哈希的那一步，先盖后并的话
+  // 并进来的 `/assets/skins/…` 一条哈希都没有，`planFrom` 的 `plainRel` 会把它们全部当成「不可校验」丢掉
+  // （症状：这份素材包比预期少 2 193 个文件，而且没有任何报错）。
+  const siteEntries = site && Array.isArray(site.site) && site.site.length ? site.site : null;
+  const doc = siteEntries ? { ...(assets && typeof assets === 'object' ? assets : {}), site: siteEntries } : assets;
+  const assetsView = view(doc, 'assets.json');
+  const plan = planFromManifests(assetsView, mergeLocalManifests(view(local, 'local-assets.json'), view(fx, 'local-fx.json')));
   return [...plan.rels].map((rel) => `public/${rel}`).sort();
 }
 
@@ -938,7 +992,7 @@ export function assetPackPlan(root, opts = {}) {
   const files = [];
   const missing = [];
   const held = [];
-  for (const f of importableArt(assets, local, fxDoc)) {
+  for (const f of importableArt(assets, local, fxDoc, packSiteArt(root))) {
     if ((!jpVoice && f.startsWith(JP_VOICE_DIR)) || (!optionalVoice && OPTIONAL_VOICE_DIRS.some((d) => f.startsWith(d)))) held.push(f);
     else if (isFile(path.join(root, f))) files.push(f);
     else missing.push(f);

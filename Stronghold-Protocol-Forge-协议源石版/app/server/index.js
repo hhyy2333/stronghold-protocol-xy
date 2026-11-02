@@ -75,7 +75,7 @@ import { BUILD_INPUTS, computeBuildTag, buildTag, resetBuildTag } from './http/b
 import { createRequestHandler } from './http/routes.js';
 import { createTrafficCounter } from './http/traffic.js';
 import { createAssetIndex } from './http/assetIndex.js';
-import { createManifestViews } from './http/assetViews.js';
+import { createManifestViews, siteModels } from './http/assetViews.js';
 // 素材兜底跳转（server/http/assetJump.js，可选）：本机缺的 /assets|fonts 文件 302 到镜像；没配镜像时是 null。
 import { createAssetJump } from './http/assetJump.js';
 import { AccountStore } from './accounts.js';
@@ -639,7 +639,11 @@ export async function startServer(opts = {}) {
   // the content hashes of the art (built in the background once listening) and the manifests served with them
   const indexOptions = assetIndexOptionsFrom(opts, publicDir);
   const assetIndex = indexOptions ? createAssetIndex({ publicDir, log, ...indexOptions }) : null;
-  const views = assetIndex ? createManifestViews({ dataDir, index: assetIndex, log }) : null;
+  // `extraModels`：包里声明的**站点素材**模型（0.19.45，时装 `/assets/skins/…`）。视图只读磁盘上那三份清单，
+  // 看不到合并体里多出来的模型；漏了它，那些 URL 会照常送出去、只是永远是 `no-cache`.
+  const views = assetIndex
+    ? createManifestViews({ dataDir, index: assetIndex, log, extraModels: () => (data?.assets ? siteModels(data.assets) : []) })
+    : null;
   // 素材兜底跳转（server/http/assetJump.js，可选）：源表来自 SP_ASSET_CDN / SP_ASSET_SOURCES / deploy/asset-sources.json，
   // 一个都没有就是 null（普通安装与开发机的常态），static.js 那条 404 分支因此整块跳过。
   const assetJump = opts.assetJump === false ? null : (opts.assetJump || createAssetJump({ log }));

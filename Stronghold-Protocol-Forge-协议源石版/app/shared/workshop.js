@@ -232,6 +232,21 @@ export const OVERRIDE_ENTRY_RE = /^([a-z]+):([A-Za-z0-9_\-.:]{1,64})$/;
 export const WORKSHOP_MEDIA_PREFIX = '/workshop-assets/';
 
 /**
+ * 一条声明路径 → 客户端要取的 URL（外观素材与时装共用这一处，两条通道的规则必须是同一条）。
+ *
+ * 两种来源，两种 URL：
+ *   * 包内相对路径 → `/workshop-assets/<包>/<路径>`（那条只服务包素材的路由，既有行为，一个字节没动）；
+ *   * 站点素材路径（`/assets/…`）→ **原样**。服务器会把它当作自己的素材重写：`server/http/assetViews.js`
+ *     给每个文件（Spine 是整组共用一个模型哈希）加上内容哈希段，浏览器因此能长缓存，素材包也能按哈希收下它。
+ *     这里绝不能再拼一遍 `/workshop-assets/` —— 那会把一条指向站点素材的路径变成指向包内一个不存在的文件。
+ * @param {string} packId @param {string} p @param {string} [prefix]
+ */
+export function workshopArtUrl(packId, p, prefix = WORKSHOP_MEDIA_PREFIX) {
+  if (isSiteArtPath(p)) return p;
+  return `${prefix}${packId}/${String(p).split('/').map(encodeURIComponent).join('/')}`;
+}
+
+/**
  * **作者自备 CDN 的语音素材**（DESIGN §28.33）：一条 voice 表里的条目可以是
  * `{ url, sha256, file }` 而不是一个包内相对路径。三件一体，缺一条都不收：
  *   * `url` —— 作者自己的 `https://` 地址。**引擎只从这条地址取**，绝不内置任何语音素材地址，也绝不新增下载路由：
@@ -309,6 +324,43 @@ const isSafeAssetPath = (p) =>
  *  只是不要求它住在 `assets/` 下 —— 一条路径要么相对、要么点名拒绝，绝不静默丢掉。 */
 const isSafeRelativePath = (p, max = 200) =>
   typeof p === 'string' && p.length > 0 && p.length <= max && isSafeAssetPath(p);
+
+/** 站点素材路径的前缀：`/assets/…` —— 服务器自己那份素材（0.19.45 起时装可以放在这里，见下）。 */
+export const SITE_ART_PREFIX = '/assets/';
+/** 站点素材路径的长度上限（与 `ASSET_INDEX_ROOTS` 下的真实路径同量级，只为挡住垃圾输入）。 */
+const SITE_ART_MAX = 300;
+/**
+ * **站点素材路径**：`/assets/skins/art/x.webp` 这种以 `/` 开头、落在服务器 `public/assets/` 里的路径。
+ *
+ * 为什么会有第二种写法（0.19.45）：时装 276 套外观的 2 193 个文件是 321 MB。这一批美术放在包里**两头都吃亏**：
+ * `/workshop-assets/` 不在 `shared/assetPaths.js` 的内容哈希根里（`HASHED_ROOTS` 只有 `/assets/`、`/fonts/`、
+ * `/media/`），浏览器只能每次回源验证、预载也存不进按地址分开的缓存；而「导入素材包」只收服务器清单里列出的、
+ * 带内容哈希的文件，包素材一个都进不去。所以这批素材搬进 `public/assets/skins/`：它跟着服务器素材走，会被
+ * `data/assets.json` 的合并视图（`server/http/assetViews.js`）按模型哈希重写，预载与导入因此免费得到。
+ *
+ * 包于是可以只声明**数据**（id / 名字 / 系列）与「素材在哪」。相对路径照旧有效（老包一个字都不用改），
+ * `/assets/…` 则是「用站点素材」。判据比包内路径更严一格：
+ *   * 必须以 `/assets/` 开头，**只有这一个根**：`/workshop-assets/…`、`/data/…`、`/etc/…` 一律拒绝 —— 否则一个包
+ *     能把别的包（甚至任意 URL）塞进清单；
+ *   * 段里不许有 `.` / `..` / 空段 / 反斜杠，不许带查询串或片段（`?` `#`），也不许百分号编码的穿越
+ *     （`%2e` / `%2f` / `%5c`）。这条路径会被原样写进 `assets.json` 并当成 URL 发出去，URL 解码是后面几层的事，
+ *     必须在这一层就是死的；
+ *   * 不许自带内容哈希段（`~<16 位十六进制>`）：哈希由服务器按磁盘上的字节算。写死在清单里就成了一份会漂的副本
+ *     —— 文件改一个字节，作者那条 URL 立刻指向「另一份素材」，而没有任何一层会发现。
+ * @param {unknown} p
+ */
+export const isSiteArtPath = (p) => {
+  if (typeof p !== 'string' || !p.startsWith(SITE_ART_PREFIX) || p.length > SITE_ART_MAX) return false;
+  if (p.includes('\\') || /[?#]/.test(p) || /%(?:2e|2f|5c)/i.test(p)) return false;
+  const segs = p.slice(1).split('/');
+  return segs.length > 1 && segs.every((seg) => seg && seg !== '.' && seg !== '..' && !/^~[0-9a-f]{16}$/i.test(seg));
+};
+
+/** 一条外观/素材路径：包内相对路径，或站点素材路径（`/assets/…`）。两种写法各有各的判据，见上。 */
+export const isArtPath = (p) => isSafeAssetPath(p) || isSiteArtPath(p);
+
+/** 一条外观路径被拒绝时说的那句话（两种合法写法都点名，作者才知道还有第二种选择）。 */
+const ART_PATH_RULE = "must be a relative path inside the pack's assets/ folder, or a site asset path (/assets/…)";
 
 /** 从 `i` 处开始的键序（`JSON.parse` 保留书写顺序），与这个文件里其它「键序是清单字节的一部分」的地方同一做法。 */
 const stableStringList = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string' && x))].sort() : []);
@@ -1995,14 +2047,14 @@ function parseArtSpine(spine, where) {
       return { error: 'ART_UNKNOWN_FIELD', detail: `${where}: "${key}" is not a spine field (${ART_SPINE_FIELDS.join(', ')})` };
     }
     if (ART_SPINE_URLS.includes(key)) {
-      if (!isSafeAssetPath(value)) return { error: 'ART_PATH_UNSAFE', detail: `${where}.${key}: "${String(value)}" must be a relative path inside assets/` };
+      if (!isArtPath(value)) return { error: 'ART_PATH_UNSAFE', detail: `${where}.${key}: "${String(value)}" ${ART_PATH_RULE}` };
       out[key] = value;
       continue;
     }
     if (ART_SPINE_LISTS.includes(key)) {
       if (!Array.isArray(value) || !value.length) return { error: 'ART_BAD_SHAPE', detail: `${where}.${key} must be a non-empty array of paths` };
       for (const p of value) {
-        if (!isSafeAssetPath(p)) return { error: 'ART_PATH_UNSAFE', detail: `${where}.${key}: "${String(p)}" must be a relative path inside assets/` };
+        if (!isArtPath(p)) return { error: 'ART_PATH_UNSAFE', detail: `${where}.${key}: "${String(p)}" ${ART_PATH_RULE}` };
       }
       out[key] = [...new Set(value)];
       continue;
@@ -2028,7 +2080,7 @@ function parseArtEntry(entry, where, shape) {
   const out = {};
   for (const [key, value] of Object.entries(entry)) {
     if (shape.urls.includes(key)) {
-      if (!isSafeAssetPath(value)) return { error: 'ART_PATH_UNSAFE', detail: `${where}.${key}: "${String(value)}" must be a relative path inside assets/` };
+      if (!isArtPath(value)) return { error: 'ART_PATH_UNSAFE', detail: `${where}.${key}: "${String(value)}" ${ART_PATH_RULE}` };
       out[key] = value;
       continue;
     }
@@ -2061,6 +2113,38 @@ function parseArtEntry(entry, where, shape) {
     };
   }
   return { entry: out, error: null };
+}
+
+/**
+ * 声明里那些**落在包自己 `assets/` 下**的路径 —— `ART_NEEDS_ASSETS` 这条闸唯一的读者。
+ *
+ * 只按 `ART_TABLES` 的形状走路径字段：`anims` 的值是动画名（"Idle"）、`events` 是事件名，它们长得也像路径，
+ * 按形状走就不会把它们算成「包内文件」。0.19.45 起艺术路径有两种合法写法（包内相对 / 站点 `/assets/…`），
+ * 只有**前者**需要包里真有那个文件，所以闸的判据从「声明了 art」收窄成「声明了包内路径」。
+ * @param {Record<string, any>} art
+ * @returns {string[]}
+ */
+function artPackPaths(art) {
+  /** @type {string[]} */
+  const out = [];
+  for (const [table, entries] of Object.entries(art || {})) {
+    const shape = ART_TABLES[table];
+    if (!shape || !isPlainObj(entries)) continue;
+    for (const entry of Object.values(entries)) {
+      if (shape.flat) { if (typeof entry === 'string') out.push(entry); continue; }
+      if (!isPlainObj(entry)) continue;
+      for (const key of shape.urls) if (typeof entry[key] === 'string') out.push(entry[key]);
+      const spine = entry.spine;
+      if (!isPlainObj(spine)) continue;
+      const sides = shape.spine === 'flat' ? [spine] : Object.values(spine);
+      for (const side of sides) {
+        if (!isPlainObj(side)) continue;
+        for (const key of ART_SPINE_URLS) if (typeof side[key] === 'string') out.push(side[key]);
+        if (Array.isArray(side.textures)) for (const page of side.textures) if (typeof page === 'string') out.push(page);
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -2346,8 +2430,11 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
   for (const table of Object.keys(art)) {
     if (!ART_TABLES[table]) return fail('ART_UNKNOWN_TABLE', `"${table}" is not an art table (one of: ${Object.keys(ART_TABLES).join(', ')})`);
   }
-  if (Object.keys(art).length && opts.hasAssets !== true) {
-    return fail('ART_NEEDS_ASSETS', 'a pack that declares art must put the files in its assets/ folder (e.g. assets/art/…)');
+  // 闸的判据是「声明了**包内**路径」而不是「声明了 art」：站点素材路径（`/assets/…`）的文件在服务器上，包里没有
+  // 也不需要有一个 assets/ 文件夹（0.19.45，时装那 321 MB 就是这样搬出去的）。混写合法：站点素材走站点，包内素材
+  // 照旧要真在包里。
+  if (artPackPaths(art).some((p) => !isSiteArtPath(p)) && opts.hasAssets !== true) {
+    return fail('ART_NEEDS_ASSETS', 'a pack that declares art with paths relative to its own assets/ must put those files there (e.g. assets/art/…); a path under /assets/… (a site asset) needs no file in the pack');
   }
   /** @type {Record<string, Record<string, object>>} */
   const artEntries = {};
@@ -2362,8 +2449,8 @@ export function normalizePackManifest(raw, dirName = '', opts = {}) {
       if (!RECORD_ID_RE.test(id)) return fail('ART_BAD_ID', `art.${table}: "${id}" is not a valid id`);
       // 扁平表：条目本身就是路径（`assets.skills[key]` / `assets.prof.sub[key]` 的值就是路径字符串）
       if (shape.flat) {
-        if (!isSafeAssetPath(entry)) {
-          return fail('ART_PATH_UNSAFE', `art.${table}["${id}"]: "${String(entry)}" must be a relative path inside assets/`);
+        if (!isArtPath(entry)) {
+          return fail('ART_PATH_UNSAFE', `art.${table}["${id}"]: "${String(entry)}" ${ART_PATH_RULE}`);
         }
         clean[id] = entry;
         continue;
@@ -4148,7 +4235,7 @@ function mergeWorkshopItemIcons(data, packs, report) {
 export function workshopArtIndex(packs, { prefix = WORKSHOP_MEDIA_PREFIX } = {}) {
   /** @type {Record<string, Record<string, object>>} */
   const out = {};
-  const toUrl = (packId, p) => `${prefix}${packId}/${String(p).split('/').map(encodeURIComponent).join('/')}`;
+  const toUrl = (packId, p) => workshopArtUrl(packId, p, prefix);
   // 按包 id 排序再处理：谁赢只取决于包 id，不取决于加载顺序（与既有的三条素材通道同一条规则）
   for (const pack of [...(Array.isArray(packs) ? packs : [])].sort(byPackId)) {
     const art = isPlainObj(pack?.art) ? pack.art : null;
@@ -4267,7 +4354,7 @@ function mergeWorkshopSkins(data, packs, report) {
     }
     return;
   }
-  const toUrl = (packId, p) => `${WORKSHOP_MEDIA_PREFIX}${packId}/${String(p).split('/').map(encodeURIComponent).join('/')}`;
+  const toUrl = (packId, p) => workshopArtUrl(packId, p);
   /** @type {Record<string, object[]>} */
   const byChar = {};
   /** @type {Record<string, number>} 包 id → 真的并进 `assets.skins` 的套数（日志那一份，见函数尾）。 */

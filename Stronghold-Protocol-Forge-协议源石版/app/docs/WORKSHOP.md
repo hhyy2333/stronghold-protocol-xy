@@ -1778,7 +1778,18 @@ export function install(battle) {
 
 落点是**清单**：`assets.skins[<charId>] = [{ pack, id, name, series?, desc?, art?, voices? }, …]`（按干员分组的
 一列；同一干员可以有几套）。两个包给同一干员的**同一套 id** 时按包 id 升序第一个赢，输的一方点名
-`SKIN_COLLISION`。路径与其它素材通道逐字相同：变成 `/workshop-assets/<包>/<路径>`，只服务登记过的 URL。
+`SKIN_COLLISION`。路径有两种写法（`art` 与 `skins[].art` 同一条判据，与 `art.chars` 共用一个解析器）：
+
+* **包内相对路径**（`skins/x.webp`、`spine/x/Front/x.skel`）→ `/workshop-assets/<包>/<路径>`，文件在包的
+  `assets/` 里。这时包必须有 `assets/` 文件夹，并声明 `license`（`ART_NEEDS_ASSETS`）。
+* **站点素材**（`/assets/skins/art/x.webp`、`/assets/skins/spine/x/Front/x.skel`）→ 原样使用服务器自己的素材，
+  文件在服务器的 `public/assets/` 下，**包里一个文件都不用有**（因此也不需要 `assets/`）。这一种才进得了
+  「预载素材」与「导入素材包」，也才有浏览器的长缓存 —— 那两条通道只认带内容哈希的 `/assets/…` URL。
+
+官方时装包（276 套 / 2 193 个文件 / 321 MB）走的就是第二种：素材在 `public/assets/skins/`（不进 git，由
+`.scratch/make-official-skins.mjs` + `make-official-skin-models.mjs` 生成），`pack.json` 只有 1.4 MB 的数据。
+判据与四条边界写在 [`docs/design/mod-layer.md` §28.28](design/mod-layer.md) 第 7 点；绝对路径**只认 `/assets/`
+这一个根**，`/workshop-assets/…` / `/etc/…` 一律 `ART_PATH_UNSAFE`。
 
 **引擎不认识「皮肤」。** 它做两件事，第三件由包自己做：
 

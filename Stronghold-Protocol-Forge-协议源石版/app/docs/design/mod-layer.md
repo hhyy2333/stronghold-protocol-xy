@@ -2363,6 +2363,35 @@ name, series?, desc?, art?, voices? }, …]`（`mergeWorkshopSkins`）—— 按
 只读；服务端那半边是 `server/lobby.js appearance()`，本功能**没有**新增协议帧），外观帧一到就按既有
 `retryAssets()` 路径重解析。
 
+**7. 素材放在哪：包内相对路径，或**站点素材** `/assets/…`（0.19.45 §42）。** `art`（`chars` / `enemies` / `tokens`
+与 `skins[].art`）里每一条路径字段都有两种合法写法，判据在 `shared/workshop.js`（`isSafeAssetPath` /
+`isSiteArtPath`），合并只有一处（`workshopArtUrl`）：
+
+| 写法 | 客户端拿到的 URL | 文件在 | 谁送 |
+|---|---|---|---|
+| `spine/x/x.skel`（相对） | `/workshop-assets/<包>/spine/x/x.skel` | 包的 `assets/` | `/workshop-assets/` 这条包素材路由 |
+| `/assets/skins/spine/x/x.skel`（绝对） | 原样（服务器套上内容哈希段） | 服务器的 `public/assets/` | 核心静态挂载 + 内容哈希 |
+
+为什么要有第二种：包素材那条路由**不在** `shared/assetPaths.js` 的 `HASHED_ROOTS` 里（只有 `/assets/`、`/fonts/`、
+`/media/`），所以包里的美术既拿不到长缓存，也进不了「导入素材包」——`public/js/assetPack.js` 只收带内容哈希、
+且被服务器清单列出的文件。时装那 2 193 个文件 / 321 MB 因此搬到了 `public/assets/skins/`，包只声明 URL。四条边界：
+
+1. **只有 `/assets/` 这一个绝对根。** `/workshop-assets/…`、`/data/…`、`/etc/…` 一律 `ART_PATH_UNSAFE`：否则一个包
+   能把别的包、甚至任意 URL 塞进客户端清单。
+2. **路径先过一整套死判据**：段里不许有 `.` / `..` / 空段 / 反斜杠，不许带 `?` `#`，不许百分号编码的穿越；
+   **也不许自带内容哈希段**（`~<16 位十六进制>`）—— 哈希由服务器按磁盘字节算，写死在清单里就是一份会漂的副本。
+3. **`ART_NEEDS_ASSETS` 的判据是「声明了包内路径」，不是「声明了 art」**（`artPackPaths`）。只写站点路径的包不需要
+   `assets/` 文件夹 —— 它也因此不再需要 license 那条「带素材的包要说明许可」（`hasAssets: false`）。混写合法。
+4. **两条 URL 通道之外没有第三处拼法**：`workshopArtUrl(packId, p, prefix)` 是唯一实现，索引（`workshopArtIndex`）
+   与时装（`mergeWorkshopSkins`）共用它。漏改一处的症状是「收藏路径被拼成 `/workshop-assets/<包>/assets/skins/…`」
+   —— 一个指向包内不存在文件的 URL，而没有任何一层会报错。
+
+站点素材进的是**服务器自己那份清单**：`mergeWorkshopSkins` 把 `/assets/…` 合并进 `data.assets.skins`，随后
+`server/http/assetViews.js rewriteManifest` 给每条 URL 盖上哈希（Spine 整组共用一个**模型哈希**），合并视图与
+`/room-data/<房间摘要>/assets.json` 两条分支都套这一层。所以「预载素材」与「导入素材包」覆盖时装不需要任何新
+通道：`/data/assets.json` 里本来就写着它们。模型还必须在索引里登记（`assetViews.js siteModels` +
+`server/index.js` 的 `extraModels`），否则派生出来的 atlas / 页 URL 会退成 `no-cache`（字节是对的，只是每次回源）。
+
 ### 28.29 形态（clip set）与静态相位：两条**行为增量**通道
 
 这一节回答业主那一条要求：「做不了的我们就加接口，做到完美兼容。」有两件事今天包做不了，而两件都不是数据、

@@ -21,10 +21,12 @@ data/local-assets.json
 # tools/local-extract/extract.py --only fx → the official battle effects' per-machine file list, written next to
 # data/local-assets.json and gitignored for the same reason (docs/design/vfx-format.md §35.1)
 data/local-fx.json
-# official outfit art of the `official-skins` workshop pack (avatars / half-body portraits, ~10 MB): same rule as the
-# rest of the official art — the pack's TEXT (pack.json, PROVENANCE.md) is committed, its `skins/` is not.
-# `.scratch/make-official-skins.mjs` regenerates it from a local copy of the community "Fusion 0.3.3" pack.
-workshop/official-skins/assets/
+# official outfit art (276 outfits: avatars / portraits / in-battle Spine models, 321 MB, 0.19.45 §42): same rule as
+# the rest of the official art — the workshop pack's TEXT (pack.json, PROVENANCE.md) is committed, the art is not.
+# It lives under public/assets/skins/ (already ignored above) so the server hashes it and the asset pack can import
+# it; `.scratch/make-official-skins.mjs` + `make-official-skin-models.mjs` regenerate it from a local copy of the
+# community "Fusion 0.3.3" pack.
+public/assets/skins/
 # download caches, upstream tables, ledgers, reports, setup state
 .cache/
 # per-machine runtime state (`server/modModules.js` stateRootFor: SP_STATE_DIR, else <repo>/var): server-module

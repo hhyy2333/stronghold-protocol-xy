@@ -52,6 +52,37 @@ function spineUrls(o) {
 }
 
 /**
+ * The Spine models of a **merged** manifest (the workshop layer already applied) that live under this site's own
+ * `public/assets/`: `[['assets/skins/spine/x/Front/x.skel', …atlas, …pages], …]`.
+ *
+ * Why this exists (0.19.45): `rewriteManifest` can hash a merged document — a pack's 时装 declares `/assets/skins/…`
+ * and gets the model hash its urls need — but the **model** itself is only known to the index when some manifest view
+ * declares it (`setModels`). The views read the files on disk, and the committed `data/assets.json` says nothing about
+ * a pack's skins, so without this list every one of those URLs would be answered `no-cache` (correct bytes, no
+ * long cache — `assetIndex.js hashedFileOpts`): 2 193 files, 321 MB, revalidated on every page.
+ *
+ * Only `/assets/…` urls count: the pack's own `/workshop-assets/…` art is not content-hashed at all, and passing it
+ * here would register models over a root the index does not hash.
+ * @param {any} doc a merged manifest (`data.assets`)
+ * @returns {string[][]}
+ */
+export function siteModels(doc) {
+  /** @type {string[][]} */
+  const out = [];
+  const walk = (v) => {
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (!isObj(v)) return;
+    if (isSpine(v) && v.skel.startsWith('/assets/')) {
+      const rels = spineUrls(v).map(relOf);
+      if (rels.every((r) => r)) out.push(/** @type {string[]} */ (rels));
+    }
+    for (const child of Object.values(v)) walk(child);
+  };
+  walk(doc);
+  return out;
+}
+
+/**
  * The served copy of a manifest and its model lists. `index`: hashOf(rel) / modelHash(rels) of assetIndex.js.
  * @param {any} doc the parsed manifest (not changed)
  * @param {'assets.json'|'local-assets.json'|'local-fx.json'} name
@@ -117,9 +148,11 @@ export function rewriteManifest(doc, name, index) {
 
 /**
  * The views of one server.
- * @param {{ dataDir: string, index: ReturnType<typeof import('./assetIndex.js').createAssetIndex>, log?: object }} opts
+ * @param {{ dataDir: string, index: ReturnType<typeof import('./assetIndex.js').createAssetIndex>, log?: object,
+ *   extraModels?: () => string[][] }} opts `extraModels` = 站点素材的模型表（`siteModels` 走一遍合并体），
+ *   每次推给索引时一起带上 —— 视图只认得磁盘上的那三份清单，而包里声明的时装模型只活在合并体里。
  */
-export function createManifestViews({ dataDir, index, log = noopLog }) {
+export function createManifestViews({ dataDir, index, log = noopLog, extraModels = null }) {
   const dir = path.resolve(dataDir);
   /** @type {Map<string, { key: string, view: { body: Buffer, hash: string, hashed: number, plain: number } | null, models: string[][] }>} */
   const cache = new Map();
@@ -127,7 +160,8 @@ export function createManifestViews({ dataDir, index, log = noopLog }) {
   const pending = new Map();
   const warned = new Set();
 
-  const pushModels = () => index.setModels([...cache.values()].flatMap((c) => c.models));
+  const extra = typeof extraModels === 'function' ? extraModels : () => [];
+  const pushModels = () => index.setModels([...[...cache.values()].flatMap((c) => c.models), ...(extra() || [])]);
 
   /** Build (or reuse) the view of `name`; null without the file, while the index is not ready or empty, or for a broken file. */
   async function build(name) {
