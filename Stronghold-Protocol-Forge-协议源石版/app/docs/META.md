@@ -765,7 +765,7 @@ Writes (all validated, never throw on bad input, never make funds / pools negati
 | `offerItems(ids, { tier, label })` | the same for items (slots of kind `'item'`, drawn as item cards) — 凯瑟琳 定向投放 style (player report #6 after 0.1.0) |
 | `triggerGarrisons(uid, eventType, { asUid })` | run another owned chess's 特质 of that eventType now (铃兰 "触发…的获得时效果"); 投资人 still multiplies SERVER_GAIN; SERVER_PRICE cannot be triggered; depth-capped |
 | `setShopSlot(i, { kind, id, price?, frozen? } \| null)` | rewrite a shop slot (special refreshes) |
-| `addDeployCap(n)` / `setDeployCapAtLeast(n)` | deploy cap (+effects; 人事部文档 = 9) |
+| `addDeployCap(n)` / `setDeployCapAtLeast(n)` | deploy cap (+effects; 人事部文档 = 9). `deployCap` = `max(1, max(base, floor) + bonus)`: the floor (`setDeployCapAtLeast`) raises the base first, then the additive bonuses (`addDeployCap` — 燎原 +2) go on top, so the two stack in either order (人事部文档 then 燎原 ⇒ 9 + 2 = 11) |
 | `setBondCountBonus(bondId, n)` | extra member count for a bond |
 | `setDeviceActive(alias, on)` / `setTileOverride(r, c, 'melee'\|'ranged'\|'none')` | terrain changes of this player's board (legality + battle input `deviceOverrides`) |
 | `effect(id)` / `selfRef()` | a stored EffectRef by id / **the ref THIS handler call runs for** (`source.ref`). 策略「管理员」/ 复制 own a SECOND ref of the same card with its own id (`hex:<id>#<n>`), so state that belongs to one ref must go through `selfRef()` — `effect('hex:<id>')` always answers with the FIRST ref (two 盟约寄生 shared one partner, 业主 2026-10-27) |
