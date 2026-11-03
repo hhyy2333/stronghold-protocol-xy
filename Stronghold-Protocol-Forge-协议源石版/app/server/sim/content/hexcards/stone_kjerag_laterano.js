@@ -199,30 +199,38 @@ export function installKjeragThaw(hooks) {
  * 口径：
  *   * **谁算【拉特兰】干员**：拥有者自己的己方干员 + `isMember(battle, u, 'lateranoShip')`（同上一张卡的成员资格判据）。
  *   * **弹药**：引擎的 `skill.ammoLeft`，消耗事件 `ammoUsed`（`{ unit, left, skill }`，skills.js
- *     `onAttackPerformed` 每发一发；一次攻击只算 1 发——引擎的普通路径就是一次一发）。
- *   * **弹药护盾（2026-10-31 取代原来的「回复 5% 最大生命」）**：每次 `ammoUsed`，给拥有者的**每一个在场拉特兰干员**
- *     （含自己）挂 / 刷新同键护盾 buff `hex:laterano:ammoShield`：`shield = 现有护盾 + 自身 maxHp × shieldPct/100`。
+ *     `onAttackPerformed` 每发一发；一次攻击只算 1 发——引擎的普通路径就是一次一发；能天使三技能的 5 连击、蕾缪安
+ *     三技能的锁定这类 kit 也逐发 `emit`，所以一条事件 = 一颗子弹）。
+ *   * **「消耗的子弹量」= 弹夹里真正少掉的子弹数**（2026-11-03 修，业主「圣佑子弹消耗未正确计算」）：本卡自己还有
+ *     两个会真的扣弹夹、却不发 `ammoUsed` 的地方 —— 「额外消耗 1 发」与免死时的「消耗全部弹药」—— 它们也记进这本
+ *     账（`countBullets`），所以「本场累计消耗的子弹量」与实际掉弹完全一致。修前只按 `ammoUsed` 事件记 1 次：50 发
+ *     的技能打完真实花掉 50 颗，累计只到 25 颗，狙击伤害只有一半。
+ *   * **弹药护盾（2026-10-31 取代原来的「回复 5% 最大生命」）**：**每条 `ammoUsed` 事件结算一次**，给拥有者的**每一个
+ *     在场拉特兰干员**（含自己）挂 / 刷新同键护盾 buff `hex:laterano:ammoShield`：`shield = 现有护盾 + 自身 maxHp ×
+ *     shieldPct/100`。额外那 1 发与免死清空**不**另加一份 —— 业主 2026-10-27 裁定「额外这发不再触发一次治疗」，护盾
+ *     是那条口径的延续（2026-10-31 设计稿「其余部分保持不变」）。
  *     「累加」= 读该干员当前那层护盾（`findBuff(SHIELD_AMMO).shield`）再加上新的一笔；护盾被伤害打空时引擎会摘掉这个
  *     buff（damage.js `absorbShields`：`shield` 归零且没有 mods / flags / shieldHits 就 `_removeBuffAt`），于是下一次
- *     `ammoUsed` 从 0 重新累加 —— 「被打掉后下次照常累加」。
+ *     消耗从 0 重新累加 —— 「被打掉后下次照常累加」。
  *     [ASSUMED] 1)「相当于自身 5% 最大生命的护盾」= 各自**当前最大生命上限**的 5%（面板加成算完之后的 `s.maxHp`）；
  *     2) 只算在场（活着、已部署、未隐匿）的拉特兰干员——被击倒的干员等重部署时按满血回来，不该被这条护盾「预存」；
- *     3) 一次 `ammoUsed` 只算 1 发（引擎一发一事件），不是按 `left` 的差值补算；4) 卡面没写护盾上限，所以不封顶；
- *     5) 护盾 buff 不 `persist`（与免死那 1 层次数盾同一口径）：干员被击倒 / 撤退时引擎只保留 persist buff，护盾随人走。
- *   * **累计子弹狙击（2026-10-31 新增）**：每次 `ammoUsed` 给该玩家本场的子弹计数 +1（per-battle store，
+ *     3) 卡面没写护盾上限，所以不封顶；4) 护盾 buff 不 `persist`（与免死那 1 层次数盾同一口径）：干员被击倒 / 撤退时
+ *     引擎只保留 persist buff，护盾随人走。
+ *   * **累计子弹狙击（2026-10-31 新增）**：每消耗 1 颗子弹给该玩家本场的子弹计数 +1（per-battle store，
  *     `battleStore(battle, 'hex:laterano:sanctuary')`：策略「管理员」复制出第二张卡时共享同一份计数，不会算两遍）。
  *     `battle.every(snipeEvery)`（默认 3 秒，第一个脉冲在 t = snipeEvery）对每个拥有者：计数 > 0 且场上有活着的敌人 ⇒
  *     `battle.rng()` 随机挑一个活敌人，造成 `计数 × snipePerAmmo` 的**物理伤害**（`makeDamageInfo({ type:'phys',
  *     canDodge: true, tags: ['hex', 'hex:laterano:snipe'] })`，来源 = 该玩家第一名在场拉特兰干员 ?? null），然后计数清零。
- *     [ASSUMED] 1) 累计只算 `ammoUsed` 事件，**额外消耗的那 1 发不再计入**（与「额外消耗不再触发一次护盾」同一口径，
- *     卡面把额外消耗写成代价）；2) 场上没有活敌人时**不发射、也不清零**——累计留着，等有敌人了下一脉冲整笔打出去
+ *     [ASSUMED] 1) 累计的「子弹量」含本卡自己造成的消耗（额外那 1 发、免死清空）—— 卡面写的是「消耗的子弹量」，
+ *     这些子弹确实被消耗了（2026-11-03 修，此前只算 `ammoUsed` 事件，实际掉 50 发只记 25）；
+ *     2) 场上没有活敌人时**不发射、也不清零**——累计留着，等有敌人了下一脉冲整笔打出去
  *     （卡面写「每 3 秒对场上随机一名敌人」，没有目标就无从狙击）；3) 狙击是一次普通伤害实例（`isAttack` 假）：
  *     走减伤 / 闪避 / 护盾 / 受伤统计，但不算「攻击」，所以攻击类加成与「攻击时」的内容都不认它；
  *     4) 每个拥有者各自计时（各读自己卡面的 `snipeEvery`），随机只用 `battle.rng()`。
  *   * **致命免死**：`fatal` 钩子（applyHpLoss 在 HP 归零之后、`battle.kill` 之前发出）里，若该拉特兰干员
  *     `skill.ammoLeft > 0`：`c.prevented = true`（引擎随后把 HP 抬到 1，本次伤害不再致死）、**清空弹药**（`ammoLeft = 0`，
- *     并在技能仍激活时 `skill.end('ammo')` 让它像打空弹药一样正常结束 —— 否则会留下一个「0 发仍在生效」的技能），
- *     再加 `shieldHits` 层次数盾（同名 buff 刷新，最多 shieldHits 层）。
+ *     并在技能仍激活时 `skill.end('ammo')` 让它像打空弹药一样正常结束 —— 否则会留下一个「0 发仍在生效」的技能；
+ *     清掉的这些子弹记进「消耗的子弹量」，不另加护盾），再加 `shieldHits` 层次数盾（同名 buff 刷新，最多 shieldHits 层）。
  *     [ASSUMED] 1) 免死只认**伤害**：生命流失（`isHpLoss`，PRTS「生命流失…不会触发反伤、受击回复」）不算「受到伤害」，
  *     不免死；2) 免死不吃「这一发还剩多少伤害」—— 卡面写「免疫本次伤害」，所以整发免掉；3) 护盾是**下一次**受击才消耗
  *     （本次伤害已经结算完），这与「获得 1 层次数盾」的字面读法一致；4) 护盾不叠加到 shieldHits 层以上（同名刷新到上限）。
@@ -277,35 +285,64 @@ export function installLateranoSanctuary(hooks) {
   // ---- 每消耗 1 颗弹药：所有在场己方【拉特兰】干员获得自身 shieldPct% 最大生命的护盾（同键累加） ------------------
   // 2026-10-31 调整：原来的「回复 5% 最大生命」整条换成护盾；累加读的是该干员**当前**那一层护盾（被打空时引擎已经把
   // buff 摘掉，于是从 0 重新加）。
+  //
+  // 2026-11-03 修（业主「圣佑子弹消耗未正确计算」）：「本场战斗累计统计…消耗的子弹量」数的是**子弹**，不是
+  // `ammoUsed` **事件**。原来只有引擎 / kit 的 `ammoUsed` 进这本账，而这张卡自己的「额外消耗 1 发」与免死时的
+  // 「消耗全部弹药」都**真的从弹夹里扣掉了子弹却不记账** ⇒ 50 发的技能打完实际花掉 50 颗，累计只到 25 颗，狙击伤害
+  // （累计 ×325）只有一半。现在三个消耗点统一走 `countBullets`，累计恒等于弹夹真正少掉的子弹数。
+  //
+  // 刻意**不**跟着改的是护盾的结算粒度：业主 2026-10-27 明确裁定「额外这发不再触发一次治疗」（那张卡当时是治疗，
+  // 2026-10-31 换成护盾时设计稿写「其余部分…保持不变」），所以护盾仍然**每条 `ammoUsed` 事件结算一次**，额外那 1 发
+  // 只进「消耗的子弹量」，不另加一份护盾。卡面两句话本来也是分开写的：「每消耗 1 颗弹药 → 护盾」与「累计统计消耗的
+  // 子弹量 → 狙击」。
   const store = battleStore(battle, STORE_NS, () => ({ ammo: new Map() }));   // playerId → 本场累计子弹数
-  let shields = 0;      // 走完过几次弹药护盾结算（事件数，不看当时场上有几名干员）
-  let ammoCounted = 0;  // 累计子弹数（事件数，额外消耗的那 1 发不算）
+  let shields = 0;      // 走完过几次「每消耗 1 颗弹药」的护盾结算（每事件一次，不看当时场上有几名干员）
+  let ammoCounted = 0;  // 本场**实际消耗掉的子弹数**（= 累计进狙击的子弹数，含额外那 1 发与免死清空的）
+
+  /**
+   * 记账：`u` 这一下真的从弹夹里少了 `n` 颗子弹 ⇒ 狙击的「累计子弹量」+n（打出去才清零）。
+   * 只记狙击累计，不碰护盾 —— 护盾的粒度由业主 2026-10-27 的裁定钉在「每条 `ammoUsed` 事件一次」。
+   * @param {any} u the operator that spent bullets
+   * @param {number} n how many bullets actually left its clip
+   */
+  const countBullets = (u, n) => {
+    if (!plan.has(u.ownerId)) return;
+    const k = Math.floor(Number(n) || 0);
+    if (!(k > 0)) return;
+    store.ammo.set(u.ownerId, (store.ammo.get(u.ownerId) ?? 0) + k);
+    ammoCounted += k;
+  };
+
+  /** 「每消耗 1 颗弹药」的护盾结算：给拥有者每个在场拉特兰干员各加一份自身 maxHp × shieldPct%。 */
+  const giveAmmoShield = (u, p) => {
+    for (const a of carriersOnField(u.ownerId)) {
+      const maxHp = a.s ? a.s.maxHp : 0;
+      const add = maxHp * p.shieldPct;
+      if (!(add > 0)) continue;
+      const cur = typeof a.findBuff === 'function' ? a.findBuff(SHIELD_AMMO) : null;
+      const have = cur && Number(cur.shield) > 0 ? Number(cur.shield) : 0;
+      battle.addBuff(a, { key: SHIELD_AMMO, shield: have + add, visible: true, refresh: 'replace', tags: ['hex'] });
+    }
+  };
+
+  // 引擎 / kit 的每一条 `ammoUsed` 就是一颗子弹（skills.js 一发一条；能天使三技能的 5 连击、蕾缪安的锁定都是逐发
+  // `emit`），所以这里记 1 颗、并结算一次护盾。
   battle.on('ammoUsed', (c) => {
     const u = c && c.unit;
     if (!isCarrier(u)) return;
     const p = plan.get(u.ownerId);
     if (!p) return;
-    // 1) 护盾：每个在场拉特兰干员各加「自己最大生命的 shieldPct%」，与它现有的那一层累加
     if (p.shieldPct > 0) {
       shields++;
-      for (const a of carriersOnField(u.ownerId)) {
-        const maxHp = a.s ? a.s.maxHp : 0;
-        const add = maxHp * p.shieldPct;
-        if (!(add > 0)) continue;
-        const cur = typeof a.findBuff === 'function' ? a.findBuff(SHIELD_AMMO) : null;
-        const have = cur && Number(cur.shield) > 0 ? Number(cur.shield) : 0;
-        battle.addBuff(a, { key: SHIELD_AMMO, shield: have + add, visible: true, refresh: 'replace', tags: ['hex'] });
-      }
+      giveAmmoShield(u, p);
     }
-    // 2) 本场累计子弹数（狙击用；额外消耗的那 1 发不再计入）
-    store.ammo.set(u.ownerId, (store.ammo.get(u.ownerId) ?? 0) + 1);
-    ammoCounted++;
+    countBullets(u, 1);
   });
 
   // ---- 消耗子弹时额外消耗 1 发（业主 2026-10-27）：弹药烧得更快 ------------------------------------------------
   // 引擎在 `emit('ammoUsed')` 之后自己判 `if (ammoLeft <= 0) end('ammo')`（skills.js），所以这里只扣数、不重复收尾；
-  // 也不再补一次 `ammoUsed`（那会把护盾与累计再算一遍、并且自己套自己）。[ASSUMED] 额外这一发**不**再触发一次
-  // 「每消耗 1 颗弹药」的护盾与狙击累计 —— 卡面把额外消耗写成代价，护盾 / 累计仍按每次消耗事件结算一次。
+  // 也不再 `emit` 一次 `ammoUsed`（那会让引擎之外的监听者把这一发再数一遍、并且自己套自己）。扣掉的这一发是**真的
+  // 消耗**，所以进「消耗的子弹量」（狙击累计）；但**不**另加一份护盾 —— 业主 2026-10-27「额外这发不再触发一次治疗」。
   let extraAmmo = 0;
   battle.on('ammoUsed', (c) => {
     const u = c && c.unit;
@@ -314,6 +351,7 @@ export function installLateranoSanctuary(hooks) {
     if (!sk || sk.kind !== 'ammo' || !(sk.ammoLeft > 0)) return;
     sk.ammoLeft -= 1;
     extraAmmo++;
+    countBullets(u, 1);
   });
 
   // ---- 累计子弹狙击（2026-10-31 新增）：每 snipeEvery 秒把「累计子弹量 × snipePerAmmo」打到一个随机活敌人身上 ----
@@ -361,9 +399,13 @@ export function installLateranoSanctuary(hooks) {
     if (!p) return;
     prevented++;
     c.prevented = true;                              // 引擎：本次伤害不再致死（HP 抬到至少 1）
-    // 消耗全部弹药：打空的那个技能像正常打完一样结束（不留一个 0 发仍在生效的技能）
+    // 消耗全部弹药：打空的那个技能像正常打完一样结束（不留一个 0 发仍在生效的技能）。
+    // 被清空的这些子弹是**真的消耗**（卡面「消耗全部弹药」），所以记进「消耗的子弹量」（狙击累计）；
+    // 同样**不**另加护盾 —— 护盾只在 `ammoUsed` 事件上结算一次（业主 2026-10-27 的粒度裁定）。
+    const dumped = Math.floor(Number(sk.ammoLeft) || 0);
     sk.ammoLeft = 0;
     if (sk.active && typeof sk.end === 'function') sk.end('ammo');
+    countBullets(u, dumped);
     // 1 层次数盾（同名刷新，最多 shieldHits 层；被打掉时引擎自己摘 buff）
     const cur = typeof u.findBuff === 'function' ? u.findBuff(SHIELD_LATERANO) : null;
     const have = cur && cur.shieldHits > 0 ? cur.shieldHits : 0;
@@ -374,9 +416,9 @@ export function installLateranoSanctuary(hooks) {
 
   return {
     get owners() { return owners.length; },
-    /** 走完过几次「弹药护盾」结算（一次 `ammoUsed` 记一次，不看当时场上有几名干员）。 */
+    /** 走完过几次「弹药护盾」结算（每 `ammoUsed` 事件一次，不看当时场上有几名干员）。 */
     get shields() { return shields; },
-    /** 本场累计计入狙击的子弹数（= `ammoUsed` 事件数，额外消耗的那 1 发不算）。 */
+    /** 本场实际消耗掉的子弹数（= 累计进狙击的子弹数，含额外那 1 发与免死清空的）。 */
     get ammoCounted() { return ammoCounted; },
     /** 每个拥有者当前还没打出去的累计子弹数。 */
     get pending() { return owners.reduce((n, pid) => n + (store.ammo.get(pid) ?? 0), 0); },
