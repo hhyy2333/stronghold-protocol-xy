@@ -415,8 +415,8 @@ test('深度吞噬 (devourTarget): a REAL 阿戈尔 devour raises the devourer�
   // 阿戈尔 devour (bonds/core.js `devour`) lost its emit when the source tree was re-imported, and the card was
   // silently inert in real battles. 04-文档/协议源石-核心盟约专属卡-审阅稿.md §6 records the same finding.
   //
-  // This one goes through the actual bond path: three 阿戈尔 on the board, g1 behind g2, so g1 devours (g2, and the
-  // chain through it). Only the marker that really devoured gets the +1.
+  // This one goes through the actual bond path: three 阿戈尔 on the board, g1 facing g2, so g1 devours g2. Only the
+  // marker that really devoured gets the +1.
   const egir = (id) => chessRec({ id, bonds: ['egirShip'], profession: 'WARRIOR', skill: null, stats: { atk: 1000, maxHp: 10000, def: 0, blockCnt: 2 } });
   const field = (hexes) => soloBattle({
     chess: { g1_a: egir('g1_a'), g2_a: egir('g2_a'), g3_a: egir('g3_a') },
@@ -424,7 +424,8 @@ test('深度吞噬 (devourTarget): a REAL 阿戈尔 devour raises the devourer�
       playerId: 'p1', seat: 0, side: 'L', colOffset: 0,
       bonds: { egirShip: { count: 3, active: true, tier: 1, layers: 0 } },
       playerEffects: hexes.map((x) => refOf(x)),
-      // g1 (10,3) devours g2 (10,4); g3 (12,3) faces an empty tile and devours nothing
+      // g1 (10,3) devours g2 (10,4) — g2 has an empty tile in front too, so it devours nothing itself; g3 (12,3) faces
+      // an empty tile as well
       units: [{ uid: 1, kind: 'chess', chessId: 'g1_a', row: 10, col: 3 }, { uid: 2, kind: 'chess', chessId: 'g2_a', row: 10, col: 4 }, { uid: 3, kind: 'chess', chessId: 'g3_a', row: 12, col: 3 }],
     }],
     timeLimit: 10,
@@ -434,7 +435,7 @@ test('深度吞噬 (devourTarget): a REAL 阿戈尔 devour raises the devourer�
   withCard.run(0.5);
   without.run(0.5);
   const at = (h, id) => h.b.allyUnits.find((u) => u && u.kind === 'op' && u.defId === id);
-  // the premise: the devour itself ran (g1 gained the fodder's base ATK) both with and without the card
+  // the premise: the devour itself ran (g1 carries the devour gains) both with and without the card
   for (const h of [withCard, without]) {
     const g1 = at(h, 'g1_a');
     assert.ok(g1.buffs.some((b) => b.key === 'bond:egir:devour'), 'the devour really happened (premise)');
