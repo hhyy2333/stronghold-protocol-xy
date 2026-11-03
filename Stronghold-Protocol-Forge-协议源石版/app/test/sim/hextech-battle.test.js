@@ -409,6 +409,43 @@ test('技能层涌: without the hex the same skill opening grants no bond layers
   withHex.invariants(); without.invariants();
 });
 
+test('深度吞噬 (devourTarget): a REAL 阿戈尔 devour raises the devourer’s attack-target count', () => {
+  // Owner report of 2026-11-03「源石深度吞噬阿戈尔干员吞噬后没有正确生效增加攻击数量」. The three tests below all drive
+  // `battle.emit('devourGain', …)` by hand, so they kept passing while NOTHING in the tree emitted the event — the
+  // 阿戈尔 devour (bonds/core.js `devour`) lost its emit when the source tree was re-imported, and the card was
+  // silently inert in real battles. 04-文档/协议源石-核心盟约专属卡-审阅稿.md §6 records the same finding.
+  //
+  // This one goes through the actual bond path: three 阿戈尔 on the board, g1 behind g2, so g1 devours (g2, and the
+  // chain through it). Only the marker that really devoured gets the +1.
+  const egir = (id) => chessRec({ id, bonds: ['egirShip'], profession: 'WARRIOR', skill: null, stats: { atk: 1000, maxHp: 10000, def: 0, blockCnt: 2 } });
+  const field = (hexes) => soloBattle({
+    chess: { g1_a: egir('g1_a'), g2_a: egir('g2_a'), g3_a: egir('g3_a') },
+    players: [{
+      playerId: 'p1', seat: 0, side: 'L', colOffset: 0,
+      bonds: { egirShip: { count: 3, active: true, tier: 1, layers: 0 } },
+      playerEffects: hexes.map((x) => refOf(x)),
+      // g1 (10,3) devours g2 (10,4); g3 (12,3) faces an empty tile and devours nothing
+      units: [{ uid: 1, kind: 'chess', chessId: 'g1_a', row: 10, col: 3 }, { uid: 2, kind: 'chess', chessId: 'g2_a', row: 10, col: 4 }, { uid: 3, kind: 'chess', chessId: 'g3_a', row: 12, col: 3 }],
+    }],
+    timeLimit: 10,
+  });
+  const withCard = field(['hex_deepdevour']);
+  const without = field([]);
+  withCard.run(0.5);
+  without.run(0.5);
+  const at = (h, id) => h.b.allyUnits.find((u) => u && u.kind === 'op' && u.defId === id);
+  // the premise: the devour itself ran (g1 gained the fodder's base ATK) both with and without the card
+  for (const h of [withCard, without]) {
+    const g1 = at(h, 'g1_a');
+    assert.ok(g1.buffs.some((b) => b.key === 'bond:egir:devour'), 'the devour really happened (premise)');
+  }
+  assert.equal(at(withCard, 'g1_a').s.maxTargets - at(without, 'g1_a').s.maxTargets, 1, 'the real devour gives the devourer +1 attack target');
+  assert.equal(at(withCard, 'g2_a').s.maxTargets, at(without, 'g2_a').s.maxTargets, 'a member that devoured nothing gets nothing');
+  assert.equal(at(withCard, 'g3_a').s.maxTargets, at(without, 'g3_a').s.maxTargets, 'same for the one facing an empty tile');
+  withCard.invariants();
+  without.invariants();
+});
+
 test('深度吞噬 (devourTarget): the devour gives the marker +1 attack target, and only once', () => {
   // the bond emits `devourGain` on the devourer (bonds/core.js); the hex answers with a maxTargets passive on the
   // marker. Driven through the real emit, so the hook name and payload shape are exercised as the bond sends them.
