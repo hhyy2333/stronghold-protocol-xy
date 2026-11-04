@@ -27,7 +27,26 @@ export class PlayerBasics {
   /** The engine acts for this seat (AI teammate or "AI 托管"; a departed human is eliminated, so nothing is left to do). */
   get botControlled() { return this.isBot || this.left || this.autoplay; }
 
-  get deployCap() { return Math.max(1, this.gd.deployCap + this.deployCapBonus, this.deployCapMin); }
+  /**
+   * 部署位 = 底数**先**和下限取大，**再**加上增减量。
+   *
+   * 这两项来源不同、语义不同，所以合成顺序不是随手写的：
+   *   * `deployCapMin` 是「至少这么多」的下限 —— 人事部文档「最大可部署人数变为9」（`equip_destory_deployment_cnt_change`
+   *     → `setDeployCapAtLeast`），以及分队 / 销毁类装备的同款加成；
+   *   * `deployCapBonus` 是「在别人定好的基础上再多几个」的增减量 —— 燎原「获得时：可部署人数 +2」
+   *     （`hex_yan_ember` → `addDeployCap`）。
+   *
+   * 从前这里写的是 `max(底数 + 增减量, 下限)`：增减量加在**底数**上，下限再拿这个和去取大 —— 底数 8 被燎原
+   * 抬成 10 之后，人事部文档那个 9 的下限就再也不起作用了。「先人事部文档（下限 9）再燎原（+2）」得到
+   * `max(8 + 2, 9) = 10`，「先燎原（8 + 2 = 10）再人事部文档（下限 9 < 10，不动）」也是 10，都不是 11
+   * （业主 2026-11-03「人事部文档使用后再获得燎原这个协议源石，人口并不会变成11人口有bug」）。也就是说
+   * 本该是「9 再加 2」，却被算成了「8 加 2」。
+   *
+   * 现在底数先抬到下限、再加增减量：8 →（人事部文档）9 →（燎原）+2 = 11，且两张卡谁先谁后都一样 —— 这是
+   * 两个互相独立的收益，顺序不该改变总数。`deployCapMin` 记的是「抬到至少几」（不是「等于几」），所以
+   * 下限本身仍然是 9（`test/content/items.test.js` 的「第二份不再叠加」照旧）。
+   */
+  get deployCap() { return Math.max(1, Math.max(this.gd.deployCap, this.deployCapMin) + this.deployCapBonus); }
   get deployCount() { let n = 0; for (const p of this.board.values()) if (p.kind === 'chess') n++; return n; }
   get tempEmpty() { return this.temp.every((x) => x == null); }
 

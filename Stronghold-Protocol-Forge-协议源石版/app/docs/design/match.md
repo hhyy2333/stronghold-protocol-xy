@@ -346,6 +346,14 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `server/sim/content/items/knightbadge.js`（装备驱动，与卡无关）。
 - 备战半段：`applySpec` 新增 `chess.ids`（指定干员，锻炉给薄绿+洛洛）、`deployCap`（部署位）、
   `layerGift`（层数里程碑，挂在 `effect.onLayers`）、`bondPriceDiscount`（挂在 `effect.onPrice`）。
+- **部署位的合成口径**（业主 2026-11-03「人事部文档使用后再获得燎原这个协议源石，人口并不会变成11人口有bug」）：
+  部署位有**两份互相独立**的来源 —— **下限**（人事部文档「最大可部署人数变为9」= `setDeployCapAtLeast`，还有
+  分队 / 销毁类装备的同款）与**增减量**（燎原「可部署人数 +2」= `addDeployCap`）。`PlayerState.deployCap` 的口径是
+  `max(1, max(底数, 下限) + 增减量)`：底数**先**抬到下限，**再**加增减量。旧实现写成 `max(底数 + 增减量, 下限)`，
+  增减量加在底数上、下限只跟这个和取大 —— 底数 8 被燎原抬成 10 之后，人事部文档那个 9 的下限就不再起作用，
+  两种顺序都是 10（本该是「9 再加 2」）。现在先文档后燎原 = 8 → 9 → 11，先燎原后文档 = 10 → 11，顺序不改变
+  总数（`test/match/hex-exclusive.test.js` 钉住两种顺序）。`deployCapMin` 存的是「抬到至少几」，所以第二份
+  人事部文档仍然不再叠加。
 - 新装备：【骑士徽章】`chess_item_9_98_e_a`（`tools/build-data.mjs CUSTOM_ITEMS`；1 阶、价格 0、商店不出售、不可合并）。
 - 阿戈尔那半：`bonds/core.js devour()` 读 `hex_egir_symbiosis`，有卡时跳过 5000 物理流失，并在每次吞噬结束时
   `emit('egirDevourEnd', { playerId })` 给卡脚本做属性结算。
