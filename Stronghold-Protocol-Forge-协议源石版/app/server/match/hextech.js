@@ -231,6 +231,7 @@ export function applyForgeFusion(ps, piece = null) {
       const next = it.merged.map(goldenOf);
       if (next.every((id, k) => id === it.merged[k])) continue;
       c.items = c.items.slice();
+      // the components' own uids ride along (a 百变 keeps its counters when a component is advanced)
       c.items[i] = { ...it, merged: next };
       advanced++;
     }
@@ -246,9 +247,16 @@ export function applyForgeFusion(ps, piece = null) {
     c.items = c.items.filter((it) => it !== a && it !== b);
     // the components' own `state` rides along: 万物归虚's banked layers must not be lost when 锻炉 fuses it away
     const state = mergeItemState(a.state, b.state);
+    // 业主 2026-11-04「锻炉融合两个商业包装方案成百变，商业包装方案失效」: per-item prep effects count per PIECE
+    // (`pack:<uid>` for 商业包装方案's sell counter) and a fused 百变 hides two pieces inside one row entry. Give the
+    // components their own uids once, here, so the dispatcher's expansion (effectsMeta.js `wornItems`) can hand each
+    // one its own counters — two fused 商业包装方案 must count like two, not like one twice.
+    const nextUid = () => (ps.m && typeof ps.m.nextUid === 'function' ? ps.m.nextUid() : b.uid);
     const fused = {
-      uid: ps.m && typeof ps.m.nextUid === 'function' ? ps.m.nextUid() : b.uid,
-      kind: 'item', id: itemId, merged: [goldenOf(a.id), goldenOf(b.id)], ...(state ? { state } : null),
+      uid: nextUid(),
+      kind: 'item', id: itemId, merged: [goldenOf(a.id), goldenOf(b.id)],
+      mergedUids: [a.uid, b.uid].map((u) => (Number.isInteger(u) && u > 0 ? u : nextUid())),
+      ...(state ? { state } : null),
     };
     c.items.splice(Math.max(0, Math.min(at, c.items.length)), 0, fused);
     made++;

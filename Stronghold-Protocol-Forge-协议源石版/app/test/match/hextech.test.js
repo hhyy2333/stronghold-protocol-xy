@@ -1998,7 +1998,49 @@ test('锻炉: 百变回到整备区后，道具卡仍写得出是哪两件（业
   m.dispose();
 });
 
-// 业主 2026-10-27「改备战侧的坚守人数/激活」：燎原 300 层后炎干员算进坚守人数 ⇒ 坚守真的激活，战斗输入带着这个 tier
+// 业主 2026-11-04「修复熔炉融合两个商业包装方案成为百变，会让商业包装方案失效的问题」：百变是**一件**装备片
+// （`{ id: 百变, merged: [a, b] }`，只占一个装备位），而备考派发器按**装备片自己的 id** 找处理器 ⇒ 融合之后整行只剩
+// 百变这条空记录，`item:chess_item_9_97_e` 没有任何内容注册，两个商业包装方案的「每出售 N 名干员」就再也不响。
+// 修法：派发器把融合件展开成它吞掉的那两件（与 shared/morph.js itemRecs 同一条展开），每件带着融合时记下的 uid
+// （`mergedUids`）各自计数 —— 两份商业包装方案要算两份，不能算成一份的两倍。
+test('锻炉: 融合成百变之后，里面的商业包装方案照旧计数并发放（业主 2026-11-04）', () => {
+  const { h, m, ps } = solo1(171);
+  applyHex(m, ps, m.gd.hex('hex_forge'));
+  const chessId = chessOfTier(1)[0];
+  const tile = legalTileFor(m, ps, chessId);
+  assert.ok(tile, 'a legal tile (premise)');
+  const piece = give(m, ps, chessId, 'board', tile);
+  const packA = giveItem(m, ps, 'chess_item_5_07_e_a');  // 商业包装方案（融合时自动进阶）
+  const packB = giveItem(m, ps, 'chess_item_5_07_e_b');
+  const uids = [packA.uid, packB.uid];
+  assert.deepEqual(ps.equip(packA.uid, piece.uid), { ok: true }, 'the first pack lands normally');
+  assert.deepEqual(ps.equip(packB.uid, piece.uid), { ok: true }, 'the second one fuses');
+  const fused = piece.items[0];
+  assert.equal(fused.id, FORGE_ITEM_ID, 'premise: the two became ONE 百变');
+  assert.equal(piece.items.length, 1, 'one equipment slot');
+  // each component kept its own uid, so each keeps its own sell counter
+  assert.deepEqual(fused.mergedUids, uids, 'the components remember their own piece uids');
+  // the two fused packs are BOTH advanced now (锻炉 auto-advances a component with a golden form), so each pays at 7
+  const fodder = chessOfTier(1)[1];
+  const grants = [];
+  const origGrant = ps.acquireChess.bind(ps);
+  ps.acquireChess = (...a) => { grants.push(a[0]); return origGrant(...a); };
+  const sell = () => { const f = give(m, ps, fodder, 'hand'); ps.sell(f.uid); };
+  for (let i = 0; i < 6; i++) sell();
+  assert.equal(ps.counters[`pack:${uids[0]}`], 6, 'the first pack counts every sale');
+  assert.equal(ps.counters[`pack:${uids[1]}`], 6, 'so does the second, on its OWN counter');
+  assert.equal(grants.length, 0, 'six sales: nothing paid yet');
+  sell(); // the 7th
+  assert.equal(grants.length, 2, 'the 7th sale pays out for BOTH packs (two operators, one per pack)');
+  assert.equal(ps.counters[`pack:${uids[0]}`], 0, 'and each ladder reset');
+  assert.equal(ps.counters[`pack:${uids[1]}`], 0);
+  sell(); // the 8th starts both ladders again
+  assert.equal(ps.counters[`pack:${uids[0]}`], 1);
+  assert.equal(ps.counters[`pack:${uids[1]}`], 1);
+  h.invariants();
+  m.dispose();
+});
+
 // （坚守模块只在 tier ≥ 2 时装上，炎干员由 bonds/addon/battle.js 并进它的成员名单，40% 分担 / 反伤因此生效）。
 test('燎原: 300 层后坚守真的激活，战斗输入带着这个 tier（业主 2026-10-27）', () => {
   const { h, m, ps } = solo1(163);

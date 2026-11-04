@@ -987,6 +987,12 @@ Any `choice:` handler whose EffectRef reuses its own key must guard like this (o
   A **fused 百变** (锻炉) wears its two components: every reader above goes through `shared/morph.js` `itemRecs` /
   `itemIds`, which expand a piece's `merged: [idA, idB]`, so a 百变 of 变形同构体 + 维式重锤 is a 维多利亚 member exactly
   as the two items worn apart are — and still occupies ONE equipment slot (the slot policy never reads `merged`).
+  The **prep dispatcher's item walk** expands the same way (`effectsMeta.js wornItems`): a 百变's components each run
+  their own `item:<itemKey>` handler, so a 商业包装方案 inside one keeps counting sells (业主 2026-11-04 — before that the
+  walk asked for `item:chess_item_9_97_e`, which nothing registers, and every per-item prep effect in a 百变 was dead).
+  Each component carries its own uid (`hextech.js applyForgeFusion` writes `mergedUids`), because handlers key per-piece
+  counters by `piece.uid` — two fused 商业包装方案 must count like two, not like one twice — and `PlayerState.find`
+  answers a component uid with the 百变 that holds it.
   Not covered [ASSUMED]: operator talents that test "【拉特兰】/【卡西米尔】/… 干员" in the kits read the record's bonds.
   **Layer cap** (research 11 §1; the client's `MAX_GARRISON_STACK` / `AddBondCount` = min(L + n, 999)): each bond's
   layers stop at `BOND_LAYER_CAP` = 999 (shared/constants.js; 0 / Infinity = off). Every writer clamps with
