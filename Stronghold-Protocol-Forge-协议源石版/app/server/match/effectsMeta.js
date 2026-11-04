@@ -51,7 +51,10 @@ import { onGiftTicker } from './botEmotes.js';
 // applyHex joined this import for 潘多拉魔盒 (the owner's list of 2026-10-15): the card replaces the player's whole
 // hex set, and each replacement must run the ORDINARY pick path — so it re-enters the pipeline rather than rebuilding
 // a ref by hand. This module already imported from ./hextech.js, so the edge exists and no cycle is added.
-import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf, applyHex, gainTraitExtraOf, hexPoolFor } from './hextech.js';
+// applyCopiedHex joined it for the same card's count guarantee (业主 2026-11-03): when the 3阶 pool runs dry mid-
+// replacement, the surplus cards are granted as a SECOND ref of a card already handed out (`hex:<id>#<n>`) instead of
+// being deduped away — the number of cards the player holds has to match the number the card replaced.
+import { bondLayerViewMulOf, topMemberBondOf, topLayerBondOf, applyHex, applyCopiedHex, gainTraitExtraOf, hexPoolFor, PANDORA_HEX_ID } from './hextech.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
 import { previewContext } from './preview.js';
 
@@ -1015,8 +1018,18 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
      * 镜像协议's arm and 债务's watcher are match-side. The import is static because the edge already existed in the
      * other direction (this module already imported three readers from ./hextech.js).
      *
-     * The old refs are dropped FIRST, so the new cards are not deduped away by addHexRef's one-ref-per-hex rule and
-     * 潘多拉魔盒 itself cannot be drawn back as its own replacement.
+     * The old refs are dropped FIRST, so the new cards are not deduped away by addHexRef's one-ref-per-hex rule.
+     *
+     * 卡面（`data/hextech.json hex_pandora`）：「获得时，将你已拥有的所有协议源石（含本张）随机更换为 3 阶协议源石」。
+     * 两条都由这句话推出来，缺一条就少一张（业主 2026-11-03 报告：第六回合换牌换出潘多拉时，「潘多拉没有将本身替换成
+     * 另外一个源石协议」就消失，于是少了一个协议源石）：
+     *   1. **换回来的张数必须等于换掉的张数**。`addHexRef` 是「一张卡一个 ref」，所以换回一张已经发过的同名卡等于没发 ——
+     *      旧代码每次独立从池子里抽，抽重了就被去重掉，玩家手上凭空少一张（实测 3 张换回 2 张）。现在按 `taken` 去重
+     *      抽（同一次 `replaceHexes` 内不重复）；池子真的抽干时发**第二个 ref**（`applyCopiedHex`，与策略「管理员」/
+     *      复制同一种「同一张卡的第二个 ref」），张数仍然对得上。
+     *   2. **潘多拉自己不在替换池里**（「更换为」另外一个 3阶卡）。旧代码只把池子按阶位过滤，于是它能把**自己**抽回来；
+     *      而 `applyHex` → onHexPick → 本函数会再次把全部牌清空重抽，一路撞到派发器的 MAX_DEPTH，最后手上只剩一张牌
+     *      （实测 4 张换完剩 1 张）。注释里写着「cannot be drawn back as its own replacement」，代码却一直没有做。
      */
     replaceHexes: () => {
       // hexPlayerPool() returns the RECORDS themselves (not ids) — verified against the built data, where every
@@ -1025,7 +1038,9 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
       // 核心盟约专属协议 (业主 2026-10-24): the replacement pool is the player's OWN offer pool — a 专属 3阶 card whose bond
       // is not active must not be handed out by 潘多拉 either (hexPoolFor = bans + requiresBond).
       const pool = typeof gd.hexPlayerPool === 'function' ? hexPoolFor(ps, gd) : [];
-      const prism = pool.filter((rec) => rec && rec.rarity === 'prismatic' && typeof rec.id === 'string');
+      const prism = pool.filter((rec) => rec && rec.rarity === 'prismatic' && typeof rec.id === 'string'
+        && rec.id !== PANDORA_HEX_ID);
+      // 一张可换的 3阶牌都没有（工坊包的池子极小 / 只有潘多拉自己）：一张都不动 —— 旧 refs 还完好，玩家不会因此少牌。
       if (!prism.length) return [];
       const mine = (ps.effects || []).filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:'));
       const n = mine.length;
@@ -1034,11 +1049,20 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
       ps.effects = (ps.effects || []).filter((e) => !(e && typeof e.key === 'string' && e.key.startsWith('hex:')));
       ps.dirty();
       const granted = [];
+      /** 本次已经发出去的 id —— 同名卡在这一轮里不再抽第二次（第二次发等于没发，见上面第 1 条）。 */
+      const taken = new Set();
       for (let i = 0; i < n; i++) {
-        const rec = prism[Math.min(prism.length - 1, Math.floor(m.rngHex() * prism.length))];
+        const candidates = prism.filter((rec) => !taken.has(rec.id));
+        // 池子抽干（3阶卡比手上的牌还少）：从全部候选里抽，发第二个 ref，张数照旧
+        const list = candidates.length ? candidates : prism;
+        const rec = list[Math.min(list.length - 1, Math.floor(m.rngHex() * list.length))];
         if (!rec) continue;
+        taken.add(rec.id);
         granted.push(rec.id);
-        try { applyHex(m, ps, rec); } catch (e) { m.reportError(`hex ${rec.id} (pandora)`, e); }
+        try {
+          if (candidates.length) applyHex(m, ps, rec);
+          else applyCopiedHex(m, ps, rec, { depth: 1, copiedBy: PANDORA_HEX_ID });
+        } catch (e) { m.reportError(`hex ${rec.id} (pandora)`, e); }
       }
       return granted;
     },

@@ -2210,3 +2210,79 @@ test('复制机制 + 二次抽取: the copy rolls its own 额外随机两枚 too
   h.invariants();
   h.m.dispose();
 });
+
+// ---- 潘多拉魔盒：换回来的张数必须等于换掉的张数（业主 2026-11-03） ---------------------------------------------
+// 业主原话：「修复一下第六回合刷新更换源石协议的时候如果出了潘多拉，潘多拉没有将本身替换成另外一个源石协议就消失
+// 导致少了一个源石协议的bug」。现象是「少一个」，根因有两处，各一条用例：
+//   1. 换回来的张数没守住 —— `addHexRef` 是「一张卡一个 ref」，旧代码每次独立从 3 阶池里抽，抽重了就被去重掉
+//      （多牌局的常规现场：换掉 5 张只回来 3–4 张）；
+//   2. 潘多拉能被抽回**自己** —— 卡面是「更换为」另一张 3 阶卡，抽回自己会立刻再触发一次整轮替换，一路撞到派发器的
+//      `MAX_DEPTH`，手上只剩一张牌（实测 4 张换完剩 1 张）。
+// 两条都在真实对局上量过（300 个种子、第 6 回合换牌，旧实现 17/300 局少牌）：见 PR 描述的前后对照表。
+// 口径与 `docs/design/match.md`「协议源石：潘多拉的『换回来』必须张数对得上」那一节同源。
+
+/** A 3阶-only roster: the replacement pool of 潘多拉 缩小到可控，且**不含**潘多拉自己（第 1 条的典型现场）。 */
+function prismaticOnlyPool(m, ids) {
+  const recs = ids.map((id) => m.gd.hex(id));
+  const real = m.gd.hexPlayerPool;
+  const realHex = m.gd.hex;
+  m.gd.hexPlayerPool = () => recs;
+  return () => { m.gd.hexPlayerPool = real; m.gd.hex = realHex; };
+}
+
+/** Hand the player `ids` as owned hex refs, clearing whatever the match dealt first (the tests below own the setup). */
+function ownExactly(m, ps, ids) {
+  ps.effects = (ps.effects || []).filter((e) => !(e && typeof e.key === 'string' && e.key.startsWith('hex:')));
+  for (const id of ids) applyHex(m, ps, m.gd.hex(id));
+}
+
+const hexRefList = (ps) => (ps.effects || []).filter((e) => e && typeof e.key === 'string' && e.key.startsWith('hex:'));
+
+test('潘多拉: 换回来的张数 = 换掉的张数（3 阶池抽重了也不许少一张）', () => {
+  // 池子 4 张、手上 5 张 + 潘多拉自己 = 6 张要换 ⇒ 必然抽重；旧代码在 `addHexRef` 的去重里把抽重的那张吞掉，
+  // 玩家凭空少一张。换回来的张数必须与「此刻拥有（含潘多拉本张）」一致 —— 卡面「含本张」就是这一条。
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 1, fake: true }).start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  const restore = prismaticOnlyPool(m, ['hex_pandora', 'hex_immortal', 'hex_overlord', 'hex_fullkit', 'hex_resonance']);
+  ownExactly(m, ps, ['hex_stipend', 'hex_logistics', 'hex_echo', 'hex_refresh', 'hex_recruit']);
+  const before = hexRefList(ps).length;
+  assert.equal(before, 5, 'premise: 手上 5 张');
+  applyHex(m, ps, m.gd.hex('hex_pandora'));
+  const refs = hexRefList(ps);
+  // 换掉的张数 = 手上 5 张 + 潘多拉自己（卡面「含本张」），所以换回来也该是 6 张
+  assert.equal(refs.length, before + 1, `5 张 + 潘多拉 = 6 张换回来还是 6 张（旧的会少：${refs.map((e) => e.id).join(',')}）`);
+  // 抽干的那些发成「同一张卡的第二个 ref」，所以 id 会重复，但每一张都是真牌、都在池子里、且都不是潘多拉
+  for (const e of refs) {
+    assert.ok(['hex_immortal', 'hex_overlord', 'hex_fullkit', 'hex_resonance'].includes(e.data.hexId),
+      `${e.id} 是池子里的 3 阶卡`);
+    assert.notEqual(e.data.hexId, 'hex_pandora', '换回来的一定不是潘多拉自己');
+  }
+  restore();
+  m.dispose();
+});
+
+test('潘多拉: 抽不到它自己 —— 否则它再跑一次整轮替换，最后只剩一张', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 2, fake: true }).start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  const restore = prismaticOnlyPool(m, ['hex_pandora', 'hex_immortal']);
+  ownExactly(m, ps, ['hex_stipend', 'hex_echo', 'hex_recruit', 'hex_bulwark']);
+  // 池子里除了潘多拉只剩 1 张：它若能抽回自己，几乎每一抽都会命中，于是整轮替换再触发一次、无限套下去
+  // （旧代码正是如此 —— 派发器到 MAX_DEPTH 后直接不跑，手上塌成一张）。
+  for (let i = 0; i < 12; i++) {
+    assert.equal(hexRefList(ps).filter((e) => e.data.hexId === 'hex_pandora').length, 0,
+      `第 ${i + 1} 次之前：潘多拉没有留在收藏里`);
+    const before = hexRefList(ps).length;
+    applyHex(m, ps, m.gd.hex('hex_pandora'));
+    const refs = hexRefList(ps);
+    assert.equal(refs.filter((e) => e.data.hexId === 'hex_pandora').length, 0, `第 ${i + 1} 次：潘多拉没有留下自己`);
+    assert.equal(refs.length, before + 1, `第 ${i + 1} 次：${before} 张 + 潘多拉 = ${before + 1} 张（旧的会塌成 1）`);
+  }
+  assert.deepEqual(h.logs.warn.filter((w) => /depth limit/.test(w)), [], '没有撞到派发器的 MAX_DEPTH');
+  restore();
+  m.dispose();
+});
+

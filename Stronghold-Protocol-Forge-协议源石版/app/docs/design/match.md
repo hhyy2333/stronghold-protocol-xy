@@ -503,6 +503,27 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   `test/ui/hexRecycle.test.js`（客户端纯函数与面板）、`test/match/fuzz.test.js`（新意图进 `GAME` 后的随机序列）。
   **golden 不移动**：这是备战层的规则，不进战斗模拟。
 
+## 协议源石：潘多拉的「换回来」必须张数对得上（2026-11-03，业主裁定）
+
+业主原话：「修复一下第六回合刷新更换源石协议的时候如果出了潘多拉，潘多拉没有将本身替换成另外一个源石协议就消失
+导致少了一个源石协议的bug」。第 6 回合换牌（上一节）的换回走正式发牌路径 `applyHex`，而换回来的那张**可能正是潘多拉
+魔盒** —— 它自己的 `onPick` 会把玩家所有协议源石（含本张）再换一轮。那一刻的两条缺陷都会让玩家**少牌**：
+
+- **① 换回来的张数没守住**：`addHexRef` 的规则是「一张卡一个 ref」，而旧实现每次**独立**从 3 阶池里抽，抽重了就在
+  去重里被吞掉 —— 池子比手上牌少时几乎必然发生（实测 5 张换完剩 3–4 张）。现在按 `taken` 去重抽（同一次替换内不重复），
+  池子真的抽干时把多出来的那几张发成**同一张卡的第二个 ref**（`applyCopiedHex`，与策略「管理员」/【复制】同一种
+  「第二份」），于是「换掉几张就换回几张」这条永远成立。
+- **② 潘多拉能被抽回自己**：卡面是「更换为」另一张 3 阶卡。抽回自己会立刻再触发一次整轮替换，一路撞到派发器的
+  `MAX_DEPTH`（`server/match/effectsMeta.js MAX_DEPTH = 6`）后静默停下，手上只剩最后那一张（实测 4 张换完剩 1 张）。
+  旧注释里写着「潘多拉魔盒 itself cannot be drawn back as its own replacement」，代码却只按阶位过滤了池子。现在替换池
+  直接排除 `hex_pandora`（`server/match/hextech.js PANDORA_HEX_ID` 是唯一的 id 常量）。
+- **判定与实现位置**：规则在 `server/match/effectsMeta.js makeCtx().replaceHexes`（它要重入 `applyHex`，只能住在对局层），
+  卡 id 常量与「第二份 ref」的发放器在 `server/match/hextech.js`。池子仍是 `hexPoolFor(ps, gd)`（禁用 + 未激活盟约的专属卡
+  照旧收窄），随机流仍是本局种子 `rngHex`，所以重放确定性不变。**一张可换的 3 阶牌都没有时一张都不动**（旧 refs 原样
+  留着）—— 工坊包的极小池子是这条的现场。
+- **回归**：`test/match/hextech.test.js` 尾部两条（「换回来的张数 = 换掉的张数」「抽不到它自己」）。
+  **golden 不移动**：备战层规则，不进战斗模拟；`hex_recycle` 的协议形状（`g.hexRecycle { ids }`）一个字节都没动。
+
 ## 协议源石与首领：十条 bug / 增强（2026-11-01，业主裁定）
 
 - **首领【伤心的大锁】**（boss_13）：受击反击（每 20 次受击 → 全场 100% 攻击力法术溅射）的计数只算**「可触发受击
