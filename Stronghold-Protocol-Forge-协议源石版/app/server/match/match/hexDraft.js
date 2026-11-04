@@ -266,7 +266,11 @@ export class MatchHexDraft {
     const baseSpent = s.picks[ps.playerId] != null;
     if (baseSpent) s.extraPicks[ps.playerId] = Math.max(0, (s.extraPicks[ps.playerId] || 0) - 1);
     s.picks[ps.playerId] = idx;
-    try { applyHex(this, ps, hex); } catch (e) { this.reportError(`applyHex ${hex.id}`, e); }
+    // 自选来源 (业主 2026-11-04「让协议源石复制只能复制自选协议」): THIS is the self pick — the card the player chose in
+    // their own three-card offer. `selfPicked` stamps the EffectRef (`addHexRef`) and is the only thing 【复制】 may copy;
+    // every other way a card can arrive (a teammate's team card, 二次抽取, 镜像协议, 潘多拉换牌, 策略授予, 测试场) is not
+    // one, so those doors call `applyHex` without the flag.
+    try { applyHex(this, ps, hex, { selfPicked: true }); } catch (e) { this.reportError(`applyHex ${hex.id}`, e); }
     // still owes a pick (the extra one): re-deal their three cards and let them choose again
     if (!baseSpent && (s.extraPicks[ps.playerId] || 0) > 0) {
       const pool = this._hexPoolFor(ps);
