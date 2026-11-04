@@ -1685,6 +1685,39 @@ test('尸山 (9_95) 联防: only the carrier’s OWN operators are eaten — the
   checkInvariants(h.b);
 });
 
+test('尸山 (9_95) 免疫: the carrier is immune to 晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹 — 寒冷 and 束缚 still land', () => {
+  // 业主 2026-11-04「给尸山装备添加免疫晕眩和冻结等特殊状态」：与浓缩嗅盐**同一个目录口径**
+  // （server/sim/buffs.js `SPECIAL_STATES`），装备装上就生效、不等到 battleStart 吃完队友。
+  // 尸山·极 是另一条记录、同一段行为（`corpseHill` 读记录自己的 params），所以两件都要钉住。
+  for (const id of ['chess_item_9_95_e_a', 'chess_item_9_95_e_b']) {
+    assert.match(DATA.items[id].desc, /免疫晕眩、冻结等特殊状态/, `${id}: the card face says it`);
+    const h = fight({
+      ops: { t_op: op('t_op'), t_mate: op('t_mate') },
+      units: [
+        { chessId: 't_op', row: 10, col: 4, items: [id] },
+        { chessId: 't_mate', row: 11, col: 4 },
+      ],
+    });
+    h.step(0.3);
+    const c = h.unit('t_op');
+    for (const k of ['stun', 'freeze', 'sleep', 'levitate', 'palsy']) {
+      assert.equal(h.b.applyStatus(c, k, { duration: 1 }), false, `${id}: ${k} is a 特殊状态`);
+    }
+    // 寒冷 is a debuff, not a control state: it lands, but the freeze of a second 寒冷 is cancelled
+    assert.equal(h.b.applyStatus(c, 'cold', { duration: 1 }), true, `${id}: 寒冷 is not a 特殊状态 (regression)`);
+    assert.equal(h.b.applyStatus(c, 'cold', { duration: 1 }), true);
+    assert.equal(c.findBuff('freeze'), null, `${id}: the freeze of a second 寒冷 is cancelled too`);
+    // 束缚 is not in the list (the same list 浓缩嗅盐 has always used)
+    assert.equal(h.b.applyStatus(c, 'bind', { duration: 1 }), true, `${id}: 束缚 is not a 特殊状态`);
+    cover(id);
+    checkInvariants(h.b);
+  }
+  // without the equipment the stun lands: the immunity is the equipment's, not the operator's
+  const bare = fight({ units: [{ chessId: 't_op', row: 10, col: 4 }] });
+  bare.step(0.3);
+  assert.equal(bare.b.applyStatus(bare.unit('t_op'), 'stun', { duration: 1 }), true, 'without 尸山 a stun lands');
+});
+
 test('心之钢 (9_96): the equipment alone procs the 坚守 extra hit, +150 max HP and +2 layers', () => {
   const ITEM = 'chess_item_9_96_e_a';
   const h = fight({

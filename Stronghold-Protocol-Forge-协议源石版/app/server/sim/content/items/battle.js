@@ -47,6 +47,7 @@ import {
   alliesAround, passiveBuff, fxOn, battleStore, contentInfo, itemsOf, directMods,
 } from '../support/index.js';
 import { mitigate, hasHp, periodicDamage, isHpLoss } from '../../damage.js';
+import { SPECIAL_STATES } from '../../buffs.js';
 import { hypot } from '../../detmath.js';
 import { PROTOCOL_ITEMS } from './protocol.js';
 
@@ -613,12 +614,15 @@ const BY_ITEM = {
       fxOn(battle, 'buff', u, 'item:chess_item_4_08_e', rec.id);
     });
   },
-  // 浓缩嗅盐: while HP ratio > hp_ratio, immune to 晕眩/冻结 … special states
+  // 浓缩嗅盐: while HP ratio > hp_ratio, immune to 晕眩/冻结 … special states. The list is buffs.js `SPECIAL_STATES`
+  // (shared with 尸山's equipment since 2026-11-04): research 04 §4's [ASSUMED] reading — 晕眩 / 冻结 / 沉睡 / 浮空 /
+  // 麻痹. 寒冷 is a debuff, not a control state: it still applies, but the freeze of a second 寒冷 is itself a `freeze`
+  // status and is cancelled.
   chess_item_4_10_e(battle, u, rec, S) {
     const p = bp(rec, 'act1autochess_equip_acarm059_global_buff');
     if (!p) return;
     const thr = num(p.hp_ratio, 1);
-    S.on('beforeStatus', (c) => { if (c.target === u && CC.has(c.status) && u.hpRatio > thr) c.cancel = true; });
+    S.on('beforeStatus', (c) => { if (c.target === u && SPECIAL_STATES.has(c.status) && u.hpRatio > thr) c.cancel = true; });
   },
   // 护盾无人机: heals ⇒ prob: target gets 1 shield layer (≤ max_stack_cnt)
   chess_item_4_11_e(battle, u, rec, S) {
@@ -869,11 +873,8 @@ const BY_ITEM = {
 // the 协议源石 card that hands it out (业主 2026-10-26「所有协议装备都依靠对应的协议源石生效的bug这个还没修」).
 Object.assign(BY_ITEM, PROTOCOL_ITEMS);
 
-/** 浓缩嗅盐 "免疫晕眩、冻结等特殊状态" — research 04 §4 list (stun/freeze/sleep/levitate/palsy). 寒冷 is a debuff, not a
- * control state: it still applies, but the freeze of a second 寒冷 is itself a `freeze` status and is cancelled. */
-const CC = new Set(['stun', 'freeze', 'sleep', 'levitate', 'palsy']);
+/** 护盾无人机's shield-layer buff key (see chess_item_4_11_e). */
 const SHIELD_KEY = 'item:shield_drone';
-
 /**
  * 弱点伤害 (双模机械臂, band 陈 以己之长): a physical or arts DamageInfo from `source` becomes whichever of the two types
  * `target` resists less (same mitigation formula as damage.js, incl. the source's ignore stats). Mutates `dmg.type`.

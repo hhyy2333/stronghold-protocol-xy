@@ -2656,7 +2656,7 @@
   "作战中，己方干员被击中时有 30% 概率免受此次伤害，并对攻击方造成「此次伤害值 × 2」的法术伤害。": "In battle, 30 % of the hits on your operators are negated and answered with arts damage equal to twice that hit’s damage, dealt to the attacker.",
   "获得装备【加护】：该干员受到与自身伤害类型相同的伤害时，该次伤害减少 60%。": "On pick you gain the equipment Ward: its carrier takes 60 % less damage from hits of its own damage type.",
   "获得装备【万物归虚】：装备时移除备战区所有干员。作战开始时，装备者获得「被移除干员数」层，每层 +20% 攻击力、减少 30 点受到的伤害。": "On pick you gain the equipment All Things Return to Void: equipping it removes every operator from the reserve. At battle start its carrier gains one layer per removed operator — +20 % ATK and −30 damage taken per layer.",
-  "获得装备【尸山】：战斗开始时直接击杀其他所有己方干员（不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命。": "On pick you gain the equipment Mountain of Corpses: at battle start it executes every other ally (they cannot redeploy). Its carrier then gains their base max HP, ATK, block count, DEF and RES, +1 SP recovery, and 1 % max HP regeneration a second.",
+  "获得装备【尸山】：战斗开始时直接击杀其他所有己方干员（不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命。装备者免疫晕眩、冻结等特殊状态。": "On pick you gain the equipment Mountain of Corpses: at battle start it executes every other ally (they cannot redeploy). Its carrier then gains their base max HP, ATK, block count, DEF and RES, +1 SP recovery, and 1 % max HP regeneration a second. The carrier is also immune to stun, freeze and the other special states.",
   "作战中，己方干员的技力消耗 +20%，伤害提升至 140%。": "In battle your operators’ skills cost 20 % more SP and they deal 140 % damage.",
   "增益无效": "Buff Nullification",
   "流星": "Meteor",

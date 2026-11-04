@@ -1985,8 +1985,8 @@ const CUSTOM_EFFECTS = Object.freeze({
   },
   eff_item_corpsehill: {
     name: '尸山',
-    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命',
-    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者<@ba.vup>获得他们的基础生命值、攻击力、阻挡数、防御力与法抗</>，<@ba.vup>技力回复 +1</>，且<@ba.vup>每秒恢复自身 1% 最大生命</>',
+    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命。装备者免疫晕眩、冻结等特殊状态',
+    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者<@ba.vup>获得他们的基础生命值、攻击力、阻挡数、防御力与法抗</>，<@ba.vup>技力回复 +1</>，且<@ba.vup>每秒恢复自身 1% 最大生命</>。<@ba.vup>免疫晕眩、冻结等特殊状态</>',
     buffs: [],
   },
   eff_item_heartsteel: {
@@ -2412,6 +2412,8 @@ const CUSTOM_ITEMS = Object.freeze({
   // 业主改版 2026-10-20：「三阶『尸山』，加成改成：获得其他干员属性（生命值，攻击力，阻挡数，防御力，法抗）和技力回复+1，每秒回复1%最大生命」
   // 业主 2026-10-25「两个装备尸山应该能合成」：`_a` 合成进 `_b`，两件尸山换成一件更强的。
   //   业主定下的合成后数值：「击杀队友获得属性 ×1.5，技力 +2，回血 2%/s」—— 即 `attrScale` / `spRecovery` / `regenPct` 三项。
+  // 业主 2026-11-04「给尸山装备添加免疫晕眩和冻结等特殊状态」：两件尸山的卡面都补一句「装备者免疫晕眩、冻结等特殊状态」
+  //   （行为在 server/sim/content/items/protocol.js；列表与浓缩嗅盐共用 buffs.js `SPECIAL_STATES`，没有新 params）。
   chess_item_9_95_e_a: {
     name: '尸山',
     tier: 1,
@@ -2420,8 +2422,8 @@ const CUSTOM_ITEMS = Object.freeze({
     identifier: 9006,
     iconId: 'item_corpsehill',
     mergeInto: 'chess_item_9_95_e_b',
-    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命',
-    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者<@ba.vup>获得他们的基础生命值、攻击力、阻挡数、防御力与法抗</>，<@ba.vup>技力回复 +1</>，且<@ba.vup>每秒恢复自身 1% 最大生命</>',
+    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗，技力回复 +1，且每秒恢复自身 1% 最大生命。装备者免疫晕眩、冻结等特殊状态',
+    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者<@ba.vup>获得他们的基础生命值、攻击力、阻挡数、防御力与法抗</>，<@ba.vup>技力回复 +1</>，且<@ba.vup>每秒恢复自身 1% 最大生命</>。<@ba.vup>免疫晕眩、冻结等特殊状态</>',
     effectId: 'eff_item_corpsehill',
     effectName: '尸山',
     buffs: [],
@@ -2429,7 +2431,7 @@ const CUSTOM_ITEMS = Object.freeze({
     note: '本作自制装备：只由协议源石【尸山】发放，商店不出售；两件可合成「尸山·极」',
   },
   // 尸山·极 (_b): what TWO 尸山 merge into (业主 2026-10-25「击杀队友获得属性×1.5，技力+2，回血2%/s」).
-  // `attrScale` is read by server/sim/content/hexcards/batch15b.js installCorpseHill for the eaten operators' stats.
+  // `attrScale` is read by server/sim/content/items/protocol.js corpseHill for the eaten operators' stats.
   chess_item_9_95_e_b: {
     name: '尸山·极',
     tier: 1,
@@ -2437,8 +2439,8 @@ const CUSTOM_ITEMS = Object.freeze({
     shopSortId: 995,
     identifier: 9006,
     iconId: 'item_corpsehill',
-    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗的 150%，技力回复 +2，且每秒恢复自身 2% 最大生命',
-    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗的<@ba.vup>150%</>，<@ba.vup>技力回复 +2</>，且<@ba.vup>每秒恢复自身 2% 最大生命</>',
+    desc: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗的 150%，技力回复 +2，且每秒恢复自身 2% 最大生命。装备者免疫晕眩、冻结等特殊状态',
+    descRaw: '作战开始时直接击杀其他所有己方干员（他们不可重部署）。装备者获得他们的基础生命值、攻击力、阻挡数、防御力与法抗的<@ba.vup>150%</>，<@ba.vup>技力回复 +2</>，且<@ba.vup>每秒恢复自身 2% 最大生命</>。<@ba.vup>免疫晕眩、冻结等特殊状态</>',
     effectId: 'eff_item_corpsehill',
     effectName: '尸山',
     buffs: [],
