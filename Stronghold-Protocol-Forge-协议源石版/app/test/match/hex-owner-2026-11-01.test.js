@@ -42,6 +42,17 @@ function onlyOwn(ps, hexId) {
   ps.effects = (ps.effects || []).filter((e) => e && e.data && e.data.hexId === hexId);
   return ps;
 }
+/**
+ * 把这张卡标成**自选**（业主 2026-11-04「让协议源石复制只能复制自选协议」）。
+ *
+ * 正式路径上只有协议源石抽卡的 `g.hex` 会写 `data.selfPicked`（`hexDraft.js _applyHex` 传 `selfPicked: true`）。
+ * 这些用例是在**已经开好的对局里**直接 `applyHex` 塞卡，所以「我挑的」这件事要自己标一下，否则【复制】按新口径
+ * 认为它不是我选的、拒绝复制 —— 那是另一条用例（见文件末尾「只能复制自选协议」那一组）。
+ */
+function markSelfPicked(ps, hexId) {
+  for (const e of ps.effects || []) if (e && e.data && e.data.hexId === hexId) e.data.selfPicked = true;
+  return ps;
+}
 const lp = (ps) => ps.lp;
 const countChess = (ps, id) => ps.allChess().filter((p) => p.id === id).length;
 const countItems = (ps, id) => [...(ps.hand || []), ...(ps.temp || [])].filter((p) => p && p.kind === 'item' && p.id === id).length;
@@ -61,6 +72,8 @@ test('【复制】复制 team 卡【战争机器】：复制者与每个存活�
   // 复制只挑「已经拥有的别的卡」：把两人的收藏清到只剩【战争机器】，让选择确定
   onlyOwn(p0, 'hex_warmachine');
   onlyOwn(p1, 'hex_warmachine');
+  // 业主 2026-11-04 之后【复制】只认自选卡：这里的【战争机器】是测试直接塞进 p0 的，标成自选才符合「我挑的那张」
+  markSelfPicked(p0, 'hex_warmachine');
   // 再获得【复制】：候选只有【战争机器】一张（复制自己不算），于是复制它的 team 半段
   const before = [lp(p0), lp(p1)];
   applyHex(m, p0, REPLICATE);
@@ -82,6 +95,7 @@ test('【复制】不发给已经死亡的队友（team 卡的 targets = 复制�
   applyHex(m, p0, WARMACHINE);
   onlyOwn(p0, 'hex_warmachine');
   onlyOwn(p1, 'hex_warmachine');
+  markSelfPicked(p0, 'hex_warmachine');
   const p1Lp = lp(p1);
   p1.eliminate(1); // 队友出局
   assert.equal(p1.alive, false);

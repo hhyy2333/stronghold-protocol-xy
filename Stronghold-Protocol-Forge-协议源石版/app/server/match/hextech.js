@@ -355,6 +355,14 @@ export function applyVoidReturnLayers(m, ps, item) {
 export function applyHex(m, ps, hex, opts = {}) {
   const team = !!(hex.effect && hex.effect.team);
   const targets = team ? [ps, ...m.alivePlayers().filter((p) => p !== ps)] : [ps];
+  // 自选来源 (业主 2026-11-04「能让协议源石复制只能复制自选协议吗？」): a card the player CHOSE in their own draft is
+  // 自选; every other way a card can arrive is not. The flag is what 【复制】 reads (见 SELF_PICKED_HEX_DATA 与
+  // `drainPendingHexCopies`), so it has to be stamped by the door that knows the difference.
+  //   * the draft pick (`hexDraft.js _applyHex`) passes `selfPicked: true` — that is the ONLY self pick;
+  //   * 团队卡 distributed to a TEAMMATE (`p !== ps`) is never self: that teammate did not choose it — exactly the
+  //     case 业主 reported 「他会先复制成队友选的全体增益的海克斯」;
+  //   * 二次抽取 / 无私奉献 / 镜像协议 / 潘多拉换牌 / 策略授予 / 测试场 all grant a card the player did not select.
+  const selfPicked = !!opts.selfPicked;
   // the picker's OWN EffectRef for this gain: 策略「管理员」/ 复制 add a SECOND ref of the same card, and the extras below
   // stamp per-ref state (盟约寄生's partner, 背水一战's window) onto it — looking the card up by its base id instead always
   // answered with the FIRST ref, so two 盟约寄生 shared one slot and only the last partner was ever drained
@@ -366,7 +374,7 @@ export function applyHex(m, ps, hex, opts = {}) {
     // replaceHexes() drops every `hex:` ref — the running card included — and re-grants one card per owned ref, so the
     // ref must be added BEFORE the handler. With the old order (add after) the card replaced the others and was then
     // added back on top (「潘多拉不变自己」), and a player who owned nothing but the card got nothing at all.
-    const gainedRef = addHexRef(m, p, hex);
+    const gainedRef = addHexRef(m, p, hex, { selfPicked: selfPicked && p === ps });
     if (p === ps) pickerRef = gainedRef;
     try { m.dispatcher.runKey(p, `hex:${hex.id}`, 'onHexPick', { kind: 'hex', hex }, ev); } catch (e) { m.reportError(`hex ${hex.id}`, e); }
     // `effect.onPick.lp` reaches EVERY target, not just the picker: a team hex's whole point is that each teammate gets
@@ -385,8 +393,9 @@ export function applyHex(m, ps, hex, opts = {}) {
     // GAIN, and only applyHex may grant one); drain here, after the pick has fully settled, so the copy cannot re-enter
     // the dispatch that armed it.
     drainPendingHexCopies(m, p, hex);
-    // 复制 (业主 2026-11-01): 手上留着的那枚【复制】等的就是这一枚 —— 现在就复制它，然后消失
-    resolveWaitingReplicate(m, p, hex);
+    // 复制 (业主 2026-11-01): 手上留着的那枚【复制】等的就是这一枚 —— 现在就复制它，然后消失。
+    // 业主 2026-11-04「只能复制自选协议」: 只有**这一目标自己自选**的那次获得才兑现（团队卡的队友不是自选）。
+    resolveWaitingReplicate(m, p, hex, selfPicked && p === ps);
     p.recompute();
   }
   // 策略「管理员」 — REPLACED 2026-10-25 (业主「管理员策略改成第一回合多选择一次海克斯」). The old mechanic was
@@ -504,14 +513,12 @@ function drainPendingHexCopies(m, ps, hex) {
     // only the card that queued it may consume itself
     const srcId = job && typeof job.sourceHexId === 'string' ? job.sourceHexId : (hex && hex.id);
     if (srcId !== (hex && hex.id)) continue;
-    // 1) the candidates: every OTHER card this player owns, deduped by catalogue id
-    const owned = new Set();
-    for (const e of ps.effects || []) {
-      if (!e || typeof e.key !== 'string' || !e.key.startsWith('hex:')) continue;
-      const id = e.data && typeof e.data.hexId === 'string' ? e.data.hexId : e.key.slice(4);
-      if (id && id !== srcId) owned.add(id);
-    }
-    const candidates = [...owned].sort();
+    // 1) the candidates: the OTHER cards this player PICKED ITSELF, deduped by catalogue id.
+    // 业主 2026-11-04「能让协议源石复制只能复制自选协议吗？」: a card that reached this player any other way — a
+    // teammate's `team: true` card, 二次抽取, 镜像协议, 潘多拉换回来 … — is NOT a 自选 card and must not be copied
+    // (`selfPickedHexIds`). The old pool was every owned ref, which is how the card ended up duplicating
+    // 「队友选的全体增益的海克斯」.
+    const candidates = selfPickedHexIds(ps).filter((id) => id !== srcId).sort();
     // 业主 2026-11-01「协议『复制』加个第一个时保留效果」: 手上还没有别的协议源石可复制 ⇒ **不消失**，留在收藏里等 ——
     // 之后这个玩家再获得一枚协议源石时，由 `resolveWaitingReplicate` 复制**那一枚**、然后它才消失。
     //（旧行为：没得复制也照样把自己删掉，于是「第一张就是复制」等于白拿一张卡。）
@@ -543,11 +550,17 @@ function drainPendingHexCopies(m, ps, hex) {
  * 只在「获得」这条路上兑现（`applyHex` / `applyCopiedHex` 的每个目标各调一次），所以回合结算、商店刷新这些没有
  * 「获得」的时刻不会凭空发作。刚到手的就是【复制】本身时不动 —— 卡面「复制一个你**已拥有**的协议源石」不含自己。
  *
+ * 业主 2026-11-04「只能复制自选协议」：这一枚**只能**靠一次**自选**的获得来兑现。别人塞过来的卡（队友的团队卡、
+ * 二次抽取、镜像协议、潘多拉换回来…）不满足条件，【复制】继续留着等下一次 —— 否则「留到下一张」就成了绕开新口径的
+ * 后门：等着的【复制】会把任何一张路过的卡都复制一份。
+ *
  * @param {any} m @param {any} ps @param {any} gainedHex 刚获得的卡（catalogue record）
+ * @param {boolean} [selfPicked] 这次获得是不是玩家**自选**的（`applyHex` 的 `opts.selfPicked`）
  * @returns {number} 这次兑现了几枚【复制】（0 或 1）
  */
-function resolveWaitingReplicate(m, ps, gainedHex) {
+function resolveWaitingReplicate(m, ps, gainedHex, selfPicked = false) {
   if (!m || !ps || !gainedHex || !Array.isArray(ps.effects)) return 0;
+  if (!selfPicked) return 0;                                 // 不是自选的那一枚：继续等（业主 2026-11-04）
   if (gainedHex.id === 'hex_replicate') return 0;            // 新到手的也是【复制】：继续等，不复制自己
   const waiting = ps.effects.find((e) => e && e.key === 'hex:hex_replicate');
   if (!waiting) return 0;                                    // 手上没有等着的那枚
@@ -662,8 +675,10 @@ export function applyCopiedHex(m, ps, hex, { depth = 1, copiedBy = null } = {}) 
       m.dispatch(p, 'onHexPick', ev, { skipKey: ref.key });
       // 层数里程碑：副本也是一次「获得」（计数器与原件共用 ⇒ 同一 rung 不会因为复制而发第二次）
       replayLayerGift(m, p, hex, ref);
-      // 复制 (业主 2026-11-01): 「获得」也包含复制来的这一份 —— 留着的【复制】在副本上同样兑现
-      resolveWaitingReplicate(m, p, hex);
+      // 复制 (业主 2026-11-01): 「获得」也包含复制来的这一份 —— 留着的【复制】在副本上同样兑现。
+      // 业主 2026-11-04「只能复制自选协议」：副本**不是**自选 —— 它是我复制出来的，不是我在三选一里挑的。所以这里
+      // 传 false：留着的【复制】不会被一次复制喂饱（否则「复制 → 副本 → 再复制」就成了绕开新口径的无限链）。
+      resolveWaitingReplicate(m, p, hex, false);
       p.recompute?.();
     } catch (e) { m.reportError?.(`hex ${hex.id} (copy)`, e); }
   }
@@ -1034,7 +1049,7 @@ function applyHexExtras(m, ps, hex, { depth = 0, ref: gainRef = null } = {}) {
  * alone marked all of those `battle: false`, and `player/round.js battleInput` then dropped them from every battle's
  * `playerEffects` — the cards were owned, drafted and shown, but their battle half never ran.
  */
-function addHexRef(m, ps, hex, { copySeq = 0 } = {}) {
+function addHexRef(m, ps, hex, { copySeq = 0, selfPicked = false } = {}) {
   const id = copySeq > 0 ? `hex:${hex.id}#${copySeq}` : `hex:${hex.id}`;
   // one ref per hex per player: a team hex reaching a player who already drafted it must not run twice.
   // A COPY (策略「管理员」) is the one thing that must: it gets its own ref id (same `key`, so the same handler runs) —
@@ -1043,7 +1058,13 @@ function addHexRef(m, ps, hex, { copySeq = 0 } = {}) {
   // never overwrite each other (业主 2026-10-26「好多协议源石被'管理员'复制后只会触发1个」).
   if (copySeq <= 0) {
     const existing = (ps.effects || []).find((e) => e && (e.id === id || e.key === id));
-    if (existing) return existing;
+    // 自选来源 (业主 2026-11-04): the first ref may have arrived WITHOUT a draft pick (a team card handed over, 二次抽取,
+    // 镜像协议 …). A later self pick of the same card is still the player's own choice, so the flag is upgraded — never
+    // downgraded, or a card the player genuinely picked would become uncopyable because it arrived once by accident.
+    if (existing) {
+      if (selfPicked && existing.data && !existing.data.selfPicked) { existing.data.selfPicked = true; ps.dirty(); }
+      return existing;
+    }
   }
   const spec = hex.effect || {};
   // 孤注一掷 (0.3.0 playtest #3): `battleForRounds` = a battle passive that lapses after `rounds` rounds. The expiry is
@@ -1069,6 +1090,10 @@ function addHexRef(m, ps, hex, { copySeq = 0 } = {}) {
     data: {
       hexId: hex.id, rarity: hex.rarity, ...(copySeq > 0 ? { copySeq } : null),
       ...(hasLayerGift(hex) ? { sharedCounters: true } : null),
+      // 自选来源 (业主 2026-11-04「让协议源石复制只能复制自选协议」): `true` ⇔ this player CHOSE the card in their own
+      // draft. 【复制】's candidate pool reads only these refs (`selfPickedHexIds`). Written only when true, so a ref
+      // that no draft produced keeps the shape it always had.
+      ...(selfPicked ? { selfPicked: true } : null),
     },
   };
   ps.effects.push(ref);
@@ -1086,6 +1111,32 @@ export function hexIdsOf(ps) {
 /** Whether the player owns a hex (0.3.0 playtest #3: several hexes act through ownership, not through a spec run). */
 export function ownsHex(ps, hexId) {
   return Array.isArray(ps && ps.effects) && ps.effects.some((e) => e && e.data && e.data.hexId === hexId);
+}
+
+/**
+ * 自选协议源石 (业主 2026-11-04「能让协议源石复制只能复制自选协议吗？」): the ids this player **chose itself** in a
+ * draft, de-duplicated — 【复制】's only legal candidates.
+ *
+ * 「自选」 is deliberately NOT "everything I own". `ps.effects` also carries cards the player never selected:
+ *   * a `team: true` card another teammate drafted (it reaches every teammate — 战争机器 / 共鸣协议 …), which is exactly
+ *     the case the owner reported (「他会先复制成队友选的全体增益的海克斯」);
+ *   * cards an effect handed over: 二次抽取, 无私奉献, 镜像协议 (a TEAMMATE's card), 潘多拉魔盒's 换回来, 换牌 /
+ *     策略授予 / 测试场.
+ * The `data.selfPicked` stamp is written by `applyHex`'s draft-pick call only (see `selfPicked` there), so this list is
+ * exactly "the ones I picked".
+ * @param {{ effects?: any[] } | null} ps
+ * @returns {string[]} self-picked hex ids, in pick order
+ */
+export function selfPickedHexIds(ps) {
+  const out = [];
+  for (const e of (ps && ps.effects) || []) {
+    if (!e || typeof e.key !== 'string' || !e.key.startsWith('hex:')) continue;
+    const d = e.data;
+    if (!d || d.selfPicked !== true || typeof d.hexId !== 'string' || !d.hexId) continue;
+    if (out.includes(d.hexId)) continue;
+    out.push(d.hexId);
+  }
+  return out;
 }
 
 /** The active-bond cap a player's own hexes ask for (盟约裂变 `bondFission.cap`), 0 when none does. */
