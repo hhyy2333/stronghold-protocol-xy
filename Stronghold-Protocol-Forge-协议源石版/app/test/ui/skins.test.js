@@ -91,13 +91,42 @@ test('parseStoredSkins：只留「两个非空 id」，并按上限截断', () =
   assert.deepEqual(S.parseStoredSkins(null), {});
   assert.deepEqual(S.parseStoredSkins('nope'), {});
   assert.deepEqual(S.parseStoredSkins({ [INSIDE]: 'inside-summer', x: '', y: 3, z: null }), { [INSIDE]: 'inside-summer' });
-  const many = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`char_${i}`, `skin_${i}`]));
+  const many = Object.fromEntries(Array.from({ length: APPEARANCE_LIMITS.picks + 50 }, (_, i) => [`char_${i}`, `skin_${i}`]));
   const capped = S.parseStoredSkins(many);
   assert.equal(Object.keys(capped).length, APPEARANCE_LIMITS.picks, '上限就是协议的上限（同一格，不是第二份数字）');
   assert.equal(S.SKIN_PICKS_LIMIT, APPEARANCE_LIMITS.picks);
-  // 脏值不花预算：前 64 条里混了坏值，好值仍然进得来
+  // 脏值不花预算：混在里面的坏值不占名额，好值仍然进得来
   const dirty = { ...Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`bad ${i}`, 'x'])), [INSIDE]: 'inside-summer' };
   assert.deepEqual(Object.keys(S.parseStoredSkins(dirty)), [INSIDE]);
+});
+
+test('上限量的是「整份干员名单」，不是一间房的座位数（业主 2026-11-04：官方时装三样都受上限限制）', () => {
+  // 现象：官方时装包覆盖 174 名干员，玩家按干员一套套选下去 —— 旧上限 64 让第 65 名起**静默消失**
+  // （头像、立绘、局内模型三样一起不生效，界面上没有任何提示）。这条钉的是「覆盖整份名单」这个口径。
+  // 两个数字都从**真数据**读，不写死在测试里：`assets.json` 的干员表是整份名单，官方时装包的 `charId` 去重
+  // 是它真正覆盖的那一批（见 `workshop/official-skins/PROVENANCE.md`）。
+  const realManifest = JSON.parse(readFileSync(path.join(ROOT, 'data', 'assets.json'), 'utf8'));
+  const ROSTER = Object.keys(realManifest.chars || {}).length;
+  const pack = JSON.parse(readFileSync(path.join(ROOT, 'workshop', 'official-skins', 'pack.json'), 'utf8'));
+  const OFFICIAL_CHARS = new Set((pack.skins || []).map((s) => s.charId)).size;
+  assert.ok(OFFICIAL_CHARS > 64, `官方时装包要覆盖超过旧上限 64 名干员（实测 ${OFFICIAL_CHARS} 名）—— 否则这条钉不住当时的症状`);
+  assert.ok(APPEARANCE_LIMITS.picks >= ROSTER, `上限 ${APPEARANCE_LIMITS.picks} 要装得下整份干员名单（${ROSTER} 名）`);
+
+  // 每个干员挑官方包里的第一套（174 套都带头像与立绘，`availableSkins` 那一条判据在这里等于全覆盖）
+  const official = {};
+  for (const s of pack.skins) if (s.charId && s.id && !Object.hasOwn(official, s.charId)) official[s.charId] = s.id;
+  S.setSkins(official);
+  assert.equal(Object.keys(S.skinEntries()).length, OFFICIAL_CHARS, `官方时装覆盖的 ${OFFICIAL_CHARS} 名干员一套都不许丢`);
+  // 发帧也不能把第 65 名起截掉：那才是「头像/立绘换了、模型没换」的真正来源
+  const payload = S.appearancePayload();
+  assert.equal(Object.keys(payload.picks).length, OFFICIAL_CHARS);
+  assert.equal(isAppearanceMsg(payload), true, '发出去的每一帧都得过服务端那一道形状判据');
+
+  // 最坏情况仍要在 WebSocket 的 64 KB 单帧上限之内（server/http/websocket.js WS_MAX_PAYLOAD）
+  const worst = {};
+  for (let i = 0; i < APPEARANCE_LIMITS.picks; i++) worst[`${'a'.repeat(58)}${String(i).padStart(6, '0')}`] = { skinId: 'b'.repeat(64) };
+  const bytes = JSON.stringify({ picks: worst }).length;
+  assert.ok(bytes < 64 * 1024, `上限 ${APPEARANCE_LIMITS.picks} 条的最坏一帧 ${bytes} B 必须小于 64 KB`);
 });
 
 test('setSkin / clearSkin / skinFor：按干员记，写进 store 与 localStorage', () => {
@@ -185,7 +214,7 @@ test('appearancePayload：形状就是 room.appearance 的 picks，且过协议�
 });
 
 test('appearancePayload：超过协议上限的条数在这里就截断（不是让服务端整条拒收）', () => {
-  const many = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`char_${i}`, `skin_${i}`]));
+  const many = Object.fromEntries(Array.from({ length: APPEARANCE_LIMITS.picks + 50 }, (_, i) => [`char_${i}`, `skin_${i}`]));
   S.setSkins(many);
   const payload = S.appearancePayload();
   assert.equal(Object.keys(payload.picks).length, APPEARANCE_LIMITS.picks);
