@@ -332,11 +332,11 @@ export class EffectDispatcher {
       // holder, and twice an item moved from a holder already walked to a later one.
       if (hook !== 'onEquip' && hook !== 'onArt' && hook !== 'onDestroy') {
         const pairs = [];
-        for (const holder of ownedChess(ps)) for (const it of holder.items || []) pairs.push([holder, it]);
-        for (const [holder, it] of pairs) {
-          const key = `item:${itemKey(this.m.gd.item(it.id)?.effectRef ?? it.id)}`;
+        for (const holder of ownedChess(ps)) for (const worn of wornItems(holder)) pairs.push([holder, worn]);
+        for (const [holder, worn] of pairs) {
+          const key = `item:${itemKey(this.m.gd.item(worn.item.id)?.effectRef ?? worn.item.id)}`;
           const h = reg.get(key);
-          if (h && stillEquipped(ps, holder, it)) this._call(ps, key, h, hook, { kind: 'item', key, piece: it, holder, item: this.m.gd.item(it.id) }, ev);
+          if (h && stillEquipped(ps, holder, worn.slot)) this._call(ps, key, h, hook, { kind: 'item', key, piece: worn.item, holder, item: this.m.gd.item(worn.item.id) }, ev);
         }
       }
       // 6. persistent effects
@@ -520,6 +520,41 @@ function stillEquipped(ps, holder, it) {
   if (!Array.isArray(holder.items) || !holder.items.includes(it)) return false;
   const loc = ps.find(holder.uid);
   return !!loc && loc.piece === holder;
+}
+
+/**
+ * **一行装备 → 真正「穿着」的每一件** —— a fused 百变 (锻炉) expands into the items it swallowed, the same expansion
+ * `shared/morph.js itemRecs` / `itemIds` already apply to every bond/member reader.
+ *
+ * Why the walk needs it: `merged` is ONE piece in the operator's row (`{ id: 百变, merged: [a, b] }`, one equipment slot),
+ * so looking the handler up by `piece.id` asked for `item:chess_item_9_97_e` — a key no content registers — and EVERY
+ * per-item prep effect inside a 百变 silently stopped running. The owner's report (2026-11-04): two 商业包装方案 fused
+ * into a 百变 and its sell counter never moved again, while the two items worn apart counted normally.
+ *
+ * `slot` is the piece that really stands in the row (what `stillEquipped` must look for); `item` is the component the
+ * handler runs for. An unfused piece is its own component, so the walk is unchanged for every existing item.
+ *
+ * A component's `uid` comes from `mergedUids` (allocated at fusion, hextech.js applyForgeFusion): handlers key their
+ * own per-piece counters by it (`pack:<uid>`, `cauldron:<uid>:<round>`), and two components sharing one uid would
+ * double-count — two 商业包装方案 fused must count like two, not like one twice.
+ * @param {any} holder an owned chess piece
+ * @returns {Array<{ slot: any, item: any }>}
+ */
+function wornItems(holder) {
+  const out = [];
+  for (const it of (holder && holder.items) || []) {
+    const merged = it && Array.isArray(it.merged) ? it.merged : null;
+    if (!merged || !merged.length) { out.push({ slot: it, item: it }); continue; }
+    // a malformed list must not hide the piece: fall back to the row piece (as itemRecs does)
+    const ids = merged.filter((id) => typeof id === 'string' && id);
+    if (!ids.length) { out.push({ slot: it, item: it }); continue; }
+    const uids = Array.isArray(it.mergedUids) ? it.mergedUids : [];
+    for (let i = 0; i < ids.length; i++) {
+      const uid = uids[i];
+      out.push({ slot: it, item: { ...it, id: ids[i], ...(Number.isInteger(uid) ? { uid } : null), merged: undefined, mergedUids: undefined } });
+    }
+  }
+  return out;
 }
 
 // =====================================================================================================

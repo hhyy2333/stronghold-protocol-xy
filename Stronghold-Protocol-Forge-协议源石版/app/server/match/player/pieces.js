@@ -9,6 +9,13 @@
 import { tileKey, boardOrder, freeSlot } from '../board.js';
 import { TEMP_SIZE } from './common.js';
 
+/**
+ * Does the item piece `it` stand for `uid`? Either it IS that piece, or it is a fused 百变 holding that component's
+ * uid in `mergedUids` (锻炉; see `find` below).
+ * @param {any} it @param {number} uid @returns {boolean}
+ */
+const wearsUid = (it, uid) => it.uid === uid || (Array.isArray(it.mergedUids) && it.mergedUids.includes(uid));
+
 export class PlayerPieces {
   newPiece(kind, id, extra = {}) {
     return { uid: this.m.nextUid(), kind, id, items: kind === 'chess' ? [] : undefined, count: kind === 'token' ? 1 : undefined, ownerUid: undefined, poolCopies: 0, boughtRound: this.m.round, meta: {}, ...extra };
@@ -16,6 +23,11 @@ export class PlayerPieces {
 
   /**
    * Locate a piece by uid. Returns { piece, area: 'board'|'hand'|'temp'|'equipped', idx?, key?, holder? } or null.
+   *
+   * 锻炉 (业主 2026-11-04): a fused 百变 carries the uids of the two components it swallowed
+   * (`mergedUids`, hextech.js applyForgeFusion) so each component keeps its own per-piece counters. Those uids no
+   * longer name a piece of their own, so looking one up must answer with the 百变 that holds it — otherwise every
+   * `ctx.piece(uid)` / `destroyPiece(uid)` a component handler makes is silently null.
    */
   find(uid) {
     if (!Number.isInteger(uid)) return null;
@@ -23,17 +35,17 @@ export class PlayerPieces {
       const p = this.hand[i];
       if (!p) continue;
       if (p.uid === uid) return { piece: p, area: 'hand', idx: i };
-      if (p.items) for (const it of p.items) if (it.uid === uid) return { piece: it, area: 'equipped', holder: p };
+      if (p.items) for (const it of p.items) if (wearsUid(it, uid)) return { piece: it, area: 'equipped', holder: p };
     }
     for (let i = 0; i < this.temp.length; i++) {
       const p = this.temp[i];
       if (!p) continue;
       if (p.uid === uid) return { piece: p, area: 'temp', idx: i };
-      if (p.items) for (const it of p.items) if (it.uid === uid) return { piece: it, area: 'equipped', holder: p };
+      if (p.items) for (const it of p.items) if (wearsUid(it, uid)) return { piece: it, area: 'equipped', holder: p };
     }
     for (const [key, p] of this.board) {
       if (p.uid === uid) return { piece: p, area: 'board', key };
-      if (p.items) for (const it of p.items) if (it.uid === uid) return { piece: it, area: 'equipped', holder: p };
+      if (p.items) for (const it of p.items) if (wearsUid(it, uid)) return { piece: it, area: 'equipped', holder: p };
     }
     return null;
   }
