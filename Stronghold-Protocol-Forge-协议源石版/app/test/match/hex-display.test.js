@@ -14,6 +14,8 @@ import { applyHex } from '../../server/match/hextech.js';
 const debtRow = (ps) => ps.effectsView().find((e) => e.iconKind === 'hex' && e.name === '债务');
 /** The 灵魂炸弹 row in the effects column. */
 const bombRow = (ps) => ps.effectsView().find((e) => e.iconKind === 'hex' && e.name === '灵魂炸弹');
+/** The 圣佑 row in the effects column. */
+const snipeRow = (ps) => ps.effectsView().find((e) => e.iconKind === 'hex' && e.name === '圣佑');
 
 test('债务: the card names the 放债对象, and the teammate’s watcher names the picker back', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, bots: 0, seed: 71, fake: true });
@@ -88,4 +90,61 @@ test('灵魂炸弹: the effects column shows the banked 本局医疗治疗量 �
   assert.equal(bombRow(ps).counter, 1300, 'and the display does not move');
   h.invariants();
   m.dispose();
+});
+
+// 业主 2026-11-04「能否给源石协议圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」—— 同一个做法：效果栏那一行读
+// 玩家身上的**对局级**计数器，战斗半边把它本场真正打出的狙击伤害写在战报上（sim/spec.js `perPlayer.hexSnipeDamage`），
+// `_addCumStats` 是唯一把它存进玩家的地方。所以这里也驱动那一条路径，不自己编一个数字。
+test('圣佑: the effects column shows the banked 本局累计狙击伤害 — the same counter the battle hands back', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, bots: 0, seed: 76, fake: true });
+  h.start();
+  h.toPrep(1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  applyHex(m, ps, m.gd.hex('hex_laterano_sanctuary'));
+  // nothing banked yet: the card reads 0 and the tile carries no badge
+  let row = snipeRow(ps);
+  assert.ok(row, 'the card is in the column');
+  assert.match(row.desc, /（本局累计狙击伤害：0）$/);
+  assert.equal(row.counter, undefined, 'no badge before a battle banks anything');
+  // the battle hands the number back on its result; _addCumStats banks it (a result without unitStats still banks it —
+  // the snipe total is not per-unit, so it must not ride the per-unit fold)
+  ps._addCumStats({ unitStats: [], hexSnipeDamage: 1950 });
+  assert.equal(ps.counters['hex:hex_laterano_sanctuary:snipe'], 1950, 'premise: the match banked the snipe damage');
+  row = snipeRow(ps);
+  assert.equal(row.counter, 1950, 'the tile badge is the banked total');
+  assert.match(row.desc, /（本局累计狙击伤害：1950）$/);
+  // a later battle folds in ON TOP of it (the record is the WHOLE match's, never per battle)
+  ps._addCumStats({ unitStats: [], hexSnipeDamage: 1300 });
+  row = snipeRow(ps);
+  assert.equal(row.counter, 3250, 'the display keeps up with the next fold');
+  assert.match(row.desc, /（本局累计狙击伤害：3250）$/);
+  // the 灵魂炸弹 row is untouched by all of this (two cards, two counters)
+  assert.equal(bombRow(ps), undefined, 'this player owns only 圣佑');
+  h.invariants();
+  m.dispose();
+});
+
+test('圣佑: 没有这张卡时战报里的狙击伤害不进任何计数器（效果栏也不会凭空多一行）', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, bots: 0, seed: 78, fake: true });
+  h.start();
+  h.toPrep(1);
+  const ps = h.ps('p_0');
+  ps._addCumStats({ unitStats: [], hexSnipeDamage: 5000 });
+  assert.equal(ps.counters['hex:hex_laterano_sanctuary:snipe'], undefined, 'the counter belongs to the card');
+  assert.equal(snipeRow(ps), undefined, 'and no row appears without the card');
+  h.invariants();
+  h.m.dispose();
+});
+
+test('圣佑: 战报的 hexSnipeDamage 走 compactResult 的形状校验，且不进结果摘要（只影响显示）', async () => {
+  const { compactResult, resultDigest } = await import('../../server/sim/spec.js');
+  const withIt = compactResult({ perPlayer: { p1: { killed: 0, total: 0, hexSnipeDamage: 1234.6 } } });
+  assert.equal(withIt.perPlayer.p1.hexSnipeDamage, 1235, 'kept and rounded to an integer');
+  const without = compactResult({ perPlayer: { p1: { killed: 0, total: 0 } } });
+  assert.equal('hexSnipeDamage' in without.perPlayer.p1, false, 'a battle that fired no snipe reports nothing');
+  assert.equal(resultDigest(withIt).hash, resultDigest(without).hash, 'display-only ⇒ never splits a digest');
+  // a negative / non-finite number is not a total: it is dropped, not banked
+  const junk = compactResult({ perPlayer: { p1: { killed: 0, total: 0, hexSnipeDamage: -5 } } });
+  assert.equal('hexSnipeDamage' in junk.perPlayer.p1, false);
 });

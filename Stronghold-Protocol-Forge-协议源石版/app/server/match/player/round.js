@@ -284,6 +284,19 @@ export class PlayerRound {
     // 不屈余烬: the battle hands back the equipment's MATCH-LONG totals (it started from `battleInput.indomEmber`); SET
     // them so a repeated fold is harmless. Equipment-driven: only a battle with a carrier reports the field at all.
     bankIndomEmber(this, pp);
+    // 圣佑 (业主 2026-11-04「给源石协议圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」): the card's 本局累计狙击伤害
+    // is MATCH-LONG too (it survives every battle), so it is banked here — the same place, for the same reason, as 灵魂炸弹's
+    // healing total: the effects column reads THIS counter, so what it shows can never disagree with what the battle did.
+    // The battle half hands back what its snipes actually dealt (`perPlayer[pid].hexSnipeDamage`,
+    // hexcards/stone_kjerag_laterano.js); a battle that fired none reports nothing. Display-only: no rule reads it.
+    if (ownsHex(this, 'hex_laterano_sanctuary')) {
+      const dealt = Number(pp && pp.hexSnipeDamage) || 0;
+      if (dealt > 0) {
+        const key = 'hex:hex_laterano_sanctuary:snipe';
+        this.counters[key] = (Number.isFinite(this.counters[key]) ? this.counters[key] : 0) + dealt;
+        this.dirty();
+      }
+    }
     const list = pp && Array.isArray(pp.unitStats) ? pp.unitStats : null;
     if (!list || !list.length) return 0;
     // what the board fields right now: uid → base chess id, and token id → the base chess id of the piece creating it

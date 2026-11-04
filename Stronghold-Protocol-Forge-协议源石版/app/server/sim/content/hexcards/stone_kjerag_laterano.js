@@ -227,6 +227,12 @@ export function installKjeragThaw(hooks) {
  *     （卡面写「每 3 秒对场上随机一名敌人」，没有目标就无从狙击）；3) 狙击是一次普通伤害实例（`isAttack` 假）：
  *     走减伤 / 闪避 / 护盾 / 受伤统计，但不算「攻击」，所以攻击类加成与「攻击时」的内容都不认它；
  *     4) 每个拥有者各自计时（各读自己卡面的 `snipeEvery`），随机只用 `battle.rng()`。
+ *   * **本局累计狙击伤害（业主 2026-11-04「给圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」）**：每发狙击把
+ *     `dealDamage` 的返回值（真正落到 HP 上的伤害）累加进 per-battle store 的 `snipe`，战斗结束写进
+ *     `perPlayer[pid].hexSnipeDamage` 交回对局；`server/match/player/round.js _addCumStats` 把它存成玩家计数器
+ *     `hex:hex_laterano_sanctuary:snipe`，效果栏（`server/match/player/views.js`）显示成「本局累计狙击伤害：N」。
+ *     纯显示，不参与规则，也不进 `resultDigest`。[ASSUMED] 数的是**实际**伤害（减伤 / 闪避 / 护盾之后，与伤害统计
+ *     面板同一条口径），不是名义上的「累计子弹量 ×325」。
  *   * **致命免死**：`fatal` 钩子（applyHpLoss 在 HP 归零之后、`battle.kill` 之前发出）里，若该拉特兰干员
  *     `skill.ammoLeft > 0`：`c.prevented = true`（引擎随后把 HP 抬到 1，本次伤害不再致死）、**清空弹药**（`ammoLeft = 0`，
  *     并在技能仍激活时 `skill.end('ammo')` 让它像打空弹药一样正常结束 —— 否则会留下一个「0 发仍在生效」的技能；
@@ -236,7 +242,7 @@ export function installKjeragThaw(hooks) {
  *     （本次伤害已经结算完），这与「获得 1 层次数盾」的字面读法一致；4) 护盾不叠加到 shieldHits 层以上（同名刷新到上限）。
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle
- * @returns {number|{owners:number,shields:number,ammoCounted:number,pending:number,snipes:number,snipeAmount:number,prevented:number,extraAmmo:number}}
+ * @returns {number|{owners:number,shields:number,ammoCounted:number,pending:number,snipes:number,snipeAmount:number,snipeDamage:number,prevented:number,extraAmmo:number}}
  *          0 when the card is absent, else the live handle
  */
 export function installLateranoSanctuary(hooks) {
@@ -295,7 +301,8 @@ export function installLateranoSanctuary(hooks) {
   // 2026-10-31 换成护盾时设计稿写「其余部分…保持不变」），所以护盾仍然**每条 `ammoUsed` 事件结算一次**，额外那 1 发
   // 只进「消耗的子弹量」，不另加一份护盾。卡面两句话本来也是分开写的：「每消耗 1 颗弹药 → 护盾」与「累计统计消耗的
   // 子弹量 → 狙击」。
-  const store = battleStore(battle, STORE_NS, () => ({ ammo: new Map() }));   // playerId → 本场累计子弹数
+  // playerId → 本场累计子弹数 / 本场狙击实际打出的伤害（后者只用于效果栏的「本局累计狙击伤害」，见下面的 battleEnd）
+  const store = battleStore(battle, STORE_NS, () => ({ ammo: new Map(), snipe: new Map() }));
   let shields = 0;      // 走完过几次「每消耗 1 颗弹药」的护盾结算（每事件一次，不看当时场上有几名干员）
   let ammoCounted = 0;  // 本场**实际消耗掉的子弹数**（= 累计进狙击的子弹数，含额外那 1 发与免死清空的）
 
@@ -378,7 +385,12 @@ export function installLateranoSanctuary(hooks) {
     store.ammo.set(pid, 0);
     snipes++;
     snipeAmount += amount;
-    battle.dealDamage(src, target, makeDamageInfo({ amount, type: 'phys', canDodge: true, tags: ['hex', SNIPE_TAG] }));
+    // 实际打出去的伤害（业主 2026-11-04「给圣佑狙击的伤害也统计一个文本」）：`dealDamage` 的返回值是真正落到 HP 上的
+    // 那一份（减伤 / 闪避 / 护盾之后，与 `stats.dmg` / 伤害统计面板同一条口径），累计它而不是名义上的 amount ——
+    // 效果栏要显示的是这张卡「打出了多少伤害」，不是「本该打多少」。`[ASSUMED]` 卡面没写口径。
+    const dealt = battle.dealDamage(src, target, makeDamageInfo({ amount, type: 'phys', canDodge: true, tags: ['hex', SNIPE_TAG] }));
+    const done = Number(dealt);
+    if (done > 0) store.snipe.set(pid, (store.snipe.get(pid) ?? 0) + done);
   };
   // 每个拥有者各自计时（各读自己卡面的 snipeEvery）：第一个脉冲在 t = snipeEvery
   for (const pid of owners) {
@@ -386,6 +398,23 @@ export function installLateranoSanctuary(hooks) {
     if (!p) continue;
     battle.every(p.snipeEvery, () => snipeOnce(pid));
   }
+
+  // ---- 本局累计狙击伤害（业主 2026-11-04「给圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」） ----------------
+  // 效果栏那一行「本局累计狙击伤害」读的是**对局级**的累计（跨战斗不清零），所以本场打出的这一笔要交回对局：
+  // 战斗结束把每个拥有者的本场狙击伤害写进战报（`perPlayer[pid].hexSnipeDamage`，与 不屈余烬 的 indomEmber 同一个
+  // 通道），由 `server/match/player/round.js _addCumStats` 存成玩家计数器。只影响显示、不参与任何规则，所以不进
+  // `resultDigest`（与 creditedKills / coinsHex 同一条理由）；没有狙击的战斗不写这个字段，战报逐字节与从前相同。
+  battle.on('battleEnd', ({ result }) => {
+    const per = result && result.perPlayer;
+    if (!per) return;
+    for (const pid of owners) {
+      const v = store.snipe.get(pid) ?? 0;
+      if (!(v > 0)) continue;
+      const pp = per[pid];
+      if (!pp) continue;
+      pp.hexSnipeDamage = Math.round(v);
+    }
+  });
 
   // ---- 受到致命伤害时：仍有弹药 ⇒ 清空弹药、免疫本次伤害、获得 shieldHits 层次数盾 --------------------------
   let prevented = 0;
@@ -424,6 +453,8 @@ export function installLateranoSanctuary(hooks) {
     get pending() { return owners.reduce((n, pid) => n + (store.ammo.get(pid) ?? 0), 0); },
     get snipes() { return snipes; },
     get snipeAmount() { return snipeAmount; },
+    /** 本场狙击**实际**打出的伤害合计（减伤 / 闪避 / 护盾之后，效果栏的「本局累计狙击伤害」数的就是它）。 */
+    get snipeDamage() { return owners.reduce((n, pid) => n + (store.snipe.get(pid) ?? 0), 0); },
     get prevented() { return prevented; },
     get extraAmmo() { return extraAmmo; },
   };

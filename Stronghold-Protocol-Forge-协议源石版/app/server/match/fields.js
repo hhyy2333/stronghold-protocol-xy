@@ -1196,6 +1196,12 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         };
         if (ie.maxHp + ie.atk + ie.def + ie.res > 0) perPlayer[pid].indomEmber = ie;
       }
+      // 圣佑 (业主 2026-11-04「给圣佑狙击的伤害也统计一个文本」): the snipe damage this battle actually dealt — kept when the
+      // client reported one (a battle that fired no snipe sends none, and an absent field must stay absent). DISPLAY-only:
+      // it feeds the effects column's 「本局累计狙击伤害」 and settles nothing, so an inflated number can mint no coin, LP
+      // or layer — it only lies about the sender's own card readout.
+      const snipeDmg = stat(p.hexSnipeDamage);
+      if (snipeDmg > 0) perPlayer[pid].hexSnipeDamage = Math.round(snipeDmg);
       // the HUD capsule's numerator: kept only when the client reported one (an absent value must stay absent — the
       // teammate UI then falls back to `killed`, never to a fabricated 0); clamped to the denominator
       if (Number.isInteger(p.resolved) && p.resolved >= 0) perPlayer[pid].resolved = Math.min(p.total, p.resolved);
