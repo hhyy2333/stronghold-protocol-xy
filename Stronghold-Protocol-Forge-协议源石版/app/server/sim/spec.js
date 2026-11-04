@@ -532,6 +532,12 @@ export function compactResult(res) {
         def: Math.max(0, fnum(ie.def)), res: Math.max(0, fnum(ie.res)),
       };
     }
+    // 圣佑 (业主 2026-11-04「给圣佑狙击的伤害也统计一个文本」): the snipe damage this battle actually dealt, reported only by a
+    // battle that fired one (hexcards/stone_kjerag_laterano.js writes it in its battleEnd handler). DISPLAY-only — it feeds
+    // the effects column's 「本局累计狙击伤害」 and settles nothing — so it stays out of resultDigest, like creditedKills /
+    // coinsHex (a client's and the server's digests must not split over a number no outcome reads).
+    const sn = fnum(p.hexSnipeDamage);
+    if (sn > 0) perPlayer[pid].hexSnipeDamage = Math.max(0, Math.round(sn));
   }
   const out = {
     reason: ['cleared', 'timeout', 'forced'].includes(r.reason) ? r.reason : 'forced',

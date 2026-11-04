@@ -153,6 +153,13 @@ const attackHit = (h, u, foe, amount = 100, over = {}) => h.battle.dealDamage(u,
 
 /** 本场所有「圣佑狙击」的伤害实例（hit 钩子的记录；干员的普通攻击不算）。 */
 const snipeHits = (h) => h.hooksOf('hit').filter((c) => c && c.dmg && Array.isArray(c.dmg.tags) && c.dmg.tags.includes(SNIPE_TAG));
+/**
+ * 本场「圣佑狙击」**实际落地**的伤害合计（`damaged` 钩子里带狙击标签的实例的 `amount`，即减伤 / 护盾之后真正进 HP 的那一份；
+ * 与 DamageInfo 的 `amount`（名义值）不是一回事）。
+ */
+const snipeDealt = (h) => h.hooksOf('damaged')
+  .filter((c) => c && c.dmg && Array.isArray(c.dmg.tags) && c.dmg.tags.includes(SNIPE_TAG))
+  .reduce((n, c) => n + (Number(c.amount) || 0), 0);
 
 // =====================================================================================================================
 // 冰雪消融 · 没有卡 / 没有状态
@@ -856,6 +863,115 @@ test('圣佑: 数字读卡面 — snipePerAmmo 100 / snipeEvery 2 时按卡面�
   h.run(1.1);                                        // t = 2.1：snipeEvery 2 ⇒ 脉冲在 t = 2
   assert.equal(inst.snipes, 1, '2 秒一个脉冲');
   assert.equal(inst.snipeAmount, 400, '4 × 100 = 400');
+  h.invariants();
+});
+
+// =====================================================================================================================
+// 圣佑 · 本局累计狙击伤害（业主 2026-11-04「给源石协议圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」）
+//
+// 效果栏那一行读的是**对局级**的累计（跨战斗不清零），所以战斗半边要把本场打出的那一笔交回战报
+// （`perPlayer[pid].hexSnipeDamage`），由 server/match/player/round.js _addCumStats 存成玩家计数器。这里钉住三件事：
+// 数的是**实际**伤害（不是名义上的「累计子弹量 ×325」）、只写本场真的狙击过的拥有者、没有狙击时字段不出现
+// （没有这张卡 / 没打出去的战斗，战报逐字节与从前相同）。
+
+test('圣佑: 本场狙击的实际伤害记在 inst.snipeDamage，战斗结束写进战报（perPlayer.hexSnipeDamage）', () => {
+  const h = field(
+    [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    { defs: { chess: { test_laterano: laAmmo(6) }, enemies: { enemy_dummy: dummy() } }, hooks: ['hit', 'damaged', 'fatal', 'ammoUsed', 'layerGain', 'battleStart', 'deploy'] },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  for (let i = 0; i < 3; i++) assert.equal(h.battle.forceAttack(u, [foe]), true, `premise: 第 ${i + 1} 次攻击`);
+  assert.equal(inst.pending, 6, 'premise: 累计 6 颗子弹');
+  assert.equal(inst.snipeDamage, 0, '还没打出去 ⇒ 没有伤害');
+
+  h.run(2.1);                                        // t = 3.1：跨过 snipeEvery 脉冲
+  assert.equal(inst.snipes, 1, 'premise: 打了一发狙击');
+  assert.equal(inst.snipeAmount, 1950, 'premise: 名义伤害 6 × 325');
+  assert.equal(snipeDealt(h), 1950, 'premise: 0 防御的假人整笔吃到 1950（实际落地的那一份）');
+  assert.equal(inst.snipeDamage, snipeDealt(h), 'snipeDamage 数的就是真正落到 HP 上的那一份');
+
+  // 战报：战斗结束把本场这一笔交回对局（效果栏的「本局累计狙击伤害」读的就是它存下来的计数器）
+  h.b.forceEnd('forced');
+  assert.equal(h.b.result().perPlayer.p1.hexSnipeDamage, 1950, '战报带着本场狙击伤害');
+  h.invariants();
+});
+
+test('圣佑: 数的是实际伤害 —— 有防御的敌人吃到的比名义上的 累计 ×325 少，战报跟着实际值', () => {
+  const h = field(
+    [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    {
+      defs: {
+        chess: { test_laterano: laAmmo(6) },
+        enemies: { enemy_dummy: enemyRec({ key: 'enemy_dummy', hp: 1000000, atk: 0, def: 500, speed: 0 }) },
+      },
+      hooks: ['hit', 'damaged', 'fatal', 'ammoUsed', 'layerGain', 'battleStart', 'deploy'],
+    },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  for (let i = 0; i < 3; i++) h.battle.forceAttack(u, [foe]);
+  h.run(2.1);                                        // t = 3.1
+  assert.equal(inst.snipes, 1, 'premise: 打了一发狙击');
+  assert.equal(inst.snipeAmount, 1950, 'premise: 名义伤害仍是 1950');
+  const dealt = snipeDealt(h);
+  assert.ok(dealt > 0 && dealt < 1950, `premise: 500 防御吃掉一部分（实际 ${dealt}）`);
+  assert.equal(inst.snipeDamage, dealt, '记的是实际伤害，不是名义值');
+  h.b.forceEnd('forced');
+  assert.equal(h.b.result().perPlayer.p1.hexSnipeDamage, dealt, '战报里的也是实际值');
+  h.invariants();
+});
+
+test('圣佑: 没有狙击的战斗不写这个字段（没有卡 / 没打出去的战报与从前逐字节相同）', () => {
+  // 没有这张卡：连 handler 都不装
+  const bare = field([seat('p1', 0, { effects: [], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
+  installLateranoSanctuary(hexHooks(bare.battle));
+  bare.run(1);
+  bare.b.forceEnd('forced');
+  assert.equal('hexSnipeDamage' in bare.b.result().perPlayer.p1, false, '没有卡 ⇒ 战报没有这个字段');
+  bare.invariants();
+
+  // 有卡但这 3 秒里没有累计子弹：不发射，也就不写字段
+  const idle = field([seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
+  const inst = installLateranoSanctuary(hexHooks(idle.battle));
+  idle.run(3.1);
+  assert.equal(inst.snipes, 0, 'premise: 一发都没打');
+  idle.b.forceEnd('forced');
+  assert.equal('hexSnipeDamage' in idle.b.result().perPlayer.p1, false, '没有狙击 ⇒ 不写字段');
+  idle.invariants();
+});
+
+test('圣佑: 只有拥有者的战报带狙击伤害 —— 别人的【拉特兰】干员消耗的弹药不发射，它的战报也没有这个字段', () => {
+  const h = field([
+    seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() }),
+    seat('p2', 1, { effects: [], units: [at(2, 10, 6, 'test_laterano')], bonds: bondsOf() }),
+  ], {
+    kind: 'unite',
+    defs: { chess: { test_laterano: laAmmo(6) }, enemies: { enemy_dummy: dummy() } },
+    hooks: ['hit', 'damaged', 'fatal', 'ammoUsed', 'layerGain', 'battleStart', 'deploy'],
+  });
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const mine = ops(h).find((u) => u.ownerId === 'p1');
+  const theirs = ops(h).find((u) => u.ownerId === 'p2');
+  const foe = foes(h)[0];
+  mine.skill.activate('test', { free: true });
+  theirs.skill.activate('test', { free: true });
+  for (let i = 0; i < 3; i++) h.battle.forceAttack(mine, [foe]);
+  for (let i = 0; i < 3; i++) h.battle.forceAttack(theirs, [foe]);
+  assert.equal(inst.pending, 6, 'premise: 只有拥有者的 6 颗子弹进了狙击累计');
+  h.run(2.1);                                        // t = 3.1
+  assert.equal(inst.snipes, 1, 'premise: 一发狙击（拥有者的那一发）');
+  h.b.forceEnd('forced');
+  const per = h.b.result().perPlayer;
+  assert.equal(per.p1.hexSnipeDamage, snipeDealt(h), '拥有者的战报带着这一笔');
+  assert.equal('hexSnipeDamage' in per.p2, false, '别人的战报没有这个字段');
   h.invariants();
 });
 

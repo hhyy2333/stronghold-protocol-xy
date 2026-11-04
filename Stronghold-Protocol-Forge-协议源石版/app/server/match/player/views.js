@@ -9,13 +9,19 @@ import { bondList, offBondCounts } from '../bondsMeta.js';
 import { bountyText, bountyCard } from '../choices.js';
 
 /**
- * 灵魂炸弹: the card id, and the player counter its 「本局医疗干员治疗量」 is banked in. The battle start hands that counter to
- * the sim (content/hextech.js applySpec soulBombArm) and it is written where a battle result reaches the player
+ * 协议源石 whose effects-column row carries a MATCH-LONG total (业主 2026-10-29「给灵魂炸弹加个累计治疗量显示」,
+ * 2026-11-04「给圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」): the card id, the player counter that total is banked
+ * in, and the label the card's own line spells out (the way 盟约寄生 spells out 寄生对象).
+ *
+ * The battle half hands the number to the sim (灵魂炸弹: content/hextech.js applySpec soulBombArm; 圣佑: the snipe pulse
+ * writes `perPlayer[pid].hexSnipeDamage`), and it is written where a battle result reaches the player
  * (player/round.js _addCumStats). The effects column reads THE SAME counter, so the number it shows is the number the
- * card actually spends — never a second account of it.
+ * card actually banked — never a second account of it.
  */
-const SOULBOMB_HEX_ID = 'hex_soulbomb';
-const SOULBOMB_HEAL_COUNTER = 'hex:hex_soulbomb:heal';
+const HEX_MATCH_TOTALS = Object.freeze([
+  { hexId: 'hex_soulbomb', counter: 'hex:hex_soulbomb:heal', label: '本局累计治疗量' },
+  { hexId: 'hex_laterano_sanctuary', counter: 'hex:hex_laterano_sanctuary:snipe', label: '本局累计狙击伤害' },
+]);
 
 export class PlayerViews {
   pieceView(p, rc = null) {
@@ -71,13 +77,14 @@ export class PlayerViews {
       }
       const v = { id: e.id, name: e.name || e.id, desc: e.desc || '', iconKind: e.iconKind || 'choice', iconId: e.iconId || e.id };
       if (e.counter != null) v.counter = e.counter;
-      // 灵魂炸弹 (业主 2026-10-29「给灵魂炸弹加个累计治疗量显示」): the card's whole value IS the match's banked medical healing,
-      // so the effects column carries it — the tile's badge is the number and the card's own line says what it is (the way
-      // 盟约寄生 spells out 寄生对象). Read off the same counter, so a 管理员 / 复制 second ref shows the same total and the
-      // display can never disagree with what the battle spends.
-      if (e.iconKind === 'hex' && e.data && e.data.hexId === SOULBOMB_HEX_ID) {
-        const total = Math.max(0, Math.round(Number((this.counters || {})[SOULBOMB_HEAL_COUNTER]) || 0));
-        v.desc = `${v.desc}（本局累计治疗量：${total}）`; // i18n-ignore: server-side effect text
+      // 灵魂炸弹 / 圣佑 (业主 2026-10-29 / 2026-11-04): the card's whole value IS that match-long total, so the effects
+      // column carries it — the tile's badge is the number and the card's own line says what it is (the way 盟约寄生 spells
+      // out 寄生对象). Read off the same counter, so a 管理员 / 复制 second ref shows the same total and the display can
+      // never disagree with what the battle banked.
+      const totalRow = e.iconKind === 'hex' && e.data ? HEX_MATCH_TOTALS.find((r) => r.hexId === e.data.hexId) : null;
+      if (totalRow) {
+        const total = Math.max(0, Math.round(Number((this.counters || {})[totalRow.counter]) || 0));
+        v.desc = `${v.desc}（${totalRow.label}：${total}）`; // i18n-ignore: server-side effect text
         if (total > 0) v.counter = total;
       }
       if (copyKey != null && hexCount.get(copyKey) > 1) v.count = hexCount.get(copyKey);

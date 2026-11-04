@@ -433,6 +433,12 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
     统一走 `stone_kjerag_laterano.js` 的 `countBullets(u, n)`，「消耗的子弹量」= 弹夹真正少掉的子弹数。
     **护盾的粒度不变**：仍每条 `ammoUsed` 事件结算一次，额外那 1 发与免死清空不另加一份（业主 2026-10-27
     「额外这发不再触发一次治疗」，2026-10-31 换成护盾时设计稿「其余部分保持不变」）。
+  - **2026-11-04 加显示（业主「能否给源石协议圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」）**：效果栏那一行
+    追加「（本局累计狙击伤害：N）」，N > 0 时瓦片角标也显示它 —— 与灵魂炸弹的「本局累计治疗量」同一个做法、同一条
+    通道：狙击把 `dealDamage` 的返回值（**实际**落到 HP 上的伤害，减伤 / 闪避 / 护盾之后）累加，战斗结束写进战报
+    `perPlayer[pid].hexSnipeDamage`（`compactResult` / `validateClientResult` 保留它，**不进** `resultDigest`），
+    `player/round.js _addCumStats` 存成玩家计数器 `hex:hex_laterano_sanctuary:snipe`（跨战斗累加）。
+    `[ASSUMED]` 卡面没写统计口径：数实际伤害而不是名义上的「累计子弹量 ×325」。
 - 【惊惧】`hex_dread`（1 阶）：改为**己方地面干员开启技能时**，其**周围八格**内的敌人战栗 3 秒。
 - 【装甲破坏】`hex_armorbreak`（2 阶）：每次物理伤害的防御削减 −20 → **−80**。
 - 【先锋之势】`hex_vanguard`（2 阶）：先锋首次击杀的 4 资金保留；首次攻击的 +30% 攻击力改为
