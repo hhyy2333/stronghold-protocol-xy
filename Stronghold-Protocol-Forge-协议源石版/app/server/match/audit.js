@@ -558,7 +558,13 @@ function hasSpendEffects(m, ps) {
   for (const p of ps.allChess()) {
     const rec = m.gd.chess(p.id);
     for (const gid of (rec && rec.garrisonIds) || []) { const g = m.gd.garrison(gid); if (g && reg.get(`garrison:${g.effectKey}`)) return true; }
-    for (const it of p.items || []) if (any(reg.get(`item:${String(it.id).replace(/_[ab]$/, '')}`))) return true;
+    // 锻炉: a fused 百变 runs its components' item handlers (effectsMeta.js wornItems), so ask about THOSE ids too —
+    // otherwise a fused 商业包装方案 looks like an item with no content and its payout reads as a price mismatch.
+    for (const it of p.items || []) {
+      for (const id of [it.id, ...(Array.isArray(it.merged) ? it.merged : [])]) {
+        if (typeof id === 'string' && any(reg.get(`item:${id.replace(/_[ab]$/, '')}`))) return true;
+      }
+    }
   }
   return false;
 }
