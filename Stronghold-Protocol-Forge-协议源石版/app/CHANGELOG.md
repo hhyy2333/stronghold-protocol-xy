@@ -9,6 +9,52 @@
 
 ---
 
+## 0.19.46 — 2026-11-03
+
+**【特限恢复】下未精锐（普通形态）的干员：模组区块始终显示、局内可以更换，三处客户端与服务端读同一份 3 级记录。**
+
+- **为什么**（业主 2026-11-03：「有特限恢复时，未精锐干员只有1、2技能能显示模组，而且不能更换。完善」）：
+  根因不在模组本身，在**干员调配里存了什么**。`shared/protocol.js checkLoadout` 只留**不等于默认**的条目
+  （`if (skill === opt.defaultSkill && module === opt.defaultModule) continue`），模组是**跟着技能那一条**存下来的 ——
+  所以只有「技能离开了默认档」的干员（1、2 技能）才在 `room.loadout.entries` 里有一条，才带着模组；用默认技能的
+  干员根本没有条目 ⇒ `shared/loadoutRecord.js selectedModuleOf` 拿不到任何东西 ⇒ `ui/detailPanel.js` 的
+  `lo?.module` 为假、整个「模组」区块不画，也就没有可点的更换行。「1、2 技能能显示」正是「那两个技能不是默认技能」
+  的同义反复。
+- **做了什么**：
+  - **判据只有一份**：`shared/loadoutRecord.js` 新增 `normalFormModuleOf`（普通形态**现在**用哪个模组）—— 选过 ⇒
+    那个（按**精锐记录的模组表**校验，普通记录没有 `modules` 列表）；选「不装备」⇒ `none`（3 级也不套）；
+    **没选过 ⇒ 精锐记录的默认模组**（`isDefault`），与 `server/sim/simdata.js getChess` 的缺省 `moduleId` 同一条
+    回落；精锐记录根本没有模组 ⇒ `null`（不画、不套）。
+  - `ui/gameLogic/loadout.js chessLoadout` 普通形态改走它：卡片上的模组与 3 级记录来自同一个目标 id；`'none'`
+    原样传给 `shared/loadoutRecord.js withModuleLevel3`（它遇到 `'none'` 就不套 3 级）。
+  - `ui/detailPanel.js`：普通形态在 `moduleLevel === 3` 时**始终**画「模组」区块；更换行 `moduleChoices` 从**精锐
+    记录**的模组表来（`c.goldenId` → `getChess`），换的仍是同一个干员调配条目（`g.loadout` 增量，`swapBaseId`
+    是普通 id —— 精锐也用它）。
+  - `screens/loadout.js RosterRow` 的模组快捷行不再只给精锐渲染（`golden ? … : null` 去掉）。
+  - **修掉一处客户端/服务端分歧**：普通形态选「不装备」时，客户端原先让 `withModuleLevel3` 回落到
+    `rec.module.id`、把默认模组的 3 级套上了，而服务端是 `moduleId: 'none'` 一个都不套 —— 现在两边都是 `'none'`。
+  - 其余界面接上同一份 3 级记录：新增 `ui/gameLogic/modeModules.js`（`modeModuleLevel` / `ownsModeModules` 的
+    唯一判据，`m.private.effects` 是客户端唯一的所有权来源），被 `ui/shopBar.js ChessCard`（模组徽标）、
+    `screens/game/range.js inspectRange`（详情卡画到棋盘上的攻击范围）、`ui/gameLogic/placement.js ownerRangeOf`
+    （棋盘范围 / 落位轮盘 / 召唤物 ownerRange）、`ui/gameLogic/standIn.js deployedRecord` 共用；
+    `ui/gameLogic/placement.js` 的 `ownsModeModules` 改成从它 re-export（导出面不变）。没有卡时每个调用点传
+    `null`，输出逐字段与改动前一致。
+- **实测**（真数据 `data/chess.json` + `data/moduleLevels.json`，号角普通形态 `chess_char_5_08_a`：默认模组
+  `uniequip_002_horn`「典范之人」FOR-X、3 级 attr `{atk 100, def 70}`；特限模组 `uniequip_004_horn`
+  「号角特限证章」ISW-A、3 级 attr `{maxHp 230, atk 85}`）：
+  - 没有【特限恢复】⇒ `chessLoadout` 的 `module` 仍是 `null`、记录 `module.level` 0、atk 806 / maxHp 2200（与改动前一致）；
+  - 有卡、没选过模组 ⇒ **模组区块出现**，画默认模组「典范之人」FOR-X、`level` 3、atk **906**（806+100）、`isDefault`；
+  - 有卡、选 ISW 特限模组 ⇒ 画「号角特限证章」ISW-A、`level` 3、atk **891**（806+85）/ maxHp **2430**（2200+230）；
+  - 有卡、选「不装备」⇒ `module.none`、`level` 0、atk 806 —— 3 级一个都不套（与服务端 `'none'` 同口径）。
+- **测试**：新增 `test/ui/mode-modules-normal.test.js` 4（普通形态在所有技能下都画模组块 / 没有卡时逐字段一致 /
+  选「不装备」不套 3 级）、`test/ui/mode-modules-surfaces.test.js` 8（商店卡徽标 / `inspectRange` / `deployedRecord` /
+  落位轮盘 / 召唤物 `ownerRange` / 补位不套 3 级 / 调用点接线）；既有 `test/match/module-level3.test.js` 9、
+  `test/ui/mode-modules-detail.test.js` 2、`test/ui/loadout.test.js` 21、`test/ui/loadout-rows.test.js` 9、
+  `test/ui/loadout-stats.test.js` 10、`test/ui/loadout-quick.test.js` 4、`test/match/goalpoint.test.js` 5、
+  `test/sim/hex-mode-modules-isw.test.js` 22、`test/sim/hex-mode-modules-ra.test.js` 9、`test/client-imports.test.js` 4、
+  `test/browser-syntax.test.js` 6 —— 全绿；`eslint` 0 error（改到的文件只剩既有 warning）。细节与规范落点：
+  [docs/history/0.19.46.md](docs/history/0.19.46.md)。
+
 ## 0.19.45 — 2026-11-02
 
 **时装那 321 MB 从包里搬进站点素材：预载得到、素材包收得下、对局里也不再每局重下。**
