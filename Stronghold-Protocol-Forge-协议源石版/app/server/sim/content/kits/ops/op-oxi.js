@@ -55,6 +55,18 @@
 //       centred on the attacker), tags `['counter']` (the re-entrancy rule, docs/SIM.md §5), then a heal of `heal_ratio` of
 //       the damage that dealt. [ASSUMED] "相当于伤害量5%" = the retaliation's own damage, and the 范围 is centred on the
 //       attacker with `ability_range_radius`.
+//       **Both halves reach a 隐匿 enemy — the owner's decision of 2026-11-04.** The attacker is a DIRECT PICK
+//       (`ignoreSelect`), never a selection: PRTS 异常效果 「'直接选中'的能力…不受这些仅在选择时生效的异常效果制约」,
+//       and every other 「反伤效果会直接选中伤害来源」 counter in this repo does the same (nian.js 铜印, hsgma2.js
+//       恶业苦果, op-judge.js 荆棘环身). The splash counts 隐匿 neighbours too (`foesInRadiusWithStealth`, the include-
+//       stealth scan of content/dsl/vocab.js `includeStealth`). Until 2026-11-04 the first half went through
+//       `canTargetEnemy` and the second through `foesInRadius` — both skip an unblocked 隐匿 enemy, so a 隐匿 attack
+//       answered nothing (owner: 「塔露拉2技能反伤不能伤害隐匿敌人」, then 「…反伤溅射应该也要能伤害隐匿敌人」).
+//       This is a DELIBERATE departure from the engine's PRTS 作战机制 §AOE伤害判定 rule (「AOE的判定是对攻击范围内的
+//       每个可以被选中的敌人进行判定」), which every other area effect in this repo follows; only this splash does not,
+//       by the maintainer's call. Still excluded from the SPLASH circle: `hidden` (隐身战场的「不可见」, which dealDamage
+//       refuses outright) and `untargetable` (不可选中). The attacker itself is exempt from `untargetable` as any counter is
+//       — it is a direct pick (`ignoreSelect`).
 //   (c) for `stack_duration` s: one stack of +`atk` / +`def` per cast (at most `max_stack_cnt` 5) and every attack hits
 //       ALL the enemies she blocks — the engine's `beforeAttack` hook adds them to the attack's targets (the
 //       强攻手-style "同时攻击阻挡的所有敌人"). `attack@buffed_attack_atk_scale` (1) is the attack scale of those
@@ -110,6 +122,35 @@ const SPAWN_BEHIND = 11;
 const bbOf = (chess, id) => skillRec(chess, id)?.bb ?? {};
 /** The tile of a unit's position (its 判定中心). */
 const tileOf = (u) => [Math.round(u.y), Math.round(u.x)];
+
+/**
+ * S2 (b)'s circle: every enemy within `r` of (x, y) — a 中点判定 on the position (as `Battle.foesInRadius`'s `centre`
+ * form), but **including 隐匿 enemies**. The owner's decision of 2026-11-04 (「塔露拉2技能反伤溅射应该也要能伤害隐匿
+ * 敌人」): her retaliation answers the attacker, and everything the answer splashes onto, whether or not that neighbour
+ * is hidden — the same include-stealth selection the content DSL offers as `includeStealth` (content/dsl/vocab.js).
+ *
+ * A deliberate departure from the engine default: `Battle.foesInRadius` is the PRTS 作战机制 §AOE伤害判定 selection
+ * (「AOE的判定是对攻击范围内的每个可以被选中的敌人进行判定」), which skips an unblocked 隐匿 enemy. Every other area
+ * effect in this repo keeps that rule; this one operator's splash does not, by the maintainer's decision.
+ *
+ * Untouched even here: `hidden` (隐身战场's 「不可见」 — never a damage target at all, `dealDamage` refuses it) and
+ * `untargetable` (不可选中) stay out of THIS CIRCLE, exactly as the DSL's own include-stealth scan does it. The attacker
+ * itself is exempt from `untargetable` as any counter is — it is a direct pick (`ignoreSelect`), the same way 年 铜印 /
+ * 斩业星熊 恶业苦果 / 斥罪 荆棘环身 answer a 不可选中 source; `hidden` is refused by dealDamage for the direct pick too.
+ */
+function foesInRadiusWithStealth(battle, x, y, r) {
+  const out = [];
+  const r2 = r * r + 1e-9;
+  for (const e of battle.enemies) {
+    if (!e.alive || e.hidden) continue;
+    const f = e.s && e.s.flags;
+    if (f && f.untargetable) continue;
+    const dx = e.x - x, dy = e.y - y;
+    if (e.hitArea && bodyInRadius(e, x, y, r)) { out.push(e); continue; }
+    if (dx * dx + dy * dy <= r2) out.push(e);
+  }
+  return out;
+}
 
 export default {
   // (the kit is built once for the PICKED skill, so every skill reads its own record — never `bb` / `def.skill`)
@@ -291,14 +332,17 @@ export default {
             const retal = num(b2.retaliate_atk_scale);
             if (src && retal > 0) {
               const radius = num(b2.ability_range_radius, 1);
-              const victims = battle.foesInRadius(src.x, src.y, radius, true);
-              if (!victims.includes(src) && canTargetEnemy(unit, src, ANY)) victims.push(src);
+              // Both the attacker AND the splash reach 隐匿 enemies — the owner's decision of 2026-11-04, which departs
+              // from the engine's default area selection on purpose (see the S2 (b) header note). The attacker is a
+              // direct pick; the circle is the same 中点判定 over `battle.enemies`, minus hidden / untargetable.
+              const victims = foesInRadiusWithStealth(battle, src.x, src.y, radius);
+              if (!victims.includes(src)) victims.push(src);
               let dealt = 0;
               for (const e of victims) {
                 if (!e.alive) continue;
                 dealt += battle.dealDamage(unit, e, {
                   amount: unit.s.atk * retal, type: 'arts', isSkill: true, canDodge: false,
-                  tags: ['counter', 'skill', 'oxi:ashSnow'],
+                  ignoreSelect: true, tags: ['counter', 'skill', 'oxi:ashSnow'],
                 });
               }
               const ratio = num(b2.heal_ratio);
