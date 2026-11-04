@@ -385,6 +385,9 @@ function MatchScreen() {
   // 次数用完 ⇒ 服务端不再受理，但面板不跟着消失：本回合露过面就留着说「次数已用完」，按「完成」才走（业主 2026-10-31）。
   const recycleOpen = recycleWindow && recycleDismissed !== pub?.round
     && (recycleLeft > 0 || recycleShownRound === pub?.round);
+  // 自己已拥有的协议源石（卡面）：协议源石 · 刷新 面板铺的就是它；抽卡界面底部那一行「我方协议源石」读的也是同一份
+  // （业主 2026-11-04「加一个在选择协议源石时，可以查看自己已有的协议源石」）—— 两处共用一份列表，同一张卡才不会在两个
+  // 界面里对不上。
   const recycleCards = recycleCardsOf(ownHexIds(pub, myId), data.get('hextech')?.playerHexes);
   // 槽的身份（`idx:id`）：同名的两张卡只有 `idx` 不同，见 ui/hexOverlay.js recycleCardKey
   const recycleCardsKey = recycleCards.map(recycleCardKey).join('|');
@@ -2092,7 +2095,7 @@ function MatchScreen() {
         setPersonalBusy((b) => b?.choiceId === choiceId ? null : b);
       }} />` : null}
 
-    ${hexDraft ? html`<${HexOverlay} hex=${hexDraft} enemy=${pub?.enemyHexes || []} busyIdx=${hexBusy}
+    ${hexDraft ? html`<${HexOverlay} hex=${hexDraft} enemy=${pub?.enemyHexes || []} own=${recycleCards} busyIdx=${hexBusy}
       onPick=${async (i) => { setHexBusy(i); await actions.hex(i); setHexBusy(null); }}
       onReroll=${async (idx) => { setHexBusy(-1); await actions.hexReroll(idx); setHexBusy(null); }} />` : null}
 

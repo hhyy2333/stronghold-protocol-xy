@@ -631,3 +631,18 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   改动前这四条里的前两条会红（旧池子不看 `selfPicked`）。`hex-owner-2026-11-01.test.js` 与 `hextech.test.js` 里那些
   「直接 `applyHex` 塞卡再让【复制】挑」的用例，按新口径给塞进去的卡带上 `{ selfPicked: true }`。
   **golden 不移动**：这是备战层的规则，不进战斗模拟。
+
+## 协议源石：选择界面同时显示自己已有的源石（2026-11-04，业主裁定）
+
+业主原话：「加一个在选择协议源石时，可以查看自己已有的协议源石」。这是**显示**改动，规则一条都没动。
+
+- **界面**（`public/js/ui/hexOverlay.js`）：三选一界面的底栏由「只摆敌方已获得的卡」改成**两边并列** —— 左「我方协议
+  源石」、右「敌方协议源石」，规则行「敌人会获得同阶位的协议源石」保留。两边共用同一套卡片条 `HexStripRow`
+  （`EnemyHexRow` / `OwnHexRow` 只是给它固定各自的 testid），所以两边的读法一致：桌面悬停、手机点一下都能看到每张卡的
+  名称与效果。
+- **数据**：自己那一侧读的是第 6 回合「点卡刷新」面板**已经在用**的那份列表 —— `ownHexIds(pub, myId)` 取行上的
+  `hexes` / `hexRefs`，`recycleCardsOf` 换成卡面（`data/hextech.json playerHexes`）。同名的两张是两个 chip（2026-11-02
+  的口径：`hexRefs` 不去重）。一张都没有时（一局的第一抽）那一侧显示 `0`，与敌方一侧一致。
+- **没有协议变更**：`m.public.players[].hexes` / `hexRefs` 早就在每一帧里，服务端一行不动，`golden` 不移动。
+- **回归**：`test/ui/hextechDraft.test.js` 的「the player's OWN accumulated 协议源石 …」与「the draft footer shows BOTH
+  sides …」两条 —— 每张卡一个 chip、同名两张两个 chip、Tooltip 列出名称与效果、底栏两边并列、空侧显示计数。

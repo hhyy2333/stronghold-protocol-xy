@@ -768,11 +768,15 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .hxcard__reroll:active { transform: scale(.92); }
 @media (max-width: 900px) { .hxcard__reroll { width: .5rem; height: .5rem; top: .08rem; right: .08rem; } }
 
-/* the enemy's accumulated hexes + the rule line under the cards */
-.hxov__foot { flex: none; display: flex; align-items: center; gap: .24rem; padding-top: .14rem; border-top: 1px solid var(--line); }
+/* the footer's two sides: the player's OWN accumulated hexes (业主 2026-11-04「加一个在选择协议源石时，可以查看自己已有的
+   协议源石」) on the left, the enemy's on the right — both are the same chip strip (ui/hexOverlay.js HexStripRow), so the
+   two sides read alike. `flex-wrap` keeps both rows usable on a narrow screen instead of squeezing the rule line off the
+   edge. */
+.hxov__foot { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: .1rem .24rem; padding-top: .14rem; border-top: 1px solid var(--line); }
+.hxov__own { display: inline-flex; align-items: center; gap: .12rem; }
 .hxov__enemy { display: inline-flex; align-items: center; gap: .12rem; }
-.hxov__enemyrow { display: inline-flex; align-items: center; gap: .08rem; }
-.hxov__enemynum { font-size: calc(.22 * var(--t)); color: var(--text-dim); }
+.hxov__ownrow, .hxov__enemyrow { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .08rem; }
+.hxov__num { font-size: calc(.22 * var(--t)); color: var(--text-dim); }
 .hxov__hint { margin-left: auto; font-size: calc(.16 * var(--t)); color: var(--text-dim); }
 
 /* ---- 协议源石 · 刷新 (recycle, 业主 2026-10-31「把有的协议源石放上去点击刷新」「算力无限，搞美观些」) --------------
@@ -988,7 +992,7 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
   .hxov .spov__grid--3 { grid-template-columns: repeat(3, minmax(0, 3.6rem)); gap: .2rem; margin-top: .26rem; }
   /* the tier face is landscape and short; on a phone the grid may have to scroll rather than clip the effect text */
   .hxcard.has-tier .hxcard__desc { font-size: calc(.16 * var(--t)); -webkit-line-clamp: 3; }
-  .hxov__foot { gap: .14rem; padding-top: .1rem; }
+  .hxov__foot { gap: .08rem .14rem; padding-top: .1rem; }
   .hxov__hint { font-size: calc(.14 * var(--t)); }
 }
 

@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeHex, normalizeEnemyHexes } from '../../public/js/ui/gameLogic.js';
-import { HexCard, EnemyHexRow, EnemyHexStrip, EnemyHexList, keepsArmed, rarityName, rarityTierArt, refreshIconUrl, hexSfxUrl, hexOverlayRerollGates, offerSignature, vanishActive } from '../../public/js/ui/hexOverlay.js';
+import { HexCard, EnemyHexRow, EnemyHexStrip, EnemyHexList, OwnHexRow, HexStripRow, HexOverlayFooter, keepsArmed, rarityName, rarityTierArt, refreshIconUrl, hexSfxUrl, hexOverlayRerollGates, offerSignature, vanishActive } from '../../public/js/ui/hexOverlay.js';
 import { Tooltip } from '../../public/js/ui/components.js';
 
 const HEX_VIEW = {
@@ -250,6 +250,64 @@ test('the 敌方情报 readable list prints every card in words (the phone answe
   assert.ok(!markup.includes('"title"'), 'nothing here depends on a native title');
   assert.ok(markup.includes('hxlist__tier'), 'the tier is printed too');
   assert.equal(countVnodes(el, Tooltip), 0, 'the list itself needs no tooltip');
+});
+
+test('the player\'s OWN accumulated 协议源石 is the same labeled strip, one side over (业主 2026-11-04「加一个在选择协议源石时，可以查看自己已有的协议源石」)', () => {
+  // The draft footer used to show only what the ENEMY had collected; the player had to remember their own cards (or
+  // leave the overlay to read the 效果栏). The own row is the enemy row's own component (HexStripRow), so a phone gets
+  // the same tap-to-read tooltip and a desktop the same hover.
+  const own = [
+    { id: 'hex_stipend', idx: 0, name: '战备津贴', desc: '获得时立即得到 3 资金。', rarity: 'silver' },
+    { id: 'hex_armor', idx: 1, name: '反击装甲', desc: '防御 +15%。', rarity: 'gold' },
+    { id: 'hex_armor', idx: 2, name: '反击装甲', desc: '防御 +15%。', rarity: 'gold' },
+  ];
+  assert.equal(OwnHexRow({ list: [] }), null, 'nothing without cards');
+  assert.equal(OwnHexRow({ list: null }), null);
+  const row = OwnHexRow({ list: own });
+  assert.ok(row && typeof row === 'object');
+  assert.ok(JSON.stringify(row).includes('own-hex-strip'), 'the row names its side for tests and shots');
+  assert.ok(!JSON.stringify(row).includes('enemy-hex-strip'));
+  assert.equal(countVnodes(row, HexCard), 3, 'one chip per owned card — the two copies of one card are two chips');
+  // the tooltip prints every card's name and effect, and the row is reachable by keyboard / assistive tech
+  const tip = findVnode(row, Tooltip);
+  assert.ok(tip, 'the row is wrapped in the app Tooltip');
+  assert.equal(tip.props.text, '战备津贴 · 获得时立即得到 3 资金。\n反击装甲 · 防御 +15%。\n反击装甲 · 防御 +15%。');
+  assert.equal(tip.props.tapShow, true, 'a tap opens it on a phone');
+  const strip = findVnode(row, 'span');
+  assert.equal(strip.props.role, 'button');
+  assert.equal(strip.props.tabindex, '0');
+  // the two copies carry distinct keys (a shared key would make one of them disappear)
+  const chips = [];
+  (function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; if (n.type === HexCard) chips.push(n); walk(n.props?.children); })(row);
+  assert.equal(new Set(chips.map((c) => c.key)).size, 3, 'three distinct chip keys');
+  // the generic strip is what both sides use
+  assert.ok(JSON.stringify(HexStripRow({ list: own, testid: 'whatever' })).includes('whatever'));
+});
+
+test('the draft footer shows BOTH sides: the player\'s own cards beside the enemy\'s, and the rule line', () => {
+  const own = [
+    { id: 'hex_stipend', idx: 0, name: '战备津贴', desc: '获得时立即得到 3 资金。', rarity: 'silver' },
+    { id: 'hex_armor', idx: 1, name: '反击装甲', desc: '防御 +15%。', rarity: 'gold' },
+  ];
+  const enemy = [{ id: 'ehex_fury', name: '狂攻', desc: '攻击 +15%。', rarity: 'gold', drawRound: 6 }];
+  const footer = HexOverlayFooter({ own, enemy });
+  const markup = JSON.stringify(footer);
+  for (const part of ['hxov__foot', '我方协议源石', '敌方协议源石', '敌人会获得同阶位的协议源石', 'hxov__own', 'hxov__enemy']) {
+    assert.ok(markup.includes(part), `the footer renders ${part}`);
+  }
+  // the own side gets its own row of the player's cards; the enemy side keeps its own
+  const ownRow = findVnode(footer, OwnHexRow);
+  const enemyRow = findVnode(footer, EnemyHexRow);
+  assert.ok(ownRow, 'the own row is there');
+  assert.deepEqual(ownRow.props.list, own, 'the own row is fed the player\'s own cards, 1:1');
+  assert.equal(ownRow.props.class, 'hxov__ownrow');
+  assert.ok(enemyRow, 'the enemy row is still there');
+  assert.deepEqual(enemyRow.props.list, enemy);
+  // the very first draft of a match owns nothing: the side prints 0 instead of an empty row
+  const first = JSON.stringify(HexOverlayFooter({ own: [], enemy: [] }));
+  assert.ok(first.includes('hxov__num'), 'both empty sides print a count');
+  assert.equal(findVnode(HexOverlayFooter({ own: [], enemy: [] }), OwnHexRow), null);
+  assert.equal(findVnode(HexOverlayFooter({ own, enemy: [] }), OwnHexRow)?.props?.list?.length, 2, 'own cards still show with no enemy card');
 });
 
 test('normalizeEnemyHexes keeps the accumulated enemy list and drops junk', () => {
