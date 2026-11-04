@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeMatch, DATA } from './harness.js';
+import { makeMatch, give, giveItem, chessOfTier, DATA } from './harness.js';
 import { MatchHexDraft } from '../../server/match/match/hexDraft.js';
 import { applyHex } from '../../server/match/hextech.js';
 
@@ -14,6 +14,28 @@ function fresh() {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 31, fake: true });
   h.start();
   return h;
+}
+
+/** A match in R1 PREP with an empty hand / board, so `g.equip` is legal and the cap starts at the base 8. */
+function prepOnly(seed = 31) {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seed, fake: true });
+  h.start();
+  h.toPrep(1);
+  h.setStage('act2autochess_m04');
+  const ps = h.ps('p_0');
+  for (const p of [...ps.board.values(), ...ps.hand.filter(Boolean)]) if (p.kind === 'chess') ps.returnCopies(p);
+  ps.board.clear();
+  ps.hand.fill(null);
+  ps.recompute();
+  return { h, m: h.m, ps };
+}
+
+/** Give the player a fresh normal operator and equip 人事部文档 (cap floor 9) onto it; returns the carrier. */
+function equipHrFile(m, ps) {
+  const carrier = give(m, ps, chessOfTier(1).find((c) => m.pool.has(c)));
+  const hr = giveItem(m, ps, 'chess_item_6_08_e_a');
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: hr.uid, targetUid: carrier.uid }), { ok: true });
+  return carrier;
 }
 
 test('第 7 回合的抽卡池只放 requiresBond 的盟约专属协议；没有激活核心盟约时回退普通池', () => {
@@ -67,6 +89,45 @@ test('燎原：获得时部署位 +2', () => {
   const cap0 = ps.deployCap;
   applyHex(m, ps, DATA.hextech.playerHexes.hex_yan_ember);
   assert.equal(ps.deployCap, cap0 + 2);
+  m.dispose();
+});
+
+// 业主 2026-11-03「人事部文档使用后再获得燎原这个协议源石，人口并不会变成11人口有bug」。
+// 两张卡是两份互相独立的收益：人事部文档把部署位**至少**抬到 9（`setDeployCapAtLeast`），燎原在此基础上 +2
+// （`addDeployCap`）。旧实现写成 `max(底数 + 增减量, 下限)`：增减量加在底数上、下限只跟这个和取大，于是底数 8 被
+// 燎原抬成 10 之后，人事部文档那个 9 的下限就不再起作用 —— 两种顺序都是 `max(8 + 2, 9) = 10`，本该是「9 再加 2」。
+// 现在底数先抬到下限、再加增减量，于是两种顺序都是 11 —— 顺序不该改变两份独立收益的总数。
+test('人事部文档 + 燎原：两种获得顺序都得到 11 个部署位（业主 2026-11-03）', () => {
+  // 顺序 A：先人事部文档（下限 9），再燎原（+2）
+  const a = prepOnly();
+  assert.equal(a.ps.deployCap, 8, '底数：官方 8');
+  equipHrFile(a.m, a.ps);
+  assert.equal(a.ps.deployCap, 9, '人事部文档：至少 9');
+  applyHex(a.m, a.ps, DATA.hextech.playerHexes.hex_yan_ember);
+  assert.equal(a.ps.deployCap, 11, '再燎原：9 + 2 = 11');
+  a.m.dispose();
+
+  // 顺序 B：先燎原（+2），再人事部文档（下限 9）—— 两张卡各算各的，顺序不改变总数
+  const b = prepOnly();
+  applyHex(b.m, b.ps, DATA.hextech.playerHexes.hex_yan_ember);
+  assert.equal(b.ps.deployCap, 10, '燎原：8 + 2 = 10');
+  equipHrFile(b.m, b.ps);
+  assert.equal(b.ps.deployCap, 11, '再人事部文档：底数抬到 9，燎原的 +2 还在 ⇒ 11');
+
+  b.m.dispose();
+});
+
+test('部署位：下限与增减量各算各的，第二份人事部文档仍然不再叠加', () => {
+  const { m, ps } = prepOnly();
+  const carrier = equipHrFile(m, ps);
+  assert.equal(ps.deployCap, 9);
+  // 第二份人事部文档：下限还是 9（setDeployCapAtLeast 只在更大时才写），不该变成 18 之类
+  const hr2 = giveItem(m, ps, 'chess_item_6_08_e_a');
+  assert.deepEqual(m.handle('p_0', { t: 'g.equip', itemUid: hr2.uid, targetUid: carrier.uid }), { ok: true });
+  assert.equal(ps.deployCap, 9, '第二份不再叠加');
+  // 燎原的 +2 落在下限**之上**，于是 9 + 2 = 11，而不是被下限吃掉
+  applyHex(m, ps, DATA.hextech.playerHexes.hex_yan_ember);
+  assert.equal(ps.deployCap, 11);
   m.dispose();
 });
 

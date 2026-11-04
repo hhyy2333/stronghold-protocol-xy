@@ -449,6 +449,11 @@ function devour(battle, pid, bb, members) {
     if (atk > 0) mods.atkFinal = atk; // 最终加算 (units.js _recalc)
     if (block > 0) mods.blockCnt = block;
     if (Object.keys(mods).length) S.passiveBuff(battle, m, 'bond:egir:devour', mods);
+    // 协议源石【深度吞噬】(content/hextech.js `devourTarget`)：「〖阿戈尔〗干员吞噬时，其攻击目标数 +1。」那半段挂在
+    // 这个事件上，所以标记者与它标记的单位在这里交出去。这条 emit 在源码树重新导入时丢了：卡的 listener 与（手动
+    // emit 的）测试都还在，却没有任何地方发事件 —— 实机上这张卡是静默空卡（业主 2026-11-03 报障；
+    // 04-文档/协议源石-核心盟约专属卡-审阅稿.md §6 早已记录）。只有真的吞到东西（`mine`）才发，且只有有人监听时。
+    if (battle.hasHook('devourGain')) battle.emit('devourGain', { marker: m, targets: mine });
   }
   const amount = num(bb.damage_value, 0);
   // 协同进化 (业主 2026-10-26): 「【阿戈尔】的吞噬不再造成伤害」 — the mark still lands (fx, layers, attributes), only the
