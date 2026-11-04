@@ -259,11 +259,13 @@ test('S2 阂断骤雪 (AUTO TAKE_DAMAGE, 5 charges): 90 % 庇护 decaying over 1
   done(h);
 });
 
-test('S2 阂断骤雪 反伤直接选中伤害来源: a 隐匿 attacker takes it (业主 2026-11-04), the 隐匿 splash beside it does not', () => {
-  // 业主 2026-11-04「修复一下塔露拉2技能反伤不能伤害隐匿敌人的bug」. The retaliation used to reach its source through
-  // `canTargetEnemy` and a `foesInRadius` sweep, and BOTH refuse an unblocked 隐匿 enemy — so a 隐匿 attacker was answered
-  // with nothing at all. PRTS 异常效果: 「'直接选中'的能力…不受这些仅在选择时生效的异常效果制约」, and every other
-  // 「反伤效果会直接选中伤害来源」 counter in the repo (nian.js, hsgma2.js, op-judge.js) already strikes with `ignoreSelect`.
+test('S2 阂断骤雪 反伤与溅射都打到隐匿敌人（业主 2026-11-04 两条）: the attacker AND the 隐匿 neighbour beside it', () => {
+  // 业主 2026-11-04 先「修复一下塔露拉2技能反伤不能伤害隐匿敌人的bug」，再「塔露拉2技能反伤溅射应该也要能伤害隐匿敌人」
+  // — so BOTH halves reach a 隐匿 enemy. The retaliation used to reach its source through `canTargetEnemy` and its
+  // splash through `foesInRadius`, and both refuse an unblocked 隐匿 enemy: the attack answered nothing at all, and a
+  // hidden neighbour was spared. The attacker half is a direct pick (PRTS 异常效果 「'直接选中'的能力…不受这些仅在选择时
+  // 生效的异常效果制约」, as nian.js / hsgma2.js / op-judge.js already do); the splash half includes 隐匿 by the owner's
+  // decision (a deliberate departure from PRTS §AOE伤害判定 — see the kit header).
   const { h, u } = field({ tier: 6, elite: true, skill: 1, enemies: [{ key: 'enemy_sniper', pos: [10, 7] }] });
   const src = enemyOf(h, 'enemy_sniper');
   const hide = (e) => h.b.addBuff(e, { key: 'test:stealth', flags: { stealth: true }, persist: true });
@@ -272,7 +274,7 @@ test('S2 阂断骤雪 反伤直接选中伤害来源: a 隐匿 attacker takes it
   // premise: the engine itself cannot select it, and she is hurt by it anyway (a blocked-only 隐匿 is no premise — the
   // attacker's own attack reaches her, which is what sets the counter off)
   assert.ok(src.s.flags.stealth && !src.blockedBy, 'premise: an unblocked 隐匿 attacker');
-  assert.equal(h.b.foesInRadius(src.x, src.y, 1, true).includes(src), false, 'premise: the area selection skips it');
+  assert.equal(h.b.foesInRadius(src.x, src.y, 1, true).includes(src), false, 'premise: the engine area selection skips it');
   assert.equal(h.b.enemiesInKeys(u.rangeKeys, u, { canHitFly: true }).includes(src), false, 'premise: and so does 索敌');
   assert.ok(h.runUntil(() => u.skill.activations > 0, 5), 'its attack still sets the counter off');
   const hits = tagged(h, u, 'oxi:ashSnow').filter((c) => c.target === src);
@@ -282,7 +284,7 @@ test('S2 阂断骤雪 反伤直接选中伤害来源: a 隐匿 attacker takes it
   assert.deepEqual([hits[0].type, hits[0].dmg.tags.includes('counter'), hits[0].dmg.canDodge], ['arts', true, false]);
   done(h);
 
-  // the splash AROUND it stays an area selection: another 隐匿 enemy inside ability_range_radius is still not hit
+  // the splash counts 隐匿 neighbours too: a hidden enemy inside ability_range_radius of the attacker takes it as well
   const s = field({ tier: 6, elite: true, skill: 1, enemies: [
     { key: 'enemy_sniper', pos: [10, 7] }, { key: 'enemy_dummy', pos: [10, 7] },
   ] });
@@ -290,12 +292,30 @@ test('S2 阂断骤雪 反伤直接选中伤害来源: a 隐匿 attacker takes it
   hide(atk);
   hide(beside);
   s.h.step();
+  assert.equal(s.h.b.foesInRadius(atk.x, atk.y, 1, true).includes(beside), false, 'premise: the engine selection skips the neighbour');
   assert.ok(s.h.runUntil(() => s.u.skill.activations > 0, 5), 'cast');
   const splash = tagged(s.h, s.u, 'oxi:ashSnow');
-  assert.deepEqual(splash.map((c) => c.target), [atk], 'only the direct pick — the 隐匿 enemy beside it is spared');
-  assert.equal(splash[0].dmg.ignoreSelect, true, 'and it is the one flagged as a direct pick');
-  assert.equal(beside.hp, 1e9, 'the hidden neighbour takes nothing');
+  assert.deepEqual(splash.map((c) => c.target).sort((a, b) => a.id - b.id), [atk, beside].sort((a, b) => a.id - b.id),
+    'the attacker AND the 隐匿 neighbour inside ability_range_radius');
+  assert.ok(splash.every((c) => c.dmg.ignoreSelect === true), 'both are answered without asking to be selected');
+  assert.ok(beside.hp < 1e9, 'the hidden neighbour really took damage');
   done(s.h);
+
+  // 隐匿 is the ONLY thing this circle lifts: 不可选中 (untargetable) and the DISAPPEAR 「不可见」 (hidden) still stay out
+  const t = field({ tier: 6, elite: true, skill: 1, enemies: [
+    { key: 'enemy_sniper', pos: [10, 7] }, { key: 'enemy_dummy', pos: [10, 7] }, { key: 'enemy_dummy', pos: [10, 7] },
+  ] });
+  const [tAtk, tUnt, tHid] = t.h.b.units.filter((x) => x.side === 'enemy');
+  hide(tAtk); hide(tUnt); hide(tHid);
+  t.h.b.addBuff(tUnt, { key: 'test:untargetable', flags: { untargetable: true }, persist: true });
+  t.h.step();
+  tHid.hidden = true;                                          // the DISAPPEAR segment of 隐身战场
+  assert.ok(t.h.runUntil(() => t.u.skill.activations > 0, 5), 'cast');
+  const victims = new Set(tagged(t.h, t.u, 'oxi:ashSnow').map((c) => c.target));
+  assert.ok(victims.has(tAtk), 'the 隐匿 attacker');
+  assert.equal(victims.has(tUnt), false, '不可选中 stays out of the splash circle');
+  assert.equal(victims.has(tHid), false, '「不可见」(hidden) stays out too');
+  done(t.h);
 });
 
 test('S2 阂断骤雪: one +47 % ATK / DEF stack per cast (max 5, 5 s) and every attack takes in all the enemies she blocks', () => {
