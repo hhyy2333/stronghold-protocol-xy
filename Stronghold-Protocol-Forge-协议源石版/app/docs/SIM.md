@@ -932,6 +932,14 @@ answer `kits/shared/tier1.js byEnemyAttack` (星熊 S2, 泡泡, 刺玫 S2, 余 S
 instance) and skip `'counter'` / `'reflect'` damage. When the guard trips, the logged error names the open frames
 (`chain: hit(enemy_x→chess_y) > damaged(chess_y) > …`).
 
+**A counter strikes its ATTACKER directly, not by selecting it.** PRTS 异常效果 「'直接选中'的能力…不受这些仅在选择时生效的
+异常效果制约」 (and every 「反伤效果会直接选中伤害来源」 rider: 年 铜印, 斩业星熊 恶业苦果, 斥罪 荆棘环身): pass
+`ignoreSelect: true` for the instance on the source, and do not gate it on `canTargetEnemy` — that refuses an unblocked
+隐匿 enemy (`targeting.js enemyStealthed`), which would make the counter answer nothing. Only the splash AROUND the
+attacker is an area selection and keeps `Battle.foesInRadius` (another 隐匿 enemy beside it is still spared, PRTS 作战机制
+§AOE伤害判定 「AOE的判定是对攻击范围内的每个可以被选中的敌人进行判定」) — 塔露拉 S2, `kits/ops/op-oxi.js` (fixed
+2026-11-04: both halves used to be a selection, so a 隐匿 attacker took no retaliation at all).
+
 ---
 
 ## 6. Engine helpers (content must use these)

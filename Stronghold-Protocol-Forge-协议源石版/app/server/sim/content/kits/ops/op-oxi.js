@@ -55,6 +55,13 @@
 //       centred on the attacker), tags `['counter']` (the re-entrancy rule, docs/SIM.md §5), then a heal of `heal_ratio` of
 //       the damage that dealt. [ASSUMED] "相当于伤害量5%" = the retaliation's own damage, and the 范围 is centred on the
 //       attacker with `ability_range_radius`.
+//       The attacker itself is a DIRECT PICK (`ignoreSelect`), never a selection: PRTS 异常效果 「'直接选中'的能力…不受这些
+//       仅在选择时生效的异常效果制约」, and every other 「反伤效果会直接选中伤害来源」 counter in this repo does the same
+//       (nian.js 铜印, hsgma2.js 恶业苦果, op-judge.js 荆棘环身). Until 2026-11-04 it went through `canTargetEnemy` plus a
+//       `foesInRadius` sweep, both of which skip an unblocked 隐匿 enemy — so a 隐匿 attacker took no retaliation at all
+//       (owner's report: 「塔露拉2技能反伤不能伤害隐匿敌人」). The splash AROUND it stays an area selection
+//       (`foesInRadius`): another 隐匿 enemy beside the attacker is still not hit, PRTS 作战机制 §AOE伤害判定 「AOE的判定是
+//       对攻击范围内的每个可以被选中的敌人进行判定」.
 //   (c) for `stack_duration` s: one stack of +`atk` / +`def` per cast (at most `max_stack_cnt` 5) and every attack hits
 //       ALL the enemies she blocks — the engine's `beforeAttack` hook adds them to the attack's targets (the
 //       强攻手-style "同时攻击阻挡的所有敌人"). `attack@buffed_attack_atk_scale` (1) is the attack scale of those
@@ -291,14 +298,19 @@ export default {
             const retal = num(b2.retaliate_atk_scale);
             if (src && retal > 0) {
               const radius = num(b2.ability_range_radius, 1);
+              // the splash AROUND the attacker is an area selection (a 隐匿 enemy beside it is still not hit) …
               const victims = battle.foesInRadius(src.x, src.y, radius, true);
-              if (!victims.includes(src) && canTargetEnemy(unit, src, ANY)) victims.push(src);
+              // … but the attacker ITSELF is a direct pick (ignoreSelect): 「反伤效果会直接选中伤害来源」 — an unblocked 隐匿
+              // enemy that just hit her takes the retaliation like any other, PRTS 异常效果 「'直接选中'的能力…不受这些
+              // 仅在选择时生效的异常效果制约」. Until 2026-11-04 this pushed `src` through `canTargetEnemy` instead, which
+              // refuses a stealthed enemy — the attack answered nothing at all.
+              if (!victims.includes(src)) victims.push(src);
               let dealt = 0;
               for (const e of victims) {
                 if (!e.alive) continue;
                 dealt += battle.dealDamage(unit, e, {
                   amount: unit.s.atk * retal, type: 'arts', isSkill: true, canDodge: false,
-                  tags: ['counter', 'skill', 'oxi:ashSnow'],
+                  ignoreSelect: e === src, tags: ['counter', 'skill', 'oxi:ashSnow'],
                 });
               }
               const ratio = num(b2.heal_ratio);

@@ -29,6 +29,9 @@ const ENEMIES = {
   enemy_fly: dummy('enemy_fly', { motion: 'FLY' }),
   enemy_walk: enemyRec({ key: 'enemy_walk', hp: 1e9, atk: 100, speed: 0.6, mass: 0 }),
   enemy_hitter: dummy('enemy_hitter', { atk: 1000, range: 1 }),
+  // a ranged attacker: it hits her from 2 tiles away while staying UNBLOCKED — the only 隐匿 state that can attack her
+  // (a blocked enemy is not 隐匿, targeting.js enemyStealthed), which is exactly the case of the owner's report
+  enemy_sniper: dummy('enemy_sniper', { atk: 200, range: 3 }),
 };
 /** Every 自选 form she can be fielded in: no module exists, so [tier, elite] only. */
 const FORMS_ALL = [[5, false], [6, false], [5, true], [6, true]];
@@ -254,6 +257,45 @@ test('S2 阂断骤雪 (AUTO TAKE_DAMAGE, 5 charges): 90 % 庇护 decaying over 1
   assert.equal(u.findBuff('protect'), null, 'gone with skill_duration (1.3 s)');
   assert.equal(u.s.artsTakenMul, 1);
   done(h);
+});
+
+test('S2 阂断骤雪 反伤直接选中伤害来源: a 隐匿 attacker takes it (业主 2026-11-04), the 隐匿 splash beside it does not', () => {
+  // 业主 2026-11-04「修复一下塔露拉2技能反伤不能伤害隐匿敌人的bug」. The retaliation used to reach its source through
+  // `canTargetEnemy` and a `foesInRadius` sweep, and BOTH refuse an unblocked 隐匿 enemy — so a 隐匿 attacker was answered
+  // with nothing at all. PRTS 异常效果: 「'直接选中'的能力…不受这些仅在选择时生效的异常效果制约」, and every other
+  // 「反伤效果会直接选中伤害来源」 counter in the repo (nian.js, hsgma2.js, op-judge.js) already strikes with `ignoreSelect`.
+  const { h, u } = field({ tier: 6, elite: true, skill: 1, enemies: [{ key: 'enemy_sniper', pos: [10, 7] }] });
+  const src = enemyOf(h, 'enemy_sniper');
+  const hide = (e) => h.b.addBuff(e, { key: 'test:stealth', flags: { stealth: true }, persist: true });
+  hide(src);
+  h.step();
+  // premise: the engine itself cannot select it, and she is hurt by it anyway (a blocked-only 隐匿 is no premise — the
+  // attacker's own attack reaches her, which is what sets the counter off)
+  assert.ok(src.s.flags.stealth && !src.blockedBy, 'premise: an unblocked 隐匿 attacker');
+  assert.equal(h.b.foesInRadius(src.x, src.y, 1, true).includes(src), false, 'premise: the area selection skips it');
+  assert.equal(h.b.enemiesInKeys(u.rangeKeys, u, { canHitFly: true }).includes(src), false, 'premise: and so does 索敌');
+  assert.ok(h.runUntil(() => u.skill.activations > 0, 5), 'its attack still sets the counter off');
+  const hits = tagged(h, u, 'oxi:ashSnow').filter((c) => c.target === src);
+  assert.ok(hits.length > 0, `the 隐匿 attacker took the retaliation (${hits.length} instance(s))`);
+  approx(hits[0].amount, u.base.atk * skillOf(6, true, S2).bb.retaliate_atk_scale, 'the same retaliate_atk_scale × ATK');
+  assert.equal(hits[0].dmg.ignoreSelect, true, 'a direct pick, not a selection');
+  assert.deepEqual([hits[0].type, hits[0].dmg.tags.includes('counter'), hits[0].dmg.canDodge], ['arts', true, false]);
+  done(h);
+
+  // the splash AROUND it stays an area selection: another 隐匿 enemy inside ability_range_radius is still not hit
+  const s = field({ tier: 6, elite: true, skill: 1, enemies: [
+    { key: 'enemy_sniper', pos: [10, 7] }, { key: 'enemy_dummy', pos: [10, 7] },
+  ] });
+  const [atk, beside] = s.h.b.units.filter((x) => x.side === 'enemy');
+  hide(atk);
+  hide(beside);
+  s.h.step();
+  assert.ok(s.h.runUntil(() => s.u.skill.activations > 0, 5), 'cast');
+  const splash = tagged(s.h, s.u, 'oxi:ashSnow');
+  assert.deepEqual(splash.map((c) => c.target), [atk], 'only the direct pick — the 隐匿 enemy beside it is spared');
+  assert.equal(splash[0].dmg.ignoreSelect, true, 'and it is the one flagged as a direct pick');
+  assert.equal(beside.hp, 1e9, 'the hidden neighbour takes nothing');
+  done(s.h);
 });
 
 test('S2 阂断骤雪: one +47 % ATK / DEF stack per cast (max 5, 5 s) and every attack takes in all the enemies she blocks', () => {
