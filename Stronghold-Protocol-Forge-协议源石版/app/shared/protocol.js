@@ -460,10 +460,17 @@ export function checkHexBans(ids, getHex) {
  *     `assets.skins`，而服务端**看不见**包内容 —— 所以服务端**只转发不判定**，不认识的那一项由**画的一方**
  *     回落原版（与 `portraitChain` 的回落同一条：可见、可解释，不会串到别的干员身上）；
  *   * 它是**展示**消息：不进 golden、不影响任何服务端判定，因此 `combat` 与它无关；
- *   * 上界 `APPEARANCE_LIMITS.picks`：一间房最多这么多干员，多出来的是坏数据而不是「更多的时装」。
+ *   * 上界 `APPEARANCE_LIMITS.picks`：一名玩家最多能给这么多干员各选一套。它是**整份干员名单的大小**，不是
+ *     「一间房的座位数」——0.19.41 写 64 是照着「官方房间 1–4 人」想当然，而官方时装包（`workshop/official-skins/`）
+ *     是 **276 套 / 174 名干员**：玩家按干员一套套选下去，第 65 名起就在客户端解析时被**静默截掉**
+ *     （`ui/skins.js parseStoredSkins`），于是「头像、立绘与局内模型」三样一起对后面的干员不生效。
+ *     定 256 的两条依据：干员名单本身（`data/assets.json chars` 216 名，`data/chess.json` + `backups.json`
+ *     去重 215 名，留出内容包新增的余量）与**帧大小** —— 一条 `picks` 每项最坏 `{"<64 位 charId>":{"skinId":
+ *     "<64 位 skinId>"}}`，256 项 ≈ 37 KB，仍在 WebSocket 的 64 KB 单帧上限（`server/http/websocket.js`
+ *     `WS_MAX_PAYLOAD`）之内；官方时装包覆盖的 174 名实测 8.2 KB。
  *     两个字段都**可选**（只换头像不动皮肤，反之亦然），但**不能都不给** —— 一条什么都没说的消息是坏消息。
  */
-export const APPEARANCE_LIMITS = Object.freeze({ picks: 64 });
+export const APPEARANCE_LIMITS = Object.freeze({ picks: 256 });
 /** 一项外观：`{ skinId }` 或 `{ avatar }`，**恰好一个**（两个都给/都不给都是坏消息，不是「取其一」）。 */
 const isAppearancePick = (p) => {
   if (!isPlain(p)) return false;
@@ -729,7 +736,7 @@ export const C2S = {
   //   * 不进 golden、不影响任何服务端判定；
   //   * 形状由 `isAppearanceMsg` **整体**判（两个字段都可选但**不能都不给**，这条没法拆成按字段的判据；
   //     拆开就会出现「两个都没给」被当成合法的缝）—— 坏形状**点名拒绝**，而不是存一个没人能解释的东西；
-  //   * `picks` 上限 64 项（一间房最多就这么多干员，多出来是坏数据）。
+  //   * `picks` 上限 `APPEARANCE_LIMITS.picks`（256）项 —— **整份干员名单**，不是座位数（见上面那一段的说明）。
   'room.appearance': { $check: isAppearanceMsg },
   // spectator seats (remake feature, community report #26; MAX_SPECTATORS): take one of a co-op room's spectator seats —
   // in its lobby or while its match runs — never a player seat; the host frees one by playerId (the spectator gets

@@ -47,7 +47,14 @@ export const SKINS_PREF = 'skins';
 export const SKINS_KEY = 'entries';
 /** store 里放同步状态的字段：'idle' | 'pending' | 'sending' | 'synced' | 'error'。 */
 export const SKINS_SYNC_KEY = 'sync';
-/** 一条 `room.appearance` 最多带几位干员 —— 就是协议的上限（同一格，不另造一个数字）。 */
+/**
+ * 一条 `room.appearance` 最多带几位干员 —— 就是协议的上限（同一格，不另造一个数字）。
+ *
+ * 它量的是**整份干员名单**，不是「一间房的座位数」：0.19.41 写 64 是照着官方房间 1–4 人想当然，而官方时装包
+ * 覆盖 **174 名干员** —— 玩家按干员一套套选下去，第 65 名起就在下面 `parseStoredSkins` 里被**静默截掉**
+ * （头像 / 立绘 / 局内模型三样一起不生效，界面上一句话都不说）。数字（256）与两条依据（名单规模、64 KB 单帧）
+ * 在 `shared/protocol.js` 的 `APPEARANCE_LIMITS` 上，这里只是引用它，不再存第二份数字。
+ */
 export const SKIN_PICKS_LIMIT = APPEARANCE_LIMITS.picks;
 /** 改动去抖：一次点击一个文件，不需要一条消息一次。 */
 export const SYNC_DEBOUNCE_MS = 500;

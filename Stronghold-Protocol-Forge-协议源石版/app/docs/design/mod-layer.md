@@ -2392,6 +2392,18 @@ name, series?, desc?, art?, voices? }, …]`（`mergeWorkshopSkins`）—— 按
 通道：`/data/assets.json` 里本来就写着它们。模型还必须在索引里登记（`assetViews.js siteModels` +
 `server/index.js` 的 `extraModels`），否则派生出来的 atlas / 页 URL 会退成 `no-cache`（字节是对的，只是每次回源）。
 
+**8. 选择的条数上限量的是整份干员名单（0.19.46 修正，业主 2026-11-04）。** `APPEARANCE_LIMITS.picks`
+（`shared/protocol.js`，一条 `room.appearance` 的 `picks` 最多几项）**不是**房间的座位数 —— `picks` 按**干员**记
+（一名玩家给自己名单里的每一名干员各选一套），所以它该装得下整份名单。0.19.41 写 **64** 并注释成「一间房最多就
+这么多干员」，而官方时装包是 **276 套 / 174 名干员**：`public/js/ui/skins.js parseStoredSkins` 是选择唯一的解析点
+（store 初值、每次编辑、发出去的那一帧都过它），第 65 条起在这一层被 `break` 掉，于是**头像、立绘与局内模型三样
+一起**对后面的干员不生效（它们共用这一个来源），界面上没有任何提示。现在定 **256**：装得下 `data/assets.json` 的
+216 名（`chess.json` + `backups.json` 去重 215 名）并留出内容包新增的余量，同时 256 项最坏形状的一帧 ≈ 37 KB 仍在
+64 KB 单帧上限之内（官方时装包覆盖的 174 名实测 8.2 KB）。协议形状、`isAppearanceMsg` 的判据与服务端那一半
+（`server/lobby.js appearance()`）都没动 —— 64 从来不是安全边界（服务端看不见包内容，不认识的 `skinId` 由画的一方
+回落原版），`PROTOCOL_VERSION` 也不动（既有客户端发 ≤64 条照旧合法）。回归钉在 `test/ui/skins.test.js`
+「上限量的是『整份干员名单』」。
+
 ### 28.29 形态（clip set）与静态相位：两条**行为增量**通道
 
 这一节回答业主那一条要求：「做不了的我们就加接口，做到完美兼容。」有两件事今天包做不了，而两件都不是数据、
