@@ -26,6 +26,15 @@ import { bossPoolHp } from './finalAssault.js';
 export const BREAK_LIMIT_HEX_ID = 'hex_break_limit';
 
 /**
+ * 潘多拉魔盒 的卡 id（`data/hextech.json` 的 `hex_pandora`，效果 `effect.onPick = { pandora: true }`）。
+ *
+ * 替换逻辑本身在 `server/match/effectsMeta.js makeCtx().replaceHexes`（它要重入 applyHex，只能住在对局层），
+ * 那里要**把这张卡从替换池里排除**：卡面是「更换为」另一张 3 阶卡，抽回自己会立刻再触发一次整轮替换，一路撞到
+ * 派发器的 MAX_DEPTH，玩家手上就只剩一张牌（业主 2026-11-03 报告的那条「少了一个协议源石」）。
+ */
+export const PANDORA_HEX_ID = 'hex_pandora';
+
+/**
  * 盟约寄生 (业主 2026-10-24): the key of the DISPLAY-ONLY watcher ref pushed onto the 被寄生者. It is deliberately not a
  * registered handler — the real work runs on the PICKER's card at each round start (`parasiteShare`); this ref exists so
  * the host's effects column can name the pairing too (「让寄生者和被寄生者都知道寄生对象」).
@@ -620,11 +629,14 @@ function replayLayerGift(m, ps, hex, ref = null) {
  * 与 `applyHex` 的差别只有两处：这是**第二个 ref**（每个目标在自己的 ref 列表里取下一个空号），
  * 以及 `applyHexExtras` 只对复制者跑一次（债务 / 二次抽取 / 盟约寄生 这些是「获得者」的半段，不是每个队友的）。
  *
+ * 潘多拉魔盒 也用它（业主 2026-11-03）：换回来的张数必须等于换掉的张数，池子里的 3 阶卡不够时多出来的那几张发成
+ * 「同一张卡的第二个 ref」，而不是被 `addHexRef` 的「一张卡一个 ref」去重掉（那会让玩家凭空少一张）。
+ *
  * @param {any} m @param {any} ps 复制者 @param {any} hex 被复制的卡记录
  * @param {{ depth?: number, copiedBy?: string|null }} [opts]
  * @returns {any|null} 复制者自己那份 ref（没有则 null）
  */
-function applyCopiedHex(m, ps, hex, { depth = 1, copiedBy = null } = {}) {
+export function applyCopiedHex(m, ps, hex, { depth = 1, copiedBy = null } = {}) {
   if (!m || !ps || !hex) return null;
   const team = !!(hex.effect && hex.effect.team);
   const targets = team ? [ps, ...m.alivePlayers().filter((p) => p !== ps)] : [ps];
