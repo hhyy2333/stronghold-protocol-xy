@@ -8,7 +8,10 @@
 // garrison: type chip (its official type icon + eventTypeDesc such as 整备能力, garrisonTypeIconKey) + description,
 // compact, visible without scrolling: user playtest #3 items 8 / 9), the class trait (特性), stats + range mini-map, skill (the one chosen in the loadout, DESIGN §16: icon, SP
 // info, rich description, 已调配 when not the default), elite module (模组: official type icon from the local-client
-// art, else its letter), equipped items (read-only from those `items` when the card has no own piece), talents
+// art, else its letter; since 0.19.46 a **normal** form also shows one under 【特限恢复】 hex_mode_modules — the module
+// picked in 干员调配 or, without a pick, the elite record's default one, shared/loadoutRecord.js normalFormModuleOf — and
+// its 休整期更换 row lists the elite record's module table), equipped items (read-only from those `items` when the card
+// has no own piece), talents
 // (CHESS_SECTIONS); items — icon, tier,
 // effect; 变形同构体 (`canGiveBond`) also its 天赋栏 list (MorphPairings, gameLogic morphPairings: per bond the items that
 // make the wearer its member, 本局禁用 marked; on a wearer's card the pairing it wears highlighted, 生效中 — GitHub issue
@@ -473,7 +476,14 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   const canSwap = !!(editable && piece && piece.kind === 'chess' && !si && !c.diyProto);
   const swapBaseId = c.isGolden ? c.baseId : c.chessId;
   const skillChoices = opt.skills || [];
-  const moduleChoices = opt.modules || [];
+  // 【特限恢复】(hex_mode_modules) 的普通形态同样能换模组：模组表挂在**精锐记录**上（普通记录没有 modules 列表 ——
+  // 与 shared/loadoutRecord.js normalFormModuleOf / 服务端 checkLoadout 查的是同一张表），所以这里按精锐记录列选项。
+  // 没有这张卡时普通形态一个模组都没有，这条路不出现（卡片与改动前逐字段一致）。
+  const goldenRec = c.isGolden ? c : (typeof c.goldenId === 'string' && c.goldenId ? getChess(c.goldenId) || null : null);
+  const modeModules = moduleLevel === 3 && !c.isGolden && Array.isArray(goldenRec?.modules)
+    ? [...new Set(goldenRec.modules.map((x) => x && x.uniEquipId).filter((id) => typeof id === 'string' && id && id !== MODULE_NONE)), MODULE_NONE]
+    : null;
+  const moduleChoices = modeModules || opt.modules || [];
   const curSkillIndex = Number.isInteger(lo?.skillIndex) ? lo.skillIndex : null;
   const curModuleId = lo?.module ? lo.module.id : null;
   /** Send one operator's increment: the fields the caller does not name stay as they are (server-side merge). */
@@ -558,7 +568,8 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
         <span class="dswap__label">${t('休整期更换')}</span>
         ${moduleChoices.map((id) => {
           const on = id === curModuleId;
-          const name = id === MODULE_NONE ? t('不装备') : ((Array.isArray(c.modules) ? c.modules : []).find((x) => x && x.uniEquipId === id)?.name || id);
+          const name = id === MODULE_NONE ? t('不装备') : (((Array.isArray(c.modules) ? c.modules : []).find((x) => x && x.uniEquipId === id)
+            || (Array.isArray(goldenRec?.modules) ? goldenRec.modules : []).find((x) => x && x.uniEquipId === id))?.name || id);
           return html`<${Button} key=${`md${id}`} variant=${on ? 'primary' : 'ghost'} size="sm"
             title=${on ? t('当前模组') : t('切换为 {name}', { name })}
             onClick=${() => swap({ module: id })}>${name}<//>`;

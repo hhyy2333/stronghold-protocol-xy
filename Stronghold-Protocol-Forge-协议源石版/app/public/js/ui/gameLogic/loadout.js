@@ -1,7 +1,7 @@
 // ui/gameLogic/loadout.js — skill / module loadout shown on cards. Re-exported from ../gameLogic.js.
 
 import { MODULE_NONE, loadoutOptions, resolveLoadout } from '../../../../shared/protocol.js';
-import { loadoutRecord, resolveRecordLoadout, selectedModuleOf, withModuleLevel3 } from '../../../../shared/loadoutRecord.js';
+import { loadoutRecord, normalFormModuleOf, resolveRecordLoadout, withModuleLevel3 } from '../../../../shared/loadoutRecord.js';
 import { cultivationOf, cultivateMul, cultivatedStats, isPotential, isCultivate } from '../../../../shared/potential.js';
 import { isObj } from './shared.js';
 import { t } from '../../../../shared/i18n.js';
@@ -52,7 +52,9 @@ export function chessLoadout(chess, loadout, getChess = () => null, opts = {}) {
   // data. For a **normal** form (`_a`, no `modules` list) that module is the one picked in 干员调配 — the same rule as the
   // battle (server/match/player/round.js + simdata getChess, 业主 2026-10-31「不生效对没有精锐的干员」).
   const moduleLevel = opts.moduleLevel === 3 ? 3 : null;
-  const picked = moduleLevel && !chess.isGolden ? selectedModuleOf(chess, lo, getChess) : null;
+  // 普通形态在【特限恢复】下作战的模组（精锐记录才是模组表所在）：干员调配里选的那个，没选 ⇒ 精锐的默认模组，
+  // 明说「不装备」⇒ none。与服务端同一条口径（PlayerState.battleInput 补 moduleId、simdata.getChess 缺省回落）。
+  const normalMod = moduleLevel && !chess.isGolden ? normalFormModule(chess, lo, getChess) : null;
   let module = null;
   let defaultModule = true;
   if (chess.isGolden) {
@@ -64,9 +66,9 @@ export function chessLoadout(chess, loadout, getChess = () => null, opts = {}) {
       module = { id, name: rec?.name || id, typeName: rec?.typeName || rec?.type || '', none: false };
     }
     defaultModule = opt.defaultModule == null || id === opt.defaultModule;
-  } else if (picked) {
-    module = { id: picked.id, name: picked.name || picked.id, typeName: picked.type || '', none: false };
-    defaultModule = false;
+  } else if (normalMod) {
+    module = normalMod;
+    defaultModule = normalMod.isDefault;
   }
   // 0.2.2: the operator's 潜能 / 练度 (the player's settings, or the unit's own)
   const cv = cultivationFor(chess, opts);
@@ -75,12 +77,27 @@ export function chessLoadout(chess, loadout, getChess = () => null, opts = {}) {
   let record = chess;
   try { record = loadoutRecord(chess, resolveRecordLoadout(chess, { skillIndex: r.skillIndex, moduleId: r.moduleId, potential: cv ? cv.potential : null })) || chess; } catch { /* the record as is */ }
   if (moduleLevel) {
-    try { record = withModuleLevel3(record, opts.moduleLevels || {}, picked ? picked.id : null) || record; } catch { /* the record as is */ }
+    // 目标模组 id：普通形态就是上面那个（'none' 原样传进去 ⇒ withModuleLevel3 不套任何 3 级数据，与战斗一致）；
+    // 精锐沿用记录自己的默认模组（null ⇒ withModuleLevel3 回落到 rec.module.id）。
+    const want = chess.isGolden ? null : (normalMod ? normalMod.id : null);
+    try { record = withModuleLevel3(record, opts.moduleLevels || {}, want) || record; } catch { /* the record as is */ }
   }
   const mul = cv && isCultivate(cv.cultivate) ? cultivateMul(opts?.effects, cv.cultivate) : null;
   if (mul && record && record.stats) record = { ...record, stats: cultivatedStats(record.stats, mul) };
   return { skill, skillIndex: skill?.index ?? null, defaultSkill, module, defaultModule, changed: !defaultSkill || !defaultModule,
     choices: Math.max(skills.length, opt.skills?.length || 0), record, cultivation: cv };
+}
+
+/**
+ * 普通形态（未精锐）在【特限恢复】下卡片上显示的那个模组 —— `shared/loadoutRecord.js normalFormModuleOf`（与
+ * `simdata.getChess` 缺省 moduleId 同一条判据），再补上卡片要的 `none` 名字与 `isDefault` 标记。
+ * @returns {{ id: string, name: string, typeName: string, none: boolean, isDefault: boolean }|null}
+ */
+function normalFormModule(chess, loadout, getChess) {
+  const m = normalFormModuleOf(chess, loadout, getChess);
+  if (!m) return null;
+  if (m.none) return { id: MODULE_NONE, name: t('未装备模组'), typeName: '', none: true, isDefault: false };
+  return { id: m.id, name: m.name || m.id, typeName: m.typeName || '', none: false, isDefault: !!m.isDefault };
 }
 
 /**

@@ -401,6 +401,16 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   局内详情卡（`ui/detailPanel.js`）对普通形态也画「模组」区块（名字 / 类型 / 已调配 + 3 级特性追加行与天赋），
   `moduleLevel` 由 `screens/game.js` 只对**自己的**棋子给出（队友的干员按他们自己的卡）。`data/moduleLevels.json`
   因此进了 `GAME_FILES`（局内 UI 等它）与 `SIM_DATA_FILES`（浏览器端跑的默认战斗要它，页面没有 Node 的 fallback）。
+  **2026-11-03 补（0.19.46，§43）**：**普通形态的模组区块始终显示（没选过 ⇒ 默认模组的 3 级）+ 局内可换**。
+  根因是 `shared/protocol.js checkLoadout` 只留「不等于默认」的条目，模组跟着技能那条存 ⇒ 用默认技能的干员压根
+  没有条目，`selectedModuleOf` 拿不到、详情卡整个模组区块不画（于是「只有 1、2 技能能显示模组」）。现在
+  `shared/loadoutRecord.js normalFormModuleOf` 是唯一判据：选过 ⇒ 那个；选「不装备」⇒ `'none'`（3 级也不套，
+  客户端与服务端 `moduleId: 'none'` 同口径 —— 原先客户端会回落到默认模组 3 级，是本次修掉的分歧）；
+  **没选过 ⇒ 精锐记录的默认模组**（与 `simdata.getChess` 缺省的 `moduleId` 同一条回落）；精锐记录没有模组 ⇒ 不画。
+  更换行 `moduleChoices` 从**精锐记录**的模组表来（`ui/detailPanel.js`），走 `g.loadout` 增量改的仍是同一个干员
+  调配条目（精锐也用它）；`screens/loadout.js RosterRow` 的模组快捷行不再只给精锐渲染。判据 `ui/gameLogic/modeModules.js
+  modeModuleLevel` 一份，商店卡徽标 / 详情卡的攻击范围 / 棋盘范围与落位轮盘 / 召唤物 ownerRange 都按同一份 3 级记录
+  （顺带修掉「卡面 3 级、棋盘 1 级」）；没有这张卡时每个调用点传 `null`，输出逐字段与改动前一致。
 - 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md`（工作区级）。
 
 ## 协议源石：【死亡之舞】新增 + 四张卡调整（2026-10-31，业主裁定）

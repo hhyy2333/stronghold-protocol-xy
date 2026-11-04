@@ -43,6 +43,7 @@ export { shortcutFor, closesOnFieldPress, shortcutBlocked, prepShortcutsSuspende
 export { DEFAULT_SETTINGS, VOICE_LANGS, TEXT_SIZES, sanitizeSettings, availableVoiceLangs, sanitizeVoiceLangByChar, voiceLangFor } from './gameLogic/settings.js';
 export { normalizeResult } from './gameLogic/result.js';
 export { chessLoadout, unitLoadout, unitCultivation } from './gameLogic/loadout.js';
+export { modeModuleLevel } from './gameLogic/modeModules.js';
 export { standInIds, fieldsStandIn, standInOf, ownStandIn, cardStandIn, memberStandIn, standInGetter, standInLoadout, deployedRecord, deployedModuleId, standInLabel, standInForText, standInTip } from './gameLogic/standIn.js';
 export { diyPicks, ownDiyPick, diyRecordFor, ownDiyRecord, cardDiy, unitPick, diyGetter, pickGetter, isDiyRecord, diyBannedPieces } from './gameLogic/diy.js';
 export { panelSide, panelSlots, PANEL_RIGHT_GAP, PANEL_RIGHT_BOTTOM, PANEL_RIGHT_BOTTOM_SHOP, BPOP, bondPopupPlace } from './gameLogic/panel.js';

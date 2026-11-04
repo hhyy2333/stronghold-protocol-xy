@@ -32,6 +32,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from '../../vendor/hooks
 import { html, Icon, HexBadge, TierChip, Tooltip, MicroLabel } from './components.js';
 import { Img, BondGlyph, CoinGlyph, GIcon, RichText } from './gameComponents.js';
 import { priceTone, mergeProgress, mergeTarget, shopBlockReason, chessLoadout, offerHeader, briefingBondTip, ownStandIn, standInLoadout, standInLabel, standInTip, standInForText, ownDiyRecord, diyGetter } from './gameLogic.js';
+import { modeModuleLevel } from './gameLogic/modeModules.js';
 import { itemIconUrl, uiUrl, skillIconUrl, skillRecordIconUrl, moduleTypeIconUrl } from './assetUrls.js';
 import { portraitUrlOf, currentAppearanceLookup } from './portraitChain.js';
 import { data } from '../data.js';
@@ -141,7 +142,9 @@ export const ChessCard = modComponent('game.shopCard', function ChessCard({ slot
   const willMerge = !!hint;
   const bonds = Array.isArray(c?.bonds) ? c.bonds : [];
   const disabled = !!reason;
-  const lo = si ? standInLoadout(si, LOOKUPS.getChess, data.get('backups')) : c ? chessLoadout(c, priv?.loadout, dr ? diyGetter(LOOKUPS.getChess, priv, diyData) : LOOKUPS.getChess, { ops: priv?.ops ?? null, effects: data.get('effects') }) : null;
+  // 协议源石【特限恢复】(hex_mode_modules): the player's own operator shows its 3 级模组 data like the detail card does
+  // (modeModuleLevel — the one shared predicate; null without the card, and a 补位 stand-in keeps its own branch below).
+  const lo = si ? standInLoadout(si, LOOKUPS.getChess, data.get('backups')) : c ? chessLoadout(c, priv?.loadout, dr ? diyGetter(LOOKUPS.getChess, priv, diyData) : LOOKUPS.getChess, { ops: priv?.ops ?? null, effects: data.get('effects'), moduleLevel: modeModuleLevel(priv), moduleLevels: data.get('moduleLevels') }) : null;
   // 资源预加载（业主 2026-10-16）：这张卡要用的图先拉起来。`Img` 是 `loading="lazy"` 的 <img>，滚动/重绘时
   // 才真正发请求；先预热进去，刷新商店与二次渲染就不会再闪一下。warmUrls 去重、不阻塞、不抛错。
   warmUrls(assets, [portraitUrlOf(m, c, { lookup: currentAppearanceLookup() })]);

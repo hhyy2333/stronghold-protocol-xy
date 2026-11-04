@@ -117,15 +117,20 @@ export function standInLoadout(rec, getChess, backups) {
  * The record the player's own piece of `chess` is deployed with — the stand-in record when the player fields its
  * stand-in, else the chess as the player's loadout makes it (chessLoadout `.record`): its range (board overlay, deploy
  * wheel), its position (legal tiles), the board model.
+ * `opts` ({ moduleLevel, moduleLevels }) is chessLoadout's: the 协议源石【特限恢复】3 级模组 data of the player's own
+ * operators (ui/gameLogic/modeModules.js `modeModuleLevel`). Omitted — or null — the call is the one it always was,
+ * field for field; a stand-in (补位) never takes it ("对于补位干员其技能不可更改", and it is another operator's body).
  * @param {any} chess @param {any} priv m.private @param {(id: string) => any} getChess @param {any} backups
+ * @param {{ moduleLevel?: 3|null, moduleLevels?: any }} [opts]
  */
-export function deployedRecord(chess, priv, getChess, backups) {
+export function deployedRecord(chess, priv, getChess, backups, opts = null) {
   if (!isObj(chess)) return chess;
   if (fieldsStandIn(priv, chess)) {
     const si = standInOf(chess, backups);
     if (si) return standInLoadout(si, getChess, backups)?.record || si;
   }
-  return chessLoadout(chess, priv?.loadout ?? null, getChess)?.record || chess;
+  const co = opts && isObj(opts) ? opts : null;
+  return chessLoadout(chess, priv?.loadout ?? null, getChess, co ? { moduleLevel: co.moduleLevel, moduleLevels: co.moduleLevels } : {})?.record || chess;
 }
 
 /**

@@ -117,6 +117,8 @@ import {
   previewEnemyKey, prepCamera, prepCameraFor, foldCamera, prepFieldMismatch, deployFoldsShop, deployFieldOf, fieldTile, panelSide, panelSlots, bondPopupPlace, unitLoadout, deployedRecord,
   mergeTarget, modeOffBonds, readyFundsPrompt, readyShopFold, ownerBandId, ownDiyRecord, ownStandIn, roundStartReplay, ownsModeModules,
 } from '../ui/gameLogic.js';
+// 协议源石【特限恢复】的 3 级模组判据（与 placement.js 的 ownsModeModules 同一份实现）
+import { modeModuleLevel } from '../ui/gameLogic/modeModules.js';
 import { toast } from '../ui/toasts.js';
 import { BriefingScreen } from './briefing.js';
 import { BandDraftScreen } from './bandDraft.js';
@@ -503,6 +505,9 @@ function MatchScreen() {
     priv, stage: gd.stage(pub?.stageId), editable, field: deployField,
     getChess: (id) => { const c = gd.chess(id); return ownDiyRecord(c, priv, { chess: data.get('chess'), backups: data.get('backups') }) || c; },
     getToken: gd.token, getItem: gd.item, getEffect: gd.effect, backups: gd.backups,
+    // 协议源石【特限恢复】: a summon's ownerRange is composed from its owner's record — the 3 级模组 data when the
+    // player owns the card (placement.js ownerRangeOf reads modeModuleLevel itself)
+    moduleLevels: data.get('moduleLevels'),
   }), [priv, pub?.stageId, editable, gd.ready, deployField]);
   live.current = { pub, priv, field, view, editable, hasPersonalChoice, placeCtx, watching, watchWho, watchingOther, home, myId, alive, spectator, detail, drawer, bondOpen, emoteOpen, settingsOpen, exitOpen, drag, facing, sel, selBusy, pen, collapsedNow: collapsed, localDone: false, canPause: false, paused };
 
@@ -1290,7 +1295,11 @@ function MatchScreen() {
     // the drop target is the tile under the pointer (render/drag.js; an item dropped on a unit's tile equips that unit —
     // user playtest #4 item 1); `tile` = the last target tile (tileHover), `released` = the pointer went up (not a cancel)
     const ptr = { released: false, tile: null };
-    const lookups = { getChess: ownChess, getToken: gd.token, getItem: gd.item, chessRecord: (rec) => deployedRecord(rec, live.current.priv, ownChess, gd.backups) };
+    // 协议源石【特限恢复】: the wheel / selected-unit preview draws the range the piece deploys with — 3 级模组 data for
+    // the player's own operator, nothing extra without the card
+    const lookups = { getChess: ownChess, getToken: gd.token, getItem: gd.item,
+      chessRecord: (rec) => deployedRecord(rec, live.current.priv, ownChess, gd.backups,
+        { moduleLevel: modeModuleLevel(live.current.priv), moduleLevels: data.get('moduleLevels') }) };
     const runIntent = async (intent) => {
       const L = live.current;
       if (intent.confirmReplace) {
@@ -1860,6 +1869,9 @@ function MatchScreen() {
     snapshot: snapUnitsRef.current.get(resolved?.unitId),
     live: typeof liveStats === 'function' ? liveStats() : liveStats,
     loadout: detailLoadout, getChess: gd.chess, backups: gd.backups,
+    // 协议源石【特限恢复】: the same 3 级模组 record the card above shows (a teammate's unit and a 补位 stand-in are
+    // null — detailModuleLevel already says so, and inspectRange's stand-in branch ignores it anyway)
+    moduleLevel: detailModuleLevel, moduleLevels: data.get('moduleLevels'),
   }) : null;
   const cardRangeKey = cardRange ? JSON.stringify(cardRange) : '';
   useEffect(() => {

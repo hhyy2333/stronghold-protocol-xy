@@ -2,7 +2,7 @@
 
 import { GEO } from '../../../../shared/constants.js';
 import { attackRangeGrid, loadoutRecord, resolveRecordLoadout, selectedModuleOf } from '../../../../shared/loadoutRecord.js';
-import { canStandOnGoalPoint, goalPointKeys, MODE_MODULES_HEX_ID } from '../../../../shared/goalPoint.js';
+import { canStandOnGoalPoint, goalPointKeys } from '../../../../shared/goalPoint.js';
 import { meleeOnHighGround } from '../../../../shared/highGround.js';
 import { summonPlacementGrid } from '../../../../shared/summonPlacement.js';
 import { pieceDir, rangeTiles } from '../facing.js';
@@ -10,6 +10,7 @@ import { isObj, tileKey } from './shared.js';
 import { boardTileOf, fieldTile } from './camera.js';
 import { layoutOf } from '../../render/layout.js';
 import { deployedRecord, fieldsStandIn, standInOf } from './standIn.js';
+import { modeModuleLevel, ownsModeModules } from './modeModules.js';
 import { t } from '../../../../shared/i18n.js';
 // 装备位语义（第 7 段）：`equipReplaces` 的「两格满了」那半读这一页的策略（`ui/gameLogic/bonds.js` 的 `slotPolicy`，
 // 由 `roomMods.js` 从 `welcome.mods` 写一次）。缺省档 ⇒ 引擎今天那条算术。
@@ -203,7 +204,7 @@ export function indexPieces(priv) {
  * @param {{ priv:any, stage:any, editable:boolean, field?:'normal'|'bossL'|'bossR', getChess?:(id:string)=>any,
  *   getToken?:(id:string)=>any, getItem?:(id:string)=>any, getEffect?:(id:string)=>any }} o
  */
-export function placementContext({ priv, stage, editable, field = 'normal', getChess = () => null, getToken = () => null, getItem = () => null, getEffect = () => null, backups = null, layout = null }) {
+export function placementContext({ priv, stage, editable, field = 'normal', getChess = () => null, getToken = () => null, getItem = () => null, getEffect = () => null, backups = null, layout = null, moduleLevels = null }) {
   const pieces = indexPieces(priv);
   const boardAt = new Map();
   for (const e of pieces.values()) if (e.area === 'board') boardAt.set(tileKey(e.row, e.col), e);
@@ -229,7 +230,9 @@ export function placementContext({ priv, stage, editable, field = 'normal', getC
   // 保护目标点（号角特限模组「可以部署在目标点」，shared/goalPoint.js）：平时不在 deploy 集合里，只有
   // 号角 + ISW- 特限模组 + 拥有【特限恢复】才例外（tileAllows 里判）。
   const goal = goalPointKeys(stage, field, L);
-  return { priv, pieces, boardAt, handAt, deploy, goal, cap, count, field, editable: !!editable, getChess, getToken, getItem, backups, layout: L, equipCap };
+  // `moduleLevels` (data/moduleLevels.json): the 3 级模组 data for the player's own operators when the player owns
+  // 【特限恢复】 (ownerRangeOf → deployedRecord) — null keeps every record at the data's own level.
+  return { priv, pieces, boardAt, handAt, deploy, goal, cap, count, field, editable: !!editable, getChess, getToken, getItem, backups, layout: L, equipCap, moduleLevels };
 }
 
 /**
@@ -267,19 +270,9 @@ export function tileAllows(ctx, piece, row, col) {
   return goalPointAllowed(ctx, piece, row, col);
 }
 
-/**
- * The player owns 【特限恢复】`hex_mode_modules`? The private view's effects list is the client's only ownership
- * source: a hex entry's `iconId` is the ref id (`hex:<cardId>` / `hex:<cardId>#<copySeq>`).
- * @param {any} priv m.private
- */
-export function ownsModeModules(priv) {
-  for (const e of Array.isArray(priv?.effects) ? priv.effects : []) {
-    if (!isObj(e) || e.iconKind !== 'hex') continue;
-    const id = String(e.iconId || e.id || '').replace(/^hex:/, '').split('#')[0];
-    if (id === MODE_MODULES_HEX_ID) return true;
-  }
-  return false;
-}
+// `ownsModeModules` 与 3 级模组的档位读同一份判据（./modeModules.js `modeModuleLevel`）：一处判所有权，目标点规则
+// 与「卡面 3 级」不会各说各话。名字与原来一样，从本文件 re-export —— `ui/gameLogic.js` 的再导出与既有测试都不用动。
+export { ownsModeModules };
 
 /**
  * 号角特限模组「在集成战略中，可以部署在目标点」的客户端半边（服务端 server/match/player/placement.js
@@ -338,7 +331,11 @@ function ownerRangeOf(ctx, piece, owner = null, placementGrid = null) {
   const rec = at && ctx.getChess(at.piece.id);
   if (!rec) return null;
   let grid = null;
-  try { grid = placementGrid || attackRangeGrid(deployedRecord(rec, ctx.priv, ctx.getChess, ctx.backups) || rec); } catch { /* the data grid */ }
+  // 协议源石【特限恢复】(hex_mode_modules): the owner's own operator fights with its 3 级模组 data (a summon's
+  // ownerRange is composed from the owner's record, so the two must agree); the stand-in branch of deployedRecord
+  // never takes it.
+  const opts = { moduleLevel: modeModuleLevel(ctx.priv), moduleLevels: ctx.moduleLevels };
+  try { grid = placementGrid || attackRangeGrid(deployedRecord(rec, ctx.priv, ctx.getChess, ctx.backups, opts) || rec); } catch { /* the data grid */ }
   return new Set(rangeTiles(grid || rec.rangeGrid, at.row, at.col, pieceDir(at.piece)).map(([r, c]) => tileKey(r, c)));
 }
 

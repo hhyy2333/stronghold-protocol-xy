@@ -5,8 +5,13 @@ import { chessLoadout, standInLoadout } from '../../ui/gameLogic.js';
 import { tokenVariantFor } from '../../ui/gameLogic/loadout.js';
 import { normDir } from '../../ui/facing.js';
 
-/** Resolve the inspected field unit without granting placement or sale actions. */
-export function inspectRange({ target, detail, pieces, showPrep = false, field, snapshot, live, loadout, getChess, backups }) {
+/**
+ * Resolve the inspected field unit without granting placement or sale actions.
+ * `moduleLevel` / `moduleLevels`: the 协议源石【特限恢复】3 级模组 data of the player's own operator (null without the
+ * card, and for a teammate's unit / a 补位 stand-in) — chessLoadout's own opts, so the field range is the record the
+ * unit fights with (server/sim/simdata.js getChess reads the same `moduleLevel === 3`).
+ */
+export function inspectRange({ target, detail, pieces, showPrep = false, field, snapshot, live, loadout, getChess, backups, moduleLevel = null, moduleLevels = null }) {
   if (!detail || (detail.type !== 'chess' && detail.type !== 'token')) return null;
   let row, col, dir;
   if (target?.kind === 'piece' && showPrep) {
@@ -29,7 +34,7 @@ export function inspectRange({ target, detail, pieces, showPrep = false, field, 
   if (!Number.isFinite(row) || !Number.isFinite(col)) return null;
   const record = detail.type === 'token' ? { ...detail.token, ...tokenVariantFor(detail.token, detail.ownerId) }
     : detail.standIn ? standInLoadout(detail.standIn, getChess, backups)?.record || detail.standIn
-    : chessLoadout(detail.chess, detail.diy ? null : loadout, getChess)?.record || detail.chess;
+    : chessLoadout(detail.chess, detail.diy ? null : loadout, getChess, { moduleLevel, moduleLevels })?.record || detail.chess;
   const grid = Array.isArray(live?.range) ? live.range : attackRangeGrid(record);
   return grid?.length ? { grid, row, col, dir } : null;
 }

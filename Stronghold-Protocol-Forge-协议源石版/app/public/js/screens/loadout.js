@@ -234,8 +234,8 @@ export function RosterRow({ m, chess, golden, entries, ops = {}, selected, onPic
         onPick=${(skill) => onChange(chess.chessId, { skill })} />` : html`<span key=${`e${i}`} class="lo-q lo-q--empty" aria-hidden="true"></span>`))}
     </div>
     <div class="lo-card__mods lo-quick" role="group" aria-label=${t('选择模组')} title=${t('模组仅在精锐形态生效')}>
-      ${golden ? modules.map((mo) => html`<${QuickModule} key=${mo.id} m=${m} opt=${mo} on=${mo.id === choice.module}
-        onPick=${(module) => onChange(chess.chessId, { module })} />`) : null}
+      ${modules.map((mo) => html`<${QuickModule} key=${mo.id} m=${m} opt=${mo} on=${mo.id === choice.module}
+        onPick=${(module) => onChange(chess.chessId, { module })} />`)}
     </div>
     <${CultivationSelects} charId=${chess.charId} ops=${ops} onSet=${onOps} note=${standInNote} />
   </div>`;

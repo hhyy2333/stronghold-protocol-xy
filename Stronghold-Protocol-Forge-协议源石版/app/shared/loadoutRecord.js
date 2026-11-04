@@ -157,6 +157,41 @@ export function selectedModuleOf(rec, loadout, getChess = () => null) {
 }
 
 /**
+ * 普通形态（未精锐，`_a`）在【特限恢复】`hex_mode_modules` 下作战的那个模组 —— 服务端 `simdata.getChess` 与客户端
+ * `ui/gameLogic/loadout.js chessLoadout` 共用这一份判据，于是「卡片说哪个模组」与「战斗打哪个模组」不可能分叉：
+ *
+ *   · 干员调配里选过 ⇒ 那个（按**精锐记录的模组表**校验：普通记录没有 `modules` 列表，模组只挂在精锐记录上）；
+ *   · 选的是「不装备」⇒ `{ id: 'none', none: true }`（默认模组的 3 级数据也不套）；
+ *   · 没选过 ⇒ 精锐记录的**默认模组**（`isDefault`）—— 与 simdata 的缺省 moduleId 同一条回落；
+ *   · 精锐记录根本没有模组（蒂比 / 凛御银灰 / 甄选干员）⇒ null（不画模组、不套 3 级）。
+ *
+ * 这与 `selectedModuleOf` 的差别只有第 3 条：那个函数回答「玩家**选过**什么」，这个回答「这个普通形态**现在**用
+ * 哪个模组」（业主 2026-11-03「有特限恢复时，未精锐干员只有 1、2 技能能显示模组」—— 默认技能那一档 loadout 里
+ * 没有条目，于是卡片整个模组块消失了）。
+ * @param {object|null} rec data/chess.json 的**普通**记录
+ * @param {Record<string, { module?: string }>|null} loadout
+ * @param {(id: string) => any} [getChess]
+ * @returns {{ id: string, name: string|null, typeName: string|null, none: boolean, isDefault: boolean }|null}
+ */
+export function normalFormModuleOf(rec, loadout, getChess = () => null) {
+  if (!rec || typeof rec !== 'object' || rec.isGolden) return null;
+  const baseId = rec.baseId || rec.chessId;
+  const entry = typeof baseId === 'string' && loadout && typeof loadout === 'object' && Object.hasOwn(loadout, baseId) ? loadout[baseId] : null;
+  const chosen = entry && typeof entry.module === 'string' && entry.module ? entry.module : null;
+  if (chosen === 'none') return { id: 'none', name: null, typeName: null, none: true, isDefault: false };
+  const goldenId = rec.upgradeChessId || rec.goldenId || null;
+  const golden = typeof goldenId === 'string' && goldenId !== baseId ? getChess(goldenId) : null;
+  const mods = golden && Array.isArray(golden.modules) ? golden.modules.filter((m) => m && typeof m.uniEquipId === 'string') : [];
+  if (!mods.length) return null;
+  const defId = mods.find((m) => m.isDefault)?.uniEquipId ?? (rec.module && typeof rec.module.id === 'string' ? rec.module.id : null) ?? mods[0].uniEquipId;
+  const want = chosen && mods.some((m) => m.uniEquipId === chosen) ? chosen : null;
+  const id = want || defId;
+  if (typeof id !== 'string' || !id || id === 'none') return null;
+  const m = mods.find((x) => x.uniEquipId === id) || null;
+  return { id, name: m?.name ?? null, typeName: m?.typeName ?? m?.type ?? null, none: false, isDefault: id === defId };
+}
+
+/**
  * 模组的 3 级形态（协议源石【特限恢复】, 04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md §4.1/§4.2）：
  * `rec` 换成「同一个模组的 equipLevel 3 数据」组合出来的那份记录 —— `stats` = statsBase + 3 级 attr、`trait` =
  * 3 级 traitOverride（没有则 traitBase）、`talents` = talentsBase + 3 级 talentChanges、`module.level = 3`。

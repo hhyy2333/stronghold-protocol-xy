@@ -45,5 +45,6 @@ normative lines it rewrote).
 | §40 | [history/0.3.3.md](history/0.3.3.md) | 0.3.3 — 上游 0.3.1–0.3.3 的修复移植（2026-10-30；§38 / §39 留给上游 0.3.1 / 0.3.2 的整章移植） |
 | §41 | [history/0.19.41.md](history/0.19.41.md) | 0.19.41 — 从别人做的「融合版 0.3.3」里取的两件：开场演出、皮肤决策层（2026-11-01） |
 | §42 | [history/0.19.45.md](history/0.19.45.md) | 0.19.45 — 时装素材搬进站点素材 `/assets/skins/`：预载、素材包与对局数据面的内容哈希（2026-11-02） |
+| §43 | [history/0.19.46.md](history/0.19.46.md) | 0.19.46 — 【特限恢复】下普通形态的模组始终显示、可更换，四处界面与服务端读同一份 3 级记录（2026-11-03） |
 
 Supplementary (no section numbers of its own): [RECORDS.md](RECORDS.md) — 对局战绩与可选账号（`SP_ACCOUNTS=1`）。
