@@ -517,6 +517,15 @@ server" shape `spec.workshopKits` has for kits (§28.13), and the reason the lis
   card, the panel mounts into every one of them and learns which through `ctx.hostKey`. A page whose packs declare no
   `client` still adds **no DOM at all** (`display: contents` on a host that mounts nothing, `pointer-events: none` on an
   idle panel), so an installed pack cannot eat a click on a shop card.
+- **A container that appears is a mount attempt of its own** (owner's report 2026-11-05: 战地商店 / 证券交易所's entry
+  buttons showed up only after the shop had been expanded for a while). The components that render these hosts do not
+  write the store — the shop bar's 收起 / 展开 is a `useState` in `public/js/screens/game.js`, so expanding it replaces
+  the whole `[data-mod-slot]` container while no store change happens at all. `public/js/ui/slotHostWatch.js` (one
+  `MutationObserver` over `document.body`, installed by the registry only when some pack declares a panel, dropped by
+  `dispose()`) turns "a host container appeared" into a `flush()`, so a panel mounts on the frame the host renders and
+  remounts the moment the shop bar is expanded again — it no longer waits for somebody else's frame. The watcher only
+  looks at `childList` additions that are (or contain) a `[data-mod-slot]` element, so a panel drawing inside its own
+  host cannot wake the registry up again.
 - **`order`, then pack id, then panel id.** `order` (default 0) decides the mount sequence, ties break on the smaller
   pack id — DESIGN §28.3's rule, applied to a list, so the order never depends on the discovery order or the wire order.
 - **`gate` is a dotted path into the client store**, read-only (`session.preloadRequired`, `session.entered`). A panel

@@ -53,7 +53,10 @@
   同样两段确认；
 * 每次成交 / 拒绝都会在底部回执行留一句话，5 秒淡出。
 
-商店栏被玩家「✕ 收起」时按钮跟着一起消失（它就长在那一行里）—— 展开商店它就回来。
+商店栏被玩家「✕ 收起」时按钮跟着一起消失（它就长在那一行里）—— 展开商店它就回来，而且**立刻**回来：
+宿主 `[data-mod-slot]` 一被 Preact 渲染出来，注册点就接住它（`public/js/ui/slotHostWatch.js`），面板一挂上
+就补问一次货架（旧版本要等 400 ms 才问，见下面「验证记录」/ `workshop/originium-exchange/README.md` 的同一条
+改动）。业主 2026-11-05：「进入那个按钮是在展开商店一段时间之后才刷出来」。
 
 **手机 / 矮屏**（业主 2026-10-24「手机的商店装备只显示一点点」）：横屏手机上商店栏本身占掉约 3/4 屏高，抽屉
 钉在它上方就只剩一行。现在 `max-height ≤ 620px` 或 `max-width ≤ 767px` 时抽屉改成**从顶栏下面铺到屏幕底部**
@@ -80,7 +83,7 @@
 ℹ tests 4  ℹ pass 4  ℹ fail 0
 
 > node test/workshop/field-store.test.js
-ℹ tests 21  ℹ pass 21  ℹ fail 0
+ℹ tests 22  ℹ pass 22  ℹ fail 0
 
 > node tools/workshop-validate.mjs workshop/field-store
 pack field-store (战地商店)
@@ -92,10 +95,13 @@ VALID: the engine accepts this content.
 测试覆盖：51 件全集与「7 件协议源石专属不在货架」；价格一律 = 原价 ×3；抽卡与引擎 `rollOffers(count: 1)`
 在 40 组种子上**逐位等价**；真实引擎里买装备（扣钱 / 落位 / 回执）、抽卡（扣 12 / 真发到手上 / 播报）、
 以及 `item / stock / funds / hand / phase / seat / closed / noHex` 八条拒绝路径**资金与 effects 一字节不动**；
-帧体 < 4096 字节；假 DOM 里面板画 51 行、过滤、搜索、两段确认、离开休整期收起、`unmount` 退订。
+帧体 < 4096 字节；假 DOM 里面板画 51 行、过滤、搜索、两段确认、离开休整期收起、`unmount` 退订、**挂载当帧
+就发 hello（1.0.1）**。
 
-**没做到的**：真 Chromium 截图。DSH 沙箱禁止子进程命名管道，Chromium 的 mojo 通道起不来
-（`platform_chrome` 那类限制），与「源石证券交易所」包的已知限制同一条。
+**真浏览器实测**（`puppeteer-core` + 本机 Edge headless，真服务器 + 真对局走到休整期，1280×720）：收起商店栏
+再展开，那颗「商店」按钮 **21–29 ms** 就可见（基线 HEAD：150 ms 时按钮还没有，整块面板 1.3 s ~ 2.6 s 之后才挂
+上）。之前「本机做不了真 Chromium 截图」那条结论在本机已经不成立（沙箱不再拦子进程命名管道）。前后对照图与
+可重跑的测量脚本在 `public/dev/mod-entry/`。
 
 ## 风险与已知限制
 

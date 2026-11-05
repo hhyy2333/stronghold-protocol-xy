@@ -485,11 +485,28 @@ test('面板假 DOM：行情带（大盘/情绪）、追保预警与收盘大盘
   inst.unmount();
 });
 
+test('面板：一挂上就立刻问一次行情 —— 不在 1.2 s 之后才问（业主 2026-11-05「进入按钮要展开商店一段时间之后才刷出来」）', () => {
+  const { host } = fakeDoc();
+  const sent = [];
+  const ctx = {
+    host,
+    net: {
+      on: () => () => {},
+      send: (channel, payload) => { sent.push({ channel, payload }); return true; },
+    },
+    me: { snapshot: () => ({ room: { inMatch: true } }) },
+    log: { warn() {} },
+  };
+  const inst = mountPanel(ctx);
+  // 商店栏每收起再展开，宿主都会被 Preact 换掉、注册点先摘掉再挂一次：握手必须就在挂载这一刻发出去。
+  assert.deepEqual(sent, [{ channel: 'trade', payload: { op: 'hello' } }]);
+  inst.unmount();
+});
+
 // =====================================================================================================================
 // 1.4.0 显示模式（业主 2026-10-22「增加显示模式（无小数点）可在原本与无小数点间切换」，
 // 同日口径补充「不显示小数模式是*100（只改变显示）」）
 // =====================================================================================================================
-
 test('1.4.0 formatPrice：保留小数是原来的两位；无小数点是把价格 ×100 的整数', () => {
   assert.equal(formatPrice(3, 'decimal'), '3.00');
   assert.equal(formatPrice(3.04, 'decimal'), '3.04');

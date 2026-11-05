@@ -782,7 +782,10 @@ export function mount(ctx) {
   // 初始收起：面板一挂上时页面上只有按钮行里那一颗「交易所」，**不自动弹抽屉**（业主 2026-10-23）。
   applyOpen(false);
   renderDisplayButtons();
-  setTimeout(pollRoom, 1200);
+  // **立刻**问一次行情（以前是 1.2 s 之后才问）：面板不仅在开局 / 重连时挂上，商店栏每收起再展开一次，宿主就被
+  // Preact 换掉、注册点先摘掉再挂一次 —— 那一下正是玩家点开商店、等着按钮出现的时候（业主 2026-11-05「进入按钮
+  // 要展开商店一段时间之后才刷出来」）。`pollRoom` 自己会按 1.5 s 重试到上限（连接没上线时 `send()` 返回 false）。
+  pollRoom();
 
   return {
     unmount() {
