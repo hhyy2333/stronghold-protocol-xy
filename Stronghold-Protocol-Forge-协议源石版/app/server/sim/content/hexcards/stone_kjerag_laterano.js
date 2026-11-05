@@ -12,7 +12,7 @@
 // 确定性：没有 Math.random / Date / Node API；随机一律走 battle.rng()（圣佑的狙击用它挑目标），计时只用
 // battle.every / battle.after。
 
-import { isMember, bondLayers, passiveBuff, directMods, battleStore } from '../support/index.js';
+import { isMember, bondLayers, passiveBuff, directMods, battleStore, addReportRow } from '../support/index.js';
 import { isChained, isHpLoss, isRetaliation, makeDamageInfo } from '../../damage.js';
 
 /** 卡 id（模块自己的查表键）。 */
@@ -276,6 +276,19 @@ export function installLateranoSanctuary(hooks) {
   const isCarrier = (u) => isOwnOp(u, owned) && isMember(battle, u, BOND_LATERANO);
   /** 拥有者的在场拉特兰干员（护盾目标 / 免死判定都只认这些）。 */
   const carriersOnField = (pid) => battle.allyUnits.filter((u) => u.ownerId === pid && isCarrier(u) && u.alive && u.deployed && !u.hidden);
+  /** 伤害统计面板给一名单位用的行 key（与 `spec.js damageReport` 的 keyOf 同一个写法）。 */
+  const rowKeyOf = (u) => (u.uid != null ? `u${u.uid}` : `i${u.id}`);
+  /**
+   * 卡面名字（伤害统计那一行用）：ref.name 就是 data/hextech.json 的「圣佑」（addHexRef 抄进效果 ref），
+   * 测试手搓的 ref 也带 name；都没有时兜底用卡面名字。
+   */
+  const nameOf = (pid) => {
+    const ps = battle.getPlayer ? battle.getPlayer(pid) : null;
+    for (const ref of (ps && ps.playerEffects) || []) {
+      if (ref && (ref.data?.hexId === CARD_LATERANO || ref.key === `hex:${CARD_LATERANO}`)) return String(ref.name || '圣佑');
+    }
+    return '圣佑';
+  };
 
   // ---- 【拉特兰】干员：攻速 +50、攻击力 +80%（业主 2026-10-27） -----------------------------------------------
   // 与谢拉格那张同一个做法：passiveBuff 按 key 覆盖（幂等），battleStart / deploy 刷新，所以后部署的干员也吃得到；
@@ -397,9 +410,35 @@ export function installLateranoSanctuary(hooks) {
     // 实际打出去的伤害（业主 2026-11-04「给圣佑狙击的伤害也统计一个文本」）：`dealDamage` 的返回值是真正落到 HP 上的
     // 那一份（减伤 / 闪避 / 护盾之后，与 `stats.dmg` / 伤害统计面板同一条口径），累计它而不是名义上的 amount ——
     // 效果栏要显示的是这张卡「打出了多少伤害」，不是「本该打多少」。`[ASSUMED]` 卡面没写口径。
-    const dealt = battle.dealDamage(src, target, makeDamageInfo({ amount, type: 'phys', canDodge: true, tags: ['hex', SNIPE_TAG] }));
+    //
+    // 2026-11-05：这一发在客户端是**蓝色跳字**（业主「战斗中实时对狙击伤害以蓝色数字跳字」）—— `numStyle` 只进
+    // `b.ev` 的显示格，不参与任何结算。
+    const absorbedBefore = src && src.stats ? Number(src.stats.absorbed) || 0 : 0;
+    const dealt = battle.dealDamage(src, target, makeDamageInfo({
+      amount, type: 'phys', canDodge: true, tags: ['hex', SNIPE_TAG], numStyle: 'snipe',
+    }));
     const done = Number(dealt);
-    if (done > 0) store.snipe.set(pid, (store.snipe.get(pid) ?? 0) + done);
+    if (done > 0) {
+      store.snipe.set(pid, (store.snipe.get(pid) ?? 0) + done);
+      // 实时伤害统计表（业主 2026-11-05「在实时伤害统计表里面添加圣佑的子弹狙击伤害」）：这一发没有「单位」可挂，
+      // 所以单独记一行「圣佑」交给面板（content/support addReportRow）。面板显示时把这一笔从名义来源干员那一行里
+      // 扣掉再单独成行 —— 总伤害不变，规则 / 战报 / golden 都不动。被护盾吃掉的量也一起搬过去（它记在来源的
+      // `stats.absorbed` 上）。
+      const absorbed = src && src.stats ? Math.max(0, (Number(src.stats.absorbed) || 0) - absorbedBefore) : 0;
+      addReportRow(battle, {
+        key: `hex:${CARD_LATERANO}:snipe:${pid}`,
+        name: nameOf(pid),
+        kind: 'hex',
+        ownerId: pid,
+        defId: CARD_LATERANO,
+        dmg: done,
+        phys: done,
+        absorbed,
+        // 面板从这一笔原本记在谁头上扣回去（`u<uid>` / `i<id>`，与 spec.js damageReport 的行 key 一致）。
+        // 记成 per-key 的账：一场战斗里名义来源可能换人（第一名拉特兰干员阵亡后由下一名接手）。
+        credit: src ? { key: rowKeyOf(src), dmg: done, absorbed } : null,
+      });
+    }
   };
   // 每个拥有者各自计时（各读自己卡面的 snipeEvery）：第一个脉冲在 t = snipeEvery
   for (const pid of owners) {

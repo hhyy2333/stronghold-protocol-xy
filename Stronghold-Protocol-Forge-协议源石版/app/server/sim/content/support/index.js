@@ -440,6 +440,51 @@ export function battleStore(battle, ns, init = () => ({})) {
   return s;
 }
 
+/**
+ * 伤害统计面板的额外一行（display-only，业主 2026-11-05「在实时伤害统计表里面添加圣佑的子弹狙击伤害」）。
+ *
+ * 有些伤害没有「单位」可以挂（协议源石【圣佑】的累计子弹狙击）：它照样走 `battle.dealDamage(src, …)`，伤害先记在
+ * 那一发名义来源（第一名在场【拉特兰】干员）的 `stats` 上 —— 击杀、承伤、战报与 golden 的口径都**不变** ——
+ * 面板（`spec.js damageReport`）再按这里的账把这一笔从那一名干员的行里扣掉、单独成一行：总伤害不变，只是拆开显示。
+ * 没有任何内容调用它时 `battle.reportRows` 保持 null，面板与从前逐字节相同。
+ *
+ * @param {any} battle the sim battle
+ * @param {{ key: string, name: string, kind?: string, ownerId?: string|null, defId?: string|null,
+ *   dmg?: number, phys?: number, absorbed?: number,
+ *   credit?: { key: string, dmg?: number, absorbed?: number } | null }} row
+ *   `dmg` / `phys` / `absorbed` 是这一笔**实际**打出的量（减伤 / 闪避 / 护盾之后，与面板同一条口径），同 key 的多次
+ *   调用累加。`credit.key` 是面板行的 key（`u<uid>` / `i<id>`）—— 这一笔原本记在哪名干员头上，面板从那一行里减掉
+ *   同样的数额、避免重复计数；一场战斗里名义来源可能换人（第一个拉特兰干员阵亡后由下一名接手），所以按 key 各自累计。
+ * @returns {any|null} the accumulated row (null when the arguments are unusable)
+ */
+export function addReportRow(battle, row) {
+  if (!battle || !row || typeof row.key !== 'string' || !row.key) return null;
+  if (!Array.isArray(battle.reportRows)) battle.reportRows = [];
+  let r = battle.reportRows.find((x) => x && x.key === row.key);
+  if (!r) {
+    r = { key: row.key, name: '', kind: 'hex', ownerId: null, defId: null, dmg: 0, phys: 0, absorbed: 0, credits: null };
+    battle.reportRows.push(r);
+  }
+  if (typeof row.name === 'string' && row.name) r.name = row.name;
+  if (typeof row.kind === 'string' && row.kind) r.kind = row.kind;
+  if (row.ownerId !== undefined) r.ownerId = row.ownerId ?? null;
+  if (row.defId !== undefined) r.defId = typeof row.defId === 'string' ? row.defId : null;
+  for (const k of ['dmg', 'phys', 'absorbed']) {
+    const v = Number(row[k]);
+    if (Number.isFinite(v) && v > 0) r[k] += v;
+  }
+  const credit = row.credit;
+  if (credit && typeof credit.key === 'string' && credit.key) {
+    if (!r.credits || typeof r.credits !== 'object') r.credits = Object.create(null);
+    const c = r.credits[credit.key] || (r.credits[credit.key] = { dmg: 0, absorbed: 0 });
+    const d = Number(credit.dmg);
+    if (Number.isFinite(d) && d > 0) c.dmg += d;
+    const a = Number(credit.absorbed);
+    if (Number.isFinite(a) && a > 0) c.absorbed += a;
+  }
+  return r;
+}
+
 // =====================================================================================================================
 // battle: IN_BATTLE layer gains
 

@@ -55,10 +55,12 @@ export class FxNumbers {
   /**
    * b.ev 'dmg' visual: glow + sparks in the hit colour; a melee blow (atk 'none' just before) adds its slash.
    * `o.noSpark`: the official effects drew this hit (render/vfx/wiring.js) — only the number (and the splash ring) stay.
+   * `styleKey`: the number's own style, from the event's 6th slot (server/sim/damage.js `numStyle` — 圣佑's snipe draws a
+   * blue number, 业主 2026-11-05); absent → the damage type picks the style (dmgStyleKey).
    */
-  damage(view, amount, type, srcView, mark, o) {
+  damage(view, amount, type, srcView, mark, o, styleKey) {
     if (!view) return;
-    const style = dmgStyleKey(type);
+    const style = styleKey && DMG_STYLE[styleKey] ? styleKey : dmgStyleKey(type);
     const p = this._chest(view);
     const px = p.x, py = p.y, s = p.s;
     const tint = HIT_TINT[style] || 0xffffff;

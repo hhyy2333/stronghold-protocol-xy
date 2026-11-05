@@ -99,6 +99,9 @@ export function makeDamageInfo(d = {}) {
     // carries that ally, and the trait hook (professions.js installIncantation) heals it instead of the lowest-HP ally
     // in range. null = the ordinary target of the trait.
     traitAlly: d.traitAlly ?? null,
+    // 显示用：客户端伤害数字的样式键（`'snipe'` = 圣佑的蓝色跳字，业主 2026-11-05）。只影响 `dmg` 事件的第 6 格与
+    // 画出来的数字，不参与任何结算；没有样式的内容不写这一格，事件流与从前逐字节相同。
+    numStyle: d.numStyle ?? null,
   };
 }
 
@@ -518,6 +521,9 @@ export function applyHpLoss(battle, source, target, amount, dmg, mark) {
     // 'r' is display-only (official red number). Absent on every other hit, so the tuple stays four elements.
     const ev = ['dmg', target.id, Math.round(amount), shown];
     if (mark === 'r') ev.push('r');
+    // 显示用第 6 格：伤害数字的样式键（圣佑的狙击是蓝色跳字，业主 2026-11-05）。没有官方标记时第 5 格补 null 占位；
+    // 没有样式的内容不写这两格，所以普通伤害的 b.ev 元组与从前逐字节相同。
+    if (dmg.numStyle) { if (ev.length < 5) ev.push(null); ev.push(dmg.numStyle); }
     battle._ev(ev);
   }
   if (battle._hooks.damaged) battle.emit('damaged', { source: hs, target, amount, type: dmg ? dmg.type : 'true', dmg, credit: source });

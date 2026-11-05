@@ -33,7 +33,7 @@
 import { html, Icon, MicroLabel } from './components.js';
 import { UnitThumb, GIcon } from './gameComponents.js';
 import { standInOf, diyRecordFor } from './gameLogic.js';
-import { t, N_ } from '../../../shared/i18n.js';
+import { t, tName, N_ } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -298,6 +298,7 @@ export const METHOD_LINES = Object.freeze({
     N_('元素损伤灌进元素槽、不扣生命值，所以不并入实际伤害，单列在「元素损伤」'),
     N_('元素爆发本身无来源，但它的伤害记在填满元素槽的那名单位头上'),
     N_('召唤物的伤害并入部署它的干员；没有归属的召唤物与场地装置单独一行'),
+    N_('协议源石【圣佑】的累计子弹狙击单独一行，不重复计入拉特兰干员'),
     N_('自身流失与友方伤害不算造成伤害'),
   ]),
   dps: Object.freeze([
@@ -388,7 +389,9 @@ export function DamageReportRow({
   const shareNum = m.perSecond ? (Number(row[m.field]) || 0) : value;
   const frac = shareFrac(shareNum, shareBase);
   const pct = value == null ? null : sharePct(frac);
-  const name = row.name || row.defId || t('未知单位');
+  const name = row.kind === 'hex'
+    ? (tName(row.name) || row.defId || t('未知单位'))
+    : (row.name || row.defId || t('未知单位'));
   // 业主 2026-10-20「伤害面板不够准确详细」: a damage row is split into 物理 / 法术 / 真实 as three coloured segments of
   // the same share bar, and 元素损伤 / 护盾吸收 / 击杀 are listed as sub-figures. The first two are NOT HP damage, so
   // before this the operator who spent the field filling an element gauge or chewing through 屏障 looked idle.
@@ -406,6 +409,12 @@ export function DamageReportRow({
       Number(row.kills) > 0 ? { k: 'kills', v: row.kills, label: t('击杀'), raw: true } : null,
     ].filter(Boolean)
     : [];
+  // 行首图标：干员 / 召唤物是头像；协议源石那一行（kind 'hex'，圣佑的累计子弹狙击）用符文图标；场地装置用靶心。
+  const art = row.kind === 'op' || row.kind === 'token'
+    ? html`<${UnitThumb} kind=${row.kind === 'token' ? 'token' : 'chess'} id=${row.defId} golden=${row.golden} tier=${row.tier}
+        size="sm" showTier=${false} rec=${rec} />`
+    : html`<span class=${cx('dmgrow__dev', row.kind === 'hex' && 'dmgrow__hex')} aria-hidden="true">
+        <${GIcon} name=${row.kind === 'hex' ? 'bolt' : 'target'} /></span>`;
   return html`<li class=${cx('dmgrow', `dmgrow--${m.id}`, rank === 1 && 'is-top')} data-key=${row.key} data-metric=${m.id}>
     <span class="dmgrow__rank num">${rank}</span>
     <span class="dmgrow__art">
@@ -414,19 +423,14 @@ export function DamageReportRow({
           title=${t('查看 {name} 的详细伤害类型', { name })}
           data-testid="damage-detail-toggle" data-key=${row.key}
           onClick=${(e) => { e.stopPropagation(); onDetail(detailOpen ? null : row.key); }}>
-          ${row.kind === 'op' || row.kind === 'token'
-            ? html`<${UnitThumb} kind=${row.kind === 'token' ? 'token' : 'chess'} id=${row.defId} golden=${row.golden} tier=${row.tier}
-                size="sm" showTier=${false} rec=${rec} />`
-            : html`<span class="dmgrow__dev" aria-hidden="true"><${GIcon} name="target" /></span>`}
+          ${art}
         </button>`
-        : (row.kind === 'op' || row.kind === 'token'
-          ? html`<${UnitThumb} kind=${row.kind === 'token' ? 'token' : 'chess'} id=${row.defId} golden=${row.golden} tier=${row.tier}
-              size="sm" showTier=${false} rec=${rec} />`
-          : html`<span class="dmgrow__dev" aria-hidden="true"><${GIcon} name="target" /></span>`)}
+        : art}
     </span>
     <span class="dmgrow__who">
       <span class="dmgrow__name">${name}${row.folded > 0
-        ? html`<span class="dmgrow__fold" title=${t('含 {n} 个召唤物的数据', { n: row.folded })}>${t('含召唤')}</span>` : null}</span>
+        ? html`<span class="dmgrow__fold" title=${t('含 {n} 个召唤物的数据', { n: row.folded })}>${t('含召唤')}</span>` : null}${row.kind === 'hex'
+        ? html`<span class="dmgrow__fold" title=${t('协议源石')}>${t('狙击')}</span>` : null}</span>
       <span class="dmgrow__bar" aria-hidden="true"><span class="dmgrow__fill" style=${`width:${(frac * 100).toFixed(1)}%`}></span></span>
       ${split ? html`<span class="dmgrow__split" aria-hidden="true">${split.map((s) => html`<span key=${s.k}
         class=${`dmgrow__seg dmgrow__seg--${s.k}`} style=${`width:${((s.v / Math.max(1, splitTotal)) * 100).toFixed(1)}%`}></span>`)}</span>` : null}

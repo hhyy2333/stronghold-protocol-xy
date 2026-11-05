@@ -152,6 +152,52 @@ describe('sim: damageReport', () => {
     ]);
     assert.deepEqual(view, [[1, 0, 700, 0, 0, null], [2, 0, 0, 400, 0, null]], 'allies only, and only the ones with something');
   });
+
+  test('a display-only 圣佑 row (battle.reportRows) splits its snipe damage out of the operator row', () => {
+    // 业主 2026-11-05「在实时伤害统计表里面添加圣佑的子弹狙击伤害」: the card banks what it actually dealt on
+    // battle.reportRows; the panel moves that amount out of the operator row it was counted in and lists it on its own.
+    const battle = {
+      allyUnits: [{
+        id: 7, uid: 1, kind: 'op', defId: 'chess_laterano', name: '菲亚梅塔', ownerId: 'p1', side: 'ally', def: {},
+        stats: { dmg: 3000, taken: 0, heal: 0, kills: 2, dmgPhys: 3000, dmgArts: 0, dmgTrue: 0, elem: 0, absorbed: 0 },
+      }],
+      reportRows: [{
+        key: 'hex:hex_laterano_sanctuary:snipe:p1', name: '圣佑', kind: 'hex', ownerId: 'p1',
+        defId: 'hex_laterano_sanctuary', dmg: 1950, phys: 1950, absorbed: 0,
+        credits: { u1: { dmg: 1950, absorbed: 0 } },
+      }],
+    };
+    const rows = damageReport(battle);
+    const hex = rows.find((r) => r.kind === 'hex');
+    assert.ok(hex, JSON.stringify(rows));
+    assert.equal(hex.name, '圣佑');
+    assert.equal(hex.dmg, 1950);
+    assert.equal(hex.phys, 1950, 'the split bar reads 物理');
+    assert.equal(hex.taken, 0);
+    const op = rows.find((r) => r.kind === 'op');
+    assert.equal(op.dmg, 1050, 'the operator row no longer holds the snipe damage');
+    assert.equal(rows.reduce((n, r) => n + r.dmg, 0), 3000, 'the panel total is unchanged (only split)');
+    // a 联防 half filter keeps the row out of the other player's panel
+    assert.deepEqual(damageReport(battle, 'p2'), []);
+    assert.ok(damageReport(battle, 'p1').some((r) => r.kind === 'hex'));
+    // no reportRows at all → exactly the rows a battle always had
+    assert.equal(damageReport({ allyUnits: battle.allyUnits }).some((r) => r.kind === 'hex'), false);
+    // the credited operator can change mid-battle (the first 拉特兰 operator dies): every credited row gives its share back
+    const two = {
+      allyUnits: [
+        { id: 7, uid: 1, kind: 'op', defId: 'op_a', name: 'A', ownerId: 'p1', side: 'ally', def: {}, stats: { dmg: 1000, taken: 0, heal: 0, kills: 0, dmgPhys: 1000, dmgArts: 0, dmgTrue: 0, elem: 0, absorbed: 0 } },
+        { id: 8, uid: 2, kind: 'op', defId: 'op_b', name: 'B', ownerId: 'p1', side: 'ally', def: {}, stats: { dmg: 800, taken: 0, heal: 0, kills: 0, dmgPhys: 800, dmgArts: 0, dmgTrue: 0, elem: 0, absorbed: 0 } },
+      ],
+      reportRows: [{
+        key: 'hex:hex_laterano_sanctuary:snipe:p1', name: '圣佑', kind: 'hex', ownerId: 'p1', defId: 'hex_laterano_sanctuary',
+        dmg: 1800, phys: 1800, absorbed: 0, credits: { u1: { dmg: 1000, absorbed: 0 }, u2: { dmg: 800, absorbed: 0 } },
+      }],
+    };
+    const split = damageReport(two);
+    assert.equal(split.find((r) => r.defId === 'hex_laterano_sanctuary').dmg, 1800);
+    assert.equal(split.reduce((n, r) => n + r.dmg, 0), 1800, 'both operator rows are empty of snipe damage: 1,800 total');
+    assert.equal(split.filter((r) => r.kind === 'op').length, 0, 'rows with nothing left drop out');
+  });
 });
 
 describe('client: snapshotDamageRows joins a b.snap `dmg` list with the field meta', () => {
@@ -331,6 +377,26 @@ describe('the panel and its HUD button', () => {
     assert.ok(classes(DamageReportRow({ row: rows[0], rank: 1, total: 1320 })).join(' ').includes('is-top'));
     const summonRow = DamageReportRow({ row: { ...rows[0], folded: 2 }, rank: 1, total: 1320 });
     assert.ok(textOf(summonRow).includes('含召唤'), textOf(summonRow));
+  });
+
+  test('a 协议源石 row (圣佑的狙击) draws its own icon, the 狙击 tag and its damage', () => {
+    // 业主 2026-11-05: 圣佑的累计子弹狙击单独一行，行首是协议源石的符文图标，名字后面带「狙击」小签
+    const hexRow = {
+      key: 'hex:hex_laterano_sanctuary:snipe:p1', uid: null, kind: 'hex', defId: 'hex_laterano_sanctuary',
+      name: '圣佑', ownerId: 'p1', dmg: 1950, taken: 0, heal: 0, kills: 0, folded: 0,
+      phys: 1950, arts: 0, true: 0, elem: 0, absorbed: 0, tier: 1,
+    };
+    const row = DamageReportRow({ row: hexRow, rank: 1, total: 3000 });
+    const txt = textOf(row);
+    for (const s of ['圣佑', '狙击', '1,950']) assert.ok(txt.includes(s), `the row shows ${s}: ${txt}`);
+    const cls = classes(row).join(' ');
+    assert.ok(cls.includes('dmgrow__hex'), 'the 协议源石 icon tile (not the device target)');
+    // the panel lists it beside the operator rows and totals both (ranked by damage: 1,950 first)
+    const tree = DamageReportPanel({ rows: [...rows, hexRow], total: 3270, round: 2, live: true });
+    assert.deepEqual(rowVnodes(tree).map((n) => n.props.row.key), [hexRow.key, 'u1', 'u2'], 'all three rows');
+    assert.ok(textOf(tree).includes('3,270'), textOf(tree));
+    // the 统计口径 footer explains the extra row
+    assert.ok(methodLines('dmg').some((s) => s.includes('圣佑')), methodLines('dmg').join(' | '));
   });
 
   test('the metric switch: three tabs, the selected one drives the captions, the total and the rows', () => {

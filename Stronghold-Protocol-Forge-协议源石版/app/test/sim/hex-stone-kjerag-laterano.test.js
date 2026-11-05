@@ -40,6 +40,7 @@ import { fileURLToPath } from 'node:url';
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
 import { hexHooks } from '../../server/sim/content/hexcards/hooks.js';
 import { installKjeragThaw, installLateranoSanctuary } from '../../server/sim/content/hexcards/stone_kjerag_laterano.js';
+import { damageReport } from '../../server/sim/spec.js';
 import { makeDamageInfo } from '../../server/sim/damage.js';
 import { bondLayers } from '../../server/sim/content/support/index.js';
 
@@ -1011,6 +1012,91 @@ test('圣佑: 只有拥有者的战报带狙击伤害 —— 别人的【拉特�
   assert.equal(per.p1.hexSnipeDamage, snipeDealt(h), '拥有者的战报带着这一笔');
   assert.equal('hexSnipeDamage' in per.p2, false, '别人的战报没有这个字段');
   h.invariants();
+});
+
+// =====================================================================================================================
+// 圣佑 · 实时伤害统计表 + 蓝色跳字（业主 2026-11-05「在有选择圣佑时，在实时伤害统计表里面添加圣佑的子弹狙击伤害，
+// 并且战斗中实时对狙击伤害以蓝色数字跳字」）
+
+/** 一个打空 6 颗子弹（3 次攻击 × 2 发）的场，钩子里带上 `damaged`（实际落地的伤害要读它）。 */
+function snipedField() {
+  const h = field(
+    [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    {
+      defs: { chess: { test_laterano: laAmmo(6) }, enemies: { enemy_dummy: dummy() } },
+      hooks: ['hit', 'damaged', 'fatal', 'ammoUsed', 'layerGain', 'battleStart', 'deploy'],
+    },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  u.skill.activate('test', { free: true });
+  for (let i = 0; i < 3; i++) h.battle.forceAttack(u, [foe]);
+  return { h, inst, u, foe };
+}
+
+test('圣佑: 狙击的 b.ev dmg 元组带第 6 格样式 snipe（客户端据此画蓝色跳字），普通伤害不带', () => {
+  const { h, foe } = snipedField();
+  h.run(2.1);                                        // t = 3.1：跨过第一个 snipeEvery 脉冲
+  const dmg = h.eventsOf('dmg').filter((e) => e[1] === foe.id);
+  const snipe = dmg.find((e) => e[2] === 1950);
+  assert.ok(snipe, `狙击的 dmg 事件在（${JSON.stringify(dmg)}）`);
+  assert.equal(snipe[3], 'phys', '物理伤害');
+  assert.deepEqual(snipe.slice(4), [null, 'snipe'], '第 5 格是官方标记的占位，第 6 格是数字样式（蓝色跳字）');
+  const normal = dmg.filter((e) => e !== snipe);
+  assert.ok(normal.length > 0, 'premise: 普攻也有 dmg 事件');
+  for (const e of normal) assert.equal(e.length, 4, '普通伤害的元组仍是 4 格（事件流与从前逐字节相同）');
+  h.invariants();
+});
+
+test('圣佑: 实时伤害统计表多一行「圣佑」—— 狙击伤害从拉特兰干员的行里拆出来，总伤害不变', () => {
+  const { h, u } = snipedField();
+  h.run(0.5);                                        // 普攻的弹丸落地（t = 1.5，还没到狙击脉冲）
+  const before = damageReport(h.battle);
+  assert.equal(before.length, 1, 'premise: 狙击之前只有干员一行');
+  assert.equal(before[0].kind, 'op');
+  h.run(1.6);                                        // t = 3.1：一发狙击
+  const dealt = Math.round(snipeDealt(h));
+  assert.ok(dealt > 0, 'premise: 狙击真的打出了伤害');
+  const after = damageReport(h.battle);
+  const hex = after.find((r) => r.kind === 'hex');
+  assert.ok(hex, `面板多了一行协议源石（${JSON.stringify(after)}）`);
+  assert.equal(hex.key, `hex:${CARD_LA}:snipe:p1`);
+  assert.equal(hex.name, '圣佑', '行名是卡面名字');
+  assert.equal(hex.ownerId, 'p1');
+  assert.equal(hex.dmg, dealt, '这一行数的就是狙击实际打出的伤害');
+  assert.equal(hex.phys, dealt, '物理伤害（占比条按物理显示）');
+  const op = after.find((r) => r.kind === 'op');
+  assert.equal(op.dmg, Math.round(u.stats.dmg) - dealt, '干员那一行不再包含狙击伤害');
+  assert.equal(after.reduce((n, r) => n + r.dmg, 0), Math.round(u.stats.dmg), '两行加起来 = 干员 stats 的真实总伤害（面板总数不变）');
+  // 面板按 credit 扣：这一笔原本记在哪名干员头上（`u<uid>`，与 damageReport 的行 key 一致）
+  const credit = h.battle.reportRows[0].credits;
+  assert.deepEqual(Object.keys(credit), [`u${u.uid}`], 'credit 记在名义来源干员的行 key 上');
+  assert.equal(credit[`u${u.uid}`].dmg, dealt, 'credit 的数额 = 这一行拆出去的伤害');
+  // sim 的账没被改动：战报 / 结果 / golden 口径都不动
+  h.b.forceEnd('forced');
+  assert.equal(h.b.result().perPlayer.p1.hexSnipeDamage, dealt, '战报还是那一笔实际狙击伤害');
+  assert.equal(Math.round(h.b.result().perPlayer.p1.damageDealt), Math.round(u.stats.dmg), '玩家总伤害 = 干员 stats 之和');
+  // 行按 ownerId 过滤（联防里别人的面板不显示我的协议源石）
+  assert.deepEqual(damageReport(h.battle, 'p2'), [], '别人看不到这一行');
+  h.invariants();
+});
+
+test('圣佑: 没有狙击伤害就不多这一行（没有卡 / 还没打出去的战斗，面板与从前一样）', () => {
+  const bare = field([seat('p1', 0, { effects: [], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
+  installLateranoSanctuary(hexHooks(bare.battle));
+  bare.run(3.1);
+  assert.equal(bare.battle.reportRows, null, '没有卡 ⇒ 没有额外行');
+  assert.equal(damageReport(bare.battle).some((r) => r.kind === 'hex'), false);
+  bare.invariants();
+
+  const idle = field([seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })]);
+  installLateranoSanctuary(hexHooks(idle.battle));
+  idle.run(3.1);
+  assert.equal(idle.battle.reportRows, null, '有卡但一发都没打 ⇒ 也没有额外行');
+  assert.equal(damageReport(idle.battle).some((r) => r.kind === 'hex'), false);
+  idle.invariants();
 });
 
 // =====================================================================================================================

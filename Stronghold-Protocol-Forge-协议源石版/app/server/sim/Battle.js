@@ -188,6 +188,13 @@ export class Battle {
     this.enemies = [];
     /** @type {import('./units.js').Unit[]} every ally unit (ops, tokens, devices; dead included) */
     this.allyUnits = [];
+    /**
+     * 伤害统计面板的额外行（display-only，业主 2026-11-05）：没有单位的伤害来源（协议源石【圣佑】的累计子弹狙击）
+     * 由内容用 `content/support/index.js addReportRow` 记账，`spec.js damageReport` 把它们并进面板的行里。每行
+     * `{ key, name, kind, ownerId, defId, unitUid, dmg, phys, absorbed }`，`unitUid` = 这一笔原本记在谁头上（面板
+     * 从那个干员的行里减掉，避免重复计数）。没有任何内容写它时保持 null，战斗结果 / golden 不受影响。
+     */
+    this.reportRows = null;
     this._hooks = Object.create(null);
     this._emitDepth = 0;
     this._frameName = new Array(MAX_HOOK_DEPTH).fill(null);   // open hook/callback frames (diagnostics, _chain)
