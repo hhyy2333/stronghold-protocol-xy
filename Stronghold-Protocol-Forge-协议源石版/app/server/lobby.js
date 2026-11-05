@@ -161,8 +161,12 @@
 //     only g.watch (the heavy bucket, like every watcher), g.leave / room.leave, and room.loadout / room.ownership /
 //     room.diy / room.hexBans (stored for its session, never handed to the match); anything else → SPECTATOR (▸ emotes too). Host: room.removeSpectator { playerId } any
 //     time → room.closed {kicked} to it. A spectator in a LOBBY room may take a free player seat with room.join of the same
-//     code; a player never switches to spectating in place (ALREADY). Disconnect / grace / reconnect / expiry work as for
-//     a player seat (the seat is kept and given back on resume).
+//     code, and — the other direction (业主 2026-11-05「准备界面……不能从场上进入观众席，加一个进入观众席」) — a SEATED player
+//     of a room gives its seat up by sending room.spectate with the code of the room it is already in (the room screen's
+//     进入观战席): the seat is freed (the host passes on like a host leaving; the others keep their ready state) and the
+//     player holds a spectator seat instead; refused while the match runs (ROOM_STARTED), when every spectator seat is
+//     taken (ROOM_FULL) and when it would leave the room with no player at all (BAD_TARGET). Disconnect / grace /
+//     reconnect / expiry work as for a player seat (the seat is kept and given back on resume).
 //   * 野排匹配 quick match (a PRODUCT feature, not a pack surface — server/matchmaking.js, docs/META.md §1.6):
 //     `room.queue` enters its queue and `room.dequeue` cancels. The queue is PLACEMENT ONLY — when `queue.size` (default
 //     MAX_SEATS) players wait, `lobby.matchmake` forms one ORDINARY room by calling this file's own `create` (the
@@ -1679,6 +1683,10 @@ export class Lobby {  /**
   /**
    * room.spectate: one of a co-op room's MAX_SPECTATORS spectator seats, in its lobby or during its match (header). In a
    * running match the match registers the spectator and resends what it may see (Match.addSpectator).
+   *
+   * For a player of the SAME room this is the other direction — 场上 → 观战席 (`sitOut` below): naming the room one is
+   * already in is the one message that can only mean "give the seat up and watch", so the two directions share an
+   * intent and `code` stays required (a stale tab names the room it MEANT, exactly as with `room.setSeatCap`).
    */
   spectate(session, { code }) {
     const norm = String(code).trim().toUpperCase();
@@ -1686,9 +1694,11 @@ export class Lobby {  /**
     if (!room) return fail(ERR.ROOM_NOT_FOUND);
     const cur = this.roomOf(session);
     if (cur === room) {
-      if (!room.spectatorOf(session.playerId)) return fail(ERR.ALREADY, 'seated as a player');
-      this.sendState(room, session);
-      return OK;
+      if (room.spectatorOf(session.playerId)) {
+        this.sendState(room, session);
+        return OK;
+      }
+      return this.sitOut(room, session);
     }
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
@@ -1701,6 +1711,58 @@ export class Lobby {  /**
     this.broadcastState(room);
     if (room.match) this.callMatch(room, 'addSpectator', session.playerId);
     // 房间级钩子（§28.20）：**新观战者**加入。观战者不是玩家、不占座位、不算开局门槛 —— 但「有人来看」正是包想播报的。
+    this.hookFire(room, 'spectate', { room: room.hookSnapshot(), by: room.hookPlayer(session.playerId) });
+    return OK;
+  }
+
+  /**
+   * 场上 → 观战席 (业主 2026-11-05「准备界面只能从观战席进入场上，不能从场上进入观众席，加一个进入观众席」): a player of
+   * THIS room gives up its player seat and takes a free spectator seat instead — the mirror image of a spectator taking a
+   * seat with `room.join` of the same code (入座). Reached only through `room.spectate` naming the room the player is in.
+   *
+   * **Only in the room's lobby** (`ROOM_STARTED` while a match runs): a seat dropped from a running match is quitting that
+   * match — 离开同盟 already does that, and a seat that vanished under a running Match would have to be unwound in the
+   * Match as well. This is the preparation screen's entry, not a mid-match one.
+   *
+   * Everything the room keeps is untouched: the others stay seated with their ready state as it was, and nothing about
+   * the room's difficulty / level / mod set moves. What DOES move:
+   *   * the seat is freed (`seats[i] = null`) — the room may now start with fewer players, exactly like a player leaving
+   *     (开始模拟 waits for every *other* human, never for a full room);
+   *   * a host who sits out passes the room on (`migrateHost`, lowest-seat connected human), like a leaving host;
+   *   * the player holds a spectator seat (its session stays in the room, so nothing is re-sent, nothing re-joins).
+   *
+   * Refusals are named, never silent:
+   *   * every spectator seat taken ⇒ `ROOM_FULL` (the same code `room.spectate` answers for a room whose seats are full);
+   *   * it would leave the room with **no player at all** (a solo room's only doctor, a co-op room's last human) ⇒
+   *     `BAD_TARGET`: the room would then be disposed as empty (`room.closed {empty}`) and the seat we just took would be
+   *     handed straight back — a click that reads as "enter the spectator seats" must not close the room. The client
+   *     hides the entry in exactly this case (`canSitOut`, public/js/screens/room.js), so this branch is the stale-frame
+   *     guard. AI seats never count as players for it.
+   *
+   * @param {Room} room the room the session is a PLAYER of (its seat is here)
+   * @param {import('./net.js').Session} session
+   */
+  sitOut(room, session) {
+    if (room.match) return fail(ERR.ROOM_STARTED, 'the match is running');
+    const seat = room.seatOf(session.playerId);
+    if (!seat || seat.isBot) return fail(ERR.NOT_IN_ROOM);
+    if (room.spectators.length >= MAX_SPECTATORS) return fail(ERR.ROOM_FULL, 'no free spectator seat');
+    if (room.activeHumans().length <= 1) return fail(ERR.BAD_TARGET, 'the room\'s last player cannot sit out');
+    // 房间级钩子（§28.20）：**离开**在座位真的被释放**之前**触发 —— 与 `removeMember` 同一时刻、同一口径，包拿到的 `by`
+    // 还是那个座位（`leave` 的载荷不带房间快照：房间正在变，快照会说谎）。
+    const leaving = room.hookPlayer(session.playerId);
+    if (leaving) this.hookFire(room, 'leave', { by: leaving });
+    this.clearGrace(session.playerId);
+    this.dropReplay(room, session.playerId);
+    room.seats[seat.seat] = null;
+    if (room.hostId === session.playerId) this.migrateHost(room);
+    room.spectators.push({ playerId: session.playerId, name: session.name, connected: session.connected });
+    session.roomCode = room.code;
+    session.notice = null;
+    session.pendingResult = null;
+    this.log.info(`[lobby] ${room.code} ${session.name} sat out (player → spectator)`);
+    this.broadcastState(room);
+    // the new spectator, in the same shape `room.spectate` fires for one that arrived from outside
     this.hookFire(room, 'spectate', { room: room.hookSnapshot(), by: room.hookPlayer(session.playerId) });
     return OK;
   }

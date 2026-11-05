@@ -1153,6 +1153,30 @@ describe('screen helpers', () => {
     assert.deepEqual(roomFacts({ ...room, spectators: 'bad' }, 'h').spectators, []);
   });
 
+  // 业主 2026-11-05「准备界面只能从观战席进入场上，不能从场上进入观众席，加一个进入观众席」: the room screen's
+  // 进入观战席 entry is offered only where server/lobby.js sitOut accepts it — the same judgement read on the client.
+  test('room: 进入观战席 (场上 → 观战席) — canSitOut is the server\'s own judgement', async () => {
+    const { canSitOut } = await mod('screens/room.js');
+    const { MAX_SPECTATORS } = await import(pathToFileURL(path.join(ROOT, 'shared/constants.js')).href);
+    const seat = (n, playerId, extra = {}) => ({ seat: n, playerId, name: playerId, isBot: false, ready: false, connected: true, ...extra });
+    const bot = (n) => ({ seat: n, playerId: `ai_${n}`, name: `AI·${n}`, isBot: true, ready: true, connected: true });
+    const base = { code: 'ABCD', hostId: 'h', mode: 'coop', difficulty: 'HARD', inMatch: false, seats: [seat(0, 'h'), seat(1, 'g'), null, null], spectators: [] };
+    assert.equal(canSitOut(base, 'g'), true, 'a seated guest may watch instead');
+    assert.equal(canSitOut(base, 'h'), true, 'the host may too — the room passes on (migrateHost)');
+    assert.equal(canSitOut(base, 's'), false, 'not a player of this room');
+    assert.equal(canSitOut(base, null), false);
+    assert.equal(canSitOut(null, 'g'), false);
+    assert.equal(canSitOut({ ...base, mode: 'solo' }, 'h'), false, 'a solo room\'s only doctor');
+    assert.equal(canSitOut({ ...base, inMatch: true }, 'g'), false, 'mid-match dropping a seat is 离开同盟, not this entry');
+    assert.equal(canSitOut({ ...base, seats: [seat(0, 'h'), null, null, null] }, 'h'), false, 'the last human cannot sit out');
+    assert.equal(canSitOut({ ...base, seats: [seat(0, 'h'), bot(1), null, null] }, 'h'), false, 'AI teammates are no players');
+    assert.equal(canSitOut({ ...base, seats: [seat(0, 'h'), null, null, null], spectators: [{ playerId: 's', name: 'S', connected: true }] }, 'h'),
+      false, 'still the last player, even with spectators in the room');
+    const full = Array.from({ length: MAX_SPECTATORS }, (_, i) => ({ playerId: `s${i}`, name: `S${i}`, connected: true }));
+    assert.equal(canSitOut({ ...base, spectators: full }, 'g'), false, 'no free spectator seat');
+    assert.equal(canSitOut({ ...base, spectators: full.slice(1) }, 'g'), true, 'one free seat is enough');
+  });
+
   test('components: roman / doctorNo / secondsLeft', async () => {
     const { roman, doctorNo, secondsLeft } = await mod('ui/components.js');
     assert.deepEqual([1, 2, 3, 4, 5, 6].map(roman), ['I', 'II', 'III', 'IV', 'V', 'VI']);

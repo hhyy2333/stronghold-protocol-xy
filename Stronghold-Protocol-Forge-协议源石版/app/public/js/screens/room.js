@@ -22,7 +22,10 @@ import { enabled as federationEnabled, currentNode } from '../federation.js';
 // Solo rooms show a single seat.
 // Spectator seats (community report #26, a remake feature): a co-op room with spectators shows the 观战席 strip under
 // the seats — names, offline marks, the host's ✕ (room.removeSpectator) — and a spectator's own view swaps the ready
-// button for 观战中 and offers 入座 (room.join of the room) while a player seat is free.
+// button for 观战中 and offers 入座 (room.join of the room) while a player seat is free. The other direction is 进入观战席
+// (业主 2026-11-05「准备界面只能从观战席进入场上，不能从场上进入观众席，加一个进入观众席」): a seated player gives the seat
+// up and watches (room.spectate naming its own room — server/lobby.js sitOut), asked first, with the host told that the
+// room passes on; the strip therefore renders for a seated player even when nobody spectates yet (canSitOut).
 // Plugins (DESIGN §34 P1a): the tag under the title — 「原版」 or 「插件 ×N」 — opens the 插件 panel (ui/pluginPanel.js:
 // the host switches the room's plugins, everybody else reads them). With gameplay plugins (§32.6: a content set of its
 // own — the tag reads 「非官方」 too) every seat shows whether its page has loaded and checked the room's content
@@ -341,9 +344,36 @@ function SeatCard({ seat, index, room, facts, myId, busy, onKick, onInvite, sear
   </article>`;
 }
 
-/** 观战席: the room's spectators (host: ✕ frees a seat), and 入座 for a spectator while a player seat is free. */
-function SpectatorBar({ facts, myId, busy, onRemove, onSit }) {
-  if (!facts.spectators.length) return null;
+/**
+ * 「进入观战席」这个入口给不给 (业主 2026-11-05「准备界面只能从观战席进入场上，不能从场上进入观众席，加一个进入观众席」)。
+ *
+ * 它是 `server/lobby.js sitOut` 那几条守卫的**同一份判据的读法**：客户端能画错，但点下去被拒的是服务端，所以两边的口径
+ * 要一致 —— 一个永远点不动、或者点下去必被拒的按钮比没有按钮更难查。四条，逐条对应：
+ *   * 我是这个房间的**玩家**（`facts.mine`；观战者那一侧是「入座」，另一个方向）；
+ *   * **co-op**（solo 房只有一名真人，他坐下就等于把房间关掉）；
+ *   * **对局没开始**（正在跑的那一局里丢座位是「离开同盟」，不是这里的入口 ⇒ 服务端 `ROOM_STARTED`）；
+ *   * 除我之外**还有真人**（最后一名真人走进观战席会让房间空掉、随即被回收 ⇒ 服务端 `BAD_TARGET`）。
+ * 观战席**满了**同样不给（⇒ 服务端 `ROOM_FULL`）。房主可以进去：服务端把房主身份移交给下一位真人（`migrateHost`），
+ * 界面那一句确认文案把这件事说清楚。
+ *
+ * @param {any} room `room.state` 形状的房间（可为 null）
+ * @param {string|null|undefined} myId
+ * @returns {boolean}
+ */
+export function canSitOut(room, myId) {
+  if (!room || room.inMatch || room.mode === 'solo') return false;
+  const facts = roomFacts(room, myId);
+  if (!facts.mine || facts.spectating) return false;
+  return facts.spectators.length < MAX_SPECTATORS && facts.humans.length > 1;
+}
+
+/**
+ * 观战席: the room's spectators (host: ✕ frees a seat), 入座 for a spectator while a player seat is free, and 进入观战席
+ * for a seated player who would rather watch (room.spectate of this room; 业主 2026-11-05). The strip also renders when
+ * nobody spectates yet — a seated player's entry has to exist before there is a spectator to sit beside.
+ */
+function SpectatorBar({ facts, myId, busy, onRemove, onSit, onSitOut, canSitOut }) {
+  if (!facts.spectators.length && !canSitOut) return null;
   return html`<section class="specbar" aria-label=${t('观战席')}>
     <span class="specbar__label"><${Icon} name="eye" />${t('观战席')}<b class="num">${facts.spectators.length}</b><span class="num t-dim">/${MAX_SPECTATORS}</span></span>
     ${facts.spectators.map((s) => html`<span key=${s.playerId} class=${`specbar__who${s.playerId === myId ? ' is-me' : ''}${s.connected === false ? ' is-offline' : ''}`}>
@@ -352,6 +382,7 @@ function SpectatorBar({ facts, myId, busy, onRemove, onSit }) {
         onClick=${() => onRemove(s.playerId)} aria-label=${t('移出观战者 {name}', { name: s.name || '' })} title=${t('移出该观战者')} />` : null}
     </span>`)}
     ${facts.spectating && facts.emptySeats > 0 ? html`<${Button} size="sm" icon="user" loading=${busy === 'sit'} onClick=${onSit}>${t('入座')}<//>` : null}
+    ${canSitOut ? html`<${Button} variant="ghost" size="sm" icon="eye" loading=${busy === 'sitout'} onClick=${onSitOut}>${t('进入观战席')}<//>` : null}
   </section>`;
 }
 
@@ -944,6 +975,25 @@ export function RoomScreen() {
       await net.request('room.join', retry);
     }
   });
+  /**
+   * 场上 → 观战席 (业主 2026-11-05「不能从场上进入观众席，加一个进入观众席」): 空出博士席位、改为旁观本同盟。
+   * 服务端 `room.spectate` 指名**自己所在的这个房间**（server/lobby.js sitOut）；观战者回座是上面的 `sit`。
+   *
+   * 先问一句：席位让出去之后别人可以坐进来（席位还空着时点「入座」能回来），而房主这一坐是**移交同盟**——两件事都
+   * 值得一句确认，与「离开同盟」对房主的那一句同一种做法。`code` 指名房间，与 `room.setSeatCap` 同一条理由：停在旧帧
+   * 上的标签页不会把「另一个房间」的你弄成观战者。
+   */
+  const sitOut = async () => {
+    if (inFlight.current) return;
+    const ok = await confirmDialog({
+      title: t('进入观战席'),
+      text: facts.isHost
+        ? t('你是同盟的创建者，进入观战席后创建者身份将移交给下一位博士。确定进入观战席吗？你的博士席位会被空出。')
+        : t('确定进入观战席吗？你的博士席位会被空出，其他博士可以坐进来；席位还空着时点「入座」就能回来。'),
+      okText: t('进入观战席'),
+    });
+    if (ok) run('sitout', () => net.request('room.spectate', { code: room.code }));
+  };
   const copy = async (what) => {
     const modeLabel = firepower ? `${RANDOM_MODE_NAME} · ` : '';
     const ok = await copyText(what === 'code' ? room.code : t('{0} {name}邀请你加入卫戍协议：盟约【{modeLabel}{3}】', { 0: inviteLink(room.code), name: me.name, modeLabel, 3: DIFFICULTY_NAMES[room.difficulty] }));
@@ -1063,7 +1113,8 @@ export function RoomScreen() {
     <div class="rs-chat" hidden=${!chatOpen}>
       <${ChatPanel} onMessage=${() => { if (!chatOpenRef.current) setChatUnread(true); }} />
     </div>
-    <${SpectatorBar} facts=${facts} myId=${me.playerId} busy=${busy} onRemove=${removeSpectator} onSit=${sit} />
+    <${SpectatorBar} facts=${facts} myId=${me.playerId} busy=${busy} onRemove=${removeSpectator} onSit=${sit} onSitOut=${sitOut}
+      canSitOut=${canSitOut(room, me.playerId)} />
 
     <footer class="rs-foot">
       <div class="rs-foot__left" aria-hidden="true"></div>
