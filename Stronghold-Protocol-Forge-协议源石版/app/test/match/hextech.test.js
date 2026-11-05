@@ -522,6 +522,79 @@ test('镜像协议: solo (no teammate) stays armed harmlessly, and the pick itse
   m.dispose();
 });
 
+// 业主 2026-11-05「让镜像协议的复制在所有人选完协议源石时再触发复制」: 【镜像协议】的复制不再在抽卡阶段「一拿到就兑现」
+// —— 抽卡是并行的，先答的座位看到的还是队友**本轮之前**的卡，而队友这一轮正要选的那张还没进池子。现在它等所有人选完
+// （或超时补选）后、在草稿收尾那一刻再复制，候选池里因此有这一轮抽完的牌。旧的 `resolveMirrorCopies` 在每次 `applyHex`
+// 后直接兑现，所以下面「p_1 选完时复制还不该发生」在旧代码上会红（p_1 一选完就复制了 hex_stipend）。
+test('镜像协议: 抽卡阶段里不立刻兑现，等所有人选完协议源石再复制（业主 2026-11-05）', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 3, seed: 53, fake: true });
+  h.start();
+  toHexDraft(h, 1);
+  const m = h.m;
+  const p0 = h.ps('p_0');
+  // 三份 offer 直接写成固定牌，用例与种子无关（抽卡本身只按 offer 的长度校验 idx）
+  for (const ps of m.players.values()) clearHexes(ps);
+  m.hex.offers.p_0 = ['hex_mirror', 'hex_bulwark', 'hex_echo'];
+  m.hex.offers.p_1 = ['hex_stipend'];
+  m.hex.offers.p_2 = ['hex_echo', 'hex_bulwark', 'hex_stipend'];
+  assert.equal(m.pendingMirror.length, 0, 'premise: 还没有人上膛镜像协议');
+  assert.deepEqual(m.hex.picks, {}, 'premise: 还没人选');
+
+  // p_0 先答，选【镜像协议】：队友此刻什么都没有，没什么可复制的
+  assert.deepEqual(m.handle('p_0', { t: 'g.hex', idx: 0 }), { ok: true });
+  assert.deepEqual(mirrorOwned(p0), ['hex_mirror'], '本枚到手');
+  assert.equal(m.pendingMirror.length, 1, 'premise: 镜像协议已上膛');
+  assert.equal(m.hexDraftDone(), false, 'p_1 / p_2 还没选完');
+
+  // p_1 在中段选了另一张：此刻已经有可复制的对象，但**还有人没选完** ⇒ 复制还不该发生（旧实现当场就复制了 hex_stipend）
+  assert.deepEqual(m.handle('p_1', { t: 'g.hex', idx: 0 }), { ok: true });
+  assert.deepEqual(mirrorOwned(p0), ['hex_mirror'], '抽卡阶段里不兑现（旧实现一选完就复制）');
+  assert.equal(m.pendingMirror.length, 1, '上膛的复制继续等');
+  assert.equal(m.hexDraftDone(), false, 'p_2 还没选完');
+
+  // p_2 是最后一个：三个人都选完了，但草稿还没收尾（收尾是一拍之后）⇒ 仍在抽卡阶段里，复制不在这里兑现
+  assert.deepEqual(m.handle('p_2', { t: 'g.hex', idx: 0 }), { ok: true });
+  assert.equal(m.hexDraftDone(), true, 'premise: 三个人都选完了');
+  assert.ok(m.hex, 'premise: 收尾还没跑（`_applyHex` 用 `later(0)` 推了一拍）');
+  assert.deepEqual(mirrorOwned(p0), ['hex_mirror'], '收尾那一刻才兑现，不是在最后一个选牌里');
+
+  // 草稿收尾 ⇒ 复制从「这一轮抽完的牌」里兑现（p_1 的 hex_stipend 或 p_2 的 hex_echo，同阶随机取其一）
+  const settled = h.run(() => h.ended != null || (m.phase === 'PREP' && m.round === 1));
+  assert.ok(settled, `the draft settled (phase ${m.phase} R${m.round})`);
+  const owned = mirrorOwned(p0).slice();
+  const copied = owned.filter((id) => id !== 'hex_mirror');
+  assert.equal(copied.length, 1, `复制恰好一张（${JSON.stringify(owned)}）`);
+  assert.ok(['hex_stipend', 'hex_echo'].includes(copied[0]), `复制的是队友本轮选的牌（${copied[0]}）`);
+  assert.equal(m.pendingMirror.length, 0, '上膛的复制已经兑现');
+  h.invariants();
+  m.dispose();
+});
+
+// 同一条规则的收尾另一半：草稿靠**超时兜底**结束（有人始终没答）时也要兑现，不能把上膛的复制留在草稿里。
+test('镜像协议: 抽卡超时补选结束时同样兑现（不会把上膛的复制留在草稿里）', () => {
+  const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 2, seed: 59, fake: true });
+  h.start();
+  toHexDraft(h, 1);
+  const m = h.m;
+  const p0 = h.ps('p_0');
+  const p1 = h.ps('p_1');
+  clearHexes(p0);
+  clearHexes(p1);
+  m.hex.offers.p_0 = ['hex_mirror', 'hex_bulwark', 'hex_echo'];
+  m.hex.offers.p_1 = ['hex_stipend'];   // 只有一张 ⇒ 超时补选抽到的那张是确定的
+  assert.deepEqual(m.handle('p_0', { t: 'g.hex', idx: 0 }), { ok: true });
+  assert.equal(m.pendingMirror.length, 1, 'premise: 镜像协议已上膛');
+  assert.deepEqual(mirrorOwned(p0), ['hex_mirror'], 'premise: 还没复制');
+
+  m._timeoutHexDraft();   // what the draft deadline runs for the seat that never answered
+
+  assert.equal(m.hex, null, '草稿收尾了');
+  assert.deepEqual(mirrorOwned(p0).slice().sort(), ['hex_mirror', 'hex_stipend'], '超时补选出来的那张照样被复制');
+  assert.equal(m.pendingMirror.length, 0, '上膛的复制已经兑现');
+  h.invariants();
+  m.dispose();
+});
+
 test('虫群 (countAdd) also reaches the prep preview, so the round is never under-reported', () => {
   const h = makeMatch({ mode: 'coop', difficulty: 'NORMAL', humans: 1, bots: 1, seed: 77, fake: true });
   h.start();

@@ -736,3 +736,45 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   场景里没有「尸山装备者被控」的组合。
 - **[ASSUMED]** 业主只点了「晕眩和冻结等特殊状态」、没有逐条列：沿用浓缩嗅盐同一条卡面文字在
   `docs/research/04-items.md` §4 的读法（晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹），不扩大成「所有控制状态」。
+## 协议源石装备：【尸山】/【尸山·极】免疫「特殊状态」（2026-11-04，业主裁定）
+
+业主原话：「给尸山装备添加免疫晕眩和冻结等特殊状态」。
+
+- **效果**：装备者免疫「特殊状态」—— **晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹**。装备装上就生效（不等 `battleStart`
+  吃完队友），尸山·极 是另一条记录、同一段行为，所以它同样免疫。
+- **落点**：装备自己的战斗行为 `server/sim/content/items/protocol.js corpseHill` 里一条 `beforeStatus` 钩子
+  （`c.target === u && SPECIAL_STATES.has(c.status) ⇒ c.cancel = true`）—— 与【浓缩嗅盐】`chess_item_4_10_e`
+  用的是同一个引擎钩子。
+- **一张表，两件装备**：`server/sim/buffs.js` 新增导出 `SPECIAL_STATES`；【浓缩嗅盐】原来的私有 `CC` 集合改成读它，
+  免得两处各写一份而漂移。
+- **不是「控制免疫」**：寒冷是减益、不是控制状态，照常挂上（只是它与第二层寒冷成对转成的 `freeze` 会被取消）；
+  束缚 / 沉默 / 恐惧 / 缴械 / 停顿 / 减速 / 缚地 不在表里 —— 与浓缩嗅盐的既有口径逐条相同。
+- **卡面**：`tools/build-data.mjs` 的 `chess_item_9_95_e_a` / `_b` 与 `tools/hextech/roster.mjs` 的 `hex_corpsehill`
+  都补一句「装备者免疫晕眩、冻结等特殊状态」；`data/items.json` / `data/hextech.json` 由工具重新生成，
+  `public/i18n/en.json` 的卡面 msgid 同步换新。
+- **回归**：`test/content/items.test.js`「尸山 (9_95) 免疫」（两件装备各一条 + 没装这件装备的干员照常被晕眩）；
+  把 `beforeStatus` 钩子收走时它会红（已验证）。**golden 不移动**：本改动只在装备装上时多挡几个状态，既有 golden
+  场景里没有「尸山装备者被控」的组合。
+- **[ASSUMED]** 业主只点了「晕眩和冻结等特殊状态」、没有逐条列：沿用浓缩嗅盐同一条卡面文字在
+  `docs/research/04-items.md` §4 的读法（晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹），不扩大成「所有控制状态」。
+## 协议源石装备：【尸山】/【尸山·极】免疫「特殊状态」（2026-11-04，业主裁定）
+
+业主原话：「给尸山装备添加免疫晕眩和冻结等特殊状态」。
+
+- **效果**：装备者免疫「特殊状态」—— **晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹**。装备装上就生效（不等 `battleStart`
+  吃完队友），尸山·极 是另一条记录、同一段行为，所以它同样免疫。
+- **落点**：装备自己的战斗行为 `server/sim/content/items/protocol.js corpseHill` 里一条 `beforeStatus` 钩子
+  （`c.target === u && SPECIAL_STATES.has(c.status) ⇒ c.cancel = true`）—— 与【浓缩嗅盐】`chess_item_4_10_e`
+  用的是同一个引擎钩子。
+- **一张表，两件装备**：`server/sim/buffs.js` 新增导出 `SPECIAL_STATES`；【浓缩嗅盐】原来的私有 `CC` 集合改成读它，
+  免得两处各写一份而漂移。
+- **不是「控制免疫」**：寒冷是减益、不是控制状态，照常挂上（只是它与第二层寒冷成对转成的 `freeze` 会被取消）；
+  束缚 / 沉默 / 恐惧 / 缴械 / 停顿 / 减速 / 缚地 不在表里 —— 与浓缩嗅盐的既有口径逐条相同。
+- **卡面**：`tools/build-data.mjs` 的 `chess_item_9_95_e_a` / `_b` 与 `tools/hextech/roster.mjs` 的 `hex_corpsehill`
+  都补一句「装备者免疫晕眩、冻结等特殊状态」；`data/items.json` / `data/hextech.json` 由工具重新生成，
+  `public/i18n/en.json` 的卡面 msgid 同步换新。
+- **回归**：`test/content/items.test.js`「尸山 (9_95) 免疫」（两件装备各一条 + 没装这件装备的干员照常被晕眩）；
+  把 `beforeStatus` 钩子收走时它会红（已验证）。**golden 不移动**：本改动只在装备装上时多挡几个状态，既有 golden
+  场景里没有「尸山装备者被控」的组合。
+- **[ASSUMED]** 业主只点了「晕眩和冻结等特殊状态」、没有逐条列：沿用浓缩嗅盐同一条卡面文字在
+  `docs/research/04-items.md` §4 的读法（晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹），不扩大成「所有控制状态」。
