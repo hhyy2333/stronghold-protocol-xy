@@ -87,6 +87,10 @@ export class MatchCombat {
       fieldId: `n:${ps.playerId}`,
       enemyOverrides: wave.overrides,
       waveId: wave.templateId,
+      // 第16回合「木桩演练」的到时间自爆（业主 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」，游戏秒）：由
+      // waves.js buildNormalWave 从 rounds[16].enemySelfDestructAt（real 秒）折出来。只有声明了这一格的回合才带这个键
+      // —— 其它回合的 opts / spec 逐字节不变（服务端真跑、客户端 BattleSpec、复算读的是同一份）。
+      ...(Number.isFinite(wave.enemySelfDestructAt) ? { enemySelfDestructAt: wave.enemySelfDestructAt } : {}),
       // 限伤 override for the CLIENT-run spec (shared/constants.js bossHitLimitFrom): only present when a deployment
       // set it, so an unconfigured server sends byte-for-byte the old spec (and server/sim/spec.js is left untouched
       // by the key's absence).

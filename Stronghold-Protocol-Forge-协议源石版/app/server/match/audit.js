@@ -472,13 +472,17 @@ export function attachAudit(m, { invariants = true, limit = 200 } = {}) {
         // after 联防 a leaker pays for every surviving enemy of its source — enemies spawned by its leaked enemies
         // (splitters, summoners) included — so only the cap bounds it; everybody else never exceeds own leaks
         const max = uniteRan && plan.leakers.includes(ps) ? cap : Math.min(cap, counted);
+        // 第16回合「木桩演练」(owner 2026-11-05): the settlement charges NO LP there (settle.js `dummyRound`), so the
+        // expected charge is 0 — not min(cap, counted) — and nobody can be eliminated by that round.
+        const dummyRound = gd.dummyRound != null && m.round === gd.dummyRound;
         if (ps.alive) {
           const loss = lp0 - ps.lp;
           if (loss < 0) fail(`${ps.playerId}: LP rose in settle ${lp0} → ${ps.lp}`);
           if (loss > max) fail(`${ps.playerId}: lost ${loss} LP with ${counted} counted leaks (cap ${cap})`);
-          if (!uniteRan && loss !== max) fail(`${ps.playerId}: lost ${loss} LP, expected min(${cap}, ${counted})`);
+          if (!uniteRan && loss !== (dummyRound ? 0 : max)) fail(`${ps.playerId}: lost ${loss} LP, expected ${dummyRound ? '0 (the dummy round locks LP)' : `min(${cap}, ${counted})`}`);
           if (ps.lp <= 0) fail(`${ps.playerId}: alive with LP ${ps.lp}`);
         } else {
+          if (dummyRound) fail(`${ps.playerId}: eliminated in the dummy round (its LP loss is locked to 0)`);
           // eliminated: LP is clamped to 0, so the loss was ≥ lp0 and still ≤ min(cap, counted)
           if (lp0 > max) fail(`${ps.playerId}: eliminated from ${lp0} LP with only ${counted} counted leaks`);
           if (ps.eliminatedRound !== m.round) fail(`${ps.playerId}: eliminated round ${ps.eliminatedRound} != ${m.round}`);

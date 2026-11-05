@@ -4577,6 +4577,11 @@ function enemyScaleFor(table, type, difficulty, round, isHidden) {
  * SINGLE modes are untimed (`null`, docs/DATA.md §1.1, prep.js prepDeadlineSeconds, test/data.test.js:276), MULTI modes
  * take the research's 195.
  *
+ * `enemySelfDestructAt` (owner 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」) is the round's own 自爆 moment in REAL
+ * seconds: every enemy still on the field blows up then instead of being counted as a 漏怪 at the time limit. It is
+ * written only when the research declares one, so a round without the rule keeps the official round shape
+ * (`rounds[r]` has no such key ⇒ `GameData.enemySelfDestructAt` returns null ⇒ the battle is byte-for-byte the old one).
+ *
  * `enemyScale["16"]` is written too, and must stay NEUTRAL: `enemyScaleFor` clamps a round past the table's end to its
  * LAST row (ABYSS kHp 7 ⇒ hp ×2.87), and `server/match/waves.js templateSpawns` multiplies every non-leader spawn by
  * that round's scale — the dummy's declared maxHp would arrive on the field 2.87× larger.
@@ -4588,6 +4593,7 @@ function addDummyRound(ctx, modes) {
   const round = d.round;
   const cfg = round.cfg && typeof round.cfg === 'object' ? round.cfg : {};
   const r = String(round.round);
+  const selfDestructAt = Number(cfg.enemySelfDestructAt);
   for (const modeId of round.modes) {
     const mode = modes[modeId];
     if (!mode) { warn(`dummy round: mode ${modeId} is not in the official mode table`); continue; }
@@ -4599,6 +4605,8 @@ function addDummyRound(ctx, modes) {
       bossTemplates: cfg.bossTemplates ?? null,
       combatTimeLimit: cfg.combatTimeLimit ?? null,
       levelMaxPlayTime: cfg.levelMaxPlayTime ?? null,
+      // 到时间自爆（业主 2026-11-05）：只有声明了这一格的回合才有，官方回合的 rounds[r] 形状一字不多
+      ...(Number.isFinite(selfDestructAt) && selfDestructAt > 0 ? { enemySelfDestructAt: selfDestructAt } : {}),
       prepTime: mode.type === 'SINGLE' ? (cfg.prepTimeSolo ?? null) : (cfg.prepTime ?? null),
       prepTimeData: cfg.prepTimeData ?? null,
       isSpPrepare: !!cfg.isSpPrepare, isBoss: !!cfg.isBoss, isHidden: !!cfg.isHidden,

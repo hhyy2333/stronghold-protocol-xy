@@ -428,7 +428,10 @@ export function buildNormalWave(gd, rng, factions, round, stageId = null) {
   const templateId = stageTemplateId(gd, stageId, round) ?? (rc && typeof rc.template === 'string' ? rc.template : null);
   const tpl = templateId ? gd.wave(templateId) : null;
   const timeLimit = gd.combatTimeLimit(round);
-  if (!tpl) return { templateId, spawns: [], routes: [], extraRoutes: [], timeLimit, overrides: {}, pick: null, entries: { ground: null, fly: null }, actions: [] };
+  // 第16回合「木桩演练」的到时间自爆（业主 2026-11-05，docs/research/17-dummy-round.json）：只在声明了这一格的回合上出现，
+  // 其它回合的 wave 对象逐字节不变（`enemySelfDestructAt` 这个键根本不写）。
+  const enemySelfDestructAt = gd.enemySelfDestructAt(round);
+  if (!tpl) return { templateId, spawns: [], routes: [], extraRoutes: [], timeLimit, overrides: {}, pick: null, entries: { ground: null, fly: null }, actions: [], ...(enemySelfDestructAt != null ? { enemySelfDestructAt } : {}) };
   const pick = roundPick(gd, rng, factions, round);
   const { spawns, actions } = templateSpawns(gd, tpl, round, pick);
   return {
@@ -437,6 +440,7 @@ export function buildNormalWave(gd, rng, factions, round, stageId = null) {
     routes: Array.isArray(tpl.routes) ? tpl.routes : [],
     extraRoutes: Array.isArray(tpl.extraRoutes) ? tpl.extraRoutes : [],
     timeLimit,
+    ...(enemySelfDestructAt != null ? { enemySelfDestructAt } : {}),
     overrides: tpl.overrides && typeof tpl.overrides === 'object' ? tpl.overrides : {},
     pick,
     entries: entriesView(gd, pick),

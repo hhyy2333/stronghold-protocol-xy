@@ -21,6 +21,12 @@ export class MatchSettle {
     // the pending in-battle gains the views showed become persistent below (alive players) or lapse (DESIGN §20.15)
     for (const ps of this.order) if (ps.pendingLayerGains) { ps.pendingLayerGains = null; ps.dirty(); }
     const cap = this.gd.lpCapPerRound;
+    // 第16回合「木桩演练」(owner 2026-11-05「回合结束后玩家血量锁定不变」): the round after the Hidden Core is a DPS
+    // measurement, not a rule round, so its settlement charges NO LP — the same "locked" reading 背水一战 uses below.
+    // Belt and braces on top of the battle-side 到时间自爆 (waves.js `enemySelfDestructAt`): an enemy that leaked EARLIER in
+    // the round (a 悬赏 the player took, an 协议源石 enemy walking past) is still in `r.leaked`, and this is the match's
+    // LAST round — a 3-point charge there eliminated the player and showed 游戏失败 even though the round was won.
+    const dummyRound = this.gd.dummyRound != null && this.round === this.gd.dummyRound;
     // a 联防 battle that could not run at all (synthetic result) must not wipe the leakers' losses: charge their own leaks
     const uniteRan = !!(plan && uniteResult && !uniteResult.synthetic);
     const survivors = uniteRan ? uniteSurvivors(plan, uniteResult) : null;
@@ -45,7 +51,7 @@ export class MatchSettle {
       // 背水一战 (业主 2026-10-24): 「锁血两回合」 — while the card's window is open the target life does NOT drop, however
       // many enemies leaked. The stats count what was actually charged (0), so the panel never reports a fake loss.
       const locked = lpLockedIn(ps, this.round);
-      const loss = locked ? 0 : Math.min(cap, rawLoss + (rawLoss > 0 ? levelLeak : 0));
+      const loss = locked || dummyRound ? 0 : Math.min(cap, rawLoss + (rawLoss > 0 ? levelLeak : 0));
       if (this.uniteResultView) this.uniteResultView.losses[ps.playerId] = loss;
       ps.lp -= loss;
       ps.stats.lpLost += loss;

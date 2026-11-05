@@ -15,6 +15,12 @@
 // The kit is exercised on a SYNTHETIC record (enemyRec) so these tests need no generated data; the last test pins the real
 // data/enemies.json row against the same contract and runs as soon as build-data has generated it.
 //
+// The round ALSO has a field-level rule (owner 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」＋「最后5秒内所有怪物强制
+// 自杀」): `Battle opts.enemySelfDestructAt` (game seconds) makes every enemy on the field blow up at the end of the
+// measurement window — a death, not a kill and not a leak — so the round cannot end on the 超时 path that counted the
+// survivors as 漏怪 and charged the match's last-round LP. That rule is not part of the kit; the tests at the bottom pin
+// it on a round-16-shaped field (the dummy + another standing enemy, no operators).
+//
 // Run: `node test/sim/dummy.test.js` (the sandbox cannot spawn `node --test` subprocesses).
 
 import { test } from 'node:test';
@@ -240,3 +246,70 @@ test('data: enemy_9901_dummy carries the contract stats (a copy of enemy_9033_ac
     // the kit must still be the thing that stops it, not the row's speed alone
     assert.equal(KITS[KEY], DUMMY_KITS[KEY]);
   });
+
+// ---------------------------------------------------------------------------------------------------------------
+// 到时间自爆: the round-level rule (`Battle opts.enemySelfDestructAt`, owner 2026-11-05)
+
+/** A second enemy that also never moves (the dummy's own kit is not what keeps it on its tile) — the 悬赏 / 协议源石
+ *  enemies round 16 can put next to the post behave like this one once they are standing. */
+const postRec = () => enemyRec({ key: 'enemy_post', hp: 1e6, atk: 0, speed: 0, lpr: 0 });
+
+/** A round-16-shaped field: the 木桩 plus one more standing enemy, no operators, the battle-level 自爆 moment. */
+function selfDestructBattle(opts = {}) {
+  return makeBattle({
+    content: 'full', timeLimit: 15, autoFinish: true, captureNoisy: true,
+    hooks: ['death', 'kill', 'enemyLeak'],
+    defs: { enemies: { [KEY]: dummyRec(), enemy_post: postRec() } },
+    units: [],
+    enemies: [{ key: KEY, time: 0, route: 0 }, { key: 'enemy_post', time: 0, route: 0 }],
+    ...opts,
+  });
+}
+
+test('到时间自爆: at enemySelfDestructAt every enemy blows up — a death, not a kill and not a leak — and the battle clears', () => {
+  const h = selfDestructBattle({ enemySelfDestructAt: 10 });
+  h.run(9);
+  assert.equal(h.b.finished, false, 'nothing happens before the moment');
+  assert.equal(h.enemies().length, 2, 'both enemies are still on the field at 9 s');
+  const res = h.runToEnd();
+  assert.equal(res.reason, 'cleared', 'the round ends because the field emptied, not by its time limit');
+  assert.ok(Math.abs(res.time - 10) < 0.05, `it ended at the 自爆 moment (10 game s), got ${res.time}`);
+  const pp = res.perPlayer.p1;
+  assert.equal(pp.leaked.length, 0, 'no 漏怪 — that is the whole point (the settle charges LP per counted leak)');
+  assert.equal(pp.perfect, true, '完美作战 is not broken by a self-destruct');
+  assert.equal(pp.killed, 0, 'nobody was killed: a 自爆 is no 击倒');
+  assert.equal(h.b.killed, 0);
+  assert.equal(h.b.leakedCount, 0);
+  assert.equal(h.enemy(KEY).alive, false, 'the 木桩 itself blew up — its 锁血 is a damage hook and this path is no damage');
+  assert.equal(h.hooksOf('death').filter((c) => c.reason === 'selfdestruct').length, 2, 'both died through the engine');
+  assert.ok(h.hooksOf('death').every((c) => c.reason !== 'selfdestruct' || c.killer == null), 'no killer');
+  assert.equal(h.hooksOf('kill').length, 0, 'the kill hook never fires (a self-destruct is no knock-out)');
+  assert.equal(h.hooksOf('enemyLeak').length, 0, 'and nothing leaks');
+  checkInvariants(h.b);
+});
+
+test('without the option (every official round) the same field still ends on its time limit and counts the survivors as 漏怪', () => {
+  // The regression pin for the OLD behaviour the owner reported: 超时 records every surviving non-leader enemy as a counted
+  // leak (battle/lifecycle.js _timeout), and the settle charges one LP per counted leak — 3 leaks in round 16 were 3 LP.
+  const h = selfDestructBattle({ timeLimit: 12 });
+  const res = h.runToEnd();
+  assert.equal(res.reason, 'timeout');
+  assert.ok(Math.abs(res.time - 12) < 0.05, `it ran to the time limit, got ${res.time}`);
+  const pp = res.perPlayer.p1;
+  assert.equal(pp.leaked.length, 2, 'both survivors became counted leaks');
+  assert.equal(pp.perfect, false);
+  checkInvariants(h.b);
+});
+
+test('到时间自爆 pays no bounty: a self-destructed 悬赏 enemy mints no coins (nobody knocked it down)', () => {
+  const h = selfDestructBattle({
+    enemySelfDestructAt: 5,
+    defs: { enemies: { [KEY]: dummyRec(), enemy_post: postRec() } },
+    enemies: [{ key: 'enemy_post', time: 0, route: 0, bounty: { coins: 7 } }],
+  });
+  const res = h.runToEnd();
+  assert.equal(res.reason, 'cleared');
+  assert.equal(res.perPlayer.p1.coins, 0, 'a 自爆 is not a 击倒 — the bounty is not paid');
+  assert.equal(h.hooksOf('kill').length, 0);
+  checkInvariants(h.b);
+});

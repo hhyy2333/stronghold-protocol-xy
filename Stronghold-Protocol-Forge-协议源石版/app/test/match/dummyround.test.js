@@ -12,6 +12,8 @@ import { GameData } from '../../server/match/gamedata.js';
 import { buildNormalWave } from '../../server/match/waves.js';
 import { matchEnemyMods } from '../../server/match/hextech.js';
 import { createRng } from '../../server/sim/rng.js';
+import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
+import { attachAudit } from '../../server/match/audit.js';
 import { FakeBattle } from './fakeBattle.js';
 import { DATA, makeMatch, checkInvariants } from './harness.js';
 
@@ -30,10 +32,17 @@ test('data: the six hidden-core modes have rounds["16"] + dummyRound; lastRound 
     assert.equal(gd.dummyRound, 16, `${modeId}: gd.dummyRound`);
     assert.equal(rc.template, 'custom_dummy', `${modeId}: template`);
     assert.equal(rc.bossTemplates, null, `${modeId}: not a leader round`);
-    // 60 real seconds = the measurement window (× combatTimeScale 2 = 120 game s)
-    assert.equal(rc.combatTimeLimit, 60, `${modeId}: combatTimeLimit`);
-    assert.equal(rc.levelMaxPlayTime, 60, `${modeId}: levelMaxPlayTime`);
-    assert.equal(gd.combatTimeLimit(16), 120, `${modeId}: 120 game seconds`);
+    // 65 real seconds = the measurement window (60 s) + the 自爆 window (5 s) = 130 game s (× combatTimeScale 2)
+    assert.equal(rc.combatTimeLimit, 65, `${modeId}: combatTimeLimit`);
+    assert.equal(rc.levelMaxPlayTime, 65, `${modeId}: levelMaxPlayTime`);
+    assert.equal(gd.combatTimeLimit(16), 130, `${modeId}: 130 game seconds`);
+    // owner 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」＋「把第16回合的时间加5秒钟，并且在最后5秒内所有怪物强制自杀」:
+    // the 自爆 moment is the OLD limit (60 real s = 120 game s), so it lands INSIDE the round and the survivors die as
+    // deaths instead of being counted as 漏怪 by the time limit. The measurement window (and therefore every DPS reading)
+    // is the same 60 real seconds it always was.
+    assert.equal(rc.enemySelfDestructAt, 60, `${modeId}: 自爆 at 60 real s`);
+    assert.equal(gd.enemySelfDestructAt(16), 120, `${modeId}: 120 game seconds`);
+    assert.ok(gd.enemySelfDestructAt(16) < gd.combatTimeLimit(16), `${modeId}: the 自爆 lands inside the round`);
     assert.equal(rc.isBoss, false, `${modeId}: isBoss`);
     assert.equal(rc.isHidden, false, `${modeId}: isHidden`);
     assert.equal(rc.isDummy, true, `${modeId}: isDummy`);
@@ -48,6 +57,9 @@ test('data: the six hidden-core modes have rounds["16"] + dummyRound; lastRound 
     // neutral enemy multipliers: any other value would scale the dummy's 2,000,000,000 (enemyScaleFor clamps a round past
     // the table to its last row — ABYSS kHp 7 ⇒ hp ×2.87 — and waves.js templateSpawns multiplies every non-leader spawn)
     assert.deepEqual(gd.enemyScale(16), { hpMul: 1, atkMul: 1, speedMul: 1 }, `${modeId}: neutral enemyScale`);
+    // …and the 自爆 rule belongs to round 16 alone: no official round declares one
+    for (let r = 1; r <= 15; r++) assert.equal(gd.enemySelfDestructAt(r), null, `${modeId}: round ${r} has no 自爆`);
+    assert.equal(gd.enemySelfDestructAt(17), null, `${modeId}: no round 17`);
   }
   for (const modeId of NO_DUMMY_MODES) {
     const gd = new GameData(DATA, modeId);
@@ -120,11 +132,14 @@ test('wave: custom_dummy has exactly ONE spawn — the dummy itself, not a leade
     const ch = st.rows && st.rows[3] && st.rows[3][10];
     assert.ok(ch && ch !== '#' && ch !== 'X', `${id}: the dummy's tile (3,10) must be walkable, got ${ch}`);
   }
-  assert.equal(wave.timeLimit, 120, '60 real seconds × the forced 2× speed');
+  assert.equal(wave.timeLimit, 130, '65 real seconds × the forced 2× speed');
+  // owner 2026-11-05「到时间自动爆炸」: the round's own 自爆 moment travels with the wave (game seconds), so `_normalOpts`
+  // can put it on the battle opts / BattleSpec without the battle having to know what round it is.
+  assert.equal(wave.enemySelfDestructAt, 120, 'the old 60 real-second limit: the 自爆 window is the last 5 s of the round');
   // the data file agrees with what the runtime built
   const tpl = gd.wave('custom_dummy');
   assert.equal(tpl.kind, 'normal');
-  assert.equal(tpl.maxPlayTime, 60);
+  assert.equal(tpl.maxPlayTime, 65);
   assert.equal(tpl.spawns.length, 1);
   assert.deepEqual(tpl.usedBy.map((u) => [u.modeId, u.round, u.bossId]), DUMMY_MODES.map((m) => [m, 16, null]));
 });
@@ -161,7 +176,8 @@ for (const [label, opts] of [
     assert.equal(h.publicView().dummyRound, 16, 'm.public carries dummyRound');
     // single-player prep is untimed by convention (prep.js prepDeadlineSeconds) — the data's prepTime is 195 only for MULTI
     assert.equal(m.prepDeadlineSeconds(), m.gd.isSolo ? null : 195);
-    // the dummy is the only enemy of the round, and the battle window is the 60 real seconds the round declares
+    // the dummy is the only enemy of the round, and the battle window is the 65 real seconds the round declares — with
+    // the 自爆 at the old 60 s mark riding on the battle opts (owner 2026-11-05)
     h.drive(() => m.phase === PHASE.COMBAT && m.round === 16);
     const fields = normalFields(16);
     assert.ok(fields.length >= 1, 'the round\'s battles were created');
@@ -171,7 +187,10 @@ for (const [label, opts] of [
     const hexHp = Number.isFinite(hex.hpMul) ? hex.hpMul : 1;
     for (const f of fields) {
       assert.equal(f.opts.waveId, 'custom_dummy');
-      assert.equal(f.opts.timeLimit, 120);
+      assert.equal(f.opts.timeLimit, 130);
+      // 业主 2026-11-05「到时间自动爆炸」: the field carries the 自爆 moment, so the server-run battle, the client's
+      // BattleSpec and the 复算 all end the round the same way.
+      assert.equal(f.opts.enemySelfDestructAt, 120, `${f.opts.fieldId}: 自爆 at 120 game s`);
       const dummy = f.opts.spawns.filter((s) => s.enemyKey === 'enemy_9901_dummy');
       assert.equal(dummy.length, 1, `${f.opts.fieldId}: one dummy spawn group`);
       assert.ok(dummy[0].count >= 1);
@@ -207,4 +226,68 @@ test('mode without a hidden core (FUNNY): the match still ends at the Final Assa
   assert.equal(m.round, 14);
   checkInvariants(m);
   m.dispose();
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// 到时间自爆 / LP 锁定 (owner 2026-11-05「第十六回合结束时会扣3点血…回合结束后玩家血量锁定不变」)
+
+test('solo HARD: 第16回合结算不扣 LP —— 就算这一回合漏了 3 只（旧口径 3 点，协议等级 18 / 19 再 +2）也一点不扣', () => {
+  // The reported bug: the round's time limit counted every surviving enemy as a 漏怪 (the dummy + the 悬赏 / 协议源石
+  // enemies of the round), the settle charged one LP per counted leak, and on the match's LAST round that eliminated the
+  // player and showed 游戏失败. The field-side 自爆 empties the field; this pins the belt-and-braces half: the settlement
+  // itself charges nothing there, so even an enemy that leaked EARLIER in the round costs no LP.
+  const h = makeMatch({
+    mode: 'solo', difficulty: 'HARD', seed: 64, fake: true,
+    script: (b) => (b.kind === 'boss' || b.kind === 'hidden' ? { bossDps: 1e9 } : b.round === 16 ? { leaks: { p_0: 3 } } : {}),
+  }).start();
+  const m = h.m;
+  // the rule auditor (`tools/matchrun.mjs --check` uses the same attachAudit) checks the settlement's LP charge: its
+  // settle rule knows the dummy round charges 0 (server/match/audit.js), so a regression on either side fails here.
+  attachAudit(m);
+  h.toPrep(14);
+  h.drive(() => m.phase === PHASE.FINAL_ASSAULT);
+  m.hiddenLayerSum = 1e6;
+  h.drive(() => m.phase === PHASE.PREP && m.round === 16);
+  const ps = m.players.get('p_0');
+  const lp0 = ps.lp;
+  const lost0 = ps.stats.lpLost;
+  h.drive(() => h.ended != null);
+  assert.ok(h.ended, 'the match finished');
+  assert.equal(m.round, 16, 'it ended on the dummy round');
+  assert.equal(m.lastResults.get('p_0').leaked.length, 3, 'the scripted leaks really happened');
+  assert.equal(ps.lp, lp0, 'LP is unchanged: the dummy round locks it');
+  assert.equal(ps.stats.lpLost, lost0, 'and the panel reports no fake loss');
+  assert.equal(h.ended.victory, true, 'the round is still a victory');
+  assert.equal(h.ended.hiddenCleared, true);
+  assert.equal(h.ended.roundsPassed, 15);
+  checkInvariants(m);
+  m.dispose();
+});
+
+test('a normal round still charges LP for its leaks — the lock is the dummy round only', () => {
+  const h = makeMatch({
+    mode: 'solo', difficulty: 'HARD', seed: 66, fake: true,
+    script: (b) => (b.kind === 'boss' || b.kind === 'hidden' ? { bossDps: 1e9 } : b.round === 13 ? { leaks: { p_0: 3 } } : {}),
+  }).start();
+  const m = h.m;
+  h.toPrep(13);
+  const ps = m.players.get('p_0');
+  const lp0 = ps.lp;
+  h.toPrep(14);
+  assert.equal(ps.lp, lp0 - 3, 'R13 charged min(lpCapPerRound, 3 counted leaks) = 3, exactly as before');
+  checkInvariants(m);
+  m.dispose();
+});
+
+test('spec: the 自爆 moment survives the BattleSpec round trip — the server run, the client and 复算 all see it', () => {
+  // The client fights from this spec and the server re-simulates it (server/match/match/clientCombat.js _specBattle): a
+  // key that stopped at one of the two sides would end the round differently on each, which the verifier reports as a
+  // dishonest result. `createBattleFromSpec` reads it back into the battle option.
+  const spec = buildBattleSpec({ seed: 3, kind: 'normal', round: 16, timeLimit: 130, players: [], spawns: [], routes: [], enemySelfDestructAt: 120 });
+  assert.equal(spec.enemySelfDestructAt, 120);
+  assert.equal(createBattleFromSpec(spec, DATA).enemySelfDestructAt, 120);
+  // every other round / an old data set: the key is absent and the battle behaves exactly as before
+  const plain = buildBattleSpec({ seed: 3, kind: 'normal', round: 1, timeLimit: 120, players: [], spawns: [], routes: [] });
+  assert.equal('enemySelfDestructAt' in plain, false, 'no key ⇒ byte-for-byte the old spec');
+  assert.equal(createBattleFromSpec(plain, DATA).enemySelfDestructAt, null);
 });

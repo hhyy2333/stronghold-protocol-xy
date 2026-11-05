@@ -152,6 +152,10 @@ export class BattleLifecycle {
 
   _checkEnd() {
     if (this.finished) return;
+    // 第16回合「木桩演练」的到时间自爆（业主 2026-11-05）：量输出窗口一到，场上所有敌人自爆 —— 回合于是以 cleared 结束，
+    // 而不是在时限上把活着的敌人记成漏怪（`_timeout` 会那样做，而那笔 LP 会淘汰玩家）。规则只在数据声明了
+    // `rounds[16].enemySelfDestructAt` 的回合上存在（`this.enemySelfDestructAt` 为 null ⇒ 这段一行都不跑）。
+    if (this.enemySelfDestructAt != null && this.time >= this.enemySelfDestructAt - 1e-9) this._selfDestructEnemies();
     if (this.sharedBoss && this.sharedBoss.hp <= 0) { this._finish('cleared'); return; }
     // A boss / hidden field with a shared pool ends only when the pool is empty or the match forces an end (DESIGN
     // §5.5) — never merely because it emptied: the h07_04 pair leader (official route: no wait) can walk into the
@@ -167,6 +171,25 @@ export class BattleLifecycle {
   _hasPendingEnemySchedules() {
     for (const s of this._sched) if (!s.cancelled && s.holdsBattle) return true;
     return false;
+  }
+
+  /**
+   * 第16回合「木桩演练」的到时间自爆（业主 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」＋「最后5秒内所有怪物强制自杀」）：
+   * 量输出窗口结束（`this.enemySelfDestructAt`，游戏秒）后，场上**所有**敌人自爆 —— 木桩，以及这一回合插进来的悬赏 /
+   * 协议源石敌人（它们本来会在时限上被算成漏怪，各自扣 1 点 LP）。
+   *
+   * 口径（为什么不走 `kill`）：`_remove(e, 'selfdestruct')` 是「移除」，不是「被击倒」——
+   *   · 不记击杀（`killed` / `killedInTotal` / 干员的击杀数都不动），玩家没有打死它；
+   *   · 不付悬赏金（`kill` 会走 `_bountyPayee`，自杀不该付钱）；
+   *   · 不记漏怪（`leaked` 不变 ⇒ 完美作战不被破坏，结算不扣 LP）；
+   *   · `die` 事件照发（客户端照常播死亡动画），`death` 钩子带 reason 'selfdestruct'，所以「被击倒后…」类亡语不触发。
+   * 木桩的锁血（kit 的 `fatal` 钩子）不在这条路径上：自爆是引擎的移除，不经过伤害结算，所以锁血拦不住它，也不需要拦。
+   */
+  _selfDestructEnemies() {
+    for (const e of this.enemies) {
+      if (!e || !e.alive) continue;
+      this._remove(e, 'selfdestruct');
+    }
   }
 
   _timeout() {
