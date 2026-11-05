@@ -116,6 +116,10 @@ export const DMG_STYLE = Object.freeze({
   true: { font: 'sp-dmg-true', fill: ['#ffffff', '#e8e8e8'], stroke: '#2a2a2a' },
   heal: { font: 'sp-dmg-heal', fill: ['#eafff0', '#62f08a'], stroke: '#07361a' },
   elem: { font: 'sp-dmg-elem', fill: ['#fff4e0', '#ff7b3a'], stroke: '#3a1000' },
+  // 圣佑的累计子弹狙击（业主 2026-11-05「战斗中实时对狙击伤害以蓝色数字跳字」）：蓝色数字，和物理（橙）/ 法术（紫）
+  // / 真实（白）三种伤害色都分得开。b.ev 的 'dmg' 第 6 格给出这个键（server/sim/damage.js `numStyle`），
+  // 没给就还是按伤害类型选样式。
+  snipe: { font: 'sp-dmg-snipe', fill: ['#eef7ff', '#4ea8ff'], stroke: '#06213f' },
 });
 
 /** Map b.ev dmg types to a style key. */
@@ -125,8 +129,8 @@ export function dmgStyleKey(type) {
   return 'phys';
 }
 
-/** Hit spark colour per damage type. */
-export const HIT_TINT = Object.freeze({ phys: 0xffd9a0, arts: 0xc77dff, true: 0xffffff, heal: 0x62f08a, elem: 0xff7b3a });
+/** Hit spark colour per damage type (a 'snipe' number — 圣佑的狙击 — keeps its blue glow too). */
+export const HIT_TINT = Object.freeze({ phys: 0xffd9a0, arts: 0xc77dff, true: 0xffffff, heal: 0x62f08a, elem: 0xff7b3a, snipe: 0x7fc4ff });
 
 /**
  * Projectile visuals per b.ev 'atk' projKind (sim: none | arrow | bolt | bomb | lob | orb | drone | enemy | boomerang | droneBomb;

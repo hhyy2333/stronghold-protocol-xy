@@ -1847,6 +1847,7 @@
   "实际伤害＝该单位从敌方身上扣掉的生命值：被护盾吸收、过量伤害、闪避、被取消的限伤都不计入": "Actual damage = the HP that unit took off the enemy side: absorbed by shields, overkill, dodges and a cancelled damage cap are not counted",
   "元素爆发本身无来源，但它的伤害记在填满元素槽的那名单位头上": "An element burst is sourceless, but its damage is credited to the unit that filled the gauge",
   "召唤物的伤害并入部署它的干员；没有归属的召唤物与场地装置单独一行": "A summon’s damage is folded into the operator that deployed it; an unowned summon and a field device get a row of their own",
+  "协议源石【圣佑】的累计子弹狙击单独一行，不重复计入拉特兰干员": "Sanctuary’s cumulative snipe damage gets a row of its own and is not counted again for the Laterano operator",
   "自身流失与友方伤害不算造成伤害；治疗量单独统计，不并入这里": "Self-inflicted HP loss and friendly damage are not damage dealt; healing is tracked separately and is not folded in here",
   "伤害": "Damage",
   "承伤": "Damage taken",

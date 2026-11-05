@@ -1213,6 +1213,8 @@ button.bpop__harmony:hover { border-style: solid; color: #fff; }
 .dmgrow__art .uthumb { --ut: .34rem; }
 .dmgrow__dev { display: grid; place-items: center; width: .3rem; height: .3rem; background: rgba(8, 11, 10, .8); border: 1px solid var(--line-2); }
 .dmgrow__dev .icon { width: .18rem; height: .18rem; color: var(--amber, var(--gold-2)); }
+/* 协议源石那一行（圣佑的累计子弹狙击）：图标用和蓝色跳字同一族的蓝，与装置行的琥珀色分开 */
+.dmgrow__dev.dmgrow__hex .icon { color: #4ea8ff; }
 .dmgrow__who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .03rem; }
 .dmgrow__name {
   display: flex; align-items: center; gap: .05rem; font-size: max(calc(.15 * var(--t)), 11px); color: var(--text-hi);

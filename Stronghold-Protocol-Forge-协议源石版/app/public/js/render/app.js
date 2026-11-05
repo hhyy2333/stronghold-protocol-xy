@@ -1699,7 +1699,8 @@ export async function createFieldView(host, options = {}) {
         if (m && now - m.t < 0.35) { src = m.src; meleePending.delete(v.id); fx._slashAt = src.id; }
         // an official hit drawn for this damage replaces the procedural spark / slash (the numbers stay)
         const official = wiring.damage(v, e[3], src, now);
-        fx.damage(v, amt, e[3], src, e[4], official ? NO_SPARK : undefined);
+        // 第 6 格 = 数字样式（server/sim/damage.js numStyle；圣佑狙击的蓝色跳字），没有就是按伤害类型选样式
+        fx.damage(v, amt, e[3], src, e[4], official ? NO_SPARK : undefined, e[5]);
         break;
       }
       case 'heal': { const v = views.get(e[1]); if (v) fx.heal(v, Number(e[2]) || 0, wiring.heal(v, now) ? NO_SPARK : undefined); break; }

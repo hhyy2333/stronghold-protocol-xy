@@ -600,6 +600,13 @@ export function fitResult(result, { bossLike = false, budget = RESULT_FRAME_BUDG
  * whose half it stands on) get a row of their own, so nothing is lost. [ASSUMED] the official panel lists 干员 only;
  * folding summons into their owner is this implementation's reading of that (no source settles it).
  *
+ * A row of `kind: 'hex'` is a DISPLAY-ONLY split of damage that has no unit of its own (协议源石【圣佑】的累计子弹狙击,
+ * 业主 2026-11-05「在实时伤害统计表里面添加圣佑的子弹狙击伤害」): the card banks what it actually dealt on
+ * `battle.reportRows` (`content/support/index.js addReportRow`), and this function moves that amount out of the operator
+ * row it was counted in and lists it as its own row. The sim's stats, the battle result, the kill credit and the golden
+ * digests are untouched — the panel's total is the same number, only split. A battle whose content never writes
+ * `reportRows` produces exactly the rows it always did.
+ *
  * Rows come back ordered by damage, then knock-outs, then `uid` (board order) — deterministic on both sides, and the
  * client re-orders by whichever metric is selected. Every metric is rounded for display, but they are summed as the
  * sim's floats first, so a player's `Σ dmg` is the result screen's 造成伤害 (a per-row rounding would drift).
@@ -654,6 +661,35 @@ export function damageReport(battle, playerId = null) {
   for (const u of list) if (u && u.kind === 'op' && mine(u)) add(u, true);
   for (const u of list) if (u && u.kind === 'token' && mine(u)) add(u, false);
   for (const u of list) if (u && u.kind === 'device' && mine(u)) add(u, true);
+  // 伤害统计面板的额外行（display-only，业主 2026-11-05「在实时伤害统计表里面添加圣佑的子弹狙击伤害」）：没有单位的
+  // 伤害来源（协议源石【圣佑】的累计子弹狙击）由内容记在 `battle.reportRows`（content/support addReportRow）上。
+  // 这些伤害本来就算在某名干员的 `stats` 里，所以这里把同样的数额从那一行扣掉、再单独成一行：总伤害不变，规则、
+  // 战报与 golden 都不动，只是面板上看得见「这一笔是圣佑打的」。没有内容写 `reportRows` 时这一段什么都不做。
+  for (const r of Array.isArray(battle && battle.reportRows) ? battle.reportRows : []) {
+    if (!r || typeof r.key !== 'string') continue;
+    if (playerId != null && r.ownerId !== playerId) continue;
+    const dmg = Number(r.dmg) || 0;
+    if (!(dmg > 0)) continue;
+    const phys = Number(r.phys) || 0;
+    const absorbed = Number(r.absorbed) || 0;
+    // 每一笔按 `credit` 记的「原本算在谁头上」扣回去（一场战斗里名义来源可能换人：第一个拉特兰干员阵亡后由下一名接手，
+    // 所以按 key 各自累计，不能只认最后一名的 unit）
+    for (const [key, c] of r.credits && typeof r.credits === 'object' ? Object.entries(r.credits) : []) {
+      const from = rows.get(key);
+      if (!from || !c) continue;
+      const cut = Number(c.dmg) || 0;
+      from.dmg = Math.max(0, from.dmg - cut);
+      from.phys = Math.max(0, from.phys - Math.min(cut, from.phys));
+      from.absorbed = Math.max(0, from.absorbed - Math.min(Number(c.absorbed) || 0, from.absorbed));
+    }
+    rows.set(r.key, {
+      key: r.key, uid: null, defId: typeof r.defId === 'string' ? r.defId : null,
+      name: typeof r.name === 'string' ? r.name : '', kind: 'hex', ownerId: r.ownerId ?? null,
+      dmg, taken: 0, heal: 0, kills: 0, folded: 0,
+      phys, arts: 0, true: 0, elem: 0, absorbed,
+      standInFor: null, diy: null, golden: false, tier: 1,
+    });
+  }
   const out = [];
   for (const row of rows.values()) if (row.dmg > 0 || row.taken > 0 || row.heal > 0) out.push(row);
   out.sort((a, b) => b.dmg - a.dmg || b.kills - a.kills || (a.uid ?? 0) - (b.uid ?? 0) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));

@@ -439,6 +439,13 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
     `perPlayer[pid].hexSnipeDamage`（`compactResult` / `validateClientResult` 保留它，**不进** `resultDigest`），
     `player/round.js _addCumStats` 存成玩家计数器 `hex:hex_laterano_sanctuary:snipe`（跨战斗累加）。
     `[ASSUMED]` 卡面没写统计口径：数实际伤害而不是名义上的「累计子弹量 ×325」。
+  - **2026-11-05 加实时显示（业主「在有选择圣佑时，在实时伤害统计表里面添加圣佑的子弹狙击伤害，并且战斗中实时对狙击伤害以蓝色数字跳字」）**：
+    战斗中每一发狙击在**实时伤害统计面板**里单独占一行「圣佑」——狙击没有「单位」可挂，所以卡面把这一笔记进
+    `battle.reportRows`（`content/support/index.js addReportRow`），`spec.js damageReport` 再把它从名义来源的那名
+    拉特兰干员行里扣掉、单独成行：**总伤害不变**，规则 / 战报 / `resultDigest` / golden 都不动，只是拆开显示。
+    客户端把它画成**蓝色**伤害数字：`b.ev` 的 `['dmg', …]` 第 6 格带 `numStyle: 'snipe'`，`render/style.js` 的
+    `DMG_STYLE.snipe`（`fx/fonts.js` 自动为它生成一份位图字体）。`[ASSUMED]` 蓝色只属于本作的数字样式；设置
+    「官方伤害数字」时仍然只画官方红字（那个开关的语义是「只显示官方会显示的数字」）。
 - 【惊惧】`hex_dread`（1 阶）：改为**己方地面干员开启技能时**，其**周围八格**内的敌人战栗 3 秒。
 - 【装甲破坏】`hex_armorbreak`（2 阶）：每次物理伤害的防御削减 −20 → **−80**。
 - 【先锋之势】`hex_vanguard`（2 阶）：先锋首次击杀的 4 资金保留；首次攻击的 +30% 攻击力改为
