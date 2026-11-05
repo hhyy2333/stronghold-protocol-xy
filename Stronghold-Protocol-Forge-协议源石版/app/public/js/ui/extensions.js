@@ -63,6 +63,8 @@ import { setAppearanceLookup, clearAppearanceLookup } from './portraitChain.js';
 // 素材加载源的**排序面**（DESIGN §28.40）：与外观提供者逐字同构的一条注册链 —— 一个提供者、最多一个、点名拒绝。
 // 这个模块没有依赖（不 import common.js/bundle.js），所以面板这条路不因为多了它而变重。
 import { setSourceOrder, clearSourceOrder } from '../resources/sources.js';
+// 「宿主容器长出来了」本身也是一次该试试挂载的信号（见 `slotHostWatch.js` 的头注：商店栏收起 / 展开不碰 store）。
+import { watchSlotHosts } from './slotHostWatch.js';
 // 引擎已经定义好的服务端→客户端类型（`shared/protocol.js S2C`）。**不在这里抄一份**：抄一份就是第二个会漂的真相，
 // 而漂的方向是「一个面板订阅了一个引擎其实不会发的名字」—— 那正是这一层到处在拒绝的形态。
 import { S2C } from '../../../shared/protocol.js';
@@ -495,6 +497,13 @@ export function createPanelRegistry(deps) {
   const wrapModules = new Map();
   let subscribed = false;
   let unsubscribe = null;
+  /**
+   * 宿主容器的 DOM 观察者（`slotHostWatch.js`）：组件渲染出 `[data-mod-slot]` 的那一刻触发一次 `flush()`。
+   * 只有包声明了面板才会装上；`dispose()` 收回去。为什么需要它：容器不是 store 画的，商店栏收起再展开时
+   * Preact 换掉整块宿主，而 store 一个字节都没变 —— 只等 store 变化就等于「等别人的一帧」（业主 2026-11-05）。
+   * @type {Function|null}
+   */
+  let hostWatchOff = null;
   let flushing = false;
   let dirty = false;
   let disposed = false;
@@ -1798,7 +1807,8 @@ export function createPanelRegistry(deps) {
           if (wrapMounts.get(rec.key) === false) continue; // 只改写的模块：不建那个空容器
         }
         // 容器只在组件真的渲染出 `[data-mod-slot]` 之后才存在：没有就是「还没到时候」，不记任何东西，
-        // 下一次 store 变化再试（可重复宿主因此会随着新卡片出现而逐个挂上）。
+        // 下一次 store 变化**或**宿主容器出现（DOM 观察者，`slotHostWatch.js`）时再试（可重复宿主因此会随着
+        // 新卡片出现而逐个挂上，商店栏收起再展开也能立刻补上）。
         const targets = hostTargets(rec);
         if (!targets.length) continue;
         if (!injectStylesOnce(rec)) { for (const { key } of targets) blocked.add(mountKeyOf(rec, key)); continue; }
@@ -1827,6 +1837,9 @@ export function createPanelRegistry(deps) {
     if (subscribed || disposed) return;
     subscribed = true;
     unsubscribe = store.subscribe(() => { void flush(); });
+    // 第二条信号：组件渲染出宿主容器的那一刻（商店栏展开、商店卡出现、房间屏旁栏画出来……）。它们都不碰
+    // store，所以只订阅 store 时，一个面板要等「别人的一帧」才挂得上 —— 玩家看到的就是「按钮过一会儿才刷出来」。
+    if (!hostWatchOff) hostWatchOff = watchSlotHosts(() => { void flush(); });
   }
 
   return {
@@ -1986,6 +1999,11 @@ export function createPanelRegistry(deps) {
       wrapModules.clear();
       if (typeof unsubscribe === 'function') unsubscribe();
       unsubscribe = null;
+      // 宿主观察者与 store 订阅同一个出口：注入过的东西必须能收回来（收回去之后这个页面不再为面板做任何事）。
+      if (typeof hostWatchOff === 'function') {
+        try { hostWatchOff(); } catch (err) { log?.error?.('[mod-panels] host watch disconnect failed', err); }
+      }
+      hostWatchOff = null;
       subscribed = false;
     },
   };

@@ -29,6 +29,9 @@ const ARM_MS = 4000;
 const PENDING_MS = 1500;
 /** 回执行停留时间。 */
 const TOAST_MS = 5000;
+/** 挂载后「货架还没到」时的补问节奏：间隔与次数上限（连接没上线时 `send()` 返回 false，所以那也算一次尝试）。 */
+const HELLO_RETRY_MS = 600;
+const HELLO_TRIES = 20;
 /** 罗马数字阶级（装备是 1~6 阶）。 */
 const TIER_ROMAN = Object.freeze(['I', 'II', 'III', 'IV', 'V', 'VI']);
 
@@ -134,6 +137,8 @@ export function mount(ctx) {
   let armTimer = null;
   let pendingUntil = 0;      // 上一次下单之后按钮空转的截止时刻
   let toastTimer = null;     // 回执行淡出
+  let helloTimer = null;     // 挂载后补问货架的定时器（拿到第一帧就停）
+  let helloTries = 0;        // 已经试过几次 hello（`send()` 返回 false 时也算一次尝试）
   let listSignature = '';    // 列表上一次重画的签名（见 renderList）
   let filterSignature = '';  // 只含「看什么」（件数 / 阶级 / 搜索）的签名：它没变就说明这次重画与滚动无关
   let seenState = false;
@@ -564,10 +569,21 @@ export function mount(ctx) {
   ctx.host.appendChild(root);
   // 初始收起：按钮行里只有一颗「商店」，**不自动弹抽屉**（业主 2026-10-23）。
   applyOpen(false);
-  // 面板可能在对局进行中才挂上（重开界面 / 重连）：在房里就先问一次货架。不在房里就等 enterPrep 的下行帧。
+  // 面板可能在对局进行中才挂上（重开界面 / 重连 / **商店栏收起又展开**：宿主被 Preact 整块换掉，注册点会先摘掉
+  // 再挂一次）。在房里就**立刻**问一次货架 —— 那颗「商店」按钮要在这时候就出现。以前这里等 400 ms 再问，而
+  // 那一下正好落在玩家刚点开商店、最需要按钮的那一刻（业主 2026-11-05「进入按钮要展开商店一段时间之后才
+  // 刷出来」）。握手最多试 HELLO_TRIES 次（`send()` 在连接还没上线时返回 false —— 掉线 / 重连中 —— 所以「发出去
+  // 了」不等于「问了」）：拿到一帧就不再问。
   const me = safeMe();
   if (me && me.room && me.room.inMatch) {
-    setTimeout(() => { if (!disposed && !seenState) sendHello(); }, 400);
+    const ask = () => {
+      helloTimer = null;
+      if (disposed || seenState || helloTries >= HELLO_TRIES) return;
+      helloTries += 1;
+      sendHello();
+      helloTimer = setTimeout(ask, HELLO_RETRY_MS);
+    };
+    ask();
   }
 
   return {
@@ -575,6 +591,8 @@ export function mount(ctx) {
       disposed = true;
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = null;
+      if (helloTimer) clearTimeout(helloTimer);
+      helloTimer = null;
       if (armTimer) clearTimeout(armTimer);
       armTimer = null;
       try { if (typeof offFrame === 'function') offFrame(); } catch { /* ignore */ }

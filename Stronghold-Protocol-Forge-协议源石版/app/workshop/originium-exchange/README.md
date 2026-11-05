@@ -201,6 +201,24 @@ pct = clamp( 情绪漂移×beta + 共同市场×beta + 个股噪声 + 盟约冷�
 - 面板文件本身仍然**不改引擎**：新槽位是引擎提供的一格（与 `screen.game.shopCard` 同一套机制），
   这一包只是把 `slot` 指过去。
 
+### 入口按钮出现时机（1.4.6，业主 2026-11-05）
+
+业主原话：「战地商店和证券交易所这俩 mod 的进入那个按钮是在展开商店一段时间之后才刷出来，能不能优化一下他的
+出现速度」。两处原因，一处都不在这个包里：
+
+1. **宿主重建不算「状态变化」**：商店栏的 收起 / 展开 是 `public/js/screens/game.js` 的 `useState`，展开时
+   Preact 把整块 `[data-mod-slot]` 换掉，而 store 一个字节都没变。注册点（`public/js/ui/extensions.js`）过去只在
+   store 变化时重试挂载，于是面板要等「别人的一帧」才挂得上。现在它同时盯着 DOM（新增的
+   `public/js/ui/slotHostWatch.js`）：宿主容器一出现就 `flush()`。
+2. **挂载之后还等 1.2 s**：面板原来在挂载 1200 ms 之后才第一次 `pollRoom()`（→ `hello` → 服务端补一份行情）。
+   现在**挂载那一帧就问**，`pollRoom` 的重试节奏不变（1.5 s 一次，上限 40 次）；行情回来之前按钮本来是隐藏的
+   （`root.hidden`，只有休整期才显示），所以这一改的净效果就是「展开商店 = 按钮立刻在」。
+
+实测（本地服务器 + 无头 Edge，1280×720，真实对局走到休整期，收起商店栏再展开）：两颗按钮 **26–40 ms** 内都
+可见（面板在 6–12 ms 挂上，先「商店」后「¥ 交易所」，后者多等一帧行情）。旧版本同一场景下 150 ms 时两颗按钮
+都还不在，整块面板要等到下一次对局状态变化才挂上（实测 351 ms ~ 3.8 s，且不可预期）。前后对照图与可重跑的
+脚本在 `public/dev/mod-entry/`。
+
 ## 安装 / 启用 / 卸载
 
 - **这台机器已经装好**（`app\workshop\originium-exchange\`）。**重启游戏服务器**后生效：关掉 `启动游戏.bat` 的窗口，再双击一次。
@@ -245,7 +263,7 @@ pct = clamp( 情绪漂移×beta + 共同市场×beta + 个股噪声 + 盟约冷�
 
 | 验证 | 结果 |
 |---|---|
-| `node --test test/workshop/originium-exchange.test.js` | **22/22**：情绪块、共同市场肥尾、新闻 45%、±45 边界、波动统计下限（单回合中位数 ≥7.5% / 累计 ≥25%）、金额与数量口径、**1.4.0 杠杆档位/按档追保/5x 满仓不平仓**、假 Match 开市→买入→改价→收盘、假 DOM 面板（行情带/追保/收盘大盘/**五档按钮与显示切换**）、**显式格式纯函数**、**滚动位置（1.4.1）** |
+| `node --test test/workshop/originium-exchange.test.js` | **22/23**（本次新增「挂载即握手」一条）：情绪块、共同市场肥尾、新闻 45%、±45 边界、波动统计下限（单回合中位数 ≥7.5% / 累计 ≥25%）、金额与数量口径、**1.4.0 杠杆档位/按档追保/5x 满仓不平仓**、假 Match 开市→买入→改价→收盘、假 DOM 面板（行情带/追保/收盘大盘/**五档按钮与显示切换**）、**显式格式纯函数**、**滚动位置（1.4.1）**、**挂载当帧发 hello（1.4.6）**。**已知红**：`手续费与分红/利息/杠杆额度口径不变` 仍断言 1.4.3 之前的 12 % 利息 —— 本版之前就红着，与本次改动无关 |
 | `node tools/workshop-validate.mjs workshop/originium-exchange` | **0 error / 0 warning**，VALID |
 | `eslint workshop/originium-exchange` | 通过 |
 | `node tools/check-imports.mjs` | 通过（包不在扫描范围内，也不引入越界 import） |
@@ -254,7 +272,8 @@ pct = clamp( 情绪漂移×beta + 共同市场×beta + 个股噪声 + 盟约冷�
 | 真 Match 对局（solo，真数据，虚拟时钟） | R1 开市 → PREP 买入 → COMBAT 拒单 → R2 分红（先旧价后改价）→ 卖出 → 审计 0 违规；同 seed 两局 R2 行情一致 |
 | 真服务器 / 真大厅 / 真 socket 端到端 | welcome.modPanels 有本包、真实 socket 收到 `pack.msg`、上行被消费、未声明通道照旧转发、无服务端报错 |
 | 客户端面板（假 DOM，引擎自己的注册点） | 初始隐藏、6 行渲染、买卖发帧、数量/杠杆档位、收盘排行、失败提示、hello 重试、unmount 清理、未声明通道被点名拒绝；1.3.0 的行情带 / 追保颜色 / 收盘大盘由 `test/workshop` 的假 DOM 用例覆盖 |
-| 真 Chromium 截图 | **本机做不了**：DSH 沙箱禁止子进程命名管道，Chromium 的 mojo 通道起不来（`platform_channel.cc: Access denied`）。面板逻辑由假 DOM 测试覆盖，CSS 按 `.oex` 作用域静态审查 |
+| 真浏览器实测（`puppeteer-core` + 本机 Edge headless，真服务器 + 真对局走到休整期，1280×720） | 收起商店栏再展开：两颗入口按钮 **26–40 ms** 都可见（面板 6–12 ms 挂上）；同一条脚本量基线（`git worktree` 的 HEAD）：**150 ms 时两颗按钮都不在**，整块面板 1.3 s ~ 2.6 s 之后才挂上。PR 里贴了 before / after 同场景截图 |
+| 真 Chromium 截图 | 现在能跑：`puppeteer-core` + 本机 Edge headless（此前「DSH 沙箱禁止子进程命名管道」那条结论在本机已经不成立）。前后对照图、测量脚本与重跑方法在 `public/dev/mod-entry/` |
 
 ## 风险与已知限制
 

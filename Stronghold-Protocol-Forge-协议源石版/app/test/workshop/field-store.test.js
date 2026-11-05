@@ -478,8 +478,22 @@ function mountWith(sendLog = []) {
   };
   const inst = mountPanel(ctx);
   assert.equal(typeof onFrame, 'function', 'the panel subscribes to its channel');
-  return { host, inst, deliver: (data) => onFrame(data), offCalls: () => offCalls };
+  // 挂载即握手（业主 2026-11-05：不再等 400 ms，见下面那条用例）—— 那一条单独断言，其余用例只看「玩家点的那些帧」。
+  const mountHellos = sendLog.filter((frame) => frame.payload && frame.payload.op === 'hello');
+  sendLog.length = 0;
+  return { host, inst, deliver: (data) => onFrame(data), offCalls: () => offCalls, mountHellos };
 }
+
+test('面板：一挂上就立刻问一次货架 —— 不在 400 ms 之后再问（业主 2026-11-05「进入按钮要展开商店一段时间之后才刷出来」）', () => {
+  const sendLog = [];
+  const { inst, mountHellos } = mountWith(sendLog);
+  // 面板在房里（`me.room.inMatch`）挂上时，握手必须**同步**发出去：商店栏每收起再展开，宿主都会被 Preact 整块
+  // 换掉、注册点会先摘掉再挂一次，那一下正是玩家等着按钮出现的时候。
+  assert.equal(mountHellos.length, 1, 'exactly one hello, sent while mounting');
+  assert.equal(mountHellos[0].channel, CHANNEL);
+  assert.deepEqual(mountHellos[0].payload, { op: 'hello' });
+  inst.unmount();
+});
 
 test('面板：第一帧 open 就画出 51 件，价签只写价格本身（不再写「原价 n → 3n」）', () => {
   const { host, inst, deliver } = mountWith();
