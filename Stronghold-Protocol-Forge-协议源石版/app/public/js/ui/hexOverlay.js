@@ -15,6 +15,10 @@
 // show where the player decides and everywhere else it matters: the top bar's compact strip (ui/hud.js TopBar), this
 // overlay's footer and the 敌方情报 tab (ui/enemyDrawer.js). What the enemy is bringing is never a surprise.
 //
+// The player's OWN accumulated cards get the same strip in this overlay's footer, right beside the enemy's (业主
+// 2026-11-04「加一个在选择协议源石时，可以查看自己已有的协议源石」): a pick is then made knowing what the player already
+// holds, instead of having to remember it (or leave the overlay to read the 效果栏).
+//
 // Art: the two sound cues are unpacked from HextechRunes.pck into public/assets/local/hextech/audio/** and listed in
 // data/local-assets.json by tools/hextech-import.mjs (its rune icons, rarity frames and button sprites were removed on
 // 2026-10-12); the three 阶位 card images are the user's own and go in through tools/hextech-tier-import.mjs (the
@@ -178,8 +182,13 @@ export function HexCard({ hex, armed = false, picked = false, faded = false, bus
 }
 
 /**
- * The enemy side's accumulated 协议源石 (m.public.enemyHexes): compact cards with a tooltip each. An optional `label` turns
- * it into the labeled strip the top bar and the 敌方情报 tab use; without one it is the bare chip row.
+ * One strip of accumulated 协议源石 as compact cards, with every card's name and effect as a tooltip over the row.
+ * An optional `label` turns it into the labeled strip the top bar and the 敌方情报 tab use; without one it is the bare
+ * chip row. `testid` names the side, so a test (and an E2E shot) can tell the player's own row from the enemy's.
+ *
+ * Shared by BOTH sides of the draft (业主 2026-11-04「加一个在选择协议源石时，可以查看自己已有的协议源石」): the enemy row
+ * below and the own row (`OwnHexRow`) that the draft's footer shows next to it, so the two read the same and a phone
+ * gets the same tap-to-read behaviour on both.
  *
  * The name and effect of every card live in the app's own Tooltip over the WHOLE row, not in a native `title` on it: a
  * native title is never shown on a touch screen, so a phone player had no way to read the enemy's cards at all (user
@@ -187,18 +196,40 @@ export function HexCard({ hex, armed = false, picked = false, faded = false, bus
  * than the default long press — the chips have no tap action of their own, and a tap is what a player tries first. The
  * row is the target rather than the single chip because a chip is only .3rem across with a .05rem gap — a 44 px per-chip
  * hit area would overlap its neighbours and show the wrong card.
- * @param {{ list: any[], label?: string|null, class?: string }} props
+ * @param {{ list: any[], label?: string|null, class?: string, testid?: string }} props
  */
-export function EnemyHexRow({ list, label = null, class: cls = '' }) {
+export function HexStripRow({ list, label = null, class: cls = '', testid = 'hex-strip' }) {
   const hexes = normalizeEnemyHexes(list);
   if (!hexes.length) return null;
   const tip = hexes.map((h) => `${t(h.name)} · ${t(h.desc)}`).join('\n');
   return html`<${Tooltip} text=${tip} placement="bottom" class="hxstrip-anchor" tapShow=${true}>
-    <span class=${cx('hxstrip', cls)} data-testid="enemy-hex-strip" role="button" tabindex="0" aria-label=${tip.replace(/\n/g, '；')}>
+    <span class=${cx('hxstrip', cls)} data-testid=${testid} role="button" tabindex="0" aria-label=${tip.replace(/\n/g, '；')}>
       ${label ? html`<span class="hxstrip__label">${t(label)}</span>` : null}
-      <span class="hxstrip__row">${hexes.map((h) => html`<${HexCard} key=${h.id} hex=${h} compact=${true} />`)}</span>
+      <span class="hxstrip__row">${hexes.map((h) => html`<${HexCard} key=${`${h.id}:${h.idx ?? ''}`} hex=${h} compact=${true} />`)}</span>
     </span>
   <//>`;
+}
+
+/**
+ * The enemy side's accumulated 协议源石 (m.public.enemyHexes): compact cards with a tooltip each. An optional `label` turns
+ * it into the labeled strip the top bar and the 敌方情报 tab use; without one it is the bare chip row.
+ * @param {{ list: any[], label?: string|null, class?: string }} props
+ */
+export function EnemyHexRow({ list, label = null, class: cls = '' }) {
+  return HexStripRow({ list, label, class: cls, testid: 'enemy-hex-strip' });
+}
+
+/**
+ * The player's OWN accumulated 协议源石, as the draft footer shows them (业主 2026-11-04「加一个在选择协议源石时，可以查看
+ * 自己已有的协议源石」): the same labeled strip as the enemy row, one side over.
+ *
+ * `list` is the shape `recycleCardsOf(ownHexIds(pub, myId), data.get('hextech')?.playerHexes)` gives — `{ id, idx,
+ * name, desc, rarity }` per owned card, 1:1 with the player's own refs (so two copies of one card are two chips, 业主
+ * 2026-11-02「相同的海克斯，在刷新回合会被当成一个海克斯」). The idx keeps those two chips apart as vnode keys.
+ * @param {{ list: any[], label?: string|null, class?: string }} props
+ */
+export function OwnHexRow({ list, label = null, class: cls = '' }) {
+  return HexStripRow({ list, label, class: cls, testid: 'own-hex-strip' });
 }
 
 /**
@@ -235,9 +266,43 @@ export function EnemyHexList({ list, label = null, class: cls = '' }) {
 }
 
 /**
+ * The draft's footer: the player's OWN accumulated 协议源石 on the left (业主 2026-11-04「加一个在选择协议源石时，可以查看
+ * 自己已有的协议源石」), the enemy's on the right, and the rule line. Presentational only (no hooks), so a Node test can
+ * render it as a plain function — the overlay itself cannot be called without a hook context.
+ *
+ * Both sides print a count instead of chips while that side owns nothing: the very first draft of a match owns none
+ * yet, and a bare 0 says so more honestly than an empty row. `own` is `recycleCardsOf(ownHexIds(pub, myId), …)` (see
+ * OwnHexRow); `enemy` is m.public.enemyHexes.
+ * @param {{ own?: any[], enemy?: any[] }} props
+ */
+export function HexOverlayFooter({ own = [], enemy = [] }) {
+  const ownHexes = normalizeEnemyHexes(own);
+  const enemyHexes = normalizeEnemyHexes(enemy);
+  return html`<footer class="hxov__foot">
+    <span class="hxov__own" data-testid="hex-own">
+      <${MicroLabel} tone="gold">${t('我方协议源石')}</${MicroLabel}>
+      ${ownHexes.length
+        ? html`<${OwnHexRow} list=${ownHexes} class="hxov__ownrow" />`
+        : html`<b class="hxov__num num">0</b>`}
+    </span>
+    <span class="hxov__enemy">
+      <${MicroLabel} tone="gold">${t('敌方协议源石')}</${MicroLabel}>
+      ${enemyHexes.length
+        // the shared row, so the footer's chips are long-pressable on a phone exactly like the top bar's (EnemyHexRow)
+        ? html`<${EnemyHexRow} list=${enemyHexes} class="hxov__enemyrow" />`
+        : html`<b class="hxov__num num">0</b>`}
+    </span>
+    <span class="hxov__hint">${t('敌人会获得同阶位的协议源石')}</span>
+  </footer>`;
+}
+
+/**
  * The draft overlay.
- * @param {{ hex: any, enemy?: any[], busyIdx?: number|null, onPick: (idx: number) => void, onReroll: (idx?: number) => void }} props
- *   hex: ui/gameLogic/draft.js normalizeHex(m.public.hex, myId, players); enemy: m.public.enemyHexes.
+ * @param {{ hex: any, enemy?: any[], own?: any[], busyIdx?: number|null, onPick: (idx: number) => void,
+ *   onReroll: (idx?: number) => void }} props
+ *   hex: ui/gameLogic/draft.js normalizeHex(m.public.hex, myId, players); enemy: m.public.enemyHexes; own: the player's
+ *   already-owned cards (recycleCardsOf(ownHexIds(pub, myId), data.get('hextech')?.playerHexes)) — the footer shows them
+ *   next to the enemy's, so the pick is made knowing what the player already has (业主 2026-11-04).
  *   `onReroll(idx)` replaces that ONE card (业主 2026-10-20「把刷新按钮改成分别刷新每个」); without an index it replaces the
  *   whole batch (the header button). Both cost the same one reroll.
  */
@@ -288,7 +353,7 @@ export function vanishActive(vanishing, offerKey) {
   return vanishing && vanishing.key === offerKey ? vanishing.idx : null;
 }
 
-export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }) {
+export function HexOverlay({ hex, enemy = [], own = [], busyIdx = null, onPick, onReroll }) {
   const [armed, setArmed] = useState(null);
   /** 确认动画进行中的卡：{ idx, key } —— key 是这一手所在那一批 offer 的签名（见 vanishActive）。 */
   const [vanishing, setVanishing] = useState(null);
@@ -308,7 +373,6 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
     if (hex && hex.myPick != null && vanishIdx != null) setVanishing(null);
   }, [hex && hex.myPick, vanishIdx]);
   if (!hex || !hex.myOffer.length) return null;
-  const enemyHexes = normalizeEnemyHexes(enemy);
   const picked = hex.myPick;
   const waiting = picked == null;
   // 整批刷新（header 那颗）与单张刷新（每张卡角上）各有各的次数：整批仍是一次/局，单张是**每张卡各一次**
@@ -389,16 +453,7 @@ export function HexOverlay({ hex, enemy = [], busyIdx = null, onPick, onReroll }
           onReroll=${canRerollSlot(c.idx) ? () => cardReroll(c.idx) : null}
           rerollTitle=${t('只刷新这一张')} />`)}
       </div>
-      <footer class="hxov__foot">
-        <span class="hxov__enemy">
-          <${MicroLabel} tone="gold">${t('敌方协议源石')}</${MicroLabel}>
-          ${enemyHexes.length
-            // the shared row, so the footer's chips are long-pressable on a phone exactly like the top bar's (EnemyHexRow)
-            ? html`<${EnemyHexRow} list=${enemyHexes} class="hxov__enemyrow" />`
-            : html`<b class="hxov__enemynum num">0</b>`}
-        </span>
-        <span class="hxov__hint">${t('敌人会获得同阶位的协议源石')}</span>
-      </footer>
+      <${HexOverlayFooter} own=${own} enemy=${enemy} />
     </div>
   </div>`;
 }
