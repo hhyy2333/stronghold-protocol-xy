@@ -459,6 +459,12 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
   调配条目（精锐也用它）；`screens/loadout.js RosterRow` 的模组快捷行不再只给精锐渲染。判据 `ui/gameLogic/modeModules.js
   modeModuleLevel` 一份，商店卡徽标 / 详情卡的攻击范围 / 棋盘范围与落位轮盘 / 召唤物 ownerRange 都按同一份 3 级记录
   （顺带修掉「卡面 3 级、棋盘 1 级」）；没有这张卡时每个调用点传 `null`，输出逐字段与改动前一致。
+  ⑤ **空弦 ISW-A「空弦特限证章」的【兰登战术】那半**（2026-11-05 业主报「特限模组空弦回技力部分没生效」）：②
+  原来只落了特性那半（攻击距离），3 级天赋【兰登战术】追加的三句没实现。现在 `stone_mode_modules_isw.js` 补上：
+  所有干员（不只狙击）的攻击回复技能每 2.5 秒 +1 技力 —— 狙击那一份仍在 kit 的基础天赋里，两处按职业分开、不重复
+  给；空弦每攻击一次给**自己以外**的攻击回复干员 +1 技力；所有干员的攻击回复技能持续时间内攻击力 +50%。数值读卡面
+  `params.modeModules`（`archetSpTickSec` / `archetSpTick` / `archetSpOnAttack` / `archetAtkPct`），缺省 = 官方数据
+  2.5 / 1 / 1 / 0.5；三条 [ASSUMED]（自己不再拿一份、按各自技能自己的持续时间、+50% 是加算百分比）见该文件头。
 - 设计口径与 [ASSUMED] 清单见 `04-文档/协议源石-突破极限与特限恢复-设计稿-20261031.md`（工作区级）。
 
 ## 协议源石：【死亡之舞】新增 + 四张卡调整（2026-10-31，业主裁定）

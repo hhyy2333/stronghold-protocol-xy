@@ -35,14 +35,41 @@
 //
 // 逐条效果与 [ASSUMED]（设计稿 §4.3 的「落地」列 + 本文件的实现口径）：
 //
-//   1. 空弦 chess_char_3_21_b / ISW-A 「每有一名携带攻击回复技能的干员在场，攻击距离 +1（最高 +3）」
-//      → `rangeExtend = min(archetMax, 携带 spType === 'attack' 的己方干员数)`（常驻 passiveBuff；引擎
-//      units.js `_recalc` 的 `baseRangeExtend` 会把它算进初始攻击范围，battle/queries.js `rangeChanged` 在变化时
-//      重建 rangeKeys）。
-//      [ASSUMED] 1) 「己方」= 拥有者自己的己方干员（多玩家场上不借队友的干员数，与「只对拥有者的干员生效」同一
-//      口径）；2) 数的是**在场**（alive + deployed + !hidden）的干员，含空弦自己（她自己的技能是攻击回复时也算一名）；
-//      3) 重算时机 = `battleStart` / `deploy` / `death` —— 设计稿只写了前两个，「在场」的自然读法还要在有人离场时
-//      掉回去，所以补了 `death`（不加计时器，避免每 tick 重建 buff）。
+//   1. 空弦 chess_char_3_21_b / ISW-A「空弦特限证章」。官方这张模组改了两处（03 STAGE 的全文，BWIKI `空弦/模组3` /
+//      `data/moduleLevels.json` 的 `uniequip_004_archet`）：**特性**追加「在集成战略中，每有一个携带攻击回复技能的干员
+//      在场，空弦攻击距离+1（最高提升至+3）」，**天赋【兰登战术】**追加「在场时所有【狙击】干员的攻击回复技能每2.5秒
+//      回复1点技力；在集成战略中，所有干员的攻击回复技能都享受该效果且能被空弦的攻击回复技力，所有干员的攻击回复技能
+//      持续时间内攻击力+50%」。设计稿 §4.3 只落了特性那半 —— 业主 2026-11-05「特限模组空弦回技力部分没生效」报的
+//      就是天赋那半，所以四条一起落地：
+//
+//      (a) 特性：`rangeExtend = min(archetMax, 携带 spType === 'attack' 的己方干员数)`（常驻 passiveBuff；引擎
+//          units.js `_recalc` 的 `baseRangeExtend` 会把它算进初始攻击范围，battle/queries.js `rangeChanged` 在变化时
+//          重建 rangeKeys）。
+//          [ASSUMED] 1) 「己方」= 拥有者自己的己方干员（多玩家场上不借队友的干员数，与「只对拥有者的干员生效」同一
+//          口径）；2) 数的是**在场**（alive + deployed + !hidden）的干员，含空弦自己（她自己的技能是攻击回复时也算一名）；
+//          3) 重算时机 = `battleStart` / `deploy` / `death` —— 设计稿只写了前两个，「在场」的自然读法还要在有人离场时
+//          掉回去，所以补了 `death`（不加计时器，避免每 tick 重建 buff）。
+//      (b) 天赋「2.5 秒那一跳**扩到所有干员**」：基础天赋的「所有【狙击】干员」那一份仍在
+//          kits/ops/chess_char_3_21-archet.js 的兰登战术里（没这张卡时它照旧），本模块只补「所有干员」多出来的那半 ——
+//          **非狙击**的、带攻击回复技能的己方干员每 2.5 秒 +1 点技力。两处按职业分开 ⇒ 同一名干员不会被给两次；
+//          也正因为分开，狙击那一份不需要本模块改动 kit。同一时刻只有一名空弦生效（id 最小的那个，与 kit 的
+//          isLeader 同一条判据），两名空弦不会各给一份。
+//      (c) 天赋「且能被空弦的攻击回复技力」：空弦每攻击一次（普攻 / 技能覆盖的那一次都算），**自己以外**的、带攻击回复
+//          技能的己方干员各 +1 点技力。官方的说法是「空弦的攻击也视为队友的攻击」，所以每名空弦自己的攻击都算一份
+//          （两名空弦 = 两份），不需要 isLeader。
+//          [ASSUMED] 1) 不含空弦自己 —— 她自己的攻击本来就按「攻击回复」给她 1 点（skills.js `onAttackPerformed`），
+//          再给一次就是翻倍；官方那句「能被空弦的攻击回复技力」说的也是**别人**的技能。2) 「攻击」= 一次攻击动作
+//          （`attack` 钩子；S3 的 3 连击是 1 次动作，不是 3 次），不是每一跳伤害。3) 只给**攻击回复技能**
+//          （spType === 'attack'），时间 / 受击回复技能不沾。
+//      (d) 天赋「所有干员的攻击回复技能持续时间内攻击力+50%」：拥有者自己的干员，**自己的**攻击回复技能在持续
+//          （引擎 `skill.active`：持续 / 弹药 / 切换类技能在跑）⇒ 一条 `atkPct: +0.5` 的常驻 buff，技能结束 / 空弦
+//          离场 / 干员离场就撤掉（0.25 s 对一次账）。
+//          [ASSUMED] 1) 「所有干员的攻击回复技能持续时间内」按「各自技能自己的持续时间内」读（不是「任意一个攻击回复
+//          技能在持续就给全场」）；2) +50% 是加算百分比（`atkPct`，与技能自己的攻击力加成同一条公式
+//          units.js `_recalc`），不是乘算；3) 瞬发 / 充能类攻击回复技能只有施放那一瞬算「持续时间内」（引擎的
+//          `skill.active` 本来就是这么标的）。
+//      数值读卡面 `params.modeModules`（`archetSpTickSec` / `archetSpTick` / `archetSpOnAttack` / `archetAtkPct`），
+//      缺省 = 官方数据（2.5 / 1 / 1 / 0.5）。
 //
 //   2. 水月 chess_char_4_09_b / ISW-A 「攻击速度 +50，每秒恢复 4% 生命值」
 //      → 常驻 `{ aspd: +50, hpRegenRatio: 0.04 }`（units.js `_recalc`：`hpRegen = … + hpRegenRatio × maxHp`）。
@@ -132,6 +159,7 @@ const TAG = 'hex:modemodules';
 /** 常驻被动 buff 的键（每个干员一条；同名替换 = 幂等，掉效果时按同一个键撤销）。 */
 const KEY = Object.freeze({
   archet: `${TAG}:isw:archet`,     // 空弦：rangeExtend
+  archetAtk: `${TAG}:isw:archet:atk`, // 空弦：攻击回复技能持续时间内 atkPct +50%（文件头第 1 条 (d)）
   mizuki: `${TAG}:isw:mizuki`,     // 水月：aspd / hpRegenRatio
   dusk: `${TAG}:isw:dusk`,         // 夕：maxTargets
   ghost2: `${TAG}:isw:ghost2`,     // 归溟幽灵鲨（与替身）：dealt / taken 倍率
@@ -222,6 +250,12 @@ export function installModeModulesIsw(hooks) {
     plan.set(pid, {
       // 空弦：每有一名攻击回复干员 +1 攻击距离，最高 +3
       archetMax: Math.max(0, Math.round(numOf(spec, 'archetMax', 3))),
+      // 空弦（文件头第 1 条 b/c/d）：兰登战术的 3 级升级 —— 非狙击的攻击回复干员每 archetSpTickSec 秒 +archetSpTick；
+      // 空弦的攻击给其他攻击回复干员 +archetSpOnAttack；攻击回复技能持续时间内攻击力 +archetAtkPct。
+      archetSpTickSec: Math.max(0.1, numOf(spec, 'archetSpTickSec', 2.5)),
+      archetSpTick: numOf(spec, 'archetSpTick', 1),
+      archetSpOnAttack: numOf(spec, 'archetSpOnAttack', 1),
+      archetAtkPct: numOf(spec, 'archetAtkPct', 0.5),
       // 水月：攻速 +50、每秒回复 4% 最大生命
       mizukiAspd: numOf(spec, 'mizukiAspd', 50),
       mizukiRegen: numOf(spec, 'mizukiRegen', 0.04),
@@ -299,6 +333,74 @@ export function installModeModulesIsw(hooks) {
       }
     }
   };
+
+  // -------------------------------------------------------------------------------------------------------------------
+  // 空弦 · 兰登战术的 3 级升级（文件头第 1 条 b / c / d）
+
+  /** 拥有者 pid 的、在场且带着启用的 ISW- 模组的空弦（可能多名）。 */
+  const archetCarriers = (pid) => fieldCarriers(pid, GROUP_ARCHET);
+
+  /**
+   * 兰登战术只由**一名**空弦生效（与 kit 的 isLeader 同一条判据：id 最小的那个）—— 两名空弦同时在场时，「每 2.5 秒」
+   * 那一跳与「攻击回复技能持续时间内 +50% 攻击力」都只该有一份。
+   * @param {string} pid 拥有者
+   * @returns {any|null} 在场的那名空弦，没有则 null
+   */
+  const archetLeader = (pid) => {
+    let best = null;
+    for (const u of archetCarriers(pid)) if (!best || u.id < best.id) best = u;
+    return best;
+  };
+
+  /** 这名干员**自己的**攻击回复技能正在持续（引擎 `skill.active`；瞬发 / 充能类只有施放那一瞬）。 */
+  const inAttackSkill = (u) => spTypeOf(u) === 'attack' && !!(u.skill && u.skill.active === true);
+
+  /**
+   * (d) 「所有干员的攻击回复技能持续时间内攻击力+50%」：拥有者自己的干员，自己的攻击回复技能在持续 ⇒ 挂一条
+   * `atkPct` 常驻 buff；技能结束 / 空弦离场 / 干员离场 ⇒ 撤掉。每 0.25 s 对一次账（与号角光环同一个粒度）。
+   * @param {string} pid 拥有者
+   */
+  const syncArchetAtk = (pid) => {
+    const p = plan.get(pid);
+    if (!p || !(p.archetAtkPct > 0)) return;
+    const on = !!archetLeader(pid);
+    for (const u of battle.allyUnits) {
+      if (!isOwnOp(u, pid)) continue;
+      const want = on && isOnField(u) && inAttackSkill(u);
+      const has = typeof u.findBuff === 'function' ? u.findBuff(KEY.archetAtk) : null;
+      if (want && !has) passiveBuff(battle, u, KEY.archetAtk, { atkPct: p.archetAtkPct }, { tags: ['hex'] });
+      else if (!want && has) battle.removeBuff(u, KEY.archetAtk);
+    }
+  };
+
+  // (b)「所有干员的攻击回复技能都享受该效果」：2.5 秒那一跳给**非狙击**的攻击回复干员；狙击那一份仍在 kit 的
+  // 兰登战术里（文件头第 1 条 (b)），两处按职业分开 ⇒ 谁都不会被给两次。
+  for (const pid of owners) {
+    const p = plan.get(pid);
+    battle.every(p.archetSpTickSec, () => {
+      if (!archetLeader(pid)) return;
+      for (const u of battle.allyUnits) {
+        if (!isOwnOp(u, pid) || !isOnField(u) || u.def?.profession === 'SNIPER') continue;
+        if (spTypeOf(u) !== 'attack' || !u.skill || typeof u.skill.gainSp !== 'function') continue;
+        u.skill.gainSp(p.archetSpTick, 'talent');
+      }
+    });
+    battle.every(0.25, () => syncArchetAtk(pid));
+  }
+
+  // (c)「且能被空弦的攻击回复技力」：空弦每攻击一次，自己以外的、带攻击回复技能的己方干员各 +1 点技力。
+  // 每名空弦自己的攻击都算一份（两名空弦 = 两份），所以这里不用 isLeader。
+  battle.on('attack', (c) => {
+    const u = c && c.attacker;
+    if (!u || !isIswCarrier(u) || !inGroup(u, GROUP_ARCHET) || !isOnField(u)) return;
+    const p = plan.get(u.ownerId);
+    if (!p || !(p.archetSpOnAttack > 0)) return;
+    for (const a of battle.allyUnits) {
+      if (a === u || !isOwnOp(a, u.ownerId) || !isOnField(a) || spTypeOf(a) !== 'attack') continue;
+      if (!a.skill || typeof a.skill.gainSp !== 'function') continue;
+      a.skill.gainSp(p.archetSpOnAttack, 'talent');
+    }
+  });
 
   // ===================================================================================================================
   // 水月 / 夕 / 归溟幽灵鲨 / 琳琅诗怀雅 · 常驻面板
@@ -488,6 +590,7 @@ export function installModeModulesIsw(hooks) {
   const refresh = () => {
     for (const u of battle.allyUnits) applySelfPassive(u);
     for (const pid of owners) refreshArchet(pid);
+    for (const pid of owners) syncArchetAtk(pid);
     for (const pid of owners) { applyHornAura(pid); refreshHornFront(pid); }
     for (const u of battle.allyUnits) giveHornDeploySp(u);
     refreshMass();
@@ -504,6 +607,7 @@ export function installModeModulesIsw(hooks) {
     applySelfPassive(u);
     giveHornDeploySp(u);
     refreshArchet(u.ownerId);
+    syncArchetAtk(u.ownerId);
     refreshMass();
   });
 
@@ -515,6 +619,7 @@ export function installModeModulesIsw(hooks) {
     for (const pid of owners) refreshHornFront(pid);
     if (!owned.has(u.ownerId)) return;
     refreshArchet(u.ownerId);
+    syncArchetAtk(u.ownerId);
   });
 
   // 新刷出来的敌人也要减重（安洁莉娜在不在场由 refreshMass 自己判）
