@@ -216,17 +216,22 @@ export function installKjeragThaw(hooks) {
  *     2) 只算在场（活着、已部署、未隐匿）的拉特兰干员——被击倒的干员等重部署时按满血回来，不该被这条护盾「预存」；
  *     3) 卡面没写护盾上限，所以不封顶；4) 护盾 buff 不 `persist`（与免死那 1 层次数盾同一口径）：干员被击倒 / 撤退时
  *     引擎只保留 persist buff，护盾随人走。
- *   * **累计子弹狙击（2026-10-31 新增）**：每消耗 1 颗子弹给该玩家本场的子弹计数 +1（per-battle store，
- *     `battleStore(battle, 'hex:laterano:sanctuary')`：策略「管理员」复制出第二张卡时共享同一份计数，不会算两遍）。
- *     `battle.every(snipeEvery)`（默认 3 秒，第一个脉冲在 t = snipeEvery）对每个拥有者：计数 > 0 且场上有活着的敌人 ⇒
- *     `battle.rng()` 随机挑一个活敌人，造成 `计数 × snipePerAmmo` 的**物理伤害**（`makeDamageInfo({ type:'phys',
- *     canDodge: true, tags: ['hex', 'hex:laterano:snipe'] })`，来源 = 该玩家第一名在场拉特兰干员 ?? null），然后计数清零。
+ *   * **累计子弹狙击（2026-10-31 新增；2026-11-04 修口径）**：每消耗 1 颗子弹给该玩家本场的子弹计数 +1（per-battle
+ *     store，`battleStore(battle, 'hex:laterano:sanctuary')`：策略「管理员」复制出第二张卡时共享同一份计数，不会算两遍）。
+ *     `battle.every(snipeEvery)`（默认 3 秒，第一个脉冲在 t = snipeEvery）对每个拥有者：**本场累计子弹量** > 0 且场上
+ *     有活着的敌人 ⇒ `battle.rng()` 随机挑一个活敌人，造成 `累计子弹量 × snipePerAmmo` 的**物理伤害**
+ *     （`makeDamageInfo({ type:'phys', canDodge: true, tags: ['hex', 'hex:laterano:snipe'] })`，来源 = 该玩家第一名在场
+ *     拉特兰干员 ?? null）。**发射不清零**：下一个脉冲照旧按同一笔（或更大的）累计再打一发。
  *     [ASSUMED] 1) 累计的「子弹量」含本卡自己造成的消耗（额外那 1 发、免死清空）—— 卡面写的是「消耗的子弹量」，
  *     这些子弹确实被消耗了（2026-11-03 修，此前只算 `ammoUsed` 事件，实际掉 50 发只记 25）；
- *     2) 场上没有活敌人时**不发射、也不清零**——累计留着，等有敌人了下一脉冲整笔打出去
- *     （卡面写「每 3 秒对场上随机一名敌人」，没有目标就无从狙击）；3) 狙击是一次普通伤害实例（`isAttack` 假）：
- *     走减伤 / 闪避 / 护盾 / 受伤统计，但不算「攻击」，所以攻击类加成与「攻击时」的内容都不认它；
- *     4) 每个拥有者各自计时（各读自己卡面的 `snipeEvery`），随机只用 `battle.rng()`。
+ *     2) 场上没有活敌人时**不发射**——累计留着，等有敌人了下一脉冲整笔打出去（卡面写「每 3 秒对场上随机一名敌人」，
+ *     没有目标就无从狙击）；**发射也不清零**（2026-11-04 修）：卡面写「本场战斗累计统计…消耗的子弹量，每 3 秒…造成
+ *     累计子弹量 ×325」——累计是整个本场的，不是「最近 3 秒」。此前每发狙击后清零，于是业主 2026-11-04 报的三条
+ *     现象全都成立：① 打出的伤害只有最近 3 秒的子弹量，不是本场累计（「没有正确计算伤害」）；② 没有新子弹消耗时整段
+ *     不发射，实际间隔不止 3 秒（「造成伤害时间的间隔也不是 3 秒」）；③ 敌人不在拉特兰干员攻击范围内时干员不攻击 ⇒
+ *     没有新子弹 ⇒ 完全没有狙击伤害（「敌人不在拉特兰干员攻击范围内甚至无狙击伤害」）；
+ *     3) 狙击是一次普通伤害实例（`isAttack` 假）：走减伤 / 闪避 / 护盾 / 受伤统计，但不算「攻击」，所以攻击类加成与
+ *     「攻击时」的内容都不认它；4) 每个拥有者各自计时（各读自己卡面的 `snipeEvery`），随机只用 `battle.rng()`。
  *   * **本局累计狙击伤害（业主 2026-11-04「给圣佑狙击的伤害也统计一个文本，像灵魂炸弹一样显示出来」）**：每发狙击把
  *     `dealDamage` 的返回值（真正落到 HP 上的伤害）累加进 per-battle store 的 `snipe`，战斗结束写进
  *     `perPlayer[pid].hexSnipeDamage` 交回对局；`server/match/player/round.js _addCumStats` 把它存成玩家计数器
@@ -242,7 +247,7 @@ export function installKjeragThaw(hooks) {
  *     （本次伤害已经结算完），这与「获得 1 层次数盾」的字面读法一致；4) 护盾不叠加到 shieldHits 层以上（同名刷新到上限）。
  *
  * @param {any} hooks the shared `hexHooks(battle)` bundle
- * @returns {number|{owners:number,shields:number,ammoCounted:number,pending:number,snipes:number,snipeAmount:number,snipeDamage:number,prevented:number,extraAmmo:number}}
+ * @returns {number|{owners:number,shields:number,ammoCounted:number,ammoTotal:number,snipes:number,snipeAmount:number,snipeDamage:number,prevented:number,extraAmmo:number}}
  *          0 when the card is absent, else the live handle
  */
 export function installLateranoSanctuary(hooks) {
@@ -307,7 +312,7 @@ export function installLateranoSanctuary(hooks) {
   let ammoCounted = 0;  // 本场**实际消耗掉的子弹数**（= 累计进狙击的子弹数，含额外那 1 发与免死清空的）
 
   /**
-   * 记账：`u` 这一下真的从弹夹里少了 `n` 颗子弹 ⇒ 狙击的「累计子弹量」+n（打出去才清零）。
+   * 记账：`u` 这一下真的从弹夹里少了 `n` 颗子弹 ⇒ 狙击的「累计子弹量」+n（**不清零**，见 snipeOnce）。
    * 只记狙击累计，不碰护盾 —— 护盾的粒度由业主 2026-10-27 的裁定钉在「每条 `ammoUsed` 事件一次」。
    * @param {any} u the operator that spent bullets
    * @param {number} n how many bullets actually left its clip
@@ -361,12 +366,17 @@ export function installLateranoSanctuary(hooks) {
     countBullets(u, 1);
   });
 
-  // ---- 累计子弹狙击（2026-10-31 新增）：每 snipeEvery 秒把「累计子弹量 × snipePerAmmo」打到一个随机活敌人身上 ----
+  // ---- 累计子弹狙击（2026-10-31 新增）：每 snipeEvery 秒把「本场累计子弹量 × snipePerAmmo」打到一个随机活敌人身上 ----
+  // 2026-11-04 修（业主「狙击伤害依然存在bug」）：累计**不因发射清零**。卡面写的是「本场战斗累计统计…消耗的子弹量，
+  // 每 3 秒…造成累计子弹量 ×325」——累计是整个本场的。清零会把三件事同时弄错：① 打出的伤害只有最近 3 秒的子弹量；
+  // ② 没有新子弹消耗时整段不发射（实际间隔不止 3 秒）；③ 敌人不在拉特兰干员攻击范围内时干员不攻击 ⇒ 没有新子弹
+  // ⇒ 完全没有狙击伤害。
   let snipes = 0;
   let snipeAmount = 0;   // 发出去的伤害量合计（不是实际掉血：可能被闪避 / 减伤 / 护盾吃掉）
   /**
-   * 一个拥有者的一次狙击脉冲：计数 > 0 且场上有活敌人时，`battle.rng()` 挑一个目标、打一发、然后清零。
-   * 没有活敌人时**不清零**（累计留着，下一脉冲整笔打出去）。
+   * 一个拥有者的一次狙击脉冲：**本场累计子弹量** > 0 且场上有活敌人时，`battle.rng()` 挑一个目标、打一发。
+   * 累计**不清零**（下一个脉冲照旧按同一笔或更大的累计再打）；没有活敌人时不发射，累计留着，下一脉冲整笔打出去。
+   * 狙击与干员的攻击范围无关 —— 目标从全场的活敌人里挑（卡面「对场上随机一名敌人」）。
    * @param {string} pid the owner
    */
   const snipeOnce = (pid) => {
@@ -382,7 +392,6 @@ export function installLateranoSanctuary(hooks) {
     // 来源 = 该玩家第一名在场拉特兰干员（没有就是无来源）；击杀归属照常记在它身上
     const src = carriersOnField(pid)[0] ?? null;
     const amount = n * p.snipePerAmmo;
-    store.ammo.set(pid, 0);
     snipes++;
     snipeAmount += amount;
     // 实际打出去的伤害（业主 2026-11-04「给圣佑狙击的伤害也统计一个文本」）：`dealDamage` 的返回值是真正落到 HP 上的
@@ -449,8 +458,11 @@ export function installLateranoSanctuary(hooks) {
     get shields() { return shields; },
     /** 本场实际消耗掉的子弹数（= 累计进狙击的子弹数，含额外那 1 发与免死清空的）。 */
     get ammoCounted() { return ammoCounted; },
-    /** 每个拥有者当前还没打出去的累计子弹数。 */
-    get pending() { return owners.reduce((n, pid) => n + (store.ammo.get(pid) ?? 0), 0); },
+    /**
+     * 本场累计子弹量（狙击的「累计子弹量」，发射不清零；含额外那 1 发与免死清空的）。
+     * 2026-11-04 前叫 `pending`（那时发射后清零，所以是「还没打出去的」）—— 现在累计是本场的，没有「打出去」这一步。
+     */
+    get ammoTotal() { return owners.reduce((n, pid) => n + (store.ammo.get(pid) ?? 0), 0); },
     get snipes() { return snipes; },
     get snipeAmount() { return snipeAmount; },
     /** 本场狙击**实际**打出的伤害合计（减伤 / 闪避 / 护盾之后，效果栏的「本局累计狙击伤害」数的就是它）。 */

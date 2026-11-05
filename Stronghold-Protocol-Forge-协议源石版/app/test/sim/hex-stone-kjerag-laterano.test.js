@@ -13,7 +13,8 @@
 //             只有「攻击命中活着的敌人」才算（非攻击实例 / 链式附加 / 反伤 / 流失 / 元素损伤都不算）；
 //             只认拥有者自己的【谢拉格】干员；75 层被动（含掉层撤销、layerGain 现场跨过阈值）；参数读卡面。
 //   圣佑：无卡无效果；每消耗 1 颗弹药给所有在场己方【拉特兰】干员挂「自身 5% 最大生命」的护盾（同键累加、
-//         被打掉后再加）；累计子弹量每 3 秒狙击一次（累计 ×325 物理、只挑活敌人、没有敌人时不清零）；
+//         被打掉后再加）；本场累计子弹量每 3 秒狙击一次（累计 ×325 物理、只挑活敌人、没有敌人时不发射、
+//         发射**不清零** —— 与干员攻击范围无关，2026-11-04 修）；
 //         致命伤害时仍有弹药 ⇒ 免死 + 清空弹药 + 1 层次数盾（下一发被吸收）；无弹药不免死；非【拉特兰】干员 /
 //         别人的干员不免死；流失不免死；参数读卡面。
 //   数据：data/hextech.json 里两张卡的记录与设计稿口径一致（Lead 接线用）。
@@ -26,7 +27,9 @@
 //      被打空后从 0 重新累加。**每「颗」子弹各算一次**（不是每次 `ammoUsed` 事件一次）。
 //   4. 狙击的累计数的是**真实消耗掉的子弹数**：引擎 / kit 的 `ammoUsed` 一发一条，「额外消耗 1 发」与免死清空的
 //      弹药也各算一颗（2026-11-03 修：此前只算事件，实际掉 2 发只记 1 发，狙击伤害与护盾都少一半）。
-//      场上没有活敌人时不发射、也不清零；发射后清零。
+//      场上没有活敌人时不发射、累计留着；**发射不清零**（2026-11-04 修：卡面写的是「本场战斗累计统计」，累计是
+//      整个本场的 —— 此前每发清零，导致伤害只有最近 3 秒的子弹量、没有新子弹时整段没有狙击、敌人不在射程内时
+//      完全无狙击伤害）。
 //   5. 免死只认「受到伤害」：生命流失（`isHpLoss`）不免死；护盾是下一次受击才消耗。
 
 import test from 'node:test';
@@ -535,13 +538,13 @@ test('圣佑: 累计的是「真实消耗的子弹数」—— 3 次攻击各掉
   // 2026-11-03 修的正是这里：3 次攻击真的花掉 6 颗子弹（引擎 1 + 额外 1），不能只记 3 条 ammoUsed 事件
   assert.equal(u.skill.active, false, 'premise: 弹药打空（之后不会再有消耗干扰累计）');
   assert.equal(inst.ammoCounted, 6, '6 颗子弹计入狙击（含每次额外消耗的那 1 颗）');
-  assert.equal(inst.pending, 6, '还没打出去');
+  assert.equal(inst.ammoTotal, 6, '本场累计 6 颗');
   assert.equal(snipeHits(h).length, 0, '还没到 3 秒脉冲');
 
   h.run(2.1);                                        // t = 3.1：跨过第一个 snipeEvery 脉冲
   assert.equal(inst.snipes, 1, '打了一发狙击');
   assert.equal(inst.snipeAmount, 1950, '6 × 325 = 1950');
-  assert.equal(inst.pending, 0, '打出去之后清零');
+  assert.equal(inst.ammoTotal, 6, '发射不清零 —— 累计仍是本场的 6 颗（2026-11-04 修）');
   const [hit] = snipeHits(h);
   assert.ok(hit, '狙击是一次普通伤害实例');
   assert.equal(hit.target, foe, '场上的唯一活敌人');
@@ -553,7 +556,7 @@ test('圣佑: 累计的是「真实消耗的子弹数」—— 3 次攻击各掉
   h.invariants();
 });
 
-test('圣佑: 狙击只挑活着的敌人 — 场上没有活敌人时不发射、也不清零', () => {
+test('圣佑: 狙击只挑活着的敌人 — 场上没有活敌人时不发射、也不消耗累计', () => {
   const h = field(
     [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
     { defs: { chess: { test_laterano: laAmmo(4) }, enemies: { enemy_dummy: dummy() } } },
@@ -564,25 +567,25 @@ test('圣佑: 狙击只挑活着的敌人 — 场上没有活敌人时不发射�
   const first = foes(h)[0];
   u.skill.activate('test', { free: true });
   for (let i = 0; i < 2; i++) assert.equal(h.battle.forceAttack(u, [first]), true, `premise: 第 ${i + 1} 次攻击`);
-  assert.equal(inst.pending, 4, 'premise: 累计 4 颗子弹（2 次攻击 × 2 颗）');
+  assert.equal(inst.ammoTotal, 4, 'premise: 累计 4 颗子弹（2 次攻击 × 2 颗）');
 
   h.battle.kill(first);                              // 场上没有活敌人了
   h.run(2.1);                                        // t = 3.1：脉冲到了，但没有目标
   assert.equal(inst.snipes, 0, '没有活敌人 ⇒ 不发射');
-  assert.equal(inst.pending, 4, '累计留着（不清零）');
+  assert.equal(inst.ammoTotal, 4, '累计留着（不清零）');
 
   const second = h.spawn('enemy_dummy', { pos: [10, 2], routeIndex: 0 });   // 新敌人进场
   assert.ok(second && second.alive, 'premise: 新敌人进场了');
   h.run(3.1);                                        // t = 6.2：下一脉冲
   assert.equal(inst.snipes, 1, '有敌人了就整笔打出去');
   assert.equal(inst.snipeAmount, 1300, '4 × 325 = 1300');
-  assert.equal(inst.pending, 0);
+  assert.equal(inst.ammoTotal, 4, '发射后累计仍是 4 颗');
   const [hit] = snipeHits(h);
   assert.equal(hit.target, second, '只挑活着的敌人（刚进场的那一个）');
   h.invariants();
 });
 
-test('圣佑: 每个脉冲只挑一个活敌人；累计是本场的，打出去就清零', () => {
+test('圣佑: 每 3 秒一发、累计不清零 —— 没有新子弹也照打，新子弹进了同一笔累计', () => {
   const h = field(
     [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
     {
@@ -596,7 +599,7 @@ test('圣佑: 每个脉冲只挑一个活敌人；累计是本场的，打出去
   assert.equal(foes(h).length, 2, 'premise: 场上两个活敌人');
   u.skill.activate('test', { free: true });
   for (let i = 0; i < 2; i++) assert.equal(h.battle.forceAttack(u, [foes(h)[0]]), true, `premise: 第 ${i + 1} 次攻击`);
-  assert.equal(inst.pending, 4, 'premise: 累计 4 颗子弹（2 次攻击 × 2 颗）');
+  assert.equal(inst.ammoTotal, 4, 'premise: 累计 4 颗子弹（2 次攻击 × 2 颗）');
 
   h.run(2.1);                                        // t = 3.1
   assert.equal(inst.snipes, 1, '一个脉冲只打一发');
@@ -604,18 +607,53 @@ test('圣佑: 每个脉冲只挑一个活敌人；累计是本场的，打出去
   assert.equal(snipeHits(h).length, 1, '只有一发狙击实例');
   assert.ok(foes(h).includes(snipeHits(h)[0].target), '目标从活敌人里随机挑');
 
-  h.run(3.1);                                        // t = 6.2：没有新子弹
-  assert.equal(inst.snipes, 1, '没有新子弹 ⇒ 下一脉冲不打');
-  assert.equal(inst.snipeAmount, 1300);
+  h.run(3.1);                                        // t = 6.2：这 3 秒没有新子弹
+  assert.equal(inst.snipes, 2, '没有新子弹也照常每 3 秒打一发（累计是整场的，不清零）');
+  assert.equal(inst.snipeAmount, 2600, '第二发仍按累计 4 颗：1300 + 1300');
+  assert.equal(inst.ammoTotal, 4, '累计没被发射吃掉');
 
-  // 再累计 4 颗（第二次开技能，两次攻击耗尽 4 发）：下一脉冲按新的一笔结算
+  // 再累计 4 颗（第二次开技能，两次攻击耗尽 4 发）：累计变成 8，下一脉冲按 8 颗算
   assert.equal(u.skill.activate('test', { free: true }), true, 'premise: 再开一次技能');
   for (let i = 0; i < 2; i++) assert.equal(h.battle.forceAttack(u, [foes(h)[0]]), true, `premise: 第 ${i + 1} 次攻击`);
-  assert.equal(inst.pending, 4);
+  assert.equal(inst.ammoTotal, 8, '累计是整场的：4 + 4');
   h.run(3.1);                                        // t = 9.3
-  assert.equal(inst.snipes, 2, '第二发狙击');
-  assert.equal(inst.snipeAmount, 2600, '1300 + 1300');
-  assert.equal(inst.pending, 0);
+  assert.equal(inst.snipes, 3, '第三发狙击');
+  assert.equal(inst.snipeAmount, 2600 + 8 * 325, '前两发 1300 + 1300，第三发按 8 × 325 = 2600');
+  assert.equal(inst.ammoTotal, 8);
+  h.invariants();
+});
+
+// 2026-11-04 业主报障「敌人不在拉特兰干员攻击范围内甚至无狙击伤害」：狙击的目标从**全场的活敌人**里挑（卡面
+// 「对场上随机一名敌人」），与拉特兰干员的攻击范围无关 —— 干员打不到的目标照样每 3 秒被狙击。
+test('圣佑: 狙击与拉特兰干员的攻击范围无关 —— 打不到的目标也每 3 秒被狙击一次', () => {
+  const h = field(
+    [seat('p1', 0, { effects: [refOf(CARD_LA, 'lateranoSanctuary', LA)], units: [at(1, 9, 6, 'test_laterano')], bonds: bondsOf() })],
+    {
+      defs: { chess: { test_laterano: laAmmo(6) }, enemies: { enemy_dummy: dummy() } },
+      enemies: [{ key: 'enemy_dummy', time: 0, pos: [10, 2] }],   // 远在干员（9 行 6 列）射程之外，speed 0 不动
+    },
+  );
+  const inst = installLateranoSanctuary(hexHooks(h.battle));
+  h.run(1);
+  const [u] = ops(h);
+  const foe = foes(h)[0];
+  assert.ok(Math.abs(foe.x - u.x) > 3, 'premise: 目标远在干员的攻击范围之外（隔 4 列）');
+  assert.equal(foe.hp, foe.s.maxHp, 'premise: 干员打不到它，一直没有普通攻击');
+  u.skill.activate('test', { free: true });
+  for (let i = 0; i < 3; i++) assert.equal(h.battle.forceAttack(u, [foe]), true, `premise: 第 ${i + 1} 次攻击`);
+  assert.equal(inst.ammoTotal, 6, 'premise: 累计 6 颗');
+
+  h.run(1.1);                                        // t = 2.1：还没到脉冲
+  assert.equal(inst.snipes, 0);
+  h.run(1.0);                                        // t = 3.1
+  assert.equal(inst.snipes, 1, 't = 3：第一发');
+  h.run(3.0);                                        // t = 6.1
+  assert.equal(inst.snipes, 2, 't = 6：第二发（间隔 3 秒）');
+  h.run(3.0);                                        // t = 9.1
+  assert.equal(inst.snipes, 3, 't = 9：第三发（间隔 3 秒）');
+  assert.equal(inst.snipeAmount, 3 * 1950, '三发都按累计 6 × 325');
+  for (const hit of snipeHits(h)) assert.equal(hit.target, foe, '打的就是射程外的那个敌人');
+  assert.ok(foe.hp < foe.s.maxHp, '射程外的敌人照样掉血');
   h.invariants();
 });
 
@@ -721,7 +759,7 @@ test('圣佑: 修「子弹消耗未正确计算」—— 累计数的是真实�
   assert.equal(h.battle.forceAttack(u, [foe]), true, 'premise: 再打一次');
   assert.equal(u.skill.active, false, 'premise: 4 发打空，技能结束');
   assert.equal(inst.ammoCounted, 4, '整场共 4 颗（不是 2 条 ammoUsed 事件）');
-  assert.equal(inst.pending, 4, '4 颗全部进狙击累计');
+  assert.equal(inst.ammoTotal, 4, '4 颗全部进狙击累计');
 
   h.run(2.1);                                        // t = 3.1：跨过 snipeEvery 脉冲
   assert.equal(inst.snipes, 1, '打了一发狙击');
@@ -859,7 +897,7 @@ test('圣佑: 数字读卡面 — snipePerAmmo 100 / snipeEvery 2 时按卡面�
   const foe = foes(h)[0];
   u.skill.activate('test', { free: true });
   for (let i = 0; i < 2; i++) h.battle.forceAttack(u, [foe]);
-  assert.equal(inst.pending, 4, '2 次攻击 × 2 颗 = 4 颗');
+  assert.equal(inst.ammoTotal, 4, '2 次攻击 × 2 颗 = 4 颗');
   h.run(1.1);                                        // t = 2.1：snipeEvery 2 ⇒ 脉冲在 t = 2
   assert.equal(inst.snipes, 1, '2 秒一个脉冲');
   assert.equal(inst.snipeAmount, 400, '4 × 100 = 400');
@@ -885,7 +923,7 @@ test('圣佑: 本场狙击的实际伤害记在 inst.snipeDamage，战斗结束�
   const foe = foes(h)[0];
   u.skill.activate('test', { free: true });
   for (let i = 0; i < 3; i++) assert.equal(h.battle.forceAttack(u, [foe]), true, `premise: 第 ${i + 1} 次攻击`);
-  assert.equal(inst.pending, 6, 'premise: 累计 6 颗子弹');
+  assert.equal(inst.ammoTotal, 6, 'premise: 累计 6 颗子弹');
   assert.equal(inst.snipeDamage, 0, '还没打出去 ⇒ 没有伤害');
 
   h.run(2.1);                                        // t = 3.1：跨过 snipeEvery 脉冲
@@ -965,7 +1003,7 @@ test('圣佑: 只有拥有者的战报带狙击伤害 —— 别人的【拉特�
   theirs.skill.activate('test', { free: true });
   for (let i = 0; i < 3; i++) h.battle.forceAttack(mine, [foe]);
   for (let i = 0; i < 3; i++) h.battle.forceAttack(theirs, [foe]);
-  assert.equal(inst.pending, 6, 'premise: 只有拥有者的 6 颗子弹进了狙击累计');
+  assert.equal(inst.ammoTotal, 6, 'premise: 只有拥有者的 6 颗子弹进了狙击累计');
   h.run(2.1);                                        // t = 3.1
   assert.equal(inst.snipes, 1, 'premise: 一发狙击（拥有者的那一发）');
   h.b.forceEnd('forced');
