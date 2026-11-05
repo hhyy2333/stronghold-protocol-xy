@@ -158,7 +158,8 @@ export function installYanEmber(hooks) {
 /**
  * 【绿洲】hex_sargon_oasis（3 阶，requiresBond: sargonShip）。
  * 原文（§3.2）：释放技能时获得 100% 攻击力护盾，下一次攻击额外造成等同护盾值的法术伤害。60/325 层里程碑在备战侧。
- * [ASSUMED: 1) 护盾同名刷新到 max(当前, 新值)，不无限叠加；2)「下一次攻击」只结算一次；3) 附伤按攻击时的剩余护盾。]
+ * [ASSUMED: 1) 护盾同名**累加**（业主 2026-11-05「开启技能后获取的护盾无法叠加」，原来按 max(当前, 新值) 刷新，
+ * 第二次开技能不涨盾）；2)「下一次攻击」只结算一次；3) 附伤按攻击时的剩余护盾。]
  */
 export function installSargonOasis(hooks) {
   const owners = ownersOfCard(hooks, CARD_SARGON);
@@ -184,7 +185,7 @@ export function installSargonOasis(hooks) {
     if (!(value > 0)) return;
     shields++;
     const prev = shieldOf(u);
-    battle.addBuff(u, { key: SARGON_SHIELD_KEY, shield: Math.max(prev, value), persist: true, visible: true, refresh: 'replace', tags: ['hex'] });
+    battle.addBuff(u, { key: SARGON_SHIELD_KEY, shield: prev + value, persist: true, visible: true, refresh: 'replace', tags: ['hex'] });
     u.mem.sargonOasisPending = 1;
   });
   battle.on('attack', (c) => {

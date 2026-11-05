@@ -91,6 +91,30 @@ test('绿洲: a skill grants a 100% ATK shield and the next attack adds equal ar
   assert.ok(hp0 - e.hp >= 390, 'next attack bonus: ' + (hp0 - e.hp));
 });
 
+// 业主 2026-11-05：「修复源石协议绿洲萨尔贡干员开启技能后获取的护盾无法叠加的问题」。旧实现按 max(当前, 新值) 刷新，
+// 所以第二次开技能的盾只要不比剩余的多就一点都不涨 —— 玩家看到的就是「护盾不叠加」。
+test('绿洲: 再次开技能的护盾累加，附伤按累加后的护盾结算（业主 2026-11-05）', () => {
+  const h = battleOf({ hexes: [['hex_sargon_oasis', 'sargonOasis', SARGON]], units: [{ uid: 1, kind: 'chess', chessId: 'test_sargon', row: 9, col: 6 }] });
+  h.run(0.2);
+  const u = opOf(h);
+  const e = h.enemies()[0];
+  h.b.emit('skillStart', { unit: u, skill: u.skill, reason: 'test' });
+  const one = u.findBuff('hex:sargon:oasis').shield;
+  assert.ok(Math.abs(one - 400) < 1e-6, '一次技能 = 100% 攻击力: ' + one);
+  h.b.emit('skillStart', { unit: u, skill: u.skill, reason: 'test' });
+  const two = u.findBuff('hex:sargon:oasis').shield;
+  assert.ok(Math.abs(two - 800) < 1e-6, '两次技能累加到 200% 攻击力: ' + one + ' -> ' + two);
+  // 剩下的盾也参与下一次累加：先被敌人打掉 300，再开技能 ⇒ 500 + 400
+  h.b.dealDamage(e, u, makeDamageInfo({ amount: 300, type: 'true', canDodge: false }));
+  assert.ok(Math.abs(u.findBuff('hex:sargon:oasis').shield - 500) < 1e-6, '护盾被打掉 300 后剩 500');
+  h.b.emit('skillStart', { unit: u, skill: u.skill, reason: 'test' });
+  assert.ok(Math.abs(u.findBuff('hex:sargon:oasis').shield - 900) < 1e-6, '剩余 500 + 新 400 = 900');
+  // 「下一次攻击」的附伤 = 攻击那一刻的剩余护盾（累加之后的那一份）
+  const hp0 = e.hp;
+  h.b.emit('attack', { attacker: u, targets: [e], isSkill: false });
+  assert.ok(Math.abs(hp0 - e.hp - 900) < 2, '附伤按累加后的护盾: ' + (hp0 - e.hp));
+});
+
 test('燎原: 300 层且真【坚守】tier 2 在场时，炎干员并入坚守分担（4 人各 100）', () => {
   const h = battleOf({
     hexes: [['hex_yan_ember', 'yanEmber', YAN]],
