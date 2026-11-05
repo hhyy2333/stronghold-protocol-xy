@@ -675,7 +675,8 @@ describe('websocket lobby', () => {
     assert.ok(!v1.seats.some((x) => x && x.playerId === s1.id), 'never in a player seat');
     await host.waitFor('room.state', (s) => s.spectators.length === 1);
     await expectOk(s1, { t: 'room.spectate', code: st.code }); // idempotent
-    await expectError(guest, { t: 'room.spectate', code: st.code }, ERR.ALREADY); // a player never switches in place
+    // (a SEATED player naming its own room is the other direction — 场上 → 观战席, the next test — so it is not asked here:
+    //  this guest stays seated for the rest of this test)
     // a spectator may not act
     await expectError(s1, { t: 'room.ready', ready: true }, ERR.SPECTATOR);
     for (const msg of [{ t: 'room.start' }, { t: 'room.addBot' }, { t: 'room.setDifficulty', difficulty: 'HARD' }, { t: 'room.removeSpectator', playerId: s1.id }]) {
@@ -750,6 +751,67 @@ describe('websocket lobby', () => {
     await expectOk(lone, { t: 'room.leave' });
     assert.equal((await s4.waitFor('room.closed')).reason, 'empty');
     await expectError(s4, { t: 'room.spectate', code: loneSt.code }, ERR.ROOM_NOT_FOUND);
+  });
+
+  // 业主 2026-11-05「准备界面只能从观战席进入场上，不能从场上进入观众席，加一个进入观众席」: the other direction — a
+  // SEATED player names its own room and gives the seat up (server/lobby.js sitOut, the room screen's 进入观战席). The
+  // client hides the entry where the server would refuse (canSitOut), so these refusals are the stale-frame guards.
+  test('场上 → 观战席: a seated player gives its seat up and holds a spectator seat instead', async () => {
+    const host = await pool.player('Host');
+    const st = await createRoom(host);
+    const a = await pool.player('A');
+    const b = await pool.player('B');
+    await joinRoom(a, st.code);
+    await joinRoom(b, st.code);
+    await expectOk(b, { t: 'room.ready', ready: true });
+    await host.waitFor('room.state', (s) => seatOf(s, b.id)?.ready);
+
+    // A sits out: its seat is freed, it holds a spectator seat, nobody else moves
+    await expectOk(a, { t: 'room.spectate', code: st.code });
+    const sat = await host.waitFor('room.state', (s) => s.spectators.some((x) => x.playerId === a.id));
+    assert.equal(seatOf(sat, a.id), null, 'no player seat any more');
+    assert.deepEqual(sat.spectators, [{ playerId: a.id, name: 'A', connected: true }]);
+    assert.equal(seatOf(sat, b.id)?.ready, true, 'the others keep their ready state');
+    assert.equal(sat.hostId, host.id, 'a non-host sitting out leaves the host alone');
+    assert.equal(sat.inMatch, false);
+    assert.equal(sat.seats[1], null, 'the freed seat is drawn as an empty one');
+    // the spectator seat behaves like any other: no action, chat still works, 入座 takes the freed seat back
+    await expectError(a, { t: 'room.ready', ready: true }, ERR.SPECTATOR);
+    await expectError(a, { t: 'room.start' }, ERR.NOT_HOST);
+    await expectOk(a, { t: 'room.chat', text: '我来看' });
+    assert.equal(seatOf(await joinRoom(a, st.code), a.id)?.seat, 1, '入座: the very seat it left');
+    await host.waitFor('room.state', (s) => s.spectators.length === 0);
+    // a HOST who sits out passes the room on (migrateHost, as when the host leaves) and watches as a plain spectator
+    await expectOk(host, { t: 'room.spectate', code: st.code });
+    const migrated = await a.waitFor('room.state', (s) => s.hostId !== host.id);
+    assert.equal(migrated.hostId, a.id, 'the lowest remaining seat becomes host');
+    assert.equal(seatOf(migrated, host.id), null);
+    assert.ok(migrated.spectators.some((x) => x.playerId === host.id));
+    // the last player cannot sit out: the room would be disposed ('empty') and the seat handed straight back
+    await expectOk(b, { t: 'room.spectate', code: st.code });
+    await expectError(a, { t: 'room.spectate', code: st.code }, ERR.BAD_TARGET);
+    // a solo room's only doctor is that same last player
+    const solo = await pool.player('Solo');
+    const soloSt = await createRoom(solo, 'solo', 'FUNNY');
+    await expectError(solo, { t: 'room.spectate', code: soloSt.code }, ERR.BAD_TARGET);
+    // every spectator seat taken → ROOM_FULL (the same code room.spectate answers for a full gallery)
+    const r2 = await pool.player('R2');
+    const st2 = await createRoom(r2);
+    const r3 = await pool.player('R3');
+    await joinRoom(r3, st2.code);
+    for (let i = 0; i < MAX_SPECTATORS; i++) await expectOk(await pool.player(`W${i}`), { t: 'room.spectate', code: st2.code });
+    await r2.waitFor('room.state', (s) => s.spectators.length === MAX_SPECTATORS);
+    await expectError(r3, { t: 'room.spectate', code: st2.code }, ERR.ROOM_FULL);
+    // during a match: sitting out is quitting that match — 离开同盟 is that entry, this one is the preparation screen's
+    const m1 = await pool.player('M1');
+    const m1st = await createRoom(m1);
+    const m2 = await pool.player('M2');
+    await joinRoom(m2, m1st.code);
+    await expectOk(m2, { t: 'room.ready', ready: true });
+    await expectOk(m1, { t: 'room.start' });
+    await m1.waitFor('m.public');
+    await expectError(m2, { t: 'room.spectate', code: m1st.code }, ERR.ROOM_STARTED);
+    await expectError(m1, { t: 'room.spectate', code: m1st.code }, ERR.ROOM_STARTED);
   });
 
   test('spectators during a match: broadcasts but no private view, join mid-match, only watching, reconnect gets the seat back', async () => {

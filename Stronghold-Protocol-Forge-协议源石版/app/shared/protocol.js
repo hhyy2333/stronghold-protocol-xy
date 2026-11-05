@@ -741,6 +741,12 @@ export const C2S = {
   // spectator seats (remake feature, community report #26; MAX_SPECTATORS): take one of a co-op room's spectator seats —
   // in its lobby or while its match runs — never a player seat; the host frees one by playerId (the spectator gets
   // room.closed { reason: 'kicked' }). room.leave / g.leave leave a spectator seat like a player seat.
+  //
+  // `code` is required, and naming the room the sender is ALREADY a player of is the other direction (场上 → 观战席,
+  // 业主 2026-11-05: the room screen's 进入观战席): the player gives its seat up and holds a spectator seat of that same
+  // room instead (server/lobby.js sitOut — lobby only, ROOM_STARTED during a match). A spectator naming its own room is
+  // idempotent. The two directions share this intent because "spectate this room" means the same thing either way, and
+  // the payload keeps naming the room so a stale tab cannot act on whatever room it moved to.
   'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.removeSpectator': { playerId: isId },
   // the room's plugins (DESIGN **§34**，上游原文 `§32`, P1a; host, before the match — like a difficulty change it
