@@ -19,6 +19,7 @@
 // through `battle.rng()` and timers through `S.every` / `battle.every`.
 
 import { makeDamageInfo, isChained, isHpLoss, mitigate } from '../../damage.js';
+import { SPECIAL_STATES } from '../../buffs.js';
 import { num, itemKeyOf, itemsOf, isMember, battleStore } from '../support/index.js';
 // 骑士徽章 (业主 2026-10-26)：三个互相独立的半边（转移 / 真伤 ×3 / 致命锁血）单独一个模块，见该文件头。
 import { knightBadge } from './knightbadge.js';
@@ -231,10 +232,15 @@ function voidReturn(battle, u, rec, S) {
 //   不算（业主「尸山在联防和打 boss 时会吞掉队友的干员」）；召唤物不算；2)「直接击杀」用永久退场，因此不能再部署；
 //   3)「获得其他干员属性」读的是**基础面板**（`unit.base`，不含装备与增益），与「吞噬」同一条口径；4) 生命值是
 //   `hpFlat`（吃百分比），攻击力是 `atkFinal`（不吃百分比）；5)「技力回复+N」「每秒N%」是定值、不叠加；
-//   6) 每个装备者各自结算；没有其他干员时什么都不做。]
+//   6) 每个装备者各自结算；没有其他干员时什么都不做；
+//   7) 免疫（业主 2026-11-04「给尸山装备添加免疫晕眩和冻结等特殊状态」）：装备者免疫「特殊状态」—— 与浓缩嗅盐
+//   **同一个目录口径**（`buffs.js SPECIAL_STATES`：晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹），装备上就生效、不等到
+//   battleStart；尸山·极 是另一条记录、同一段行为，所以它同样免疫。寒冷 / 束缚 / 沉默 / 恐惧 不在这个集合里
+//   （见 buffs.js 那条注释），它们照常生效。]
 
 /**
- * 尸山: at battle start the carrier eats every other own operator (permanent), gaining their base stats.
+ * 尸山: at battle start the carrier eats every other own operator (permanent), gaining their base stats; while the
+ * equipment is on it the carrier is also immune to 特殊状态 (`SPECIAL_STATES`).
  * @param {any} battle @param {any} u the carrier @param {any} rec its item record @param {any} S the grant Scope
  */
 function corpseHill(battle, u, rec, S) {
@@ -242,6 +248,9 @@ function corpseHill(battle, u, rec, S) {
   const scale = pos(p.attrScale, 1);
   const spRec = nonNeg(p.spRecovery, 1);
   const regenPct = nonNeg(p.regenPct, 1) / 100;
+  // 业主 2026-11-04：装备者免疫晕眩 / 冻结 / 沉睡 / 浮空 / 麻痹。`beforeStatus` 是引擎在 `applyStatus` 里问的第一道
+  // （与 浓缩嗅盐 同一个钩子、同一张表），所以成对转冻结的那一发 `freeze` 也会被挡掉，而寒冷本身照常挂上。
+  S.on('beforeStatus', (c) => { if (c.target === u && SPECIAL_STATES.has(c.status)) c.cancel = true; });
   /** An explicit guard: the pool below includes already-dead units, so "nobody to eat" is not a reliable idempotency
    *  signal when a repeat battleStart is emitted. */
   let eaten = false;

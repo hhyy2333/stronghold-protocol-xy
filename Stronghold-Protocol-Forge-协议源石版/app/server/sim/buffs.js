@@ -143,6 +143,15 @@ export const STATUS = Object.freeze({
 export const RESIST_STATUSES = Object.freeze(new Set(['stun', 'freeze', 'cold', 'sleep', 'fear', 'tremble', 'attract', 'levitate',
   'bind', 'silence', 'disarm', 'sluggish', 'slow', 'groundbind']));
 
+/**
+ * 「免疫晕眩、冻结等特殊状态」— the states such an effect cancels (浓缩嗅盐 `chess_item_4_10_e`, 尸山's equipment
+ * `chess_item_9_95_e`). The card text names no list, so this is research 04 §4's [ASSUMED] reading: 晕眩 / 冻结 / 沉睡 /
+ * 浮空 / 麻痹. 寒冷 is a debuff, not a control state: it still applies, but the 冻结 of a second 寒冷 is itself a `freeze`
+ * status and is cancelled. 束缚 / 沉默 / 恐惧 / 缴械 / 停顿 / 减速 / 缚地 are NOT in it (the same list 浓缩嗅盐 has always
+ * used — one definition, so the two items cannot drift apart).
+ */
+export const SPECIAL_STATES = Object.freeze(new Set(['stun', 'freeze', 'sleep', 'levitate', 'palsy']));
+
 /** Statuses that should be reported to clients as `['status', id, key, on]`. */
 export const VISIBLE_STATUS = new Set(Object.keys(STATUS));
 
