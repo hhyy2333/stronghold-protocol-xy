@@ -9,7 +9,8 @@ import { makeMatch, DATA, withoutHextech, give, giveItem, chessOfTier, legalTile
 import { makeBattle, chessRec, enemyRec } from '../helpers/battleHarness.js';
 import { enemyHexMods, applyHex, lpLockUntilOf, lpLockedIn, hexPoolFor, hexAvailableTo, applyForgeFusion, FORGE_ITEM_ID, equipSlotsOf, bondCapOf, layerGainMulOf, bountyMultiplier, ownsHex, enemyVerbIds, enemyPrepLpCost, resolveMirrorCopies, bondLayerViewMulOf, indomEmberBonuses, bankIndomEmber } from '../../server/match/hextech.js';
 import { computeBonds, pieceBonds } from '../../server/match/bondsMeta.js';
-import { tileKey, canPlace, placeClass } from '../../server/match/board.js';
+import { tileKey, canPlace, placeClass, FIELD } from '../../server/match/board.js';
+import { arrange } from '../../server/match/bot.js';
 import { buildBattleSpec, createBattleFromSpec } from '../../server/sim/spec.js';
 import { BATTLE_SPEC_KEYS, HEX_SCRIPT_KEYS, hasBattlePart } from '../../server/sim/content/hextech.js';
 import { hasBattleEffect } from '../../server/sim/content/items/battle.js';
@@ -2096,6 +2097,119 @@ test('记录部抑制: a prep deploy costs LP and the seat is TOLD (业主 2026-
   assert.ok(refused && refused.error, `expected a refusal, got ${JSON.stringify(refused)}`);
   assert.equal(ps.lp, lpBefore - 1, 'the refused deploy charged nothing');
   assert.equal(h.allTo('p_0', 'm.toast').length, toastsNow, 'and said nothing');
+  h.invariants();
+  m.dispose();
+});
+
+// 业主 2026-11-05「记录部抑制有时候生效有时候不生效」：旧的判据是「棋盘上出现了一个新的格子键」，
+// 它在两个方向上都会错 —— 把已经部署的干员挪到另一个空格子（移动，产生新键）会被扣；把手牌干员放到一个已有棋子
+// 的格子上（换位部署，不产生新键）不会被扣。部署 = 棋子**从手牌 / 整备区**落到棋盘，见 intents.js
+// `_moveWithDeployCost`。
+test('记录部抑制: moving a deployed operator to another tile is a 移动 — free and silent', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 7, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  m.enemyHexes = [{ id: 'ehex_records', round: 1 }];
+  const chessId = chessOfTier(1).find((id) => m.pool.has(id));
+  const piece = give(m, ps, chessId);
+  const [row, col] = legalTileFor(m, ps, chessId);
+  const lpBefore = ps.lp;
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: piece.uid, to: { area: 'board', row, col } }), { ok: true });
+  const lpAfterDeploy = ps.lp;
+  assert.equal(lpAfterDeploy, lpBefore - 1, 'the deploy itself charged');
+  const toastsNow = h.allTo('p_0', 'm.toast').length;
+  // another empty legal tile: `legalTileFor` skips the tile the operator now stands on
+  const [row2, col2] = legalTileFor(m, ps, chessId);
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: piece.uid, to: { area: 'board', row: row2, col: col2 } }), { ok: true });
+  assert.equal(ps.lp, lpAfterDeploy, 'a board → board move is not a deploy: no LP');
+  assert.equal(h.allTo('p_0', 'm.toast').length, toastsNow, 'and says nothing');
+  // an in-place re-orientation is not a deploy either
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: piece.uid, to: { area: 'board', row: row2, col: col2 }, dir: 'LEFT' }), { ok: true });
+  assert.equal(ps.lp, lpAfterDeploy, 'a re-orientation is not a deploy: no LP');
+  h.invariants();
+  m.dispose();
+});
+
+test('记录部抑制: deploying onto a tile that already holds an operator (a swap) still costs LP', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 7, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  m.enemyHexes = [{ id: 'ehex_records', round: 1 }];
+  const ids = chessOfTier(1).filter((id) => m.pool.has(id));
+  const aId = ids[0];
+  // a second operator of the SAME position class, so the first one's tile is legal for it too
+  const cls = placeClass(ps, m.gd.chess(aId));
+  const bId = ids.find((id) => id !== aId && placeClass(ps, m.gd.chess(id)) === cls);
+  assert.ok(bId, 'a second 1阶 operator of the same position class');
+  const a = give(m, ps, aId);
+  const [row, col] = legalTileFor(m, ps, aId);
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: a.uid, to: { area: 'board', row, col } }), { ok: true });
+  const lpAfterFirst = ps.lp;
+  // a second operator deployed onto the first one's tile: the occupant goes back to the hand, so the tile key is
+  // unchanged — but the incoming piece IS a deploy
+  const b = give(m, ps, bId);
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: b.uid, to: { area: 'board', row, col } }), { ok: true });
+  assert.equal(ps.find(b.uid).area, 'board', 'the swapped-in operator is deployed');
+  assert.equal(ps.find(a.uid).area, 'hand', 'the occupant went back to the hand');
+  assert.equal(ps.lp, lpAfterFirst - 1, 'the swap-in is a deploy and costs 1 LP');
+  const frame = h.lastTo('p_0', 'm.toast');
+  assert.equal(frame.kind, 'hex');
+  assert.equal(frame.hex, 'ehex_records');
+  h.invariants();
+  m.dispose();
+});
+
+test('记录部抑制: placing a summon (召唤物) is not a 部署干员 — free and silent', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', humans: 1, seed: 7, fake: true });
+  h.start();
+  toPrep(h, 1);
+  const m = h.m;
+  const ps = h.ps('p_0');
+  m.enemyHexes = [{ id: 'ehex_records', round: 1 }];
+  const chessId = chessOfTier(1).find((id) => m.pool.has(id));
+  const owner = give(m, ps, chessId);
+  const [row, col] = legalTileFor(m, ps, chessId);
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: owner.uid, to: { area: 'board', row, col } }), { ok: true });
+  const lpAfterDeploy = ps.lp;
+  const toastsNow = h.allTo('p_0', 'm.toast').length;
+  // 医疗探机: a freely placeable summon (no ownerRange), so any free tile its position class allows will do
+  const TOKEN = 'token_10000_silent_healrb';
+  const tok = ps.newPiece('token', TOKEN, { ownerUid: owner.uid });
+  ps.hand[ps.hand.findIndex((x) => x == null)] = tok;
+  ps.recompute();
+  const pos = placeClass(ps, m.gd.token(TOKEN));
+  const map = ps.deployMap();
+  let spot = null;
+  for (let r = FIELD.r1; r >= FIELD.r0 && !spot; r--) for (let c = FIELD.c0; c <= FIELD.c1 && !spot; c++) {
+    if (!ps.board.has(tileKey(r, c)) && canPlace(map, pos, r, c)) spot = [r, c];
+  }
+  assert.ok(spot, 'a free tile for the summon');
+  assert.deepEqual(m.handle(ps.playerId, { t: 'g.move', uid: tok.uid, to: { area: 'board', row: spot[0], col: spot[1] } }), { ok: true });
+  assert.equal(ps.lp, lpAfterDeploy, 'the card says 部署干员: a summon is not a 干员, so no LP');
+  assert.equal(h.allTo('p_0', 'm.toast').length, toastsNow, 'and says nothing');
+  h.invariants();
+  m.dispose();
+});
+
+// 托管 / AI 队友 的部署以前完全不走这条钩子（bot.js 直接调 ps.move）⇒ 同一个座位交给 AI 时这张卡一点不扣。
+// 现在机器人的摆位也走 `Match._moveWithDeployCost`（同一条判定），所以两边一致。
+test('记录部抑制: an AI seat (托管 / AI teammate) pays the same prep cost as a human', () => {
+  const h = makeMatch({ mode: 'solo', difficulty: 'NORMAL', seats: [{ seat: 0, playerId: 'ai_0', name: 'AI', isBot: true, connected: true }], seed: 7, fake: true });
+  h.start();
+  h.drive(() => h.ended != null || (h.m.phase === 'PREP' && h.m.round === 1));
+  const m = h.m;
+  const ps = h.ps('ai_0');
+  m.enemyHexes = [{ id: 'ehex_records', round: 1 }];
+  const lpBefore = ps.lp;
+  const chessId = chessOfTier(1).find((id) => m.pool.has(id));
+  give(m, ps, chessId);
+  arrange(m, ps, { final: true });
+  assert.ok(ps.deployCount >= 1, 'the bot deployed an operator');
+  assert.equal(ps.lp, lpBefore - ps.deployCount, 'every operator the AI deployed charged 1 LP, like a human deploy');
   h.invariants();
   m.dispose();
 });

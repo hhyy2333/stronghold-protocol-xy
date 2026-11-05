@@ -131,18 +131,32 @@ export class MatchIntents {
    * turn a misclick into damage. `OK` is the same sentinel `_handle` returns to the client, so the refusal path is
    * untouched.
    *
+   * WHAT COUNTS AS A 部署 (业主 2026-10-15 实测口径「部署扣 1 LP，但移动/重定向/被拒的部署都不扣」; 2026-11-05
+   * 「有时候生效有时候不生效」): a **干员** (chess) that was OFF the board (hand / temp) and is ON it after the move.
+   * The first implementation asked the board instead — "did a new tile key appear?" — and was wrong in BOTH directions:
+   * moving an already-deployed operator to another empty tile adds a key (a 移动 charged), while deploying onto a tile
+   * that already holds a piece keeps the key set unchanged (a swap 部署 charged nothing). The piece's own origin answers
+   * the question exactly: a board → board reposition, an in-place re-orientation and a withdrawal to the hand all start
+   * on the board and cost nothing; a hand / temp → board placement is a 部署 whatever tile it lands on.
+   *
+   * The kind matters too: the card says 「部署干员」, so a 召唤物 (token) placed from the hand is NOT a charge. Summons
+   * are re-placed routinely — moving their owner sends them back to the hand (player/placement.js _liftTokensOf), and
+   * the AI lifts and re-places every summon of the board on each arrangement (bot.js liftTokens / placeTokensSteps) —
+   * charging those would tax something the card never names. The engine already draws the same line in `deployCount`
+   * (player/basics.js: chess only), which is what the deploy cap counts.
+   *
    * The LP floor is 1 (the same rule 远见透支 follows): an operator deploy is never lethal, because a player at 0 LP
    * outside SETTLE is an invariant violation (server/match/invariants.js) and elimination is not what the card means.
    * @param {PlayerState} ps @param {{ uid: number, to: object, dir?: string }} msg
    */
   _moveWithDeployCost(ps, msg) {
-    const before = new Set(ps.board instanceof Map ? [...ps.board.keys()] : []);
+    // where the piece stands BEFORE the move (hand / temp ⇒ this move deploys it; board ⇒ it is a move / re-orientation)
+    const from = ps.find(msg.uid);
     const r = ps.move(msg.uid, msg.to, msg.dir);
     if (!r || r.ok !== true) return r;
-    // A move that did not put a NEW piece on the board (a re-orientation, a board-to-board shuffle, a piece going
-    // back to the hand) is not a 部署, which is what the card's own text names.
-    const after = ps.board instanceof Map ? [...ps.board.keys()] : [];
-    const deployed = after.some((k) => !before.has(k));
+    const landed = ps.find(msg.uid);
+    const deployed = !!(from && landed && from.piece && from.piece.kind === 'chess'
+      && from.area !== 'board' && landed.area === 'board');
     if (!deployed) return r;
     const cost = enemyPrepLpCost(this, this.round);
     if (cost > 0 && ps.lp > 1) {
