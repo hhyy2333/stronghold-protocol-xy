@@ -102,6 +102,8 @@ const CHESS = {
   test_atk2: opRec('test_atk2', { module: null, skill: ATTACK_SKILL }),
   test_atk3: opRec('test_atk3', { module: null, skill: ATTACK_SKILL }),
   test_timer: opRec('test_timer', { module: null, skill: TIME_SKILL }),   // 时间回复：不算「攻击回复」
+  // 狙击 + 攻击回复：兰登战术「狙击那一份」在 kit 里（本套件 content: 'generic' 没有 kit），本模块不给
+  test_snipe: opRec('test_snipe', { module: null, name: 'test 狙击', profession: 'SNIPER', skill: ATTACK_SKILL }),
   // 号角的靶子 / 身前格数用的己方单位（都没有模组，不吃任何效果）
   test_tank: opRec('test_tank', { module: null, name: 'test 重装', profession: 'TANK' }),
   test_ally: opRec('test_ally', { module: null, name: 'test 近卫' }),
@@ -212,6 +214,118 @@ test('特限恢复 ISW: 空弦 — 攻击回复干员数封顶 +3，有人离场
   h.battle.kill(h.unit('test_atk2'));
   h.battle.kill(h.unit('test_atk3'));
   assert.equal(archet.s.rangeExtend, 2, '有人离场 ⇒ 掉回 +2');
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 空弦 · 兰登战术的 3 级升级（业主 2026-11-05「特限模组空弦回技力部分没生效」）
+//
+// 官方 03 STAGE 的全文（BWIKI `空弦/模组3`，data/moduleLevels.json `uniequip_004_archet`）：
+//   在场时所有【狙击】干员的攻击回复技能每2.5秒回复1点技力；在集成战略中，所有干员的攻击回复技能都享受该效果且能被
+//   空弦的攻击回复技力，所有干员的攻击回复技能持续时间内攻击力+50%
+// 「狙击那一份」是基础天赋（kit），本模块只落「在集成战略中…」那三半（文件头第 1 条 b / c / d）。
+
+/** 空弦的兰登战术测试场：额外收 spGain；`enemies` 默认在远处（谁也打不到）。 */
+const tacticsField = (units, { withCard = true, chess = {}, enemies = [{ key: 'enemy_dummy', time: 0, route: 0, pos: [12, 2] }] } = {}) =>
+  makeBattle({
+    content: 'generic',
+    defs: { chess: { ...CHESS, ...chess }, enemies: ENEMIES },
+    players: [seat('p1', 0, { effects: withCard ? [refOf()] : [], units })],
+    enemies, autoFinish: false, timeLimit: 30, captureNoisy: true,
+    hooks: ['spGain', 'battleStart', 'deploy', 'death'],
+  });
+/** 一名干员拿到的「兰登战术」技力（reason 'talent'）事件。 */
+const talentSp = (h, u) => h.hooksOf('spGain').filter((c) => c.unit === u && c.reason === 'talent');
+
+test('特限恢复 ISW: 空弦 — 3 级兰登战术的「每 2.5 秒」扩到非狙击的攻击回复干员（狙击那一份在 kit 里）', () => {
+  const chess = { chess_char_3_21_b: opRec('chess_char_3_21_b', { name: '空弦', profession: 'SNIPER' }) };
+  const units = [
+    at(1, 9, 4, 'chess_char_3_21_b'),   // 空弦（带 ISW 模组）
+    at(2, 9, 5, 'test_atk1'),           // 非狙击、攻击回复 ⇒ 本模块给
+    at(3, 9, 6, 'test_snipe'),          // 狙击、攻击回复 ⇒ kit 的兰登战术给，本模块不给（否则双倍）
+    at(4, 9, 7, 'test_timer'),          // 时间回复 ⇒ 不给
+  ];
+  const card = tacticsField(units, { chess });
+  installModeModulesIsw(hexHooks(card.battle));
+  start(card);
+  card.run(5.2);
+  const got = talentSp(card, card.unit('test_atk1'));
+  assert.equal(got.length, 2, 't = 2.5 / 5.0 各一次');
+  assert.ok(got.every((c) => c.amount === 1), '每次 1 点');
+  assert.ok(near(got[0].t, 2.5, 0.05), `第一跳在 2.5s（${got[0].t}）`);
+  assert.equal(talentSp(card, card.unit('test_snipe')).length, 0, '狙击那一份是 kit 的，本模块不重复给');
+  assert.equal(talentSp(card, card.unit('test_timer')).length, 0, '时间回复技能不沾');
+  // 没有这张卡 ⇒ 一条都不给
+  const ctl = tacticsField(units, { withCard: false, chess });
+  assert.equal(installModeModulesIsw(hexHooks(ctl.battle)), 0);
+  start(ctl);
+  ctl.run(5.2);
+  assert.equal(talentSp(ctl, ctl.unit('test_atk1')).length, 0, '没有卡 ⇒ 非狙击没有那一跳');
+});
+
+test('特限恢复 ISW: 空弦 — 她每攻击一次，自己以外的攻击回复干员各 +1 技力（自己不再拿一份）', () => {
+  const chess = { chess_char_3_21_b: opRec('chess_char_3_21_b', { name: '空弦', profession: 'SNIPER', skill: ATTACK_SKILL }) };
+  // 敌人贴在空弦面前（近战 / 远程都够得着）：她每 1 秒打一次，自己 0 攻不还手
+  const units = [at(1, 10, 3, 'chess_char_3_21_b'), at(2, 9, 5, 'test_atk1')];
+  const enemies = [{ key: 'enemy_dummy', time: 0, route: 0, pos: [10, 4] }];
+  const card = tacticsField(units, { chess, enemies });
+  installModeModulesIsw(hexHooks(card.battle));
+  start(card);
+  card.run(3);
+  const archet = card.unit('chess_char_3_21_b');
+  const hits = card.hooksOf('spGain').filter((c) => c.unit === archet && c.reason === 'attack');
+  assert.ok(hits.length >= 2, `premise: 空弦真的在攻击（${hits.length} 次攻击回复）`);
+  const fed = talentSp(card, card.unit('test_atk1'));
+  assert.ok(fed.length >= 2, `她攻击时队友拿到技力（${fed.length} 次）`);
+  assert.ok(fed.every((c) => c.amount === 1), '每次 1 点');
+  assert.equal(talentSp(card, archet).length, 0, '空弦自己不因自己的攻击再拿一份（她的攻击回复已是 reason attack）');
+  // 没有这张卡 ⇒ 攻击不再喂队友
+  const ctl = tacticsField(units, { withCard: false, chess, enemies });
+  assert.equal(installModeModulesIsw(hexHooks(ctl.battle)), 0);
+  start(ctl);
+  ctl.run(3);
+  assert.equal(talentSp(ctl, ctl.unit('test_atk1')).length, 0, '没有卡 ⇒ 空弦的攻击不给队友技力');
+});
+
+test('特限恢复 ISW: 空弦 — 攻击回复技能持续时间内攻击力 +50%（技能结束 / 空弦离场撤掉）', () => {
+  // 一名非狙击、带「持续 10 秒的攻击回复技能」的干员：initSp 满了 ⇒ 第一次攻击时开技能
+  const skill = { spType: 'INCREASE_WHEN_ATTACK', spCost: 5, initSp: 5, duration: 10, skillType: 'MANUAL' };
+  const chess = {
+    chess_char_3_21_b: opRec('chess_char_3_21_b', { name: '空弦', profession: 'SNIPER' }),
+    test_skill_atk: opRec('test_skill_atk', { module: null, name: 'test 技能攻击回复', skill, stats: { atk: 500 } }),
+  };
+  const units = [at(1, 9, 4, 'chess_char_3_21_b'), at(2, 9, 6, 'test_skill_atk')];
+  // 靶子只在 test_skill_atk 的攻击范围内（空弦的 [0,0] / [0,1] 够不着，免得她也在打）
+  const enemies = [{ key: 'enemy_dummy', time: 0, route: 0, pos: [9, 7] }];
+
+  const card = tacticsField(units, { chess, enemies });
+  installModeModulesIsw(hexHooks(card.battle));
+  start(card);
+  const u = card.unit('test_skill_atk');
+  card.run(1);
+  assert.equal(u.skill.active, true, 'premise: 攻击回复技能正在持续');
+  assert.ok(near(u.s.atk, u.base.atk * 1.5), `持续时间内攻击力 ×1.5（${u.base.atk} → ${u.s.atk}）`);
+  // 技能结束 ⇒ 撤掉
+  assert.ok(card.runUntil(() => !u.skill.active, 20), 'premise: 技能会结束');
+  card.run(0.5);
+  assert.ok(near(u.s.atk, u.base.atk), `技能结束 ⇒ 攻击力回到 ${u.base.atk}（${u.s.atk}）`);
+
+  // 空弦离场 ⇒ 正在持续的那份也撤掉
+  u.skill.gainSp(u.skill.spCost + 1, 'test');
+  assert.ok(card.runUntil(() => u.skill.active, 10), 'premise: 技能又开起来了');
+  card.run(0.5);
+  assert.ok(near(u.s.atk, u.base.atk * 1.5), 'premise: 又挂上了 +50%');
+  card.battle.kill(card.unit('chess_char_3_21_b'));
+  card.run(0.5);
+  assert.ok(near(u.s.atk, u.base.atk), `空弦离场 ⇒ 撤掉（${u.s.atk}）`);
+
+  // 没有这张卡 ⇒ 技能持续时间内也没有 +50%
+  const ctl = tacticsField(units, { withCard: false, chess, enemies });
+  assert.equal(installModeModulesIsw(hexHooks(ctl.battle)), 0);
+  start(ctl);
+  const v = ctl.unit('test_skill_atk');
+  ctl.run(1);
+  assert.equal(v.skill.active, true, 'premise: 技能在跑');
+  assert.ok(near(v.s.atk, v.base.atk), '没有卡 ⇒ 没有 +50%');
 });
 
 // =====================================================================================================================
@@ -734,4 +848,75 @@ test('特限恢复 ISW: 生产链路 — 普通形态（没有精锐棋子）也
   assert.ok(near(cardHorn.s.atk, ctlHorn.s.atk * 1.08), `普通形态也吃重装光环（${ctlHorn.s.atk} → ${cardHorn.s.atk}）`);
   card.h.invariants();
   ctl.h.invariants();
+});
+
+// =====================================================================================================================
+// 生产链路 · 空弦的兰登战术 3 级升级（真实棋子 + 真实模组数据）
+
+test('特限恢复 ISW: 生产链路 — 真实空弦（3 级 ISW 模组）+ 真实拉普兰德：2.5 秒那一跳扩到非狙击', () => {
+  const realField = (withCard) => {
+    const h = makeBattle({
+      content: 'generic',
+      units: [
+        { chessId: 'chess_char_3_21_b', moduleId: 'uniequip_004_archet', moduleLevel: 3, row: 9, col: 4 },  // 空弦 ISW-A 3 级
+        { chessId: 'chess_char_2_16_b', row: 9, col: 6 },                                                    // 拉普兰德（近卫·攻击回复）
+      ],
+      defs: { enemies: ENEMIES },
+      enemies: [{ key: 'enemy_dummy', time: 0, route: 0, pos: [12, 2] }],
+      autoFinish: false, timeLimit: 20, captureNoisy: true,
+      hooks: ['spGain', 'battleStart', 'deploy'],
+    });
+    if (withCard) h.battle.getPlayer(h.battle.players[0].playerId).playerEffects.push(refOf());
+    const inst = installModeModulesIsw(hexHooks(h.battle));
+    h.run(0.1);
+    return { h, inst };
+  };
+  const card = realField(true);
+  const ctl = realField(false);
+  const of = (r, id) => r.h.battle.allyUnits.find((u) => u.defId === id);
+  assert.equal(ctl.inst, 0, '对照场没有卡');
+  assert.equal(of(card, 'chess_char_3_21_b').def.raw.module.type, 'ISW-A', 'premise: 空弦选中的是 ISW-A');
+  assert.equal(of(card, 'chess_char_3_21_b').def.raw.module.level, 3, 'premise: 模组是 3 级');
+  card.h.run(5.2);
+  ctl.h.run(5.2);
+  const got = talentSp(card.h, of(card, 'chess_char_2_16_b'));
+  assert.equal(got.length, 2, '真实数据上同样每 2.5 秒一跳（t = 2.5 / 5.0）');
+  assert.ok(got.every((c) => c.amount === 1), '每次 1 点');
+  assert.equal(talentSp(ctl.h, of(ctl, 'chess_char_2_16_b')).length, 0, '没有卡 ⇒ 非狙击没有那一跳');
+  card.h.invariants();
+  ctl.h.invariants();
+});
+
+test('特限恢复 ISW: 生产链路 — 真实 kit + 本模块：狙击那一份来自 kit、非狙击那一份来自本模块，各给一次', () => {
+  const fullField = (withCard) => {
+    const h = makeBattle({
+      content: 'full',
+      players: [seat('p1', 0, {
+        effects: withCard ? [refOf()] : [],
+        units: [
+          { uid: 1, kind: 'chess', chessId: 'chess_char_3_21_b', moduleId: 'uniequip_004_archet', moduleLevel: 3, row: 9, col: 4 },
+          { uid: 2, kind: 'chess', chessId: 'chess_char_2_16_b', row: 9, col: 6 },
+        ],
+      })],
+      defs: { enemies: ENEMIES },
+      enemies: [{ key: 'enemy_dummy', time: 0, route: 0, pos: [12, 2] }],
+      autoFinish: false, timeLimit: 20, captureNoisy: true,
+      hooks: ['spGain', 'battleStart', 'deploy'],
+    });
+    h.run(0.1);
+    return h;
+  };
+  const card = fullField(true);
+  const ctl = fullField(false);
+  const of = (h, id) => h.battle.allyUnits.find((u) => u.defId === id);
+  card.run(5.2);
+  ctl.run(5.2);
+  // 空弦（狙击 + 攻击回复）：基础天赋那一份在 kit 里 —— 有卡没卡都是 2.5 / 5.0 各一次，本模块不会再多给一份
+  assert.equal(talentSp(card, of(card, 'chess_char_3_21_b')).length, 2, '空弦：kit 的兰登战术，2.5 / 5.0 各一次');
+  assert.equal(talentSp(ctl, of(ctl, 'chess_char_3_21_b')).length, 2, '没有卡时 kit 的兰登战术照旧');
+  // 拉普兰德（非狙击 + 攻击回复）：只有拥有这张卡时才有那一跳
+  assert.equal(talentSp(card, of(card, 'chess_char_2_16_b')).length, 2, '有卡 ⇒ 非狙击每 2.5 秒 +1');
+  assert.equal(talentSp(ctl, of(ctl, 'chess_char_2_16_b')).length, 0, '没有卡 ⇒ 非狙击没有');
+  card.invariants();
+  ctl.invariants();
 });

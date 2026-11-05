@@ -91,7 +91,10 @@ export default {
         },
       }),
       talents: [
-        { install(battle, unit) { // 兰登战术
+        { install(battle, unit) { // 兰登战术（基础天赋：所有狙击干员的攻击回复技能每 2.5 秒 +1 技力）。3 级 ISW-A
+                                 // 「空弦特限证章」追加的「所有干员 / 能被空弦的攻击回复技力 / 攻击回复技能持续时间内
+                                 // 攻击力+50%」那半在 hexcards/stone_mode_modules_isw.js —— 只有【特限恢复】卡才生效，
+                                 // 这里只管基础天赋那一份（两处按职业分开，同一名干员不会被给两次）。
           unit.mem.archetTactics = true;
           battle.every(num(t0.interval, 2.5), () => {
             if (!alive(unit) || !isLeader(battle, unit, 'archetTactics')) return;
