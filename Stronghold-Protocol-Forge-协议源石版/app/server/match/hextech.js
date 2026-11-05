@@ -14,7 +14,7 @@
 
 import { sumEnemyMods, rollOffers, fissionBondIds as sharedFissionBondIds, fissionCap, fissionMul } from '../../shared/hextech.js';
 import { protocolLevelEnemyMods } from '../../shared/protocolLevels.js';
-import { BOND_LAYER_CAP } from '../../shared/constants.js';
+import { BOND_LAYER_CAP, PHASE } from '../../shared/constants.js';
 import { hasBattlePart, DEBT_EFFECT_KEY } from '../sim/content/hextech.js';
 import { createRng, deriveSeed } from '../sim/rng.js';
 import { bossPoolHp } from './finalAssault.js';
@@ -783,8 +783,10 @@ export function specialLimitDiscountOf(ps, chessId) {
  *
  * The card is therefore ARMED instead: `pendingMirror` holds the picker's id and the ids it already owns at that moment
  * (so the copy is a card the teammate gained, never one of its own), and `resolveMirrorCopies` pays it out the moment
- * somebody owns something copyable. A solo match can never pay it out (there is no teammate) [ASSUMED: the official text
- * names a 队友], and the arm is dropped when the picker is gone.
+ * somebody owns something copyable — **except while the 协议源石 draft itself is still running**: 业主 2026-11-05
+ * 「让镜像协议的复制在所有人选完协议源石时再触发复制」, so the copy is drawn from the draft's FINAL cards instead of the
+ * ones the teammates happened to own when the fastest seat answered (see `hexDraftOpen`). A solo match can never pay it
+ * out (there is no teammate) [ASSUMED: the official text names a 队友], and the arm is dropped when the picker is gone.
  *
  * The pending list lives on the match (`m.pendingMirror`), not on the player: it is match-level state exactly like the
  * draft that produced it, and it must survive the picker's own refs being rebuilt.
@@ -801,8 +803,32 @@ function armMirrorCopy(m, ps, hex) {
 }
 
 /**
+ * Whether the 协议源石 draft is still running (the phase is live and its state has not been settled yet).
+ *
+ * 业主 2026-11-05「让镜像协议的复制在所有人选完协议源石时再触发复制」: the draft is PARALLEL, so the fastest seat answers
+ * before its teammates do — paying an armed copy out on the first in-draft gain copies a card a teammate picked in an
+ * EARLIER round while the cards being picked right now (the ones the owner expects the copy to see) are not in the pool
+ * yet. Every in-draft gain therefore keeps the arm waiting, and `MatchHexDraft.finishHexDraft` calls
+ * `resolveMirrorCopies` once the draft is settled (every seat has picked, or the timer resolved the leftovers).
+ *
+ * The seam is the SETTLEMENT, not the last pick: `_applyHex` records the pick and only then grants the card, and the
+ * transition to PREP is deferred by one `later(0)` tick — so "everyone has a pick recorded" is briefly true while the
+ * draft still owns its state. Paying only from `finishHexDraft` keeps every payout at one predictable moment (after the
+ * last seat's card landed AND after the enemy's card was drawn) and keeps the copy from re-entering another player's
+ * pick pipeline.
+ * @param {any} m @returns {boolean}
+ */
+function hexDraftOpen(m) {
+  return !!(m && m.phase === PHASE.HEX_DRAFT && m.hex);
+}
+
+/**
  * Pay out every armed 镜像协议 whose picker can copy something now. Called after each `applyHex` (so the gain that just
- * landed counts) and at each round start (so a card a teammate drafts later in the SAME draft is picked up).
+ * landed counts) and by `MatchHexDraft.finishHexDraft` (so the draft's final cards are in the pool the copy draws from).
+ *
+ * 业主 2026-11-05「让镜像协议的复制在所有人选完协议源石时再触发复制」: while the draft is still open the arm WAITS (see
+ * `hexDraftOpen`) — an earlier round's card is not the answer the owner wants when a teammate is about to pick another one
+ * in the same draft. Outside a draft every gain retries immediately, exactly as before.
  *
  * One entry is resolved at most once: the copy is granted through the ordinary `applyHex`, which dedupes the EffectRef,
  * and the entry is removed whether or not a candidate was found. A copy that is itself a 镜像协议 re-arms the picker via
@@ -815,6 +841,7 @@ function armMirrorCopy(m, ps, hex) {
 export function resolveMirrorCopies(m) {
   const list = Array.isArray(m && m.pendingMirror) ? m.pendingMirror : null;
   if (!list || !list.length || (m && m._resolvingMirror)) return;
+  if (hexDraftOpen(m)) return;     // 业主 2026-11-05: the draft's final cards are not in yet — stay armed
   if (m) m._resolvingMirror = true;
   try {
     for (let i = list.length - 1; i >= 0; i--) {

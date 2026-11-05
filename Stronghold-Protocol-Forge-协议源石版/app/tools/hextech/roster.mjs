@@ -46,9 +46,11 @@
 //                                     attack buffs itself with atkPct for `seconds`
 //   copyAllyHex true           — on pick: copy a random teammate-owned hex (highest rarity first). The draft is
 //                                 PARALLEL, so the first seat to pick sees none of the others' cards yet: the card is
-//                                 ARMED rather than dropped and resolved the moment a teammate owns one
-//                                 (server/match/hextech.js resolveMirrorCopies — after every pick, and at each round
-//                                 start), so pick order can never waste it
+//                                 ARMED rather than dropped, and it is paid out once every seat has finished the draft
+//                                 (server/match/hextech.js resolveMirrorCopies ← MatchHexDraft.finishHexDraft, 业主
+//                                 2026-11-05「让镜像协议的复制在所有人选完协议源石时再触发复制」) or on a later gain
+//                                 outside a draft, so pick order can never waste it and the copy always draws from the
+//                                 draft's final cards
 //   randomHexes N              — on pick: gain N extra random hexes
 //   countAdd N (enemy)         — +N enemies per normal spawn group, before the preview
 //

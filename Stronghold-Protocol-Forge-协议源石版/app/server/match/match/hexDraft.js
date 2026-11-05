@@ -4,14 +4,16 @@
 //
 // When everyone has picked (or the timer runs out — the leftovers are then drawn at random) the enemy side gains one
 // hex whose rarity is drawn at random among the rarities the players picked this round; enemy hexes persist for the
-// rest of the match (Match.enemyHexes) and are folded into every battle by Match.hexSpawnMods.
+// rest of the match (Match.enemyHexes) and are folded into every battle by Match.hexSpawnMods. That same moment pays out
+// every armed 镜像协议 (`resolveMirrorCopies`, 业主 2026-11-05「让镜像协议的复制在所有人选完协议源石时再触发复制」): the copy
+// waits for the draft's FINAL cards instead of firing on the first seat's pick.
 //
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE, ERR } from '../../../shared/constants.js';
 import { rollOffers, pickEnemyRarity, pickEnemyHex } from '../../../shared/hextech.js';
 import { protocolLevelExtraHexesAt } from '../../../shared/protocolLevels.js';
-import { applyHex, hexIdsOf, hexPoolFor, hexDrawWeight } from '../hextech.js';
+import { applyHex, hexIdsOf, hexPoolFor, hexDrawWeight, resolveMirrorCopies } from '../hextech.js';
 import { OK, fail, DELAYS } from './common.js';
 
 /**
@@ -540,6 +542,12 @@ export class MatchHexDraft {
         this.enemyHexes.push({ id, round: this.hexDrawRound });
       }
     }
+    // 镜像协议 (业主 2026-11-05「让镜像协议的复制在所有人选完协议源石时再触发复制」): the draft is over, so an armed copy may
+    // be paid out now — this call is exactly what `server/match/hextech.js hexDraftOpen` made every in-draft gain wait for.
+    // It runs AFTER the enemy's own card is drawn so the draft's own settlement (picked rarities → enemy hex) keeps its
+    // rng order, and the copy is the player-side gain that follows it (its onPick half included, via the ordinary
+    // `applyHex`). `this.hex` is already null here, so the "draft still open" guard cannot block this pass.
+    try { resolveMirrorCopies(this); } catch (e) { this.reportError('mirror copies (hex draft end)', e); }
     this.afterHexDraft();
   }
 
