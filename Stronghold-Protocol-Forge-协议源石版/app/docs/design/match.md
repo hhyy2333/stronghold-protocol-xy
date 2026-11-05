@@ -327,6 +327,27 @@ The shared DIY detail preview (stats, range, trait, talents, potential, cultivat
 
 
 
+## 敌方协议源石：备战期钩子【记录部抑制】（2026-11-05 修口径）
+
+【记录部抑制】`ehex_records`（`data/hextech.json`，`params: { everyRounds: 4, lp: 1 }`）在**备战期**生效，不是战斗
+脚本：它的 tick 回合（`(round - 1) % everyRounds === 0` ⇒ R1 / R5 / R9 …）里，玩家**部署干员**时扣 `lp` 点策略生命
+（下限 1）。读取点 `server/match/hextech.js enemyPrepLpCost`（纯函数），执行点
+`server/match/match/intents.js _moveWithDeployCost`。
+
+- **「部署」的判据是棋子的出身，不是棋盘**（业主 2026-11-05「记录部抑制有时候生效有时候不生效是什么情况」）：
+  移动前**不在**棋盘上（手牌 / 整备区）、移动后**在**棋盘上 ⇒ 部署；棋盘 → 棋盘（移动 / 换位）、原地重定向、
+  收回手牌 ⇒ 都不是部署。旧判据「棋盘上有没有出现一个新的格子键」在两个方向上都错：手牌干员放到已有棋子的格子上
+  （换位部署）不产生新键 ⇒ 漏扣；把已部署的干员挪到另一个空格子（移动）产生新键 ⇒ 误扣。
+- **只数干员（chess）**：卡面写「部署干员」，所以召唤物（token）从手牌落到棋盘不扣 —— 与 `deployCount` 只数 chess
+  是同一条线。召唤物在移动干员（`_liftTokensOf`）和 AI 摆位（`bot.js liftTokens`）时会被反复收回再放下，按「干员」
+  算才不会对同一次部署反复收费。
+- **AI 座位走同一条钩子**：`server/match/bot.js applyPlanSteps` 的摆位调同一个 `Match._moveWithDeployCost`，所以
+  托管 / AI 队友 与真人扣得一样（此前机器人直接调 `ps.move`，这张卡在 AI 座位上完全不生效）。
+- **玩家看到的那一下**：一条 `hex` 种类的 toast（0.19.21，业主 2026-10-24「触发时给个明显提示」）+ 屏幕红晕与目标
+  生命值脉冲（`public/js/ui/hexHit.js`）；策略生命已到 1 时不再扣、也不提示。
+- **回归**：`test/match/hextech.test.js` 的记录部抑制一组（部署扣 + toast、移动免费、换位部署照扣、召唤物不扣、
+  AI 座位照扣、非 tick 回合免费）。
+
 ## 协议源石：第 7 回合的盟约专属协议（2026-10-26，业主裁定）
 
 **第 7 回合改成「盟约专属协议」抽取回合**：抽卡池按玩家**当前激活的核心盟约**收窄到带 `requiresBond` 的那一族

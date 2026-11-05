@@ -1762,8 +1762,10 @@ function* applyPlanSteps(m, ps, chosen, target) {
       const dir = planDir(target, p.uid);
       if (!loc || (loc.area === 'board' && loc.key === k && pieceDir(loc.piece) === dir)) continue;
       const [r, c] = parseKey(k);
-      // onto its own tile: an in-place re-orientation (not a move)
-      if (tryDo(() => ps.move(p.uid, { area: 'board', row: r, col: c }, dir)) && loc.key !== k) moved = true;
+      // onto its own tile: an in-place re-orientation (not a move). Routed through the same g.move wrapper a human's
+      // deploy goes through, so an AI seat pays 记录部抑制 exactly like a human one (a hand → board placement charges,
+      // a board → board move does not — Match._moveWithDeployCost owns that rule).
+      if (tryDo(() => m._moveWithDeployCost(ps, { uid: p.uid, to: { area: 'board', row: r, col: c }, dir })) && loc.key !== k) moved = true;
     }
     if (!moved) break;
   }
@@ -1779,7 +1781,7 @@ function* applyPlanSteps(m, ps, chosen, target) {
       const k = again.get(p.uid);
       if (!k || ps.deployCount >= ps.deployCap) continue;
       const [r, c] = parseKey(k);
-      if (!tryDo(() => ps.move(p.uid, { area: 'board', row: r, col: c }, planDir(again, p.uid)))) refused.add(k);
+      if (!tryDo(() => m._moveWithDeployCost(ps, { uid: p.uid, to: { area: 'board', row: r, col: c }, dir: planDir(again, p.uid) }))) refused.add(k);
     }
     if (!refused.size) break;
   }
