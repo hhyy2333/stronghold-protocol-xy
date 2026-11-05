@@ -96,6 +96,7 @@ Top level: `{ season, seasonName, modes, economy, lpCapPerRound, bossOvertimeAft
 | `prepTimeData` | `300` | official `normalPhaseTime` (optional "timed solo") |
 | `isSpPrepare`, `isBoss`, `isHidden` | | 机变 before prep / leader round / 隐秘核心 |
 | `isDummy` | `true` on round 16 | the 木桩演练 round (owner 2026-10-29): a normal-template round whose wave builds exactly one 木桩, so the players can read their own output. `isBoss` / `isHidden` stay false — it never enters `_planBossWaves` and has no shared pool |
+| `enemySelfDestructAt` | `60` on round 16, absent on every other round | **real** seconds into the round at which every enemy still on the field blows up — `GameData.enemySelfDestructAt` (× `combatTimeScale` = game seconds) → `Battle opts.enemySelfDestructAt` / the BattleSpec key of the same name. The fork's 木桩演练 ending (owner 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」): the round is 65 real s and the 自爆 happens at the old 60 s limit, so the survivors die as deaths instead of being counted as 漏怪 by the `timeout` path — and that round's settlement charges no LP at all (`server/match/match/settle.js`). Absent = no such rule, the battle is byte-for-byte the old one |
 | `bossOvertimeAfter` | `150` | boss rounds: team LP −1 per **real** second after this many real seconds (= 300 game s on the 2× field clock; `m.public.overtimeAt`) |
 
 ### 1.2 `economy`
@@ -469,6 +470,26 @@ The round-16 target is the one enemy row this fork invents rather than takes fro
 | `iconId`, `spine` | `enemy_9033_acdeer` | draws as 萨米; `tools/assets/plan.mjs ENEMY_SPINE_ALIAS` also aliases the
   manifest's `spine` (and, for an alias, the icon) so the client really uses that model |
 
+**The round's ending — 到时间自爆 + LP 锁定** (owner 2026-11-05「给这个木桩怪物加一个到时间自动爆炸…第十六回合结束时会扣3点血，
+在协议等级加持后扣5滴」＋「把第16回合的时间加5秒钟，并且在最后5秒内所有怪物强制自杀且回合结束后玩家血量锁定不变」). The post is
+a measuring device, so round 16 must not punish the measurement — and the ordinary ending did: the 60 s `timeout` recorded
+**every surviving non-boss enemy** as a counted 漏怪 (`sim/battle/lifecycle.js _timeout` → `_recordLeak`), the post itself
+plus any 悬赏 / 协议源石 enemy the round put next to it, and the settle charges one LP per counted leak (`settle.js`,
+independent of `lpr`) plus the protocol level's `leakLp` — 3 leaks were 3 LP, 5 at level 18 / 19. On the match's last round
+that eliminated the player and showed 游戏失败 after a won fight. The three data fields that fix it:
+
+| where | value | what it does |
+|---|---|---|
+| `rounds["16"].combatTimeLimit` | `65` (real s) | the 60 s measurement window + a 5 s 自爆 window; `GameData.combatTimeLimit(16)` = 130 game s |
+| `rounds["16"].enemySelfDestructAt` | `60` (real s) | at the OLD limit every enemy on the field blows up (`_selfDestructEnemies`: reason `selfdestruct` — no 击杀 / 悬赏 / 漏怪, `die` still rendered), so the field empties and the round ends `cleared` inside its own limit. The measurement window — and every DPS reading — stays the same 60 s |
+| `waves.json custom_dummy.maxPlayTime` | `65` (real s) | the field's own length, kept equal to the round's `combatTimeLimit` (the official builder derives one from the other) |
+
+…and the settlement half is code, not data: `settle.js` charges **0** LP in that round (`locked || dummyRound ? 0 : …`), the
+same reading 背水一战's 锁血 uses. That is belt and braces for an enemy that leaked EARLIER in the round; `stats.leaks` still
+reports the leaks (the panel stays honest), only the LP charge is 0. Pinned by `test/sim/dummy.test.js` (the field rule,
+its absence = the old 超时 path) and `test/match/dummyround.test.js` (the data, the field opts / spec round trip, and the
+locked settlement).
+
 ### Fork wave enemies (0.19.17, owner 2026-10-22「做d」)
 
 The fork adds enemies this repository did not carry before, declared in
@@ -574,7 +595,9 @@ leader `enemy_1507_mephi` and its escorts swapped to the 宿主 units by the res
 
 `custom_dummy` is the fork's round-16 木桩演练 field (owner 2026-10-29, `docs/research/17-dummy-round.json`): one
 route and **exactly one spawn**, `enemy_9901_dummy` at t 0 with no `tag` (neither `boss` nor `part` — the training
-post is not a leader, so no shared pool and no per-hit 限伤), `maxPlayTime` 60. Its route is the **official leader route**
+post is not a leader, so no shared pool and no per-hit 限伤), `maxPlayTime` 65 (the 60 s measurement window + the 5 s
+自爆 window of owner 2026-11-05 — the 自爆 moment itself is a ROUND field, `rounds["16"].enemySelfDestructAt`, not a wave
+one). Its route is the **official leader route**
 of `act1autochess_h07_07` (`[3,10] → [2,2]`, checkpoint `[2,3]`), so the post stands in the arena: owner 2026-10-30
 「16回合没有设置成boss回合，导致地图有问题」— the round is played from the **boss deploy field** (`bossL` / `bossR`;
 board tile `(10,10)` maps to stage `(3,10)`, i.e. onto the post) while the FIGHT stays a normal one

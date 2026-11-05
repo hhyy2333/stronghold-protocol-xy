@@ -25,7 +25,8 @@
       "[ASSUMED] 其余照抄 acdeer：desc / descRaw / abilities / talents / skills / be / beFactor / attrPower / immunities / attackAnim / iconId / spine 全部从模板行复制。后果写清楚：敌方情报里木桩会显示「萨米的意志」的说明与三条能力文本，`attrPower` 仍是 246520（与 20 亿血不符，但 attrPower 只用于波次替换池的强度换算，木桩不在任何池子里）。要改文案就改这里的 `enemy.text`（见该字段）。*** 例外：hitArea 不复制（见上一条）。",
       "[ASSUMED] 素材：木桩没有自己的美术，enemy.iconId / enemy.spine 都写成 'enemy_9033_acdeer'，于是 data/enemies.json 里这一行自洽地指向萨米的模型 id。**客户端实际绘制走 data/assets.json 的 enemies['enemy_9901_dummy'].spine / spineAliasOf**，那份清单由 tools/fetch-assets.mjs（ENEMY_SPINE_ALIAS）产生，不由 build-data 生成 —— 这一步由 Lead 接手（2026-10-29），本表只写 enemies.json 的两个字段。",
       "回合接线（服务端，不在本文件）：gamedata.js get dummyRound / phases.js startRound 走普通回合分支 / bossRounds.js _finishFinal 的隐藏核心分支 / settle.js afterSettle / views.js publicView。roundsPassed 与奖励、奖杯**不受影响**：server/match/results.js 的 teamRounds 只读 gd.bossRound + hiddenCleared，不读第 16 回合。",
-      "【2026-10-30 地图修正】业主「16回合没有设置成boss回合，导致地图有问题」。第16回合要的是 boss 的**布阵区**（玩家在 bossL / bossR 上布阵），不是 boss 的**血池**：真正的 BOSS 回合会带来三样会毁掉这一回合的东西 —— ① 共享血池（血条来自 bosses.json 的 bloodPoint，敌人行的 maxHp 会被 _syncBossHp 覆写掉）；② 限伤 BOSS_HIT_LIMIT 300000（kind === 'boss' 的战场上，对 isBoss 单位单发 ≥ 30 万的伤害**整段取消**，高爆发干员的读数会被静默吃掉）；③ 没有硬性时限、只靠「池子打空 / 队伍生命归零」结束（20 亿 + 每秒回 20 亿 + 锁血的木桩打不空 ⇒ 只能等加时扣光 LP ⇒ 判负，而这是最后一回合）。所以做法是：这一场仍是**普通作战**（PHASE.COMBAT、敌人来自 this.wave、无血池无加时），只把这一组玩家登记进 `bossWaves`（server/match/match/phases.js `_planDummyField`），让 deployFieldOf 给出 bossL / bossR —— 也就是「用 boss 的地图与布阵区，不用 boss 的战斗规则」。"
+      "【2026-10-30 地图修正】业主「16回合没有设置成boss回合，导致地图有问题」。第16回合要的是 boss 的**布阵区**（玩家在 bossL / bossR 上布阵），不是 boss 的**血池**：真正的 BOSS 回合会带来三样会毁掉这一回合的东西 —— ① 共享血池（血条来自 bosses.json 的 bloodPoint，敌人行的 maxHp 会被 _syncBossHp 覆写掉）；② 限伤 BOSS_HIT_LIMIT 300000（kind === 'boss' 的战场上，对 isBoss 单位单发 ≥ 30 万的伤害**整段取消**，高爆发干员的读数会被静默吃掉）；③ 没有硬性时限、只靠「池子打空 / 队伍生命归零」结束（20 亿 + 每秒回 20 亿 + 锁血的木桩打不空 ⇒ 只能等加时扣光 LP ⇒ 判负，而这是最后一回合）。所以做法是：这一场仍是**普通作战**（PHASE.COMBAT、敌人来自 this.wave、无血池无加时），只把这一组玩家登记进 `bossWaves`（server/match/match/phases.js `_planDummyField`），让 deployFieldOf 给出 bossL / bossR —— 也就是「用 boss 的地图与布阵区，不用 boss 的战斗规则」。",
+      "【2026-11-05 到时间自爆】业主「第十六回合本质dps检测，能不能给这个木桩怪物加一个到时间自动爆炸。现在的问题是，第十六回合结束时会扣3点血，在协议等级加持后扣5滴」＋「把第16回合的时间加5秒钟，并且在最后5秒内所有怪物强制自杀且回合结束后玩家血量锁定不变」。病根不是木桩本身：**超时**会把场上还活着的每一个非首领敌人记成「漏怪」（server/sim/battle/lifecycle.js `_timeout` → `_recordLeak`），而结算按**条数**扣 LP（server/match/match/settle.js `counted`，与 lpr 无关）—— 于是 60 s 一到，木桩（1 条）加上这一回合插进来的悬赏 / 协议源石敌人（各 1 条）一起算漏怪，3 条 = 3 点 LP；协议等级 18 / 19 的 `leakLp: 2` 再叠加成 5 点。最后一回合 LP 不够就当场淘汰、显示失败。落点（三层，缺一不可）：① 回合时限 `combatTimeLimit` 60 → **65**（多出的 5 s 是「自爆窗口」：自爆发生在旧时限 60 s 上，因此一定落在回合**之内**，不会被超时判成漏怪）；② `rounds[\"16\"].enemySelfDestructAt: 60`（**real** 秒，× combatTimeScale = 游戏秒 120）—— 这一刻场上所有敌人**自爆**（`_remove(e, 'selfdestruct')`：不是击杀、不付悬赏、不记漏怪），战斗随即以 cleared 结束；③ 结算把这一回合的 LP 损失锁成 0（与「背水一战」的锁血同一处判定）。量输出窗口仍是 60 s（自爆发生在 60 s），DPS 读数与改动前同一把尺子；木桩的 20 亿血 / 自愈 / 锁血全部不动 —— 自爆走的是引擎的移除，不经过 `fatal` 钩子。"
     ]
   },
   "round": {
@@ -41,8 +42,9 @@
     "cfg": {
       "template": "custom_dummy",
       "bossTemplates": null,
-      "combatTimeLimit": 60,
-      "levelMaxPlayTime": 60,
+      "combatTimeLimit": 65,
+      "levelMaxPlayTime": 65,
+      "enemySelfDestructAt": 60,
       "prepTime": 195,
       "prepTimeSolo": null,
       "prepTimeData": 195,
@@ -62,7 +64,7 @@
   },
   "wave": {
     "id": "custom_dummy",
-    "maxPlayTime": 60,
+    "maxPlayTime": 65,
     "dp": {
       "init": 10,
       "perSec": 1,

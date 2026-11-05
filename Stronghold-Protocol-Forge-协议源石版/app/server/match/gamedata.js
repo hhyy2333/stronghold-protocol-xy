@@ -497,6 +497,22 @@ export class GameData {
    * null when the mode has no dummy round (mode_single_funny, mode_training_1, and every data set built before it).
    */
   get dummyRound() { return Number.isInteger(this.mode.dummyRound) && this.mode.dummyRound > 0 ? this.mode.dummyRound : null; }
+
+  /**
+   * 第16回合「木桩演练」的「到时间自爆」：`rounds[r].enemySelfDestructAt`（**real** 秒，业主 2026-11-05「给这个木桩怪物
+   * 加一个到时间自动爆炸」）换算成**游戏秒**（× 战斗倍速），`null` = 这一回合没有这条规则（每一个官方回合都是 null）。
+   *
+   * 口径：这一刻场上**所有**敌人自爆（`Battle._selfDestructEnemies`，不是击杀、不付悬赏、不记漏怪），于是回合结束时
+   * 不会有「超时把活着的敌人算成漏怪」那笔 LP —— 第16回合是最后一回合，那笔扣血会直接把玩家淘汰、显示失败。
+   * 数据只在声明了这一格的回合上写它（`tools/build-data.mjs addDummyRound`），所以旧数据 / 其它回合逐字节不变。
+   * @param {number} r
+   * @returns {number|null} game seconds
+   */
+  enemySelfDestructAt(r) {
+    const rc = this.roundCfg(r);
+    const v = rc ? rc.enemySelfDestructAt : undefined;
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v * this.combatTimeScale : null;
+  }
   get maxShopLevel() { return posIntOr(this.mode.maxShopLevel, DEFAULTS.maxShopLevel); }
 
   roundCfg(r) {

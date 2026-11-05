@@ -52,6 +52,10 @@ const b = new Battle({
   rect,                         // optional; defaults: normal rows 9–12 × cols 0–10, unite cols 0–20, boss rows 0–5 × cols 0–20
   timeLimit,                    // game seconds (the match passes 2 × the round's combatTimeLimit, which data gives in
                                 // real seconds of the forced-2× battle — DESIGN §4); boss/hidden default Infinity (match force-ends)
+  enemySelfDestructAt,          // optional, game seconds: at this moment EVERY enemy still on the field blows up — a
+                                // removal, not a kill (no 击杀 / 悬赏 / 漏怪) — and the field ends `cleared`. The round-16
+                                // 木桩演练 rule (owner 2026-11-05); absent = the option is not passed and the field is
+                                // byte-for-byte the one it always was (docs/design/match.md §6.1)
   players: [PlayerBattleInput], // DESIGN §5.1
   spawns: [SpawnSpec], routes: [RouteSpec],
   sharedBoss,                   // { hp, maxHp, damage(playerId, amount) } or null
@@ -480,7 +484,10 @@ recorded for the player whose half contains the goal it reached, with `sourcePla
   `sharedBoss`** ends only when the pool reaches 0 or on `forceEnd` (DESIGN §5.5) — an emptied field keeps running
   (the h07_04 pair leader has no wait step and can walk into the objective: the leak costs its `lpr`, then the field
   idles while another field may still empty the pool or the match's overtime drain — team LP, from 120 real s for all-human teams / 150 with an AI teammate — ends it); without a pool
-  (sandboxes, tools) it still ends `cleared` when empty. `timeout`: `time ≥ timeLimit` —
+  (sandboxes, tools) it still ends `cleared` when empty. A field that declares `enemySelfDestructAt` empties itself at
+  that moment (`battle/lifecycle.js _selfDestructEnemies`): every enemy is removed with reason `selfdestruct` — no
+  `killed` credit, no bounty payout, no leak entry — so the round ends `cleared` and never on the `timeout` path below.
+  `timeout`: `time ≥ timeLimit` —
   every living non-boss enemy becomes a leak; spawns that never happened are dropped from `total` and listed in `unspawned`.
 - `leaked[].counted = false` for `notCountInTotal`/`unharmful`/boss parts (LP rules: normal rounds count only `counted`
   leaks, cap 10; boss rounds use `lpr`). `perfect = no counted leak`.

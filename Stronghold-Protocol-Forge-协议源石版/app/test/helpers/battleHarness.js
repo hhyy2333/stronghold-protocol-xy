@@ -37,6 +37,8 @@
 //                 flags.startOpCooldown = 0 unless given: the official 3 s operation cooldown of the battle-start
 //                 deployment (Battle default AUTO_OP_COOLDOWN) would hold back every test that fills a skill's SP at
 //                 t ≈ 0 to stand for a skill that became ready mid-fight; tests of that rule pass it explicitly
+//   enemySelfDestructAt  game seconds: at this moment every enemy on the field blows up (Battle opts.enemySelfDestructAt,
+//                 the round-16 木桩演练 rule of owner 2026-11-05). Absent = the option is not passed at all.
 //   autoFinish    end when all enemies are dead (default: true when any spawn is scheduled, else false so a
 //                 battle without enemies keeps running until its time limit)
 //   hooks         list of hook names to capture (default: all DESIGN events)
@@ -258,6 +260,8 @@ export function makeBattle(opts = {}) {
     quiet: opts.verbose ? false : true, devices: opts.devices,
     // the two "pathological battle" caps (server/sim/constants.js): a test may shrink them to prove they fire
     maxBattleErrors: opts.maxBattleErrors, maxTickDamageInstances: opts.maxTickDamageInstances,
+    // 第16回合「木桩演练」的到时间自爆（业主 2026-11-05，游戏秒）：只在这一条测试里显式传，缺省不传 ⇒ 战斗与从前相同
+    enemySelfDestructAt: opts.enemySelfDestructAt,
     autoFinish: opts.autoFinish ?? spawns.length > 0, kits: opts.kits, extraContent: opts.extraContent,
     setup: (b) => {
       for (const name of hookNames) {

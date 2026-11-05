@@ -38,16 +38,19 @@ LOBBY(room, whose SEAT COUNT is set when it is created — the host's slider at 
    R15 HIDDEN_CORE  (if difficulty ≥ NORMAL and Σ activated layers > 350 solo / 1200 co-op and team LP > 1)
    R16 木桩演练    (only after the Hidden Core was CLEARED, and only in a mode with `dummyRound` — the six NORMAL+ ones;
                     owner 2026-10-29「增加16回合，加一个“木桩”让玩家看看自己的输出」. A NORMAL-template round
-                    (`custom_dummy`, 60 real s) whose wave builds exactly one 木桩: it neither moves nor fights back and
-                    heals itself, so the players read their own output on a fixed window. It is NOT a rule round — it
-                    pays no reward, moves no `roundsPassed`, has no shared pool and no 限伤 (the post's spawn carries no
-                    `boss` tag) — so `_finishFinal` starts it and `afterSettle` ends the match when it settles)
+                    (`custom_dummy`, 65 real s: the 60 s measurement window + the 5 s 自爆 window) whose wave builds exactly
+                    one 木桩: it neither moves nor fights back and heals itself, so the players read their own output on a
+                    fixed window. Every enemy still on the field blows up at the 60 s mark (`enemySelfDestructAt`) and the
+                    settlement charges NO LP — the round is a measuring device, so it can neither end on the 超时 漏怪 path
+                    nor eliminate anybody (owner 2026-11-05). It is NOT a rule round — it pays no reward, moves no
+                    `roundsPassed`, has no shared pool and no 限伤 (the post's spawn carries no `boss` tag) — so
+                    `_finishFinal` starts it and `afterSettle` ends the match when it settles)
 → RESULT (per-player stats, titles, rounds passed, victory/defeat)
 ```
 Solo FUNNY has 9 rounds (boss at R9); everything is read from `data/config.json → modes[modeId]`.
 
-**The 木桩演练 round (R16)** exists because the owner wanted a way to see one's own output. Two properties follow from that
-and are worth stating, because they are what make the numbers readable:
+**The 木桩演练 round (R16)** exists because the owner wanted a way to see one's own output. Three properties follow from
+that and are worth stating, because they are what make the numbers readable:
 
 - *played from the boss deploy field* (owner 2026-10-30「16回合没有设置成boss回合，导致地图有问题」): the round registers the
   players into `bossWaves` (`phases.js _planDummyField`) so `deployFieldOf` hands out `bossL` / `bossR` and the post stands
@@ -67,6 +70,22 @@ and are worth stating, because they are what make the numbers readable:
   battle on screen has run (`public/js/ui/damageReport.js`; the panel itself stays a pure view and takes `elapsed` from the
   game screen's battle clock) — and the panel opens itself, frozen, once when this round settles. The dummy round and that
   panel are the only parts of the game that do this; every other round's report is opened by the player.
+- *it cannot cost LP* (owner 2026-11-05「第十六回合本质dps检测…第十六回合结束时会扣3点血，在协议等级加持后扣5滴，如果通过时
+  最高血量不够就会扣血，并显示游戏失败」＋「把第16回合的时间加5秒钟，并且在最后5秒内所有怪物强制自杀且回合结束后玩家血量锁定
+  不变」): a round that exists to be measured must not punish the measurement. The old ending was the ordinary `timeout` one,
+  and it counted **every surviving non-boss enemy** as a counted 漏怪 — the post itself plus the 悬赏 / 协议源石 enemies the
+  round can put next to it — which the settle charges one LP each (plus the protocol level's `leakLp`): 3 leaks = 3 LP, 5 at
+  level 18 / 19. On the match's LAST round that eliminated the player and showed 游戏失败 after a won fight. Three layers
+  fix it, and all three are needed:
+  - the round is **65 real s** (`rounds["16"].combatTimeLimit`), the old 60 s + a 5 s 自爆 window;
+  - at the old 60 s mark (`rounds["16"].enemySelfDestructAt`, real seconds ⇒ `GameData.enemySelfDestructAt` in game seconds,
+    carried on the field as `Battle opts.enemySelfDestructAt` / the BattleSpec key of the same name) **every enemy on the
+    field blows up**: `battle/lifecycle.js _selfDestructEnemies` removes each one with reason `selfdestruct` — no `killed`
+    credit, no bounty payout, no leak entry, `die` still rendered — so the field empties and the round ends `cleared` inside
+    its own limit instead of on the `timeout` path. The measurement window (and every DPS reading) is still the same 60 s;
+  - the settlement charges **no LP** in this round at all (`settle.js`: `locked || dummyRound ? 0 : …`), the same reading
+    背水一战's 锁血 uses — belt and braces for an enemy that leaked EARLIER in the round. Nobody can be eliminated by R16,
+    and its `stats.leaks` still reports what happened (the panel is honest about it; only the LP charge is 0).
 
 ### 6.2 Player state (PlayerState.js) — authoritative per player
 

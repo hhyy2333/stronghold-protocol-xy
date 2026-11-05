@@ -86,6 +86,10 @@ export function buildBattleSpec(o = {}) {
     enemyOverrides: o.enemyOverrides ?? {},
     waveId: o.waveId ?? null,
     bossId: o.bossId ?? null,
+    // 第16回合「木桩演练」的到时间自爆（业主 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」，游戏秒）：这一刻场上所有
+    // 敌人自爆、回合以 cleared 结束，于是超时不会把活着的敌人记成漏怪。只有声明了它的回合才带这个键 —— 其它 spec
+    // 逐字节不变（客户端与服务端复算读的是同一份 spec，两端必须同时看到它，否则复算会得到另一份结果）。
+    ...(Number.isFinite(o.enemySelfDestructAt) && o.enemySelfDestructAt > 0 ? { enemySelfDestructAt: o.enemySelfDestructAt } : {}),
     content: o.content ?? 'full',
     // 限伤 override (opt-in, shared/constants.js bossHitLimitFrom): the KEY appears only when a deployment set
     // SP_BOSS_HIT_LIMIT, so a spec built without one is byte-for-byte the old spec. `null` = Infinity (off), because
@@ -224,6 +228,8 @@ export function createBattleFromSpec(spec, dataSource, opts = {}) {
     content: opts.content ?? s.content ?? 'full',
   };
   if (s.bossId != null) battleOpts.bossId = s.bossId;
+  // 到时间自爆（第16回合木桩演练，业主 2026-11-05）：spec 上没有这个键 ⇒ 不传 ⇒ 战斗与从前逐字节相同。
+  if (typeof s.enemySelfDestructAt === 'number' && s.enemySelfDestructAt > 0) battleOpts.enemySelfDestructAt = s.enemySelfDestructAt;
   if (opts.logger) battleOpts.logger = opts.logger;
   if (opts.recordEvents === false) battleOpts.recordEvents = false;
   if (opts.quiet) battleOpts.quiet = true;

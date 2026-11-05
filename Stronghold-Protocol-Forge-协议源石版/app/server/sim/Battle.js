@@ -155,6 +155,13 @@ export class Battle {
     // non-boss kinds fall back to 60 s; only boss/hidden (or an explicit Infinity) run without a limit.
     const tl = Number(opts.timeLimit);
     this.timeLimit = opts.timeLimit == null || !(tl > 0) ? (bossLike ? Infinity : 60) : tl;
+    /**
+     * 第16回合「木桩演练」的到时间自爆（业主 2026-11-05「给这个木桩怪物加一个到时间自动爆炸」，游戏秒）：从这一刻起场上
+     * **所有**敌人自爆（battle/lifecycle.js `_selfDestructEnemies`：不是击杀、不付悬赏、不记漏怪），于是回合不会以
+     * 「超时把活着的敌人算成漏怪」结束 —— 第16回合是最后一回合，那笔 LP 会直接淘汰玩家。`null` = 没有这条规则，
+     * 战斗与从前逐字节相同（官方回合的数据里没有 `enemySelfDestructAt` 这一格）。
+     */
+    this.enemySelfDestructAt = Number.isFinite(opts.enemySelfDestructAt) && opts.enemySelfDestructAt > 0 ? opts.enemySelfDestructAt : null;
     // startOpCooldown: the operation cooldown of the battle-start deployment (skills.js AUTO_OP_COOLDOWN)
     this.flags = { layerGainsEnabled: this.kind === 'normal', ...DP_DEFAULTS, startOpCooldown: AUTO_OP_COOLDOWN, ...(opts.flags || {}) };
     const soc = Number(this.flags.startOpCooldown);
